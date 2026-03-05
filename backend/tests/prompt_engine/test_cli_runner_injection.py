@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from argparse import Namespace
 from pathlib import Path
+import subprocess
+from unittest.mock import patch
 
 import pytest
 
@@ -108,3 +110,57 @@ def test_cli_runner_missing_preserves_existing_behavior(
     reasons = [row[7] for row in rows if len(row) > 7]
     assert "REWORK_REQUIRED" in statuses
     assert any("No prompt execution backend configured. Provide a PromptRunner callback." in reason for reason in reasons)
+
+
+def test_cli_runner_codex_executes_prompt_successfully(
+    tmp_path: Path,
+    force_green_pytest: None,
+) -> None:
+    catalog = tmp_path / "docs" / "prompts" / "PROMPTS_CATALOG.md"
+    ledger = tmp_path / "docs" / "ledgers" / "PROMPTS_LEDGER.md"
+    _write_catalog(catalog)
+
+    codex_patch = "\n".join(
+        [
+            "diff --git a/backend/financeops/prompt_engine/_runner_artifacts/FINOS-P001.txt b/backend/financeops/prompt_engine/_runner_artifacts/FINOS-P001.txt",
+            "--- a/backend/financeops/prompt_engine/_runner_artifacts/FINOS-P001.txt",
+            "+++ b/backend/financeops/prompt_engine/_runner_artifacts/FINOS-P001.txt",
+            "@@ -0,0 +1 @@",
+            "+ok",
+        ]
+    )
+
+    with patch("financeops.prompt_engine.runners.codex_runner.subprocess.run") as run_mock:
+        run_mock.side_effect = [
+            subprocess.CompletedProcess(
+                args=["codex"],
+                returncode=0,
+                stdout=codex_patch,
+                stderr="",
+            ),
+            subprocess.CompletedProcess(
+                args=["git", "apply"],
+                returncode=0,
+                stdout="",
+                stderr="",
+            ),
+        ]
+
+        args = Namespace(
+            command="run",
+            project_root=str(tmp_path),
+            catalog="docs/prompts/PROMPTS_CATALOG.md",
+            ledger="docs/ledgers/PROMPTS_LEDGER.md",
+            max_rework_attempts=3,
+            dry_run=False,
+            runner="codex",
+        )
+        exit_code = run_pipeline(args)
+
+    assert exit_code == 0
+    assert run_mock.call_count == 2
+
+    rows = _ledger_rows_for_prompt(ledger, "FINOS-P001")
+    statuses = [row[3] for row in rows]
+    assert statuses[0] == "RUNNING"
+    assert statuses[-1] == "SUCCESS"

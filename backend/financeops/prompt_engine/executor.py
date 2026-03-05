@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 import logging
 from pathlib import Path
 
+from filelock import FileLock, Timeout
+
 from financeops.prompt_engine import ExecutionRecord, PromptDefinition, PromptStatus
 from financeops.prompt_engine.dependency_graph import DependencyGraph
 from financeops.prompt_engine.execution_transaction import (
@@ -47,6 +49,7 @@ class PromptExecutionEngine:
         self.ledger_path = ledger_path
         self.max_rework_attempts = max_rework_attempts
         self.stop_file = self.project_root / ".finos_stop"
+        self.execution_lock_path = self.project_root / ".finos_prompt_engine.lock"
 
         self.loader = PromptLoader(catalog_path)
         self.ledger_updater = PromptLedgerUpdater(ledger_path)
@@ -73,6 +76,22 @@ class PromptExecutionEngine:
         )
 
     def run(self) -> PromptExecutionSummary:
+        lock = FileLock(str(self.execution_lock_path))
+        try:
+            with lock.acquire(timeout=0):
+                return self._run_unlocked()
+        except Timeout:
+            log.warning("Prompt engine execution blocked: another runner is active")
+            return PromptExecutionSummary(
+                total_prompts=0,
+                skipped_success=0,
+                executed_success=0,
+                failed_prompt_id=None,
+                halted_by_stop_file=False,
+                details={},
+            )
+
+    def _run_unlocked(self) -> PromptExecutionSummary:
         catalog = self.loader.load()
         order = DependencyGraph(catalog.prompts).topological_order()
         status_map = self.ledger_updater.latest_status_map()

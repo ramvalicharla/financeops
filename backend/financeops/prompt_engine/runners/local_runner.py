@@ -30,11 +30,7 @@ class LocalRunner:
         """
 
         artifact_dir = (
-            self.project_root
-            / "backend"
-            / "financeops"
-            / "prompt_engine"
-            / "_runner_artifacts"
+            self.project_root / "financeops" / "prompt_engine" / "_runner_artifacts"
         )
 
         artifact_dir.mkdir(parents=True, exist_ok=True)

@@ -44,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_parser.add_argument(
         "--runner",
-        choices=("local", "none"),
+        choices=("codex", "local", "none"),
         default=None,
         help=(
             "Prompt execution backend. "
@@ -63,9 +63,17 @@ def configure_logging() -> None:
 
 
 def run_pipeline(args: argparse.Namespace) -> int:
-    root = Path(args.project_root).resolve()
+    repo_root = _resolve_repo_root(args.project_root)
+    backend_root = repo_root / "backend"
+    catalog_path = _resolve_cli_path(
+        raw_path=args.catalog,
+        repo_root=repo_root,
+        invocation_cwd=Path.cwd(),
+    )
+    ledger_path = _resolve_ledger_path(raw_path=args.ledger, repo_root=repo_root)
+
     if args.dry_run:
-        catalog = PromptLoader(root / args.catalog).load()
+        catalog = PromptLoader(catalog_path).load()
         order = DependencyGraph(catalog.prompts).topological_order()
         print("Execution Order:")
         print()
@@ -85,12 +93,18 @@ def run_pipeline(args: argparse.Namespace) -> int:
             build_local_runner_callback,
         )
 
-        runner_callback = build_local_runner_callback(root)
+        runner_callback = build_local_runner_callback(backend_root)
+    elif runner_mode == "codex":
+        from financeops.prompt_engine.runners.codex_runner import (
+            build_codex_runner_callback,
+        )
+
+        runner_callback = build_codex_runner_callback(repo_root)
 
     engine = PromptExecutionEngine(
-        project_root=root,
-        catalog_path=root / args.catalog,
-        ledger_path=root / args.ledger,
+        project_root=repo_root,
+        catalog_path=catalog_path,
+        ledger_path=ledger_path,
         runner_callback=runner_callback,
         max_rework_attempts=args.max_rework_attempts,
     )
@@ -112,12 +126,54 @@ def _resolve_runner_mode(cli_value: str | None) -> str:
     env_value = os.getenv("FINOS_PROMPT_RUNNER", "").strip().lower()
     if not env_value:
         return "none"
-    if env_value in {"local", "none"}:
+    if env_value in {"codex", "local", "none"}:
         return env_value
     raise ValueError(
         f"Unsupported FINOS_PROMPT_RUNNER value: {env_value}. "
-        "Supported values: local, none."
+        "Supported values: codex, local, none."
     )
+
+
+def _resolve_repo_root(raw_project_root: str) -> Path:
+    candidate = Path(raw_project_root).resolve()
+    module_repo_root = Path(__file__).resolve().parents[3]
+    normalized_raw = raw_project_root.strip()
+
+    if (candidate / "backend" / "financeops").exists() and (candidate / "docs").exists():
+        return candidate
+    if normalized_raw not in {"", "."} and (candidate / "docs").exists():
+        return candidate
+    if (
+        candidate.name == "backend"
+        and (candidate / "financeops").exists()
+        and (candidate.parent / "docs").exists()
+    ):
+        return candidate.parent
+    if candidate == module_repo_root or candidate == module_repo_root / "backend":
+        return module_repo_root
+    return module_repo_root
+
+
+def _resolve_cli_path(*, raw_path: str, repo_root: Path, invocation_cwd: Path) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path.resolve()
+
+    repo_candidate = (repo_root / path).resolve()
+    cwd_candidate = (invocation_cwd / path).resolve()
+
+    if repo_candidate.exists():
+        return repo_candidate
+    if cwd_candidate.exists():
+        return cwd_candidate
+    return repo_candidate
+
+
+def _resolve_ledger_path(*, raw_path: str, repo_root: Path) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path.resolve()
+    return (repo_root / path).resolve()
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -12,6 +12,7 @@ from financeops.prompt_engine.guardrails.security_policy import (
 
 _EXCLUDED_DIRS = {".venv", "node_modules", "__pycache__", ".pytest_cache", ".mypy_cache"}
 _EXCLUDED_SUFFIXES = {".pyc"}
+_EXCLUDED_FILENAMES = {".finos_prompt_engine.lock"}
 
 
 @dataclass(slots=True)
@@ -108,6 +109,8 @@ class RepositoryProtection:
         return RepositoryProtectionResult(ok=True)
 
     def _is_excluded(self, path: Path) -> bool:
+        if path.name in _EXCLUDED_FILENAMES:
+            return True
         if path.suffix in _EXCLUDED_SUFFIXES:
             return True
         for part in path.parts:
@@ -119,4 +122,3 @@ class RepositoryProtection:
     def _is_migrations_path(rel_path: str) -> bool:
         norm = rel_path.lower()
         return norm.startswith("migrations/") or "/migrations/" in norm
-

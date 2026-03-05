@@ -58,6 +58,7 @@ dependencies = [
     "python-dateutil==2.9.0",
     "pytz==2024.2",
     "babel==2.16.0",
+    "filelock==3.19.1",
 ]
 
 [project.optional-dependencies]
