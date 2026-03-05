@@ -1,0 +1,4 @@
+timestamp_utc=2026-03-05T17:33:40.145617+00:00
+prompt_id=FINOS-P003
+subsystem=RBAC
+prompt_preview=Placeholder prompt for RBAC implementation.
