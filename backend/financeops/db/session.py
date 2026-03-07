@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from typing import Any
+from uuid import UUID
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy import text
 
 from financeops.config import settings
 
@@ -41,6 +43,24 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
             raise
         finally:
+            await session.close()
+
+
+@asynccontextmanager
+async def tenant_session(tenant_id: UUID | str) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Context-managed session for worker/background paths where no HTTP Request exists.
+    Ensures app.current_tenant_id is set for the connection lifetime.
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            await set_rls_context(session, str(tenant_id))
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await clear_rls_context(session)
             await session.close()
 
 

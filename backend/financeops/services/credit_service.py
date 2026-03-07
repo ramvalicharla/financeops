@@ -17,6 +17,7 @@ from financeops.db.models.credits import (
     CreditTransactionStatus,
     ReservationStatus,
 )
+from financeops.services.audit_writer import AuditEvent, AuditWriter
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash, get_previous_hash
 
 log = logging.getLogger(__name__)
@@ -31,9 +32,20 @@ async def get_balance(session: AsyncSession, tenant_id: uuid.UUID) -> CreditBala
     )
     balance = result.scalar_one_or_none()
     if balance is None:
-        balance = CreditBalance(tenant_id=tenant_id, balance=Decimal("0"), reserved=Decimal("0"))
-        session.add(balance)
-        await session.flush()
+        balance = await AuditWriter.insert_record(
+            session,
+            record=CreditBalance(
+                tenant_id=tenant_id,
+                balance=Decimal("0"),
+                reserved=Decimal("0"),
+            ),
+            audit=AuditEvent(
+                tenant_id=tenant_id,
+                action="credits.balance.created",
+                resource_type="credit_balance",
+                new_value={"balance": "0", "reserved": "0"},
+            ),
+        )
     return balance
 
 
@@ -67,9 +79,20 @@ async def reserve_credits(
     )
     balance = result.scalar_one_or_none()
     if balance is None:
-        balance = CreditBalance(tenant_id=tenant_id, balance=Decimal("0"), reserved=Decimal("0"))
-        session.add(balance)
-        await session.flush()
+        balance = await AuditWriter.insert_record(
+            session,
+            record=CreditBalance(
+                tenant_id=tenant_id,
+                balance=Decimal("0"),
+                reserved=Decimal("0"),
+            ),
+            audit=AuditEvent(
+                tenant_id=tenant_id,
+                action="credits.balance.created",
+                resource_type="credit_balance",
+                new_value={"balance": "0", "reserved": "0"},
+            ),
+        )
         # Re-fetch with lock
         result = await session.execute(
             select(CreditBalance)
@@ -83,18 +106,46 @@ async def reserve_credits(
             f"Required {amount} credits but only {balance.available} available"
         )
 
+    old_balance_state = {
+        "balance": str(balance.balance),
+        "reserved": str(balance.reserved),
+        "available": str(balance.available),
+    }
     balance.reserved = balance.reserved + amount
     balance.updated_at = datetime.now(timezone.utc)
 
-    reservation = CreditReservation(
-        tenant_id=tenant_id,
-        amount=amount,
-        task_type=task_type,
-        status=ReservationStatus.pending,
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=_RESERVATION_TTL_MINUTES),
+    reservation = await AuditWriter.insert_record(
+        session,
+        record=CreditReservation(
+            tenant_id=tenant_id,
+            amount=amount,
+            task_type=task_type,
+            status=ReservationStatus.pending,
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(minutes=_RESERVATION_TTL_MINUTES),
+        ),
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            action="credits.reservation.created",
+            resource_type="credit_reservation",
+            new_value={"task_type": task_type, "amount": str(amount)},
+        ),
     )
-    session.add(reservation)
-    await session.flush()
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            action="credits.balance.reserved",
+            resource_type="credit_balance",
+            resource_id=str(balance.id),
+            old_value=old_balance_state,
+            new_value={
+                "balance": str(balance.balance),
+                "reserved": str(balance.reserved),
+                "available": str(balance.available),
+            },
+        ),
+    )
     log.info(
         "Credits reserved: tenant=%s amount=%s reservation=%s",
         str(tenant_id)[:8],
@@ -133,6 +184,12 @@ async def confirm_credits(
     )
     balance = balance_result.scalar_one()
 
+    old_reservation_status = reservation.status.value
+    old_balance_state = {
+        "balance": str(balance.balance),
+        "reserved": str(balance.reserved),
+        "available": str(balance.available),
+    }
     balance_before = balance.balance
     balance.balance = balance.balance - reservation.amount
     balance.reserved = balance.reserved - reservation.amount
@@ -165,8 +222,41 @@ async def confirm_credits(
         chain_hash=chain_hash,
         previous_hash=previous_hash,
     )
-    session.add(tx)
-    await session.flush()
+    tx = await AuditWriter.insert_record(
+        session,
+        record=tx,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="credits.transaction.confirmed",
+            resource_type="credit_transaction",
+            new_value={
+                "task_type": reservation.task_type,
+                "amount": str(reservation.amount),
+                "direction": CreditDirection.debit.value,
+            },
+        ),
+    )
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="credits.reservation.confirmed",
+            resource_type="credit_reservation",
+            resource_id=str(reservation.id),
+            old_value={
+                "status": old_reservation_status,
+                **old_balance_state,
+            },
+            new_value={
+                "status": reservation.status.value,
+                "balance": str(balance.balance),
+                "reserved": str(balance.reserved),
+                "available": str(balance.available),
+            },
+        ),
+    )
     return tx
 
 
@@ -200,6 +290,12 @@ async def release_credits(
     )
     balance = balance_result.scalar_one()
 
+    old_reservation_status = reservation.status.value
+    old_balance_state = {
+        "balance": str(balance.balance),
+        "reserved": str(balance.reserved),
+        "available": str(balance.available),
+    }
     balance_before = balance.balance
     balance.reserved = balance.reserved - reservation.amount
     balance.updated_at = datetime.now(timezone.utc)
@@ -231,8 +327,41 @@ async def release_credits(
         chain_hash=chain_hash,
         previous_hash=previous_hash,
     )
-    session.add(tx)
-    await session.flush()
+    tx = await AuditWriter.insert_record(
+        session,
+        record=tx,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="credits.transaction.released",
+            resource_type="credit_transaction",
+            new_value={
+                "task_type": reservation.task_type,
+                "amount": str(reservation.amount),
+                "direction": CreditDirection.credit.value,
+            },
+        ),
+    )
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="credits.reservation.released",
+            resource_type="credit_reservation",
+            resource_id=str(reservation.id),
+            old_value={
+                "status": old_reservation_status,
+                **old_balance_state,
+            },
+            new_value={
+                "status": reservation.status.value,
+                "balance": str(balance.balance),
+                "reserved": str(balance.reserved),
+                "available": str(balance.available),
+            },
+        ),
+    )
     log.info(
         "Credits released: tenant=%s reservation=%s amount=%s",
         str(tenant_id)[:8],
@@ -260,9 +389,20 @@ async def add_credits(
     )
     balance = balance_result.scalar_one_or_none()
     if balance is None:
-        balance = CreditBalance(tenant_id=tenant_id, balance=Decimal("0"), reserved=Decimal("0"))
-        session.add(balance)
-        await session.flush()
+        balance = await AuditWriter.insert_record(
+            session,
+            record=CreditBalance(
+                tenant_id=tenant_id,
+                balance=Decimal("0"),
+                reserved=Decimal("0"),
+            ),
+            audit=AuditEvent(
+                tenant_id=tenant_id,
+                action="credits.balance.created",
+                resource_type="credit_balance",
+                new_value={"balance": "0", "reserved": "0"},
+            ),
+        )
         balance_result = await session.execute(
             select(CreditBalance)
             .where(CreditBalance.tenant_id == tenant_id)
@@ -270,6 +410,11 @@ async def add_credits(
         )
         balance = balance_result.scalar_one()
 
+    old_balance_state = {
+        "balance": str(balance.balance),
+        "reserved": str(balance.reserved),
+        "available": str(balance.available),
+    }
     balance_before = balance.balance
     balance.balance = balance.balance + amount
     balance.updated_at = datetime.now(timezone.utc)
@@ -298,8 +443,37 @@ async def add_credits(
         chain_hash=chain_hash,
         previous_hash=previous_hash,
     )
-    session.add(tx)
-    await session.flush()
+    tx = await AuditWriter.insert_record(
+        session,
+        record=tx,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="credits.transaction.created",
+            resource_type="credit_transaction",
+            new_value={
+                "task_type": reason,
+                "amount": str(amount),
+                "direction": CreditDirection.credit.value,
+            },
+        ),
+    )
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="credits.balance.added",
+            resource_type="credit_balance",
+            resource_id=str(balance.id),
+            old_value=old_balance_state,
+            new_value={
+                "balance": str(balance.balance),
+                "reserved": str(balance.reserved),
+                "available": str(balance.available),
+            },
+        ),
+    )
     log.info(
         "Credits added: tenant=%s amount=%s reason=%s",
         str(tenant_id)[:8],

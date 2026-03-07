@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.config import settings
 from financeops.core.exceptions import AuthenticationError, AuthorizationError
 from financeops.core.security import (
     create_access_token,
@@ -16,11 +16,10 @@ from financeops.core.security import (
     encrypt_field,
     generate_totp_secret,
     get_totp_uri,
-    verify_password,
     verify_totp,
 )
 from financeops.db.models.users import IamSession, IamUser
-from financeops.config import settings
+from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
 
@@ -61,18 +60,42 @@ async def login(
     refresh_token = create_refresh_token(user.id, user.tenant_id)
     refresh_token_hash = _hash_token(refresh_token)
 
-    db_session = IamSession(
-        user_id=user.id,
-        tenant_id=user.tenant_id,
-        refresh_token_hash=refresh_token_hash,
-        device_info=device_info,
-        ip_address=ip_address,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=_REFRESH_TOKEN_EXPIRE_DAYS),
+    await AuditWriter.insert_record(
+        session,
+        record=IamSession(
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            refresh_token_hash=refresh_token_hash,
+            device_info=device_info,
+            ip_address=ip_address,
+            expires_at=datetime.now(UTC)
+            + timedelta(days=_REFRESH_TOKEN_EXPIRE_DAYS),
+        ),
+        audit=AuditEvent(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            action="auth.session.created",
+            resource_type="iam_session",
+            resource_name=user.email,
+            new_value={"ip_address": ip_address, "device_info": device_info},
+        ),
     )
-    session.add(db_session)
-    user.last_login_at = datetime.now(timezone.utc)
-    await session.flush()
-    log.info("Login success: user=%s tenant=%s", str(user.id)[:8], str(user.tenant_id)[:8])
+    user.last_login_at = datetime.now(UTC)
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            action="auth.user.last_login.updated",
+            resource_type="user",
+            resource_id=str(user.id),
+            resource_name=user.email,
+            new_value={"last_login_at": user.last_login_at.isoformat()},
+        ),
+    )
+    log.info(
+        "Login success: user=%s tenant=%s", str(user.id)[:8], str(user.tenant_id)[:8]
+    )
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -98,11 +121,24 @@ async def refresh_tokens(
     db_session = result.scalar_one_or_none()
     if db_session is None:
         raise AuthenticationError("Invalid or revoked refresh token")
-    if db_session.expires_at < datetime.now(timezone.utc):
+    if db_session.expires_at < datetime.now(UTC):
         raise AuthenticationError("Refresh token has expired")
 
     # Revoke old session
-    db_session.revoked_at = datetime.now(timezone.utc)
+    old_session_state = {"revoked_at": None}
+    db_session.revoked_at = datetime.now(UTC)
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=db_session.tenant_id,
+            user_id=db_session.user_id,
+            action="auth.session.revoked_for_rotation",
+            resource_type="iam_session",
+            resource_id=str(db_session.id),
+            old_value=old_session_state,
+            new_value={"revoked_at": db_session.revoked_at.isoformat()},
+        ),
+    )
 
     # Load user
     user_result = await session.execute(
@@ -116,16 +152,26 @@ async def refresh_tokens(
     new_refresh = create_refresh_token(user.id, user.tenant_id)
     new_hash = _hash_token(new_refresh)
 
-    new_session = IamSession(
-        user_id=user.id,
-        tenant_id=user.tenant_id,
-        refresh_token_hash=new_hash,
-        device_info=db_session.device_info,
-        ip_address=db_session.ip_address,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=_REFRESH_TOKEN_EXPIRE_DAYS),
+    await AuditWriter.insert_record(
+        session,
+        record=IamSession(
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            refresh_token_hash=new_hash,
+            device_info=db_session.device_info,
+            ip_address=db_session.ip_address,
+            expires_at=datetime.now(UTC)
+            + timedelta(days=_REFRESH_TOKEN_EXPIRE_DAYS),
+        ),
+        audit=AuditEvent(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            action="auth.session.rotated",
+            resource_type="iam_session",
+            resource_name=user.email,
+            new_value={"previous_session_id": str(db_session.id)},
+        ),
     )
-    session.add(new_session)
-    await session.flush()
     return {
         "access_token": new_access,
         "refresh_token": new_refresh,
@@ -141,8 +187,20 @@ async def logout(session: AsyncSession, refresh_token: str) -> None:
     )
     db_session = result.scalar_one_or_none()
     if db_session and db_session.revoked_at is None:
-        db_session.revoked_at = datetime.now(timezone.utc)
-        await session.flush()
+        old_state = {"revoked_at": None}
+        db_session.revoked_at = datetime.now(UTC)
+        await AuditWriter.flush_with_audit(
+            session,
+            audit=AuditEvent(
+                tenant_id=db_session.tenant_id,
+                user_id=db_session.user_id,
+                action="auth.session.revoked",
+                resource_type="iam_session",
+                resource_id=str(db_session.id),
+                old_value=old_state,
+                new_value={"revoked_at": db_session.revoked_at.isoformat()},
+            ),
+        )
 
 
 async def setup_totp(user: IamUser, session: AsyncSession) -> dict:
@@ -150,10 +208,23 @@ async def setup_totp(user: IamUser, session: AsyncSession) -> dict:
     Generate a new TOTP secret, encrypt and store it, return the setup info.
     MFA is NOT activated until verify_totp_setup() is called.
     """
+    old_state = {"mfa_enabled": user.mfa_enabled}
     secret = generate_totp_secret()
     user.totp_secret_encrypted = encrypt_field(secret)
     user.mfa_enabled = False  # Not active until verified
-    await session.flush()
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            action="auth.totp.setup",
+            resource_type="user",
+            resource_id=str(user.id),
+            resource_name=user.email,
+            old_value=old_state,
+            new_value={"mfa_enabled": user.mfa_enabled},
+        ),
+    )
     return {
         "totp_secret": secret,
         "qr_code_url": get_totp_uri(secret, user.email),
@@ -170,6 +241,19 @@ async def verify_totp_setup(user: IamUser, code: str, session: AsyncSession) -> 
     secret = decrypt_field(user.totp_secret_encrypted)
     if not verify_totp(secret, code):
         raise AuthenticationError("Invalid TOTP code — please try again")
+    old_state = {"mfa_enabled": user.mfa_enabled}
     user.mfa_enabled = True
-    await session.flush()
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            action="auth.totp.verified",
+            resource_type="user",
+            resource_id=str(user.id),
+            resource_name=user.email,
+            old_value=old_state,
+            new_value={"mfa_enabled": user.mfa_enabled},
+        ),
+    )
     return True

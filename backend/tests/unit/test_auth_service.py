@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import AuthenticationError
 from financeops.core.security import hash_password, verify_password
+from financeops.services.audit_writer import AuditWriter
 from financeops.services.auth_service import (
+    login,
     logout,
     refresh_tokens,
     setup_totp,
@@ -50,7 +54,6 @@ async def test_verify_totp_setup_rejects_wrong_code(
 async def test_logout_revokes_session(
     async_session: AsyncSession, test_user
 ):
-    from financeops.services.auth_service import login
     tokens = await login(
         async_session,
         user=test_user,
@@ -63,6 +66,51 @@ async def test_logout_revokes_session(
     # Attempting to use the revoked token should fail
     with pytest.raises(AuthenticationError):
         await refresh_tokens(async_session, refresh)
+
+
+@pytest.mark.asyncio
+async def test_login_uses_audit_writer(async_session: AsyncSession, test_user):
+    with patch(
+        "financeops.services.auth_service.AuditWriter.insert_record",
+        wraps=AuditWriter.insert_record,
+    ) as insert_spy:
+        with patch(
+            "financeops.services.auth_service.AuditWriter.flush_with_audit",
+            wraps=AuditWriter.flush_with_audit,
+        ) as flush_spy:
+            await login(
+                async_session,
+                user=test_user,
+                totp_code=None,
+                ip_address="127.0.0.1",
+                device_info="pytest",
+            )
+    assert insert_spy.await_count >= 1
+    assert flush_spy.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_tokens_uses_audited_session_revocation(
+    async_session: AsyncSession, test_user
+):
+    tokens = await login(
+        async_session,
+        user=test_user,
+        totp_code=None,
+        ip_address="127.0.0.1",
+        device_info="pytest",
+    )
+    with patch(
+        "financeops.services.auth_service.AuditWriter.insert_record",
+        wraps=AuditWriter.insert_record,
+    ) as insert_spy:
+        with patch(
+            "financeops.services.auth_service.AuditWriter.flush_with_audit",
+            wraps=AuditWriter.flush_with_audit,
+        ) as flush_spy:
+            await refresh_tokens(async_session, tokens["refresh_token"])
+    assert insert_spy.await_count >= 1
+    assert flush_spy.await_count >= 1
 
 
 def test_password_hashing_and_verification():

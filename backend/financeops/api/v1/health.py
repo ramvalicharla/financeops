@@ -57,12 +57,28 @@ async def deep_health_check(
     except Exception as exc:
         storage_status = {"status": "error", "detail": str(exc)}
 
+    temporal_status = {"status": "not_initialized"}
+    try:
+        from financeops.temporal.client import check_temporal_health
+
+        temporal_status = await check_temporal_health()
+    except Exception as exc:
+        temporal_status = {"status": "error", "detail": str(exc)}
+
     checks = {
         "db": db_status,
         "redis": redis_status,
         "storage": storage_status,
+        "temporal": temporal_status,
     }
-    overall = "ok" if all(v["status"] in ("ok", "not_configured", "not_initialized") for v in checks.values()) else "degraded"
+    overall = (
+        "ok"
+        if all(
+            v["status"] in ("ok", "not_configured", "not_initialized")
+            for v in checks.values()
+        )
+        else "degraded"
+    )
 
     return {
         "status": overall,

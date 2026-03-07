@@ -1,4 +1,4 @@
-# PROMPTS\_LEDGER
+﻿# PROMPTS\_LEDGER
 
 Purpose: Track every prompt executed by Codex or AI tools.
 
@@ -10,8 +10,8 @@ Policy:
 
 ## Prompt Execution Status
 
-|Prompt ID|Subsystem|Execution Timestamp|Execution Status|Rework Attempt Number|Files Modified|Test Results|Failure Reason|Notes|
-|-|-|-|-|-|-|-|-|-|
+|Prompt ID|Subsystem|Execution Timestamp|Execution Status|Rework Attempt Number|Files Modified|Test Results|Failure Reason|Notes|Prev Hash|Entry Hash|
+|-|-|-|-|-|-|-|-|-|-|-|
 |FINOS-P001A|Auth|2026-03-05T16:43:18.160243+00:00|RUNNING|0|-|N/A|-|Prompt execution started|
 |FINOS-P001A|Auth|2026-03-05T16:44:17.020021+00:00|REWORK\_REQUIRED|0|-|FAIL/NOT\_RUN|No prompt execution backend configured. Provide a PromptRunner callback.|Prompt execution incomplete; rework required|
 |FINOS-P001A|Auth|2026-03-05T16:44:18.919997+00:00|REWORK\_REQUIRED|1|-|FAIL|No AI rework callback configured|Rework engine unavailable|
@@ -28,8 +28,12 @@ Policy:
 
 
 | FINOS-P001 | Auth | 2026-03-05T17:30:15.464256+00:00 | RUNNING | 0 | - | N/A | - | Prompt execution started |
-| FINOS-P001 | Auth | 2026-03-05T17:31:37.066922+00:00 | SUCCESS | 0 | backend/financeops/prompt_engine/_runner_artifacts/FINOS-P001.txt | PASS | - | Local runner executed prompt via offline artifact write. |
+| FINOS-P001 | Auth | 2026-03-05T17:31:37.066922+00:00 | SUCCESS | 0 | backend/financeops/prompt\_engine/\_runner\_artifacts/FINOS-P001.txt | PASS | - | Local runner executed prompt via offline artifact write. |
 | FINOS-P002 | Multi-Tenant | 2026-03-05T17:31:37.070016+00:00 | RUNNING | 0 | - | N/A | - | Prompt execution started |
-| FINOS-P002 | Multi-Tenant | 2026-03-05T17:32:59.053766+00:00 | SUCCESS | 0 | backend/financeops/prompt_engine/_runner_artifacts/FINOS-P002.txt | PASS | - | Local runner executed prompt via offline artifact write. |
+| FINOS-P002 | Multi-Tenant | 2026-03-05T17:32:59.053766+00:00 | SUCCESS | 0 | backend/financeops/prompt\_engine/\_runner\_artifacts/FINOS-P002.txt | PASS | - | Local runner executed prompt via offline artifact write. |
 | FINOS-P003 | RBAC | 2026-03-05T17:32:59.056590+00:00 | RUNNING | 0 | - | N/A | - | Prompt execution started |
-| FINOS-P003 | RBAC | 2026-03-05T17:34:21.173515+00:00 | SUCCESS | 0 | backend/financeops/prompt_engine/_runner_artifacts/FINOS-P003.txt | PASS | - | Local runner executed prompt via offline artifact write. |
+| FINOS-P003 | RBAC | 2026-03-05T17:34:21.173515+00:00 | SUCCESS | 0 | backend/financeops/prompt\_engine/\_runner\_artifacts/FINOS-P003.txt | PASS | - | Local runner executed prompt via offline artifact write. |
+
+FINOS-P004 | Test Codex Runner
+
+

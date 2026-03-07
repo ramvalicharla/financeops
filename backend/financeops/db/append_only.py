@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+APPEND_ONLY_TABLES: tuple[str, ...] = (
+    "audit_trail",
+    "credit_transactions",
+    "mis_templates",
+    "mis_uploads",
+    "gl_entries",
+    "trial_balance_rows",
+    "recon_items",
+    "bank_statements",
+    "bank_transactions",
+    "bank_recon_items",
+    "working_capital_snapshots",
+    "gst_returns",
+    "gst_recon_items",
+    "monthend_checklists",
+    "auditor_grants",
+    "auditor_access_logs",
+    "fx_rate_fetch_runs",
+    "fx_rate_quotes",
+    "fx_manual_monthly_rates",
+    "fx_variance_results",
+    "normalized_financial_snapshots",
+    "normalized_financial_snapshot_lines",
+    "consolidation_runs",
+    "consolidation_run_events",
+    "consolidation_entities",
+    "consolidation_line_items",
+    "intercompany_pairs",
+    "consolidation_eliminations",
+    "consolidation_results",
+    "revenue_runs",
+    "revenue_run_events",
+    "revenue_contracts",
+    "revenue_performance_obligations",
+    "revenue_contract_line_items",
+    "revenue_schedules",
+    "revenue_journal_entries",
+    "revenue_adjustments",
+    "lease_runs",
+    "lease_run_events",
+    "leases",
+    "lease_payments",
+    "lease_liability_schedule",
+    "lease_rou_schedule",
+    "lease_modifications",
+    "lease_journal_entries",
+    "prepaid_runs",
+    "prepaid_run_events",
+    "prepaids",
+    "prepaid_amortization_schedule",
+    "prepaid_journal_entries",
+    "prepaid_adjustments",
+    "far_runs",
+    "far_run_events",
+    "assets",
+    "asset_depreciation_schedule",
+    "asset_impairments",
+    "asset_disposals",
+    "asset_journal_entries",
+    "cp_tenants",
+    "cp_organisations",
+    "cp_groups",
+    "cp_entities",
+    "cp_user_organisation_assignments",
+    "cp_user_entity_assignments",
+    "cp_tenant_package_assignments",
+    "cp_tenant_module_enablement",
+    "cp_module_feature_flags",
+    "cp_roles",
+    "cp_role_permissions",
+    "cp_user_role_assignments",
+    "cp_workflow_templates",
+    "cp_workflow_template_versions",
+    "cp_workflow_template_stages",
+    "cp_workflow_stage_role_map",
+    "cp_workflow_stage_user_map",
+    "cp_workflow_instances",
+    "cp_workflow_stage_instances",
+    "cp_workflow_instance_events",
+    "cp_workflow_stage_events",
+    "cp_workflow_approvals",
+    "cp_tenant_quota_assignments",
+    "cp_tenant_quota_usage_events",
+    "cp_tenant_quota_windows",
+    "cp_tenant_isolation_policy",
+    "cp_tenant_migration_events",
+)
+
+APPEND_ONLY_TRIGGER_FUNCTION = "financeops_block_update_delete"
+
+
+def append_only_function_sql() -> str:
+    return f"""
+    CREATE OR REPLACE FUNCTION {APPEND_ONLY_TRIGGER_FUNCTION}()
+    RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'append-only table "%": % is not allowed', TG_TABLE_NAME, TG_OP
+      USING ERRCODE = '55000';
+    END;
+    $$ LANGUAGE plpgsql;
+    """
+
+
+def append_only_trigger_name(table_name: str) -> str:
+    return f"trg_append_only_{table_name}"
+
+
+def create_trigger_sql(table_name: str) -> str:
+    trigger_name = append_only_trigger_name(table_name)
+    return (
+        f"CREATE TRIGGER {trigger_name} "
+        f"BEFORE UPDATE OR DELETE ON {table_name} "
+        f"FOR EACH ROW EXECUTE FUNCTION {APPEND_ONLY_TRIGGER_FUNCTION}();"
+    )
+
+
+def drop_trigger_sql(table_name: str) -> str:
+    trigger_name = append_only_trigger_name(table_name)
+    return f"DROP TRIGGER IF EXISTS {trigger_name} ON {table_name};"
+
+
+def iter_unique_tables(tables: Iterable[str]) -> list[str]:
+    # Preserve first-seen order while de-duplicating.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for table_name in tables:
+        if table_name not in seen:
+            seen.add(table_name)
+            ordered.append(table_name)
+    return ordered

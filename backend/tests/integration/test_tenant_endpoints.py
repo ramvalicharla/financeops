@@ -65,3 +65,28 @@ async def test_invite_user_requires_finance_leader(
     assert response.status_code == 201
     data = response.json()
     assert data["email"] == "invited@example.com"
+
+
+@pytest.mark.asyncio
+async def test_update_tenant_me_uses_mutation_path(
+    async_client: AsyncClient, test_access_token: str
+):
+    response = await async_client.patch(
+        "/api/v1/tenants/me",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+        json={
+            "display_name": "Renamed Tenant",
+            "timezone": "Asia/Kolkata",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["updated"] is True
+
+    verify_resp = await async_client.get(
+        "/api/v1/tenants/me",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+    assert verify_resp.status_code == 200
+    payload = verify_resp.json()
+    assert payload["display_name"] == "Renamed Tenant"
+    assert payload["timezone"] == "Asia/Kolkata"

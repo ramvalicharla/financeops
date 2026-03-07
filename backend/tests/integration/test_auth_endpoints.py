@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,3 +128,49 @@ async def test_logout_invalidates_refresh_token(
         json={"refresh_token": refresh_token},
     )
     assert retry_resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_sets_tenant_context_from_refresh_token(
+    async_client: AsyncClient, test_user
+):
+    login_resp = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "testuser@example.com", "password": "TestPass123!"},
+    )
+    assert login_resp.status_code == 200
+    refresh_token = login_resp.json()["refresh_token"]
+
+    with patch(
+        "financeops.api.v1.auth.set_tenant_context",
+        new_callable=AsyncMock,
+    ) as set_ctx:
+        refresh_resp = await async_client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+    assert refresh_resp.status_code == 200
+    assert set_ctx.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_logout_sets_tenant_context_from_refresh_token(
+    async_client: AsyncClient, test_user
+):
+    login_resp = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "testuser@example.com", "password": "TestPass123!"},
+    )
+    assert login_resp.status_code == 200
+    refresh_token = login_resp.json()["refresh_token"]
+
+    with patch(
+        "financeops.api.v1.auth.set_tenant_context",
+        new_callable=AsyncMock,
+    ) as set_ctx:
+        logout_resp = await async_client.post(
+            "/api/v1/auth/logout",
+            json={"refresh_token": refresh_token},
+        )
+    assert logout_resp.status_code == 200
+    assert set_ctx.await_count == 1

@@ -2,14 +2,19 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
-from financeops.db.models.tenants import IamTenant, IamWorkspace, TenantStatus, TenantType, WorkspaceStatus
-from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+from financeops.db.models.tenants import (
+    IamTenant,
+    IamWorkspace,
+    TenantStatus,
+    TenantType,
+    WorkspaceStatus,
+)
+from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
 
@@ -25,29 +30,34 @@ async def create_tenant(
 ) -> IamTenant:
     """Create a new tenant with genesis chain hash."""
     tenant_id = uuid.uuid4()
-    record_data = {
-        "display_name": display_name,
-        "tenant_type": tenant_type.value,
-        "country": country,
-        "timezone": timezone_str,
-        "status": TenantStatus.active.value,
-    }
-    chain_hash = compute_chain_hash(record_data, GENESIS_HASH)
-
-    tenant = IamTenant(
-        id=tenant_id,
-        tenant_id=tenant_id,  # self-referential: tenant's own ID
-        display_name=display_name,
-        tenant_type=tenant_type,
-        country=country,
-        timezone=timezone_str,
-        status=TenantStatus.active,
-        parent_tenant_id=parent_tenant_id,
-        chain_hash=chain_hash,
-        previous_hash=GENESIS_HASH,
+    tenant = await AuditWriter.insert_financial_record(
+        session,
+        model_class=IamTenant,
+        tenant_id=tenant_id,
+        record_data={
+            "display_name": display_name,
+            "tenant_type": tenant_type.value,
+            "country": country,
+            "timezone": timezone_str,
+            "status": TenantStatus.active.value,
+        },
+        values={
+            "id": tenant_id,
+            "display_name": display_name,
+            "tenant_type": tenant_type,
+            "country": country,
+            "timezone": timezone_str,
+            "status": TenantStatus.active,
+            "parent_tenant_id": parent_tenant_id,
+        },
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            action="tenant.created",
+            resource_type="tenant",
+            resource_name=display_name,
+            new_value={"tenant_type": tenant_type.value, "country": country},
+        ),
     )
-    session.add(tenant)
-    await session.flush()
     log.info("Tenant created: id=%s name=%s", tenant.id, display_name)
     return tenant
 
@@ -63,23 +73,76 @@ async def get_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> IamTenant:
     return tenant
 
 
+async def update_tenant_settings(
+    session: AsyncSession,
+    *,
+    tenant: IamTenant,
+    actor_user_id: uuid.UUID,
+    display_name: str | None = None,
+    timezone_str: str | None = None,
+) -> IamTenant:
+    """Update mutable tenant settings and persist via audited flush path."""
+    old_state = {
+        "display_name": tenant.display_name,
+        "timezone": tenant.timezone,
+    }
+    changed = False
+
+    if display_name is not None and display_name != tenant.display_name:
+        tenant.display_name = display_name
+        changed = True
+    if timezone_str is not None and timezone_str != tenant.timezone:
+        tenant.timezone = timezone_str
+        changed = True
+    if not changed:
+        return tenant
+
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=tenant.id,
+            user_id=actor_user_id,
+            action="tenant.updated",
+            resource_type="tenant",
+            resource_id=str(tenant.id),
+            resource_name=tenant.display_name,
+            old_value=old_state,
+            new_value={
+                "display_name": tenant.display_name,
+                "timezone": tenant.timezone,
+            },
+        ),
+    )
+    return tenant
+
+
 async def create_default_workspace(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     name: str = "Default",
 ) -> IamWorkspace:
     """Create the default workspace for a new tenant."""
-    workspace = IamWorkspace(
-        tenant_id=tenant_id,
-        name=name,
-        status=WorkspaceStatus.active,
+    workspace = await AuditWriter.insert_record(
+        session,
+        record=IamWorkspace(
+            tenant_id=tenant_id,
+            name=name,
+            status=WorkspaceStatus.active,
+        ),
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            action="workspace.created",
+            resource_type="workspace",
+            resource_name=name,
+            new_value={"status": WorkspaceStatus.active.value},
+        ),
     )
-    session.add(workspace)
-    await session.flush()
     return workspace
 
 
-async def list_workspaces(session: AsyncSession, tenant_id: uuid.UUID) -> list[IamWorkspace]:
+async def list_workspaces(
+    session: AsyncSession, tenant_id: uuid.UUID
+) -> list[IamWorkspace]:
     """List all workspaces for a tenant."""
     result = await session.execute(
         select(IamWorkspace).where(IamWorkspace.tenant_id == tenant_id)

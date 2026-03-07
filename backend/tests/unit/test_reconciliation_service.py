@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import uuid
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.services.audit_writer import AuditWriter
 from financeops.services.reconciliation_service import (
     create_gl_entry,
     create_tb_row,
     list_gl_entries,
-    list_recon_items,
-    list_tb_rows,
     run_gl_tb_reconciliation,
 )
 
@@ -177,7 +176,59 @@ async def test_list_gl_entries_filter(async_session: AsyncSession, test_tenant):
         uploaded_by=test_tenant.id,
     )
     result = await list_gl_entries(
-        async_session, test_tenant.id, period_year=2025, period_month=1, entity_name=entity
+        async_session,
+        test_tenant.id,
+        period_year=2025,
+        period_month=1,
+        entity_name=entity,
     )
     assert len(result) >= 1
     assert all(e.entity_name == entity for e in result)
+
+
+@pytest.mark.asyncio
+async def test_create_gl_entry_uses_audit_writer(
+    async_session: AsyncSession, test_tenant
+):
+    with patch(
+        "financeops.services.reconciliation_service.AuditWriter.insert_financial_record",
+        wraps=AuditWriter.insert_financial_record,
+    ) as spy:
+        await create_gl_entry(
+            async_session,
+            tenant_id=test_tenant.id,
+            period_year=2025,
+            period_month=10,
+            entity_name="Audit Entity",
+            account_code="9000",
+            account_name="Audit",
+            debit_amount=Decimal("1"),
+            credit_amount=Decimal("0"),
+            uploaded_by=test_tenant.id,
+        )
+    assert spy.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_create_tb_row_uses_audit_writer(
+    async_session: AsyncSession, test_tenant
+):
+    with patch(
+        "financeops.services.reconciliation_service.AuditWriter.insert_financial_record",
+        wraps=AuditWriter.insert_financial_record,
+    ) as spy:
+        await create_tb_row(
+            async_session,
+            tenant_id=test_tenant.id,
+            period_year=2025,
+            period_month=10,
+            entity_name="Audit Entity",
+            account_code="9000",
+            account_name="Audit",
+            opening_balance=Decimal("0"),
+            period_debit=Decimal("1"),
+            period_credit=Decimal("0"),
+            closing_balance=Decimal("1"),
+            uploaded_by=test_tenant.id,
+        )
+    assert spy.await_count == 1

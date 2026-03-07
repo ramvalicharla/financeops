@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from filelock import FileLock, Timeout
@@ -13,8 +13,11 @@ from financeops.prompt_engine.execution_transaction import (
     ExecutionTransactionResult,
 )
 from financeops.prompt_engine.guardrails.file_size_enforcer import FileSizeEnforcer
-from financeops.prompt_engine.guardrails.repository_protection import RepositoryProtection
+from financeops.prompt_engine.guardrails.repository_protection import (
+    RepositoryProtection,
+)
 from financeops.prompt_engine.ledger_updater import PromptLedgerUpdater
+from financeops.prompt_engine.prompt_governance import evaluate_prompt_approval
 from financeops.prompt_engine.prompt_loader import PromptLoader
 from financeops.prompt_engine.prompt_runner import PromptRunner
 from financeops.prompt_engine.rework_engine import ReworkCallback, ReworkEngine
@@ -43,6 +46,9 @@ class PromptExecutionEngine:
         runner_callback=None,
         rework_callback: ReworkCallback | None = None,
         max_rework_attempts: int = 3,
+        approve_high_risk: bool = False,
+        approval_token: str | None = None,
+        allow_ledger_repair: bool = False,
     ) -> None:
         self.project_root = project_root
         self.catalog_path = catalog_path
@@ -50,6 +56,9 @@ class PromptExecutionEngine:
         self.max_rework_attempts = max_rework_attempts
         self.stop_file = self.project_root / ".finos_stop"
         self.execution_lock_path = self.project_root / ".finos_prompt_engine.lock"
+        self.approve_high_risk = approve_high_risk
+        self.approval_token = approval_token
+        self.allow_ledger_repair = allow_ledger_repair
 
         self.loader = PromptLoader(catalog_path)
         self.ledger_updater = PromptLedgerUpdater(ledger_path)
@@ -76,6 +85,7 @@ class PromptExecutionEngine:
         )
 
     def run(self) -> PromptExecutionSummary:
+        self._cleanup_stale_execution_lock()
         lock = FileLock(str(self.execution_lock_path))
         try:
             with lock.acquire(timeout=0):
@@ -91,7 +101,51 @@ class PromptExecutionEngine:
                 details={},
             )
 
+    def _cleanup_stale_execution_lock(self) -> None:
+        if not self.execution_lock_path.exists():
+            return
+
+        lock = FileLock(str(self.execution_lock_path))
+        try:
+            with lock.acquire(timeout=0):
+                try:
+                    self.execution_lock_path.unlink(missing_ok=True)
+                except OSError:
+                    log.debug(
+                        "Unable to remove stale execution lock file: %s",
+                        self.execution_lock_path,
+                    )
+        except Timeout:
+            # Active lock held by another process; do not remove.
+            return
+
     def _run_unlocked(self) -> PromptExecutionSummary:
+        integrity = self.ledger_updater.verify_hash_chain()
+        if not integrity.ok:
+            if self.allow_ledger_repair:
+                repair = self.ledger_updater.repair_hash_chain()
+                if not repair.ok:
+                    log.error("Ledger repair failed: %s", repair.reason)
+                    return PromptExecutionSummary(
+                        total_prompts=0,
+                        skipped_success=0,
+                        executed_success=0,
+                        failed_prompt_id="LEDGER_REPAIR_FAILED",
+                        halted_by_stop_file=False,
+                        details={},
+                    )
+                integrity = self.ledger_updater.verify_hash_chain()
+            if not integrity.ok:
+                log.error("Ledger integrity verification failed: %s", integrity.reason)
+                return PromptExecutionSummary(
+                    total_prompts=0,
+                    skipped_success=0,
+                    executed_success=0,
+                    failed_prompt_id="LEDGER_INTEGRITY",
+                    halted_by_stop_file=False,
+                    details={},
+                )
+
         catalog = self.loader.load()
         order = DependencyGraph(catalog.prompts).topological_order()
         status_map = self.ledger_updater.latest_status_map()
@@ -109,6 +163,29 @@ class PromptExecutionEngine:
                 details[prompt.prompt_id] = PromptStatus.SUCCESS
                 log.info("Skipping %s (already SUCCESS in ledger)", prompt.prompt_id)
                 continue
+
+            governance = evaluate_prompt_approval(
+                prompt,
+                approve_high_risk=self.approve_high_risk,
+                approval_token=self.approval_token,
+            )
+            if not governance.allowed:
+                failed_prompt_id = prompt.prompt_id
+                details[prompt.prompt_id] = PromptStatus.FAIL
+                self.ledger_updater.append_execution(
+                    ExecutionRecord(
+                        prompt_id=prompt.prompt_id,
+                        subsystem=prompt.subsystem,
+                        execution_status=PromptStatus.FAIL,
+                        rework_attempt_number=0,
+                        files_modified=[],
+                        test_results="FAIL/NOT_RUN",
+                        failure_reason=governance.reason,
+                        notes="Prompt governance blocked execution",
+                    )
+                )
+                log.error(governance.reason)
+                break
 
             log.info("Prompt start: %s (%s)", prompt.prompt_id, prompt.subsystem)
             running_append = self.ledger_updater.append_running(prompt)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from enum import Enum
 
 
@@ -19,6 +19,11 @@ class PromptDefinition:
     subsystem: str
     dependencies: list[str]
     prompt_text: str
+    title: str = ""
+    risk: str = "MEDIUM"
+    description: str = ""
+    acceptance_criteria: str = ""
+    files_expected: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -48,6 +53,5 @@ class ExecutionRecord:
     failure_reason: str | None = None
     notes: str = ""
     execution_timestamp: datetime = field(
-        default_factory=lambda: datetime.now(timezone.utc)
+        default_factory=lambda: datetime.now(UTC)
     )
-

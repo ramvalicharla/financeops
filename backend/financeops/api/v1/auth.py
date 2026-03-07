@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.core.exceptions import AuthenticationError
-from financeops.core.security import verify_password
+from financeops.core.security import decode_token, verify_password
 from financeops.db.models.tenants import TenantType
 from financeops.db.models.users import IamUser, UserRole
+from financeops.db.rls import set_tenant_context
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
     login,
@@ -20,7 +21,7 @@ from financeops.services.auth_service import (
     verify_totp_setup,
 )
 from financeops.services.credit_service import add_credits
-from financeops.services.tenant_service import create_tenant, create_default_workspace
+from financeops.services.tenant_service import create_default_workspace, create_tenant
 from financeops.services.user_service import create_user, get_user_by_email
 
 log = logging.getLogger(__name__)
@@ -54,6 +55,19 @@ class MfaVerifyRequest(BaseModel):
     totp_code: str
 
 
+async def _set_refresh_tenant_context(
+    session: AsyncSession,
+    refresh_token: str,
+) -> None:
+    payload = decode_token(refresh_token)
+    if payload.get("type") != "refresh":
+        raise AuthenticationError("Invalid token type")
+    tenant_id = payload.get("tenant_id")
+    if not tenant_id:
+        raise AuthenticationError("Token missing tenant_id")
+    await set_tenant_context(session, tenant_id)
+
+
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(
     body: RegisterRequest,
@@ -71,6 +85,7 @@ async def register(
         tenant_type=body.tenant_type,
         country=body.country,
     )
+    await set_tenant_context(session, tenant.id)
     await create_default_workspace(session, tenant.id)
 
     user = await create_user(
@@ -156,6 +171,7 @@ async def user_login(
     user = await get_user_by_email(session, body.email)
     if user is None or not verify_password(body.password, user.hashed_password):
         raise AuthenticationError("Invalid email or password")
+    await set_tenant_context(session, user.tenant_id)
 
     tokens = await login(
         session,
@@ -187,6 +203,7 @@ async def token_refresh(
     POST /api/v1/auth/refresh
     Rotate refresh token — invalidate old, issue new pair.
     """
+    await _set_refresh_tenant_context(session, body.refresh_token)
     tokens = await refresh_tokens(session, body.refresh_token)
     await session.commit()
     return tokens
@@ -201,6 +218,7 @@ async def user_logout(
     POST /api/v1/auth/logout
     Revoke current session in DB.
     """
+    await _set_refresh_tenant_context(session, body.refresh_token)
     await logout(session, body.refresh_token)
     await session.commit()
     return {"logged_out": True}

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.services.audit_writer import AuditWriter
 from financeops.services.mis_service import (
     create_template,
     create_upload,
     get_template,
-    get_upload,
-    list_templates,
     list_uploads,
 )
 
@@ -35,7 +35,9 @@ async def test_create_template_basic(async_session: AsyncSession, test_tenant):
 
 
 @pytest.mark.asyncio
-async def test_create_template_version_increments(async_session: AsyncSession, test_tenant):
+async def test_create_template_version_increments(
+    async_session: AsyncSession, test_tenant
+):
     t1 = await create_template(
         async_session,
         tenant_id=test_tenant.id,
@@ -87,7 +89,9 @@ async def test_get_template_returns_correct(async_session: AsyncSession, test_te
 
 
 @pytest.mark.asyncio
-async def test_get_template_wrong_tenant_returns_none(async_session: AsyncSession, test_tenant):
+async def test_get_template_wrong_tenant_returns_none(
+    async_session: AsyncSession, test_tenant
+):
     template = await create_template(
         async_session,
         tenant_id=test_tenant.id,
@@ -121,7 +125,9 @@ async def test_create_upload(async_session: AsyncSession, test_tenant):
 
 
 @pytest.mark.asyncio
-async def test_list_uploads_filtered_by_period(async_session: AsyncSession, test_tenant):
+async def test_list_uploads_filtered_by_period(
+    async_session: AsyncSession, test_tenant
+):
     await create_upload(
         async_session,
         tenant_id=test_tenant.id,
@@ -172,3 +178,43 @@ async def test_template_chain_hash_integrity(async_session: AsyncSession, test_t
     assert len(t2.chain_hash) == 64
     # t2's previous_hash equals t1's chain_hash
     assert t2.previous_hash == t1.chain_hash
+
+
+@pytest.mark.asyncio
+async def test_create_template_uses_audit_writer(
+    async_session: AsyncSession, test_tenant
+):
+    with patch(
+        "financeops.services.mis_service.AuditWriter.insert_financial_record",
+        wraps=AuditWriter.insert_financial_record,
+    ) as spy:
+        await create_template(
+            async_session,
+            tenant_id=test_tenant.id,
+            name="AuditWriter Template",
+            entity_name="Entity Audit",
+            template_data={"sheets": []},
+            created_by=test_tenant.id,
+        )
+    assert spy.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_create_upload_uses_audit_writer(
+    async_session: AsyncSession, test_tenant
+):
+    with patch(
+        "financeops.services.mis_service.AuditWriter.insert_financial_record",
+        wraps=AuditWriter.insert_financial_record,
+    ) as spy:
+        await create_upload(
+            async_session,
+            tenant_id=test_tenant.id,
+            entity_name="Entity Audit",
+            period_year=2025,
+            period_month=9,
+            file_name="audit_writer.xlsx",
+            file_hash="d" * 64,
+            uploaded_by=test_tenant.id,
+        )
+    assert spy.await_count == 1

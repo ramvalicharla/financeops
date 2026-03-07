@@ -4,11 +4,11 @@ import logging
 import uuid
 from decimal import Decimal
 
-from sqlalchemy import select, func, desc
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.db.models.reconciliation import GlEntry, TrialBalanceRow, ReconItem
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.db.models.reconciliation import GlEntry, ReconItem, TrialBalanceRow
+from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
 
@@ -30,36 +30,45 @@ async def create_gl_entry(
     currency: str = "USD",
 ) -> GlEntry:
     """Insert a single GL entry (INSERT ONLY)."""
-    previous_hash = await get_previous_hash(session, GlEntry, tenant_id)
-    record_data = {
-        "tenant_id": str(tenant_id),
-        "period_year": period_year,
-        "period_month": period_month,
-        "entity_name": entity_name,
-        "account_code": account_code,
-        "debit_amount": str(debit_amount),
-        "credit_amount": str(credit_amount),
-    }
-    chain_hash = compute_chain_hash(record_data, previous_hash)
-
-    entry = GlEntry(
+    entry = await AuditWriter.insert_financial_record(
+        session,
+        model_class=GlEntry,
         tenant_id=tenant_id,
-        period_year=period_year,
-        period_month=period_month,
-        entity_name=entity_name,
-        account_code=account_code,
-        account_name=account_name,
-        debit_amount=debit_amount,
-        credit_amount=credit_amount,
-        description=description,
-        source_ref=source_ref,
-        currency=currency,
-        uploaded_by=uploaded_by,
-        chain_hash=chain_hash,
-        previous_hash=previous_hash,
+        record_data={
+            "tenant_id": str(tenant_id),
+            "period_year": period_year,
+            "period_month": period_month,
+            "entity_name": entity_name,
+            "account_code": account_code,
+            "debit_amount": str(debit_amount),
+            "credit_amount": str(credit_amount),
+        },
+        values={
+            "period_year": period_year,
+            "period_month": period_month,
+            "entity_name": entity_name,
+            "account_code": account_code,
+            "account_name": account_name,
+            "debit_amount": debit_amount,
+            "credit_amount": credit_amount,
+            "description": description,
+            "source_ref": source_ref,
+            "currency": currency,
+            "uploaded_by": uploaded_by,
+        },
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=uploaded_by,
+            action="recon.gl_entry.created",
+            resource_type="gl_entry",
+            resource_name=account_code,
+            new_value={
+                "entity_name": entity_name,
+                "period_year": period_year,
+                "period_month": period_month,
+            },
+        ),
     )
-    session.add(entry)
-    await session.flush()
     return entry
 
 
@@ -80,35 +89,44 @@ async def create_tb_row(
     currency: str = "USD",
 ) -> TrialBalanceRow:
     """Insert a single TB row (INSERT ONLY)."""
-    previous_hash = await get_previous_hash(session, TrialBalanceRow, tenant_id)
-    record_data = {
-        "tenant_id": str(tenant_id),
-        "period_year": period_year,
-        "period_month": period_month,
-        "entity_name": entity_name,
-        "account_code": account_code,
-        "closing_balance": str(closing_balance),
-    }
-    chain_hash = compute_chain_hash(record_data, previous_hash)
-
-    row = TrialBalanceRow(
+    row = await AuditWriter.insert_financial_record(
+        session,
+        model_class=TrialBalanceRow,
         tenant_id=tenant_id,
-        period_year=period_year,
-        period_month=period_month,
-        entity_name=entity_name,
-        account_code=account_code,
-        account_name=account_name,
-        opening_balance=opening_balance,
-        period_debit=period_debit,
-        period_credit=period_credit,
-        closing_balance=closing_balance,
-        currency=currency,
-        uploaded_by=uploaded_by,
-        chain_hash=chain_hash,
-        previous_hash=previous_hash,
+        record_data={
+            "tenant_id": str(tenant_id),
+            "period_year": period_year,
+            "period_month": period_month,
+            "entity_name": entity_name,
+            "account_code": account_code,
+            "closing_balance": str(closing_balance),
+        },
+        values={
+            "period_year": period_year,
+            "period_month": period_month,
+            "entity_name": entity_name,
+            "account_code": account_code,
+            "account_name": account_name,
+            "opening_balance": opening_balance,
+            "period_debit": period_debit,
+            "period_credit": period_credit,
+            "closing_balance": closing_balance,
+            "currency": currency,
+            "uploaded_by": uploaded_by,
+        },
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=uploaded_by,
+            action="recon.tb_row.created",
+            resource_type="trial_balance_row",
+            resource_name=account_code,
+            new_value={
+                "entity_name": entity_name,
+                "period_year": period_year,
+                "period_month": period_month,
+            },
+        ),
     )
-    session.add(row)
-    await session.flush()
     return row
 
 
@@ -148,7 +166,11 @@ async def run_gl_tb_reconciliation(
 
     # Get TB closing balances per account
     tb_result = await session.execute(
-        select(TrialBalanceRow.account_code, TrialBalanceRow.account_name, TrialBalanceRow.closing_balance)
+        select(
+            TrialBalanceRow.account_code,
+            TrialBalanceRow.account_name,
+            TrialBalanceRow.closing_balance,
+        )
         .where(
             TrialBalanceRow.tenant_id == tenant_id,
             TrialBalanceRow.period_year == period_year,
@@ -167,46 +189,55 @@ async def run_gl_tb_reconciliation(
     items: list[ReconItem] = []
     for account_code in sorted(all_accounts):
         gl_account_name, gl_total = gl_by_account.get(account_code, ("", Decimal("0")))
-        tb_account_name, tb_closing = tb_by_account.get(account_code, ("", Decimal("0")))
+        tb_account_name, tb_closing = tb_by_account.get(
+            account_code, ("", Decimal("0"))
+        )
         account_name = gl_account_name or tb_account_name
 
         difference = tb_closing - gl_total
         # Only create items where there's a break (difference != 0)
         if difference != Decimal("0"):
-            previous_hash = await get_previous_hash(session, ReconItem, tenant_id)
-            record_data = {
-                "tenant_id": str(tenant_id),
-                "period_year": period_year,
-                "period_month": period_month,
-                "entity_name": entity_name,
-                "account_code": account_code,
-                "gl_total": str(gl_total),
-                "tb_closing_balance": str(tb_closing),
-                "difference": str(difference),
-            }
-            chain_hash = compute_chain_hash(record_data, previous_hash)
-
-            item = ReconItem(
+            item = await AuditWriter.insert_financial_record(
+                session,
+                model_class=ReconItem,
                 tenant_id=tenant_id,
-                period_year=period_year,
-                period_month=period_month,
-                entity_name=entity_name,
-                account_code=account_code,
-                account_name=account_name,
-                gl_total=gl_total,
-                tb_closing_balance=tb_closing,
-                difference=difference,
-                status="open",
-                recon_type="gl_tb",
-                run_by=run_by,
-                chain_hash=chain_hash,
-                previous_hash=previous_hash,
+                record_data={
+                    "tenant_id": str(tenant_id),
+                    "period_year": period_year,
+                    "period_month": period_month,
+                    "entity_name": entity_name,
+                    "account_code": account_code,
+                    "gl_total": str(gl_total),
+                    "tb_closing_balance": str(tb_closing),
+                    "difference": str(difference),
+                },
+                values={
+                    "period_year": period_year,
+                    "period_month": period_month,
+                    "entity_name": entity_name,
+                    "account_code": account_code,
+                    "account_name": account_name,
+                    "gl_total": gl_total,
+                    "tb_closing_balance": tb_closing,
+                    "difference": difference,
+                    "status": "open",
+                    "recon_type": "gl_tb",
+                    "run_by": run_by,
+                },
+                audit=AuditEvent(
+                    tenant_id=tenant_id,
+                    user_id=run_by,
+                    action="recon.break.created",
+                    resource_type="recon_item",
+                    resource_name=account_code,
+                    new_value={
+                        "entity_name": entity_name,
+                        "period_year": period_year,
+                        "period_month": period_month,
+                    },
+                ),
             )
-            session.add(item)
             items.append(item)
-
-    if items:
-        await session.flush()
 
     log.info(
         "Reconciliation run: tenant=%s entity=%s period=%d/%d breaks=%d",

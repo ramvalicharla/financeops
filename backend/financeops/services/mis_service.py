@@ -4,11 +4,11 @@ import logging
 import uuid
 from typing import Any
 
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.mis_manager import MisTemplate, MisUpload
-from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash, get_previous_hash
+from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +31,9 @@ async def create_template(
     # Get current version number for this entity
     result = await session.execute(
         select(MisTemplate.version)
-        .where(MisTemplate.tenant_id == tenant_id, MisTemplate.entity_name == entity_name)
+        .where(
+            MisTemplate.tenant_id == tenant_id, MisTemplate.entity_name == entity_name
+        )
         .order_by(desc(MisTemplate.created_at))
         .limit(1)
     )
@@ -39,8 +41,11 @@ async def create_template(
     next_version = (last_version or 0) + 1
     sheet_count = len(template_data.get("sheets", []))
 
-    previous_hash = await get_previous_hash(session, MisTemplate, tenant_id)
-    record_data = {
+    template = await AuditWriter.insert_financial_record(
+        session,
+        model_class=MisTemplate,
+        tenant_id=tenant_id,
+        record_data={
         "tenant_id": str(tenant_id),
         "name": name,
         "entity_name": entity_name,
@@ -49,25 +54,31 @@ async def create_template(
         "is_active": True,
         "sheet_count": sheet_count,
         "created_by": str(created_by),
-    }
-    chain_hash = compute_chain_hash(record_data, previous_hash)
-
-    template = MisTemplate(
-        tenant_id=tenant_id,
-        name=name,
-        description=description,
-        entity_name=entity_name,
-        version=next_version,
-        is_master=is_master,
-        is_active=True,
-        template_data=template_data,
-        sheet_count=sheet_count,
-        chain_hash=chain_hash,
-        previous_hash=previous_hash,
-        created_by=created_by,
+        },
+        values={
+            "name": name,
+            "description": description,
+            "entity_name": entity_name,
+            "version": next_version,
+            "is_master": is_master,
+            "is_active": True,
+            "template_data": template_data,
+            "sheet_count": sheet_count,
+            "created_by": created_by,
+        },
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=created_by,
+            action="mis.template.created",
+            resource_type="mis_template",
+            resource_name=name,
+            new_value={
+                "entity_name": entity_name,
+                "version": next_version,
+                "is_master": is_master,
+            },
+        ),
     )
-    session.add(template)
-    await session.flush()
     log.info(
         "MisTemplate created: tenant=%s entity=%s version=%d",
         str(tenant_id)[:8], entity_name, next_version,
@@ -122,35 +133,44 @@ async def create_upload(
     parsed_data: dict[str, Any] | None = None,
 ) -> MisUpload:
     """Create a new MIS upload record (INSERT ONLY)."""
-    previous_hash = await get_previous_hash(session, MisUpload, tenant_id)
-    record_data = {
-        "tenant_id": str(tenant_id),
-        "entity_name": entity_name,
-        "period_year": period_year,
-        "period_month": period_month,
-        "file_name": file_name,
-        "file_hash": file_hash,
-        "uploaded_by": str(uploaded_by),
-    }
-    chain_hash = compute_chain_hash(record_data, previous_hash)
-
-    upload = MisUpload(
+    upload = await AuditWriter.insert_financial_record(
+        session,
+        model_class=MisUpload,
         tenant_id=tenant_id,
-        template_id=template_id,
-        entity_name=entity_name,
-        period_year=period_year,
-        period_month=period_month,
-        file_name=file_name,
-        file_hash=file_hash,
-        status="pending",
-        upload_notes=upload_notes,
-        parsed_data=parsed_data,
-        uploaded_by=uploaded_by,
-        chain_hash=chain_hash,
-        previous_hash=previous_hash,
+        record_data={
+            "tenant_id": str(tenant_id),
+            "entity_name": entity_name,
+            "period_year": period_year,
+            "period_month": period_month,
+            "file_name": file_name,
+            "file_hash": file_hash,
+            "uploaded_by": str(uploaded_by),
+        },
+        values={
+            "template_id": template_id,
+            "entity_name": entity_name,
+            "period_year": period_year,
+            "period_month": period_month,
+            "file_name": file_name,
+            "file_hash": file_hash,
+            "status": "pending",
+            "upload_notes": upload_notes,
+            "parsed_data": parsed_data,
+            "uploaded_by": uploaded_by,
+        },
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=uploaded_by,
+            action="mis.upload.created",
+            resource_type="mis_upload",
+            resource_name=file_name,
+            new_value={
+                "entity_name": entity_name,
+                "period_year": period_year,
+                "period_month": period_month,
+            },
+        ),
     )
-    session.add(upload)
-    await session.flush()
     return upload
 
 

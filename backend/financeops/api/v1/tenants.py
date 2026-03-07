@@ -14,7 +14,11 @@ from financeops.api.deps import (
 )
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.credit_service import get_balance
-from financeops.services.tenant_service import get_tenant, list_workspaces
+from financeops.services.tenant_service import (
+    get_tenant,
+    list_workspaces,
+    update_tenant_settings,
+)
 from financeops.services.user_service import (
     create_user,
     deactivate_user,
@@ -78,11 +82,13 @@ async def update_my_tenant(
 ) -> dict:
     """PATCH /api/v1/tenants/me — update tenant settings."""
     tenant = await get_tenant(session, user.tenant_id)
-    if body.display_name is not None:
-        tenant.display_name = body.display_name
-    if body.timezone is not None:
-        tenant.timezone = body.timezone
-    await session.flush()
+    await update_tenant_settings(
+        session,
+        tenant=tenant,
+        actor_user_id=user.id,
+        display_name=body.display_name,
+        timezone_str=body.timezone,
+    )
     await session.commit()
     return {"tenant_id": str(tenant.id), "updated": True}
 

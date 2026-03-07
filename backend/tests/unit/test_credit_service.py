@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import uuid
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
-import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import InsufficientCreditsError
 from financeops.db.models.credits import CreditBalance, CreditDirection
+from financeops.services.audit_writer import AuditWriter
 from financeops.services.credit_service import (
     add_credits,
     check_balance,
@@ -121,3 +122,55 @@ async def test_check_balance_returns_false_when_insufficient(async_session: Asyn
     await add_credits(async_session, tenant_id, Decimal("10"), "topup")
     result = await check_balance(async_session, tenant_id, Decimal("100"))
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_add_credits_uses_audit_writer(async_session: AsyncSession):
+    tenant_id = uuid.uuid4()
+    with patch(
+        "financeops.services.credit_service.AuditWriter.insert_record",
+        wraps=AuditWriter.insert_record,
+    ) as insert_spy:
+        with patch(
+            "financeops.services.credit_service.AuditWriter.flush_with_audit",
+            wraps=AuditWriter.flush_with_audit,
+        ) as flush_spy:
+            await add_credits(async_session, tenant_id, Decimal("25"), "audit_topup")
+    assert insert_spy.await_count >= 1
+    assert flush_spy.await_count >= 1
+
+
+@pytest.mark.asyncio
+async def test_reserve_confirm_release_use_audit_writer(async_session: AsyncSession):
+    tenant_id = uuid.uuid4()
+    await add_credits(async_session, tenant_id, Decimal("100"), "seed")
+    reservation_id = await reserve_credits(
+        async_session, tenant_id, "classification", Decimal("10")
+    )
+
+    with patch(
+        "financeops.services.credit_service.AuditWriter.insert_record",
+        wraps=AuditWriter.insert_record,
+    ) as insert_spy:
+        with patch(
+            "financeops.services.credit_service.AuditWriter.flush_with_audit",
+            wraps=AuditWriter.flush_with_audit,
+        ) as flush_spy:
+            await confirm_credits(async_session, tenant_id, reservation_id)
+    assert insert_spy.await_count >= 1
+    assert flush_spy.await_count >= 1
+
+    reservation_id_2 = await reserve_credits(
+        async_session, tenant_id, "classification", Decimal("5")
+    )
+    with patch(
+        "financeops.services.credit_service.AuditWriter.insert_record",
+        wraps=AuditWriter.insert_record,
+    ) as insert_spy:
+        with patch(
+            "financeops.services.credit_service.AuditWriter.flush_with_audit",
+            wraps=AuditWriter.flush_with_audit,
+        ) as flush_spy:
+            await release_credits(async_session, tenant_id, reservation_id_2)
+    assert insert_spy.await_count >= 1
+    assert flush_spy.await_count >= 1

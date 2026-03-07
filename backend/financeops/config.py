@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OPEN_EXCHANGE_RATES_API_KEY: str = ""
+    EXCHANGE_RATE_API_KEY: str = ""
 
     # Storage (Cloudflare R2)
     R2_ENDPOINT_URL: str = ""
@@ -42,6 +44,11 @@ class Settings(BaseSettings):
     # Telemetry
     SENTRY_DSN: str = ""
     OTEL_EXPORTER_OTLP_ENDPOINT: str = ""
+
+    # Temporal
+    TEMPORAL_ADDRESS: str = "temporal:7233"
+    TEMPORAL_NAMESPACE: str = "default"
+    TEMPORAL_TASK_QUEUE: str = "financeops-default"
 
     # Payments
     STRIPE_SECRET_KEY: str = ""

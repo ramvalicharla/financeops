@@ -3,20 +3,22 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
-from decimal import Decimal
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import Settings, get_settings
-from financeops.core.exceptions import AuthenticationError, AuthorizationError, InsufficientCreditsError
+from financeops.core.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+)
 from financeops.core.security import decode_token
 from financeops.db.models.users import IamUser, UserRole
-from financeops.db.rls import set_tenant_context
+from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
 
 log = logging.getLogger(__name__)
@@ -26,29 +28,21 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 _redis_pool: aioredis.Redis | None = None
 
 
-async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """
-    Yield an async DB session with RLS context set from the request token.
+    Yield an async DB session with RLS context set from request middleware.
     Rolls back on exception, closes on exit.
     """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        except Exception:
-            await session.rollback()
-            raise
-        finally:
-            await session.close()
-
-
-async def get_session_with_rls(
-    token: Annotated[str, Depends(oauth2_scheme)],
-) -> AsyncGenerator[AsyncSession, None]:
-    """
-    Yield a DB session with the tenant RLS context set from the JWT.
-    """
-    payload = decode_token(token)
-    tenant_id = payload.get("tenant_id", "")
+    tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+    if not tenant_id:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            try:
+                payload = decode_token(token)
+                tenant_id = str(payload.get("tenant_id", "") or "")
+            except AuthenticationError:
+                tenant_id = ""
     async with AsyncSessionLocal() as session:
         try:
             if tenant_id:
@@ -58,6 +52,34 @@ async def get_session_with_rls(
             await session.rollback()
             raise
         finally:
+            if tenant_id:
+                await clear_tenant_context(session)
+            await session.close()
+
+
+async def get_session_with_rls(
+    request: Request,
+    token: Annotated[str, Depends(oauth2_scheme)],
+) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Yield a DB session with the tenant RLS context set from the JWT.
+    """
+    tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+    if not tenant_id:
+        payload = decode_token(token)
+        tenant_id = str(payload.get("tenant_id", "") or "")
+
+    async with AsyncSessionLocal() as session:
+        try:
+            if tenant_id:
+                await set_tenant_context(session, tenant_id)
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            if tenant_id:
+                await clear_tenant_context(session)
             await session.close()
 
 

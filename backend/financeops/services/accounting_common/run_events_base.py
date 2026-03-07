@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+RUN_EVENT_ACCEPTED = "accepted"
+RUN_EVENT_RUNNING = "running"
+RUN_EVENT_COMPLETED = "completed"
+RUN_EVENT_COMPLETED_WITH_WARNINGS = "completed_with_warnings"
+RUN_EVENT_FAILED = "failed"
+
+TERMINAL_EVENT_TYPES = {
+    RUN_EVENT_COMPLETED,
+    RUN_EVENT_COMPLETED_WITH_WARNINGS,
+    RUN_EVENT_FAILED,
+}
