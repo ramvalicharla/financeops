@@ -15,6 +15,7 @@ from financeops.api.v1 import (
     mis_manager,
     monthend,
     prepaid,
+    reconciliation_bridge,
     revenue,
     reconciliation,
     tenants,
@@ -37,6 +38,12 @@ router.include_router(
     mis_manager.router,
     prefix="/mis",
     tags=["MIS Manager"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    reconciliation_bridge.router,
+    prefix="/reconciliation",
+    tags=["Reconciliation Bridge"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(

@@ -137,6 +137,14 @@ from financeops.db.models.reconciliation import (  # noqa: F401
     ReconItem,
     TrialBalanceRow,
 )
+from financeops.db.models.reconciliation_bridge import (  # noqa: F401
+    ReconciliationEvidenceLink,
+    ReconciliationException,
+    ReconciliationLine,
+    ReconciliationResolutionEvent,
+    ReconciliationScope,
+    ReconciliationSession,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -255,6 +263,7 @@ async def async_client(
 
     finance_prefix_modules = (
         ("/api/v1/mis", "mis_manager"),
+        ("/api/v1/reconciliation", "reconciliation_bridge"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),
         ("/api/v1/fx", "fx"),
