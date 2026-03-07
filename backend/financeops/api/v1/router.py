@@ -7,6 +7,7 @@ from financeops.api.v1 import (
     auditor,
     bank_recon,
     consolidation,
+    financial_risk_engine,
     fixed_assets,
     fx_rates,
     gst,
@@ -59,6 +60,12 @@ router.include_router(
     ratio_variance_engine.router,
     prefix="/ratio-variance",
     tags=["Ratio Variance Engine"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    financial_risk_engine.router,
+    prefix="/financial-risk",
+    tags=["Financial Risk Engine"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(

@@ -173,6 +173,17 @@ from financeops.db.models.ratio_variance_engine import (  # noqa: F401
     VarianceDefinition,
     VarianceResult,
 )
+from financeops.db.models.financial_risk_engine import (  # noqa: F401
+    RiskContributingSignal,
+    RiskDefinition,
+    RiskDefinitionDependency,
+    RiskEvidenceLink,
+    RiskMaterialityRule,
+    RiskResult,
+    RiskRollforwardEvent,
+    RiskRun,
+    RiskWeightConfiguration,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -294,6 +305,7 @@ async def async_client(
         ("/api/v1/normalization", "payroll_gl_normalization"),
         ("/api/v1/payroll-gl-reconciliation", "payroll_gl_reconciliation"),
         ("/api/v1/ratio-variance", "ratio_variance_engine"),
+        ("/api/v1/financial-risk", "financial_risk_engine"),
         ("/api/v1/reconciliation", "reconciliation_bridge"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),
