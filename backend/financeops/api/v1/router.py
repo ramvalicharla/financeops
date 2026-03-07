@@ -16,6 +16,7 @@ from financeops.api.v1 import (
     monthend,
     payroll_gl_reconciliation,
     payroll_gl_normalization,
+    ratio_variance_engine,
     prepaid,
     reconciliation_bridge,
     revenue,
@@ -52,6 +53,12 @@ router.include_router(
     payroll_gl_reconciliation.router,
     prefix="/payroll-gl-reconciliation",
     tags=["Payroll GL Reconciliation"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    ratio_variance_engine.router,
+    prefix="/ratio-variance",
+    tags=["Ratio Variance Engine"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
