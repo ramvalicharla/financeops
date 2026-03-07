@@ -14,6 +14,7 @@ from financeops.api.v1 import (
     lease,
     mis_manager,
     monthend,
+    payroll_gl_normalization,
     prepaid,
     reconciliation_bridge,
     revenue,
@@ -38,6 +39,12 @@ router.include_router(
     mis_manager.router,
     prefix="/mis",
     tags=["MIS Manager"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    payroll_gl_normalization.router,
+    prefix="/normalization",
+    tags=["Payroll GL Normalization"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(

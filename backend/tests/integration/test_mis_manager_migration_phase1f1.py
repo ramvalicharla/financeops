@@ -66,7 +66,7 @@ async def test_migration_0012_applies_cleanly_on_fresh_db(
         await mis_phase1f1_session.execute(text("SELECT version_num FROM alembic_version"))
     ).scalar_one()
     # Phase 1F.1 is expected to remain present while newer migrations are allowed.
-    assert version == "0013_phase1f2_recon_bridge"
+    assert version == "0014_phase1f3_pglnorm"
 
 
 @pytest.mark.asyncio

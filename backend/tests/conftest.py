@@ -145,6 +145,16 @@ from financeops.db.models.reconciliation_bridge import (  # noqa: F401
     ReconciliationScope,
     ReconciliationSession,
 )
+from financeops.db.models.payroll_gl_normalization import (  # noqa: F401
+    GlNormalizedLine,
+    NormalizationEvidenceLink,
+    NormalizationException,
+    NormalizationMapping,
+    NormalizationRun,
+    NormalizationSource,
+    NormalizationSourceVersion,
+    PayrollNormalizedLine,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -263,6 +273,7 @@ async def async_client(
 
     finance_prefix_modules = (
         ("/api/v1/mis", "mis_manager"),
+        ("/api/v1/normalization", "payroll_gl_normalization"),
         ("/api/v1/reconciliation", "reconciliation_bridge"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),

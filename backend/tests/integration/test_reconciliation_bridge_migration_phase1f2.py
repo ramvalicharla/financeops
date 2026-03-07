@@ -14,7 +14,7 @@ async def test_migration_0013_applies_cleanly_on_fresh_db(
     conn = await asyncpg.connect(recon_phase1f2_db_url.replace("postgresql+asyncpg://", "postgresql://", 1))
     try:
         version = await conn.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0013_phase1f2_recon_bridge"
+        assert version == "0014_phase1f3_pglnorm"
     finally:
         await conn.close()
 
