@@ -254,7 +254,7 @@ async def async_client(
     from financeops.main import app
 
     finance_prefix_modules = (
-        ("/api/v1/mis", "mis"),
+        ("/api/v1/mis", "mis_manager"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),
         ("/api/v1/fx", "fx"),

@@ -40,20 +40,27 @@ async def create_template(
     last_version = result.scalar()
     next_version = (last_version or 0) + 1
     sheet_count = len(template_data.get("sheets", []))
+    entity_slug = "_".join(entity_name.lower().split())[:90] or "entity"
+    template_code = f"legacy_{entity_slug}_{next_version}"
 
     template = await AuditWriter.insert_financial_record(
         session,
         model_class=MisTemplate,
         tenant_id=tenant_id,
         record_data={
-        "tenant_id": str(tenant_id),
-        "name": name,
-        "entity_name": entity_name,
-        "version": next_version,
-        "is_master": is_master,
-        "is_active": True,
-        "sheet_count": sheet_count,
-        "created_by": str(created_by),
+            "tenant_id": str(tenant_id),
+            "name": name,
+            "entity_name": entity_name,
+            "version": next_version,
+            "is_master": is_master,
+            "is_active": True,
+            "sheet_count": sheet_count,
+            "created_by": str(created_by),
+            "organisation_id": str(tenant_id),
+            "template_code": template_code,
+            "template_name": name,
+            "template_type": "custom",
+            "status": "active",
         },
         values={
             "name": name,
@@ -65,6 +72,12 @@ async def create_template(
             "template_data": template_data,
             "sheet_count": sheet_count,
             "created_by": created_by,
+            # Phase 1F.1 canonical columns required by mis_templates.
+            "organisation_id": tenant_id,
+            "template_code": template_code,
+            "template_name": name,
+            "template_type": "custom",
+            "status": "active",
         },
         audit=AuditEvent(
             tenant_id=tenant_id,
