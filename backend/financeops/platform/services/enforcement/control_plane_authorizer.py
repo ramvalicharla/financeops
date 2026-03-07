@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,13 @@ class CommandContext:
 
 
 class ControlPlaneAuthorizer:
+    @staticmethod
+    def _bounded_token(value: str, *, max_len: int = 128) -> str:
+        text = str(value)
+        if len(text) <= max_len:
+            return text
+        return sha256(text.encode("utf-8")).hexdigest()
+
     @staticmethod
     async def _workflow_eligible(
         session: AsyncSession,
@@ -120,6 +128,13 @@ class ControlPlaneAuthorizer:
             "storage": "storage_bytes",
         }.get(context.execution_mode, "api_requests")
 
+        request_fingerprint = ControlPlaneAuthorizer._bounded_token(
+            context.request_fingerprint
+        )
+        idempotency_key = ControlPlaneAuthorizer._bounded_token(
+            f"{context.execution_mode}:{request_fingerprint}"
+        )
+
         quota_result = await QuotaGuard.check_and_record(
             session,
             QuotaGuardRequest(
@@ -127,8 +142,8 @@ class ControlPlaneAuthorizer:
                 quota_type=quota_type,
                 usage_delta=1,
                 operation_id=uuid.uuid4(),
-                idempotency_key=f"{context.execution_mode}:{context.request_fingerprint}",
-                request_fingerprint=context.request_fingerprint,
+                idempotency_key=idempotency_key,
+                request_fingerprint=request_fingerprint,
                 source_layer=f"{context.execution_mode}_ingress",
                 actor_user_id=context.user_id,
                 correlation_id=context.correlation_id,

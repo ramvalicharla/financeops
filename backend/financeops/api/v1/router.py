@@ -14,6 +14,7 @@ from financeops.api.v1 import (
     lease,
     mis_manager,
     monthend,
+    payroll_gl_reconciliation,
     payroll_gl_normalization,
     prepaid,
     reconciliation_bridge,
@@ -45,6 +46,12 @@ router.include_router(
     payroll_gl_normalization.router,
     prefix="/normalization",
     tags=["Payroll GL Normalization"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    payroll_gl_reconciliation.router,
+    prefix="/payroll-gl-reconciliation",
+    tags=["Payroll GL Reconciliation"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
