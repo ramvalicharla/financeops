@@ -217,6 +217,16 @@ from financeops.db.models.fx_translation_reporting import (  # noqa: F401
     FxTranslationRuleDefinition,
     ReportingCurrencyDefinition,
 )
+from financeops.db.models.ownership_consolidation import (  # noqa: F401
+    MinorityInterestRuleDefinition,
+    OwnershipConsolidationEvidenceLink,
+    OwnershipConsolidationMetricResult,
+    OwnershipConsolidationRuleDefinition,
+    OwnershipConsolidationRun,
+    OwnershipConsolidationVarianceResult,
+    OwnershipRelationship,
+    OwnershipStructureDefinition,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -348,6 +358,7 @@ async def async_client(
         ("/api/v1/fx/translation-rules", "fx_translation_reporting"),
         ("/api/v1/fx/rate-policies", "fx_translation_reporting"),
         ("/api/v1/fx/runs", "fx_translation_reporting"),
+        ("/api/v1/ownership", "ownership_consolidation"),
         ("/api/v1/fx", "fx"),
         ("/api/v1/consolidation/hierarchies", "multi_entity_consolidation"),
         ("/api/v1/consolidation/scopes", "multi_entity_consolidation"),

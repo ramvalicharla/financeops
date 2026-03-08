@@ -9,4 +9,5 @@ pytest_plugins = (
     "tests.integration.board_pack_phase1f7_helpers",
     "tests.integration.multi_entity_consolidation_phase2_3_helpers",
     "tests.integration.fx_translation_phase2_4_helpers",
+    "tests.integration.ownership_consolidation_phase2_5_helpers",
 )
