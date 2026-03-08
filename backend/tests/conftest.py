@@ -208,6 +208,15 @@ from financeops.db.models.multi_entity_consolidation import (  # noqa: F401
     MultiEntityConsolidationRun,
     MultiEntityConsolidationVarianceResult,
 )
+from financeops.db.models.fx_translation_reporting import (  # noqa: F401
+    FxRateSelectionPolicy,
+    FxTranslatedMetricResult,
+    FxTranslatedVarianceResult,
+    FxTranslationEvidenceLink,
+    FxTranslationRun,
+    FxTranslationRuleDefinition,
+    ReportingCurrencyDefinition,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -335,6 +344,10 @@ async def async_client(
         ("/api/v1/reconciliation", "reconciliation_bridge"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),
+        ("/api/v1/fx/reporting-currencies", "fx_translation_reporting"),
+        ("/api/v1/fx/translation-rules", "fx_translation_reporting"),
+        ("/api/v1/fx/rate-policies", "fx_translation_reporting"),
+        ("/api/v1/fx/runs", "fx_translation_reporting"),
         ("/api/v1/fx", "fx"),
         ("/api/v1/consolidation/hierarchies", "multi_entity_consolidation"),
         ("/api/v1/consolidation/scopes", "multi_entity_consolidation"),

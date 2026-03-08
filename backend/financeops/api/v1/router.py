@@ -11,6 +11,7 @@ from financeops.api.v1 import (
     consolidation,
     financial_risk_engine,
     fixed_assets,
+    fx_translation_reporting,
     fx_rates,
     gst,
     health,
@@ -99,6 +100,12 @@ router.include_router(
     bank_recon.router,
     prefix="/bank-recon",
     tags=["Bank Reconciliation"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    fx_translation_reporting.router,
+    prefix="/fx",
+    tags=["FX Translation Reporting"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
