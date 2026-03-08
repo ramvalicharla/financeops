@@ -68,16 +68,33 @@ class RunService:
             source_risk_run_ids=source_risk_run_ids,
             source_anomaly_run_ids=source_anomaly_run_ids,
         )
+        metric_runs = await self._repository.list_metric_runs(
+            tenant_id=tenant_id,
+            run_ids=sorted(source_metric_run_ids, key=lambda value: str(value)),
+        )
+        metric_runs_by_id = {row.id: row for row in metric_runs}
         for run_id in source_metric_run_ids:
-            run = await self._repository.get_metric_run(tenant_id=tenant_id, run_id=run_id)
+            run = metric_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed metric run: {run_id}")
+
+        risk_runs = await self._repository.list_risk_runs(
+            tenant_id=tenant_id,
+            run_ids=sorted(source_risk_run_ids, key=lambda value: str(value)),
+        )
+        risk_runs_by_id = {row.id: row for row in risk_runs}
         for run_id in source_risk_run_ids:
-            run = await self._repository.get_risk_run(tenant_id=tenant_id, run_id=run_id)
+            run = risk_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed risk run: {run_id}")
+
+        anomaly_runs = await self._repository.list_anomaly_runs(
+            tenant_id=tenant_id,
+            run_ids=sorted(source_anomaly_run_ids, key=lambda value: str(value)),
+        )
+        anomaly_runs_by_id = {row.id: row for row in anomaly_runs}
         for run_id in source_anomaly_run_ids:
-            run = await self._repository.get_anomaly_run(tenant_id=tenant_id, run_id=run_id)
+            run = anomaly_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed anomaly run: {run_id}")
 

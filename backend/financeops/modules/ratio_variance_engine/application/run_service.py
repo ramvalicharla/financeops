@@ -311,15 +311,13 @@ class RunService:
         directionality_by_metric = {
             row.metric_code: row.directionality for row in metric_definitions
         }
-        prior_lookup: dict[str, list[tuple[date, Decimal]]] = {}
-        for metric_code in sorted(metric_values.keys()):
-            prior_lookup[metric_code] = await self._repository.prior_metric_series(
-                tenant_id=tenant_id,
-                organisation_id=completed.organisation_id,
-                scope_json=completed.scope_json,
-                metric_code=metric_code,
-                before_reporting_period=completed.reporting_period,
-            )
+        prior_lookup = await self._repository.prior_metric_series_for_codes(
+            tenant_id=tenant_id,
+            organisation_id=completed.organisation_id,
+            scope_json=completed.scope_json,
+            metric_codes=sorted(metric_values.keys()),
+            before_reporting_period=completed.reporting_period,
+        )
 
         variance_rows = self._variance_service.compute_variances(
             definitions=variance_definitions,
@@ -520,12 +518,13 @@ class RunService:
         tenant_id: uuid.UUID,
         metric_definitions: list[Any],
     ) -> dict[str, list[Any]]:
+        grouped = await self._repository.list_metric_definition_components_for_definitions(
+            tenant_id=tenant_id,
+            definition_ids=[definition.id for definition in metric_definitions],
+        )
         result: dict[str, list[Any]] = {}
         for definition in metric_definitions:
-            result[str(definition.id)] = await self._repository.list_metric_definition_components(
-                tenant_id=tenant_id,
-                definition_id=definition.id,
-            )
+            result[str(definition.id)] = grouped.get(definition.id, [])
         return result
 
     def _input_signature_hash(

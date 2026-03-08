@@ -1,0 +1,89 @@
+{
+  "captured_at": "2026-03-08T10:28:16.750658+00:00",
+  "database_url": "postgresql+asyncpg://postgres:postgres@localhost:5433/finos_test",
+  "flows": {
+    "anomaly": {
+      "db_time_ms": 614.56,
+      "elapsed_ms": 993.37,
+      "name": "anomaly",
+      "payload": {
+        "run_id": "98e44309-f0fc-4376-a29a-a216340df4f8",
+        "summary": {
+          "evidence_count": 4,
+          "result_count": 1,
+          "rollforward_count": 2,
+          "run_id": "98e44309-f0fc-4376-a29a-a216340df4f8",
+          "run_token": "abe96dfcf58b4ed1f7c3614333fbe9e5d9f6abc933071a5e6e6fe28ce784a1c3",
+          "signal_count": 2,
+          "status": "completed"
+        }
+      },
+      "query_count": 500
+    },
+    "board_pack": {
+      "db_time_ms": 655.469,
+      "elapsed_ms": 927.796,
+      "name": "board_pack",
+      "payload": {
+        "run_id": "27fe024e-e5d9-46db-a4bf-43441c20581e",
+        "summary": {
+          "board_pack_code": "monthly_board_pack_8d4739",
+          "evidence_count": 7,
+          "executive_summary_text": "Board pack assembled with 4 sections. High/critical risks: 2. Elevated anomalies: 0.",
+          "narrative_count": 4,
+          "overall_health_classification": "watch",
+          "run_id": "27fe024e-e5d9-46db-a4bf-43441c20581e",
+          "run_token": "06c17453fcd9cddd79e00651f6d0cd9e2a5eb1f8bc9dff9df3980908e1c20740",
+          "section_count": 4,
+          "status": "completed"
+        }
+      },
+      "query_count": 635
+    },
+    "ratio": {
+      "db_time_ms": 276.985,
+      "elapsed_ms": 507.061,
+      "name": "ratio",
+      "payload": {
+        "run_id": "e0ab14bf-6fd2-47fd-ac75-3d1dd437ac3f",
+        "summary": {
+          "evidence_count": 5,
+          "metric_count": 1,
+          "run_id": "e0ab14bf-6fd2-47fd-ac75-3d1dd437ac3f",
+          "run_token": "8071b35dc440866b4398aace516f0f7cd21d8fdf6adb2165e807e1e1001c3849",
+          "status": "completed",
+          "trend_count": 1,
+          "variance_count": 1
+        }
+      },
+      "query_count": 249
+    },
+    "risk": {
+      "db_time_ms": 497.602,
+      "elapsed_ms": 732.553,
+      "name": "risk",
+      "payload": {
+        "run_id": "3e4cffe6-d00f-4c2d-95ab-7415c0be0e84",
+        "summary": {
+          "evidence_count": 14,
+          "result_count": 2,
+          "rollforward_count": 4,
+          "run_id": "3e4cffe6-d00f-4c2d-95ab-7415c0be0e84",
+          "run_token": "2f140f8968cfd69b81fca762b606361de70c707f6151140b9c689d86beaf938f",
+          "signal_count": 7,
+          "status": "completed"
+        }
+      },
+      "query_count": 409
+    }
+  },
+  "label": "baseline",
+  "python_hotspots": {
+    "anomaly": [
+      "hotspot capture skipped: nested loop guard"
+    ],
+    "board_pack": [
+      "hotspot capture skipped: nested loop guard"
+    ]
+  }
+}

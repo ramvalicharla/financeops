@@ -444,6 +444,18 @@ class FinancialRiskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_metric_runs(
+        self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
+    ) -> list[MetricRun]:
+        if not run_ids:
+            return []
+        result = await self._session.execute(
+            select(MetricRun)
+            .where(MetricRun.tenant_id == tenant_id, MetricRun.id.in_(run_ids))
+            .order_by(MetricRun.id.asc())
+        )
+        return list(result.scalars().all())
+
     async def get_reconciliation_session(
         self, *, tenant_id: uuid.UUID, session_id: uuid.UUID
     ) -> ReconciliationSession | None:
@@ -454,6 +466,21 @@ class FinancialRiskRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_reconciliation_sessions(
+        self, *, tenant_id: uuid.UUID, session_ids: list[uuid.UUID]
+    ) -> list[ReconciliationSession]:
+        if not session_ids:
+            return []
+        result = await self._session.execute(
+            select(ReconciliationSession)
+            .where(
+                ReconciliationSession.tenant_id == tenant_id,
+                ReconciliationSession.id.in_(session_ids),
+            )
+            .order_by(ReconciliationSession.id.asc())
+        )
+        return list(result.scalars().all())
 
     async def list_metric_results_for_runs(
         self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
@@ -830,44 +857,78 @@ class FinancialRiskRepository:
         )
         return result.scalar_one_or_none()
 
+    async def latest_prior_risk_results_by_codes(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        organisation_id: uuid.UUID,
+        risk_codes: list[str],
+        before_reporting_period: date,
+    ) -> dict[str, RiskResult]:
+        if not risk_codes:
+            return {}
+        result = await self._session.execute(
+            select(RiskResult, RiskRun.reporting_period)
+            .join(RiskRun, RiskRun.id == RiskResult.run_id)
+            .where(
+                RiskResult.tenant_id == tenant_id,
+                RiskResult.risk_code.in_(risk_codes),
+                RiskRun.tenant_id == tenant_id,
+                RiskRun.organisation_id == organisation_id,
+                RiskRun.status == "completed",
+                RiskRun.reporting_period < before_reporting_period,
+            )
+            .order_by(
+                RiskResult.risk_code.asc(),
+                RiskRun.reporting_period.desc(),
+                RiskRun.id.desc(),
+                RiskResult.id.desc(),
+            )
+        )
+        grouped: dict[str, RiskResult] = {}
+        for row, _reporting_period in result.all():
+            grouped.setdefault(row.risk_code, row)
+        return grouped
+
     async def summarize_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, int]:
-        result_count = (
+        row = (
             await self._session.execute(
-                select(func.count())
-                .select_from(RiskResult)
-                .where(RiskResult.tenant_id == tenant_id, RiskResult.run_id == run_id)
-            )
-        ).scalar_one()
-        signal_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(RiskContributingSignal)
-                .where(
-                    RiskContributingSignal.tenant_id == tenant_id,
-                    RiskContributingSignal.run_id == run_id,
+                select(
+                    select(func.count())
+                    .select_from(RiskResult)
+                    .where(RiskResult.tenant_id == tenant_id, RiskResult.run_id == run_id)
+                    .scalar_subquery()
+                    .label("result_count"),
+                    select(func.count())
+                    .select_from(RiskContributingSignal)
+                    .where(
+                        RiskContributingSignal.tenant_id == tenant_id,
+                        RiskContributingSignal.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("signal_count"),
+                    select(func.count())
+                    .select_from(RiskRollforwardEvent)
+                    .where(
+                        RiskRollforwardEvent.tenant_id == tenant_id,
+                        RiskRollforwardEvent.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("rollforward_count"),
+                    select(func.count())
+                    .select_from(RiskEvidenceLink)
+                    .where(
+                        RiskEvidenceLink.tenant_id == tenant_id,
+                        RiskEvidenceLink.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("evidence_count"),
                 )
             )
-        ).scalar_one()
-        rollforward_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(RiskRollforwardEvent)
-                .where(
-                    RiskRollforwardEvent.tenant_id == tenant_id,
-                    RiskRollforwardEvent.run_id == run_id,
-                )
-            )
-        ).scalar_one()
-        evidence_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(RiskEvidenceLink)
-                .where(RiskEvidenceLink.tenant_id == tenant_id, RiskEvidenceLink.run_id == run_id)
-            )
-        ).scalar_one()
+        ).one()
         return {
-            "result_count": int(result_count or 0),
-            "signal_count": int(signal_count or 0),
-            "rollforward_count": int(rollforward_count or 0),
-            "evidence_count": int(evidence_count or 0),
+            "result_count": int(row.result_count or 0),
+            "signal_count": int(row.signal_count or 0),
+            "rollforward_count": int(row.rollforward_count or 0),
+            "evidence_count": int(row.evidence_count or 0),
         }

@@ -482,11 +482,33 @@ class BoardPackNarrativeRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_metric_runs(
+        self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
+    ) -> list[MetricRun]:
+        if not run_ids:
+            return []
+        result = await self._session.execute(
+            select(MetricRun)
+            .where(MetricRun.tenant_id == tenant_id, MetricRun.id.in_(run_ids))
+            .order_by(MetricRun.id.asc())
+        )
+        return list(result.scalars().all())
+
     async def get_risk_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> RiskRun | None:
         result = await self._session.execute(
             select(RiskRun).where(RiskRun.tenant_id == tenant_id, RiskRun.id == run_id)
         )
         return result.scalar_one_or_none()
+
+    async def list_risk_runs(self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]) -> list[RiskRun]:
+        if not run_ids:
+            return []
+        result = await self._session.execute(
+            select(RiskRun)
+            .where(RiskRun.tenant_id == tenant_id, RiskRun.id.in_(run_ids))
+            .order_by(RiskRun.id.asc())
+        )
+        return list(result.scalars().all())
 
     async def get_anomaly_run(
         self, *, tenant_id: uuid.UUID, run_id: uuid.UUID
@@ -495,6 +517,18 @@ class BoardPackNarrativeRepository:
             select(AnomalyRun).where(AnomalyRun.tenant_id == tenant_id, AnomalyRun.id == run_id)
         )
         return result.scalar_one_or_none()
+
+    async def list_anomaly_runs(
+        self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
+    ) -> list[AnomalyRun]:
+        if not run_ids:
+            return []
+        result = await self._session.execute(
+            select(AnomalyRun)
+            .where(AnomalyRun.tenant_id == tenant_id, AnomalyRun.id.in_(run_ids))
+            .order_by(AnomalyRun.id.asc())
+        )
+        return list(result.scalars().all())
 
     async def list_metric_results_for_runs(
         self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
@@ -840,38 +874,38 @@ class BoardPackNarrativeRepository:
         return result.scalar_one_or_none()
 
     async def summarize_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, int]:
-        section_count = (
+        row = (
             await self._session.execute(
-                select(func.count())
-                .select_from(BoardPackSectionResult)
-                .where(
-                    BoardPackSectionResult.tenant_id == tenant_id,
-                    BoardPackSectionResult.run_id == run_id,
+                select(
+                    select(func.count())
+                    .select_from(BoardPackSectionResult)
+                    .where(
+                        BoardPackSectionResult.tenant_id == tenant_id,
+                        BoardPackSectionResult.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("section_count"),
+                    select(func.count())
+                    .select_from(BoardPackNarrativeBlock)
+                    .where(
+                        BoardPackNarrativeBlock.tenant_id == tenant_id,
+                        BoardPackNarrativeBlock.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("narrative_count"),
+                    select(func.count())
+                    .select_from(BoardPackEvidenceLink)
+                    .where(
+                        BoardPackEvidenceLink.tenant_id == tenant_id,
+                        BoardPackEvidenceLink.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("evidence_count"),
                 )
             )
-        ).scalar_one()
-        narrative_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(BoardPackNarrativeBlock)
-                .where(
-                    BoardPackNarrativeBlock.tenant_id == tenant_id,
-                    BoardPackNarrativeBlock.run_id == run_id,
-                )
-            )
-        ).scalar_one()
-        evidence_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(BoardPackEvidenceLink)
-                .where(
-                    BoardPackEvidenceLink.tenant_id == tenant_id,
-                    BoardPackEvidenceLink.run_id == run_id,
-                )
-            )
-        ).scalar_one()
+        ).one()
         return {
-            "section_count": int(section_count or 0),
-            "narrative_count": int(narrative_count or 0),
-            "evidence_count": int(evidence_count or 0),
+            "section_count": int(row.section_count or 0),
+            "narrative_count": int(row.narrative_count or 0),
+            "evidence_count": int(row.evidence_count or 0),
         }

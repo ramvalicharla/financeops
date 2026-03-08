@@ -1,0 +1,295 @@
+{
+  "captured_at": "2026-03-08T10:34:17.569209+00:00",
+  "database_url": "postgresql+asyncpg://postgres:postgres@localhost:5433/finos_test",
+  "flows": {
+    "anomaly": {
+      "db_time_ms": 597.344,
+      "elapsed_ms": 1062.722,
+      "name": "anomaly",
+      "payload": {
+        "run_id": "bbcbdcf4-a146-4649-b430-d39f817182b4",
+        "summary": {
+          "evidence_count": 4,
+          "result_count": 1,
+          "rollforward_count": 2,
+          "run_id": "bbcbdcf4-a146-4649-b430-d39f817182b4",
+          "run_token": "cbfac5437bca19b12f26a9d84eae3558713848f40f33b01ebd16be6be38d7f77",
+          "signal_count": 2,
+          "status": "completed"
+        }
+      },
+      "query_count": 483,
+      "top_statements": [
+        {
+          "count": 75,
+          "db_time_ms": 69.618,
+          "statement": "SELECT audit_trail.chain_hash FROM audit_trail WHERE audit_trail.tenant_id = $1::UUID ORDER BY audit_trail.created_at DESC LIMIT $2::INTEGER"
+        },
+        {
+          "count": 75,
+          "db_time_ms": 68.599,
+          "statement": "INSERT INTO audit_trail (user_id, action, resource_type, resource_id, resource_name, old_value_hash, new_value_hash, ip_address, user_agent, tenant_id, chain_ha..."
+        },
+        {
+          "count": 17,
+          "db_time_ms": 17.012,
+          "statement": "INSERT INTO normalization_mappings (source_version_id, mapping_type, source_field_name, canonical_field_name, transform_rule, default_value_json, required_flag,..."
+        },
+        {
+          "count": 17,
+          "db_time_ms": 14.955,
+          "statement": "SELECT normalization_mappings.chain_hash FROM normalization_mappings WHERE normalization_mappings.tenant_id = $1::UUID ORDER BY normalization_mappings.created_a..."
+        },
+        {
+          "count": 14,
+          "db_time_ms": 15.856,
+          "statement": "INSERT INTO risk_evidence_links (run_id, risk_result_id, evidence_type, evidence_ref, evidence_label, created_by, tenant_id, chain_hash, previous_hash, id, crea..."
+        },
+        {
+          "count": 14,
+          "db_time_ms": 14.398,
+          "statement": "SELECT risk_evidence_links.chain_hash FROM risk_evidence_links WHERE risk_evidence_links.tenant_id = $1::UUID ORDER BY risk_evidence_links.created_at DESC LIMIT..."
+        },
+        {
+          "count": 12,
+          "db_time_ms": 12.194,
+          "statement": "SELECT normalization_runs.organisation_id, normalization_runs.source_id, normalization_runs.source_version_id, normalization_runs.mapping_version_token, normali..."
+        },
+        {
+          "count": 9,
+          "db_time_ms": 9.241,
+          "statement": "INSERT INTO payroll_normalized_lines (run_id, row_no, employee_code, employee_name, payroll_period, legal_entity, department, cost_center, business_unit, locati..."
+        }
+      ]
+    },
+    "board_pack": {
+      "db_time_ms": 767.952,
+      "elapsed_ms": 1277.664,
+      "name": "board_pack",
+      "payload": {
+        "run_id": "2550800a-8a0f-41c5-b068-7610f8952eed",
+        "summary": {
+          "board_pack_code": "monthly_board_pack_7aaeda",
+          "evidence_count": 7,
+          "executive_summary_text": "Board pack assembled with 4 sections. High/critical risks: 2. Elevated anomalies: 0.",
+          "narrative_count": 4,
+          "overall_health_classification": "watch",
+          "run_id": "2550800a-8a0f-41c5-b068-7610f8952eed",
+          "run_token": "6518fedc2a798217ad31e94f8a0f9bdc5db5b45c4642c1e29e5053423a9982e8",
+          "section_count": 4,
+          "status": "completed"
+        }
+      },
+      "query_count": 617,
+      "top_statements": [
+        {
+          "count": 103,
+          "db_time_ms": 87.492,
+          "statement": "SELECT audit_trail.chain_hash FROM audit_trail WHERE audit_trail.tenant_id = $1::UUID ORDER BY audit_trail.created_at DESC LIMIT $2::INTEGER"
+        },
+        {
+          "count": 103,
+          "db_time_ms": 86.156,
+          "statement": "INSERT INTO audit_trail (user_id, action, resource_type, resource_id, resource_name, old_value_hash, new_value_hash, ip_address, user_agent, tenant_id, chain_ha..."
+        },
+        {
+          "count": 17,
+          "db_time_ms": 19.22,
+          "statement": "INSERT INTO normalization_mappings (source_version_id, mapping_type, source_field_name, canonical_field_name, transform_rule, default_value_json, required_flag,..."
+        },
+        {
+          "count": 17,
+          "db_time_ms": 16.544,
+          "statement": "SELECT normalization_mappings.chain_hash FROM normalization_mappings WHERE normalization_mappings.tenant_id = $1::UUID ORDER BY normalization_mappings.created_a..."
+        },
+        {
+          "count": 14,
+          "db_time_ms": 11.965,
+          "statement": "INSERT INTO risk_evidence_links (run_id, risk_result_id, evidence_type, evidence_ref, evidence_label, created_by, tenant_id, chain_hash, previous_hash, id, crea..."
+        },
+        {
+          "count": 14,
+          "db_time_ms": 11.707,
+          "statement": "SELECT risk_evidence_links.chain_hash FROM risk_evidence_links WHERE risk_evidence_links.tenant_id = $1::UUID ORDER BY risk_evidence_links.created_at DESC LIMIT..."
+        },
+        {
+          "count": 12,
+          "db_time_ms": 14.477,
+          "statement": "SELECT normalization_runs.organisation_id, normalization_runs.source_id, normalization_runs.source_version_id, normalization_runs.mapping_version_token, normali..."
+        },
+        {
+          "count": 9,
+          "db_time_ms": 9.94,
+          "statement": "INSERT INTO payroll_normalized_lines (run_id, row_no, employee_code, employee_name, payroll_period, legal_entity, department, cost_center, business_unit, locati..."
+        }
+      ]
+    },
+    "ratio": {
+      "db_time_ms": 256.025,
+      "elapsed_ms": 476.343,
+      "name": "ratio",
+      "payload": {
+        "run_id": "bddb784d-05c6-4507-baea-3d345c8cd1a7",
+        "summary": {
+          "evidence_count": 5,
+          "metric_count": 1,
+          "run_id": "bddb784d-05c6-4507-baea-3d345c8cd1a7",
+          "run_token": "27784b1191ae30e651e60aa238c31d1ba3b5577cb92b60bdf2820c1e7d48c162",
+          "status": "completed",
+          "trend_count": 1,
+          "variance_count": 1
+        }
+      },
+      "query_count": 243,
+      "top_statements": [
+        {
+          "count": 25,
+          "db_time_ms": 19.542,
+          "statement": "INSERT INTO audit_trail (user_id, action, resource_type, resource_id, resource_name, old_value_hash, new_value_hash, ip_address, user_agent, tenant_id, chain_ha..."
+        },
+        {
+          "count": 25,
+          "db_time_ms": 19.507,
+          "statement": "SELECT audit_trail.chain_hash FROM audit_trail WHERE audit_trail.tenant_id = $1::UUID ORDER BY audit_trail.created_at DESC LIMIT $2::INTEGER"
+        },
+        {
+          "count": 17,
+          "db_time_ms": 14.283,
+          "statement": "INSERT INTO normalization_mappings (source_version_id, mapping_type, source_field_name, canonical_field_name, transform_rule, default_value_json, required_flag,..."
+        },
+        {
+          "count": 17,
+          "db_time_ms": 12.937,
+          "statement": "SELECT normalization_mappings.chain_hash FROM normalization_mappings WHERE normalization_mappings.tenant_id = $1::UUID ORDER BY normalization_mappings.created_a..."
+        },
+        {
+          "count": 12,
+          "db_time_ms": 11.689,
+          "statement": "SELECT normalization_runs.organisation_id, normalization_runs.source_id, normalization_runs.source_version_id, normalization_runs.mapping_version_token, normali..."
+        },
+        {
+          "count": 9,
+          "db_time_ms": 8.299,
+          "statement": "INSERT INTO payroll_normalized_lines (run_id, row_no, employee_code, employee_name, payroll_period, legal_entity, department, cost_center, business_unit, locati..."
+        },
+        {
+          "count": 9,
+          "db_time_ms": 8.271,
+          "statement": "INSERT INTO gl_normalized_lines (run_id, row_no, journal_id, journal_line_no, posting_date, document_date, posting_period, legal_entity, account_code, account_n..."
+        },
+        {
+          "count": 9,
+          "db_time_ms": 7.345,
+          "statement": "SELECT payroll_normalized_lines.chain_hash FROM payroll_normalized_lines WHERE payroll_normalized_lines.tenant_id = $1::UUID ORDER BY payroll_normalized_lines.c..."
+        }
+      ]
+    },
+    "risk": {
+      "db_time_ms": 414.331,
+      "elapsed_ms": 598.538,
+      "name": "risk",
+      "payload": {
+        "run_id": "be6ad69f-5b00-4a1e-bb88-75f4e4f49f8c",
+        "summary": {
+          "evidence_count": 14,
+          "result_count": 2,
+          "rollforward_count": 4,
+          "run_id": "be6ad69f-5b00-4a1e-bb88-75f4e4f49f8c",
+          "run_token": "f573f2480c9596bca5eae19994d4edbee565d1f21bc40a3a01662d27a4012acd",
+          "signal_count": 7,
+          "status": "completed"
+        }
+      },
+      "query_count": 397,
+      "top_statements": [
+        {
+          "count": 59,
+          "db_time_ms": 49.631,
+          "statement": "INSERT INTO audit_trail (user_id, action, resource_type, resource_id, resource_name, old_value_hash, new_value_hash, ip_address, user_agent, tenant_id, chain_ha..."
+        },
+        {
+          "count": 59,
+          "db_time_ms": 49.119,
+          "statement": "SELECT audit_trail.chain_hash FROM audit_trail WHERE audit_trail.tenant_id = $1::UUID ORDER BY audit_trail.created_at DESC LIMIT $2::INTEGER"
+        },
+        {
+          "count": 17,
+          "db_time_ms": 14.759,
+          "statement": "INSERT INTO normalization_mappings (source_version_id, mapping_type, source_field_name, canonical_field_name, transform_rule, default_value_json, required_flag,..."
+        },
+        {
+          "count": 17,
+          "db_time_ms": 14.626,
+          "statement": "SELECT normalization_mappings.chain_hash FROM normalization_mappings WHERE normalization_mappings.tenant_id = $1::UUID ORDER BY normalization_mappings.created_a..."
+        },
+        {
+          "count": 14,
+          "db_time_ms": 14.131,
+          "statement": "INSERT INTO risk_evidence_links (run_id, risk_result_id, evidence_type, evidence_ref, evidence_label, created_by, tenant_id, chain_hash, previous_hash, id, crea..."
+        },
+        {
+          "count": 14,
+          "db_time_ms": 12.755,
+          "statement": "SELECT risk_evidence_links.chain_hash FROM risk_evidence_links WHERE risk_evidence_links.tenant_id = $1::UUID ORDER BY risk_evidence_links.created_at DESC LIMIT..."
+        },
+        {
+          "count": 12,
+          "db_time_ms": 11.019,
+          "statement": "SELECT normalization_runs.organisation_id, normalization_runs.source_id, normalization_runs.source_version_id, normalization_runs.mapping_version_token, normali..."
+        },
+        {
+          "count": 9,
+          "db_time_ms": 9.466,
+          "statement": "INSERT INTO payroll_normalized_lines (run_id, row_no, employee_code, employee_name, payroll_period, legal_entity, department, cost_center, business_unit, locati..."
+        }
+      ]
+    }
+  },
+  "label": "after",
+  "python_hotspots": {
+    "anomaly": [
+      "     1908    0.016    0.000    2.607    0.001 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\base_events.py:1859(_run_once)",
+      "     2546    0.007    0.000    2.097    0.001 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\events.py:82(_run)",
+      "     2546    0.008    0.000    2.077    0.001 {method 'run' of '_contextvars.Context' objects}",
+      "      634    0.004    0.000    1.955    0.003 D:\\finos\\backend\\scripts\\profile_phase_2_2.py:321(_run_hotspot_flow)",
+      "      631    0.004    0.000    1.906    0.003 D:\\finos\\backend\\scripts\\profile_phase_2_2.py:211(_anomaly_flow)",
+      "        1    0.000    0.000    1.508    1.508 D:\\finos\\backend\\scripts\\profile_phase_2_2.py:369(<lambda>)",
+      "        1    0.000    0.000    1.508    1.508 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\runners.py:160(run)",
+      "        3    0.000    0.000    1.507    0.502 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\base_events.py:618(run_until_complete)",
+      "        3    0.000    0.000    1.507    0.502 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\windows_events.py:317(run_forever)",
+      "        3    0.000    0.000    1.506    0.502 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\base_events.py:594(run_forever)",
+      "        1    0.000    0.000    1.505    1.505 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\runners.py:86(run)",
+      "      486    0.003    0.000    1.411    0.003 D:\\finos\\backend\\tests\\integration\\anomaly_pattern_phase1f6_helpers.py:245(seed_upstream_for_anomaly)",
+      "     1122    0.005    0.000    1.190    0.001 D:\\finos\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\util\\_concurrency_py3k.py:167(greenlet_spawn)",
+      "      572    0.006    0.000    1.128    0.002 D:\\finos\\backend\\financeops\\services\\audit_writer.py:85(insert_financial_record)",
+      " 1478/490    0.020    0.000    0.880    0.002 {method 'switch' of 'greenlet.greenlet' objects}",
+      "      301    0.002    0.000    0.874    0.003 D:\\finos\\backend\\tests\\integration\\financial_risk_phase1f5_helpers.py:340(seed_upstream_ratio_run)",
+      "      694    0.003    0.000    0.743    0.001 D:\\finos\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\ext\\asyncio\\session.py:436(execute)",
+      "      420    0.003    0.000    0.737    0.002 D:\\finos\\backend\\financeops\\services\\audit_writer.py:39(insert_record)",
+      "      422    0.001    0.000    0.532    0.001 D:\\finos\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\ext\\asyncio\\session.py:792(flush)",
+      "      189    0.001    0.000    0.518    0.003 D:\\finos\\backend\\tests\\integration\\payroll_gl_reconciliation_phase1f3_1_helpers.py:432(seed_finalized_normalization_pair)"
+    ],
+    "board_pack": [
+      "     2546    0.024    0.000    3.913    0.002 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\base_events.py:1859(_run_once)",
+      "     3398    0.011    0.000    3.126    0.001 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\events.py:82(_run)",
+      "     3398    0.010    0.000    3.096    0.001 {method 'run' of '_contextvars.Context' objects}",
+      "      847    0.007    0.000    2.935    0.003 D:\\finos\\backend\\scripts\\profile_phase_2_2.py:321(_run_hotspot_flow)",
+      "      844    0.005    0.000    2.882    0.003 D:\\finos\\backend\\scripts\\profile_phase_2_2.py:254(_board_pack_flow)",
+      "        1    0.000    0.000    2.195    2.195 D:\\finos\\backend\\scripts\\profile_phase_2_2.py:369(<lambda>)",
+      "        1    0.000    0.000    2.195    2.195 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\runners.py:160(run)",
+      "        3    0.000    0.000    2.194    0.731 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\base_events.py:618(run_until_complete)",
+      "        3    0.000    0.000    2.194    0.731 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\windows_events.py:317(run_forever)",
+      "        3    0.000    0.000    2.194    0.731 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\base_events.py:594(run_forever)",
+      "        1    0.000    0.000    2.193    2.193 C:\\Users\\vrnanda\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\asyncio\\runners.py:86(run)",
+      "      781    0.008    0.000    1.866    0.002 D:\\finos\\backend\\financeops\\services\\audit_writer.py:85(insert_financial_record)",
+      "      605    0.004    0.000    1.835    0.003 D:\\finos\\backend\\tests\\integration\\board_pack_phase1f7_helpers.py:350(seed_upstream_for_board_pack)",
+      "     1470    0.006    0.000    1.639    0.001 D:\\finos\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\util\\_concurrency_py3k.py:167(greenlet_spawn)",
+      "      486    0.003    0.000    1.464    0.003 D:\\finos\\backend\\tests\\integration\\anomaly_pattern_phase1f6_helpers.py:245(seed_upstream_for_anomaly)",
+      "      592    0.004    0.000    1.326    0.002 D:\\finos\\backend\\financeops\\services\\audit_writer.py:39(insert_record)",
+      "      869    0.004    0.000    1.214    0.001 D:\\finos\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\ext\\asyncio\\session.py:436(execute)",
+      " 1881/625    0.026    0.000    1.086    0.002 {method 'switch' of 'greenlet.greenlet' objects}",
+      "      301    0.002    0.000    0.918    0.003 D:\\finos\\backend\\tests\\integration\\financial_risk_phase1f5_helpers.py:340(seed_upstream_ratio_run)",
+      "      595    0.002    0.000    0.792    0.001 D:\\finos\\backend\\.venv\\Lib\\site-packages\\sqlalchemy\\ext\\asyncio\\session.py:792(flush)"
+    ]
+  }
+}

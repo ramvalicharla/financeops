@@ -435,11 +435,33 @@ class AnomalyPatternRepository:
         )
         return result.scalar_one_or_none()
 
+    async def list_metric_runs(
+        self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
+    ) -> list[MetricRun]:
+        if not run_ids:
+            return []
+        result = await self._session.execute(
+            select(MetricRun)
+            .where(MetricRun.tenant_id == tenant_id, MetricRun.id.in_(run_ids))
+            .order_by(MetricRun.id.asc())
+        )
+        return list(result.scalars().all())
+
     async def get_risk_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> RiskRun | None:
         result = await self._session.execute(
             select(RiskRun).where(RiskRun.tenant_id == tenant_id, RiskRun.id == run_id)
         )
         return result.scalar_one_or_none()
+
+    async def list_risk_runs(self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]) -> list[RiskRun]:
+        if not run_ids:
+            return []
+        result = await self._session.execute(
+            select(RiskRun)
+            .where(RiskRun.tenant_id == tenant_id, RiskRun.id.in_(run_ids))
+            .order_by(RiskRun.id.asc())
+        )
+        return list(result.scalars().all())
 
     async def get_reconciliation_session(
         self, *, tenant_id: uuid.UUID, session_id: uuid.UUID
@@ -451,6 +473,21 @@ class AnomalyPatternRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_reconciliation_sessions(
+        self, *, tenant_id: uuid.UUID, session_ids: list[uuid.UUID]
+    ) -> list[ReconciliationSession]:
+        if not session_ids:
+            return []
+        result = await self._session.execute(
+            select(ReconciliationSession)
+            .where(
+                ReconciliationSession.tenant_id == tenant_id,
+                ReconciliationSession.id.in_(session_ids),
+            )
+            .order_by(ReconciliationSession.id.asc())
+        )
+        return list(result.scalars().all())
 
     async def list_metric_results_for_runs(
         self, *, tenant_id: uuid.UUID, run_ids: list[uuid.UUID]
@@ -829,44 +866,78 @@ class AnomalyPatternRepository:
         )
         return result.scalar_one_or_none()
 
+    async def latest_prior_anomaly_results_by_codes(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        organisation_id: uuid.UUID,
+        anomaly_codes: list[str],
+        before_reporting_period: date,
+    ) -> dict[str, AnomalyResult]:
+        if not anomaly_codes:
+            return {}
+        result = await self._session.execute(
+            select(AnomalyResult, AnomalyRun.reporting_period)
+            .join(AnomalyRun, AnomalyRun.id == AnomalyResult.run_id)
+            .where(
+                AnomalyResult.tenant_id == tenant_id,
+                AnomalyResult.anomaly_code.in_(anomaly_codes),
+                AnomalyRun.tenant_id == tenant_id,
+                AnomalyRun.organisation_id == organisation_id,
+                AnomalyRun.status == "completed",
+                AnomalyRun.reporting_period < before_reporting_period,
+            )
+            .order_by(
+                AnomalyResult.anomaly_code.asc(),
+                AnomalyRun.reporting_period.desc(),
+                AnomalyRun.id.desc(),
+                AnomalyResult.id.desc(),
+            )
+        )
+        grouped: dict[str, AnomalyResult] = {}
+        for row, _reporting_period in result.all():
+            grouped.setdefault(row.anomaly_code, row)
+        return grouped
+
     async def summarize_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, int]:
-        result_count = (
+        row = (
             await self._session.execute(
-                select(func.count())
-                .select_from(AnomalyResult)
-                .where(AnomalyResult.tenant_id == tenant_id, AnomalyResult.run_id == run_id)
-            )
-        ).scalar_one()
-        signal_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(AnomalyContributingSignal)
-                .where(
-                    AnomalyContributingSignal.tenant_id == tenant_id,
-                    AnomalyContributingSignal.run_id == run_id,
+                select(
+                    select(func.count())
+                    .select_from(AnomalyResult)
+                    .where(AnomalyResult.tenant_id == tenant_id, AnomalyResult.run_id == run_id)
+                    .scalar_subquery()
+                    .label("result_count"),
+                    select(func.count())
+                    .select_from(AnomalyContributingSignal)
+                    .where(
+                        AnomalyContributingSignal.tenant_id == tenant_id,
+                        AnomalyContributingSignal.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("signal_count"),
+                    select(func.count())
+                    .select_from(AnomalyRollforwardEvent)
+                    .where(
+                        AnomalyRollforwardEvent.tenant_id == tenant_id,
+                        AnomalyRollforwardEvent.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("rollforward_count"),
+                    select(func.count())
+                    .select_from(AnomalyEvidenceLink)
+                    .where(
+                        AnomalyEvidenceLink.tenant_id == tenant_id,
+                        AnomalyEvidenceLink.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("evidence_count"),
                 )
             )
-        ).scalar_one()
-        rollforward_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(AnomalyRollforwardEvent)
-                .where(
-                    AnomalyRollforwardEvent.tenant_id == tenant_id,
-                    AnomalyRollforwardEvent.run_id == run_id,
-                )
-            )
-        ).scalar_one()
-        evidence_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(AnomalyEvidenceLink)
-                .where(AnomalyEvidenceLink.tenant_id == tenant_id, AnomalyEvidenceLink.run_id == run_id)
-            )
-        ).scalar_one()
+        ).one()
         return {
-            "result_count": int(result_count or 0),
-            "signal_count": int(signal_count or 0),
-            "rollforward_count": int(rollforward_count or 0),
-            "evidence_count": int(evidence_count or 0),
+            "result_count": int(row.result_count or 0),
+            "signal_count": int(row.signal_count or 0),
+            "rollforward_count": int(row.rollforward_count or 0),
+            "evidence_count": int(row.evidence_count or 0),
         }

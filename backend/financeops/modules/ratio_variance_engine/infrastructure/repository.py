@@ -184,6 +184,28 @@ class RatioVarianceRepository:
         )
         return list(result.scalars().all())
 
+    async def list_metric_definition_components_for_definitions(
+        self, *, tenant_id: uuid.UUID, definition_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[MetricDefinitionComponent]]:
+        if not definition_ids:
+            return {}
+        result = await self._session.execute(
+            select(MetricDefinitionComponent)
+            .where(
+                MetricDefinitionComponent.tenant_id == tenant_id,
+                MetricDefinitionComponent.metric_definition_id.in_(definition_ids),
+            )
+            .order_by(
+                MetricDefinitionComponent.metric_definition_id.asc(),
+                MetricDefinitionComponent.ordinal_position.asc(),
+                MetricDefinitionComponent.id.asc(),
+            )
+        )
+        grouped: dict[uuid.UUID, list[MetricDefinitionComponent]] = defaultdict(list)
+        for row in result.scalars().all():
+            grouped[row.metric_definition_id].append(row)
+        return grouped
+
     async def active_metric_definitions(
         self, *, tenant_id: uuid.UUID, organisation_id: uuid.UUID, reporting_period: date
     ) -> list[MetricDefinition]:
@@ -957,43 +979,79 @@ class RatioVarianceRepository:
         )
         return [(period, Decimal(str(value))) for period, value in result.all()]
 
+    async def prior_metric_series_for_codes(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        organisation_id: uuid.UUID,
+        scope_json: dict[str, Any],
+        metric_codes: list[str],
+        before_reporting_period: date,
+        limit_per_metric: int = 24,
+    ) -> dict[str, list[tuple[date, Decimal]]]:
+        if not metric_codes:
+            return {}
+        result = await self._session.execute(
+            select(MetricRun.reporting_period, MetricResult.metric_value, MetricResult.metric_code)
+            .join(MetricResult, MetricResult.run_id == MetricRun.id)
+            .where(
+                MetricRun.tenant_id == tenant_id,
+                MetricRun.organisation_id == organisation_id,
+                MetricRun.scope_json == scope_json,
+                MetricRun.status == "completed",
+                MetricRun.reporting_period < before_reporting_period,
+                MetricResult.metric_code.in_(metric_codes),
+                MetricResult.tenant_id == tenant_id,
+            )
+            .order_by(
+                MetricResult.metric_code.asc(),
+                MetricRun.reporting_period.desc(),
+                MetricRun.id.desc(),
+            )
+        )
+        grouped: dict[str, list[tuple[date, Decimal]]] = defaultdict(list)
+        for period, value, metric_code in result.all():
+            rows = grouped[str(metric_code)]
+            if len(rows) >= limit_per_metric:
+                continue
+            rows.append((period, Decimal(str(value))))
+        return dict(grouped)
+
     async def summarize_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, int]:
-        metric_count = (
+        row = (
             await self._session.execute(
-                select(func.count())
-                .select_from(MetricResult)
-                .where(MetricResult.tenant_id == tenant_id, MetricResult.run_id == run_id)
-            )
-        ).scalar_one()
-        variance_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(VarianceResult)
-                .where(VarianceResult.tenant_id == tenant_id, VarianceResult.run_id == run_id)
-            )
-        ).scalar_one()
-        trend_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(TrendResult)
-                .where(TrendResult.tenant_id == tenant_id, TrendResult.run_id == run_id)
-            )
-        ).scalar_one()
-        evidence_count = (
-            await self._session.execute(
-                select(func.count())
-                .select_from(MetricEvidenceLink)
-                .where(
-                    MetricEvidenceLink.tenant_id == tenant_id,
-                    MetricEvidenceLink.run_id == run_id,
+                select(
+                    select(func.count())
+                    .select_from(MetricResult)
+                    .where(MetricResult.tenant_id == tenant_id, MetricResult.run_id == run_id)
+                    .scalar_subquery()
+                    .label("metric_count"),
+                    select(func.count())
+                    .select_from(VarianceResult)
+                    .where(VarianceResult.tenant_id == tenant_id, VarianceResult.run_id == run_id)
+                    .scalar_subquery()
+                    .label("variance_count"),
+                    select(func.count())
+                    .select_from(TrendResult)
+                    .where(TrendResult.tenant_id == tenant_id, TrendResult.run_id == run_id)
+                    .scalar_subquery()
+                    .label("trend_count"),
+                    select(func.count())
+                    .select_from(MetricEvidenceLink)
+                    .where(
+                        MetricEvidenceLink.tenant_id == tenant_id,
+                        MetricEvidenceLink.run_id == run_id,
+                    )
+                    .scalar_subquery()
+                    .label("evidence_count"),
                 )
             )
-        ).scalar_one()
+        ).one()
         return {
-            "metric_count": int(metric_count or 0),
-            "variance_count": int(variance_count or 0),
-            "trend_count": int(trend_count or 0),
-            "evidence_count": int(evidence_count or 0),
+            "metric_count": int(row.metric_count or 0),
+            "variance_count": int(row.variance_count or 0),
+            "trend_count": int(row.trend_count or 0),
+            "evidence_count": int(row.evidence_count or 0),
         }
 
     @staticmethod

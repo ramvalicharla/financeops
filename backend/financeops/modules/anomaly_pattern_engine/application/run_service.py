@@ -73,27 +73,44 @@ class RunService:
             source_risk_run_ids=source_risk_run_ids,
             source_reconciliation_session_ids=source_reconciliation_session_ids,
         )
+        metric_runs = await self._repository.list_metric_runs(
+            tenant_id=tenant_id,
+            run_ids=sorted(
+                set(source_metric_run_ids + source_variance_run_ids + source_trend_run_ids),
+                key=lambda value: str(value),
+            ),
+        )
+        metric_runs_by_id = {row.id: row for row in metric_runs}
         for run_id in source_metric_run_ids:
-            run = await self._repository.get_metric_run(tenant_id=tenant_id, run_id=run_id)
+            run = metric_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed metric run: {run_id}")
         for run_id in source_variance_run_ids:
-            run = await self._repository.get_metric_run(tenant_id=tenant_id, run_id=run_id)
+            run = metric_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed variance run: {run_id}")
         for run_id in source_trend_run_ids:
-            run = await self._repository.get_metric_run(tenant_id=tenant_id, run_id=run_id)
+            run = metric_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed trend run: {run_id}")
+
+        risk_runs = await self._repository.list_risk_runs(
+            tenant_id=tenant_id,
+            run_ids=sorted(source_risk_run_ids, key=lambda value: str(value)),
+        )
+        risk_runs_by_id = {row.id: row for row in risk_runs}
         for run_id in source_risk_run_ids:
-            run = await self._repository.get_risk_run(tenant_id=tenant_id, run_id=run_id)
+            run = risk_runs_by_id.get(run_id)
             if run is None or run.status != "completed":
                 raise ValueError(f"Missing or non-completed risk run: {run_id}")
+
+        sessions = await self._repository.list_reconciliation_sessions(
+            tenant_id=tenant_id,
+            session_ids=sorted(source_reconciliation_session_ids, key=lambda value: str(value)),
+        )
+        sessions_by_id = {row.id: row for row in sessions}
         for session_id in source_reconciliation_session_ids:
-            session = await self._repository.get_reconciliation_session(
-                tenant_id=tenant_id, session_id=session_id
-            )
-            if session is None:
+            if sessions_by_id.get(session_id) is None:
                 raise ValueError(f"Missing reconciliation session: {session_id}")
 
         definitions = await self._repository.active_anomaly_definitions(
@@ -339,7 +356,14 @@ class RunService:
         roll_map: dict[str, list[AnomalyRollforward]] = {}
         evidence_map: dict[str, list[dict[str, Any]]] = {}
 
-        for definition in sorted(definitions, key=lambda item: (item.anomaly_code, item.id)):
+        ordered_definitions = sorted(definitions, key=lambda item: (item.anomaly_code, item.id))
+        prior_by_code = await self._repository.latest_prior_anomaly_results_by_codes(
+            tenant_id=tenant_id,
+            organisation_id=completed.organisation_id,
+            anomaly_codes=[row.anomaly_code for row in ordered_definitions],
+            before_reporting_period=completed.reporting_period,
+        )
+        for definition in ordered_definitions:
             selector = definition.signal_selector_json or {}
             metric_codes = sorted(set(selector.get("metric_codes", [])))
             variance_codes = sorted(set(selector.get("variance_codes", [])))
@@ -383,12 +407,7 @@ class RunService:
                 has_risk_signals=bool(risk_codes),
                 has_open_reconciliation=bool(open_recon),
             )
-            prior = await self._repository.latest_prior_anomaly_result(
-                tenant_id=tenant_id,
-                organisation_id=completed.organisation_id,
-                anomaly_code=definition.anomaly_code,
-                before_reporting_period=completed.reporting_period,
-            )
+            prior = prior_by_code.get(definition.anomaly_code)
             persistence = self._persistence_service.classify(
                 prior_severity=prior.severity if prior else None,
                 current_severity=severity,
