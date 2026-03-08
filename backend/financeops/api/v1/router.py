@@ -21,6 +21,7 @@ from financeops.api.v1 import (
     mis_manager,
     monthend,
     multi_entity_consolidation,
+    observability_engine,
     ownership_consolidation,
     payroll_gl_reconciliation,
     payroll_gl_normalization,
@@ -145,6 +146,12 @@ router.include_router(
     equity_engine.router,
     prefix="/equity",
     tags=["Equity Engine"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    observability_engine.router,
+    prefix="/observability",
+    tags=["Observability Engine"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(

@@ -12,4 +12,5 @@ pytest_plugins = (
     "tests.integration.ownership_consolidation_phase2_5_helpers",
     "tests.integration.cash_flow_phase2_6_helpers",
     "tests.integration.equity_phase2_7_helpers",
+    "tests.integration.observability_phase3_helpers",
 )

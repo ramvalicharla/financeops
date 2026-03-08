@@ -245,6 +245,17 @@ from financeops.db.models.equity_engine import (  # noqa: F401
     EquityStatementDefinition,
     EquityStatementResult,
 )
+from financeops.db.models.observability_engine import (  # noqa: F401
+    GovernanceEvent,
+    LineageGraphSnapshot,
+    ObservabilityEvidenceLink,
+    ObservabilityResult,
+    ObservabilityRun,
+    ObservabilityRunRegistry,
+    RunPerformanceMetric,
+    RunTokenDiffDefinition,
+    RunTokenDiffResult,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -379,6 +390,7 @@ async def async_client(
         ("/api/v1/ownership", "ownership_consolidation"),
         ("/api/v1/cash-flow", "cash_flow_engine"),
         ("/api/v1/equity", "equity_engine"),
+        ("/api/v1/observability", "observability_engine"),
         ("/api/v1/fx", "fx"),
         ("/api/v1/consolidation/hierarchies", "multi_entity_consolidation"),
         ("/api/v1/consolidation/scopes", "multi_entity_consolidation"),
