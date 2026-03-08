@@ -4,7 +4,7 @@ from financeops.modules.payroll_gl_normalization.domain.value_objects import (
     RunTokenInput,
     SourceVersionTokenInput,
 )
-from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
+from financeops.shared_kernel.tokens import build_token
 
 
 def build_source_version_token(payload: SourceVersionTokenInput) -> str:
@@ -15,7 +15,7 @@ def build_source_version_token(payload: SourceVersionTokenInput) -> str:
         "row_signature_hash": payload.row_signature_hash,
         "source_detection_summary_json": payload.source_detection_summary_json,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(value)
 
 
 def build_run_token(payload: RunTokenInput) -> str:
@@ -28,4 +28,4 @@ def build_run_token(payload: RunTokenInput) -> str:
         "source_file_hash": payload.source_file_hash,
         "run_status": payload.run_status,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(value)

@@ -5,15 +5,15 @@ from financeops.modules.payroll_gl_reconciliation.domain.value_objects import (
     PayrollGlRunTokenInput,
     RuleVersionTokenInput,
 )
-from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
+from financeops.shared_kernel.tokens import build_token, build_version_rows_token
 
 
 def build_mapping_version_token(payload: MappingVersionTokenInput) -> str:
-    return sha256_hex_text(canonical_json_dumps(payload.mapping_rows))
+    return build_version_rows_token(payload.mapping_rows)
 
 
 def build_rule_version_token(payload: RuleVersionTokenInput) -> str:
-    return sha256_hex_text(canonical_json_dumps(payload.rule_rows))
+    return build_version_rows_token(payload.rule_rows)
 
 
 def build_payroll_gl_run_token(payload: PayrollGlRunTokenInput, *, status: str) -> str:
@@ -27,5 +27,4 @@ def build_payroll_gl_run_token(payload: PayrollGlRunTokenInput, *, status: str) 
         "reporting_period": payload.reporting_period.isoformat(),
         "status": status,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
-
+    return build_token(value)

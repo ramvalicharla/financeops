@@ -3,7 +3,7 @@ from __future__ import annotations
 from financeops.modules.reconciliation_bridge.domain.value_objects import (
     SessionTokenInput,
 )
-from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
+from financeops.shared_kernel.tokens import build_token
 
 
 def build_session_token(payload: SessionTokenInput) -> str:
@@ -21,4 +21,4 @@ def build_session_token(payload: SessionTokenInput) -> str:
         "tolerance_rule_version": payload.tolerance_rule_version,
         "materiality_config_json": payload.materiality_config_json,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(value)

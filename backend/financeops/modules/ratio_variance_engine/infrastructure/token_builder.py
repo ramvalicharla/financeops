@@ -4,11 +4,11 @@ from financeops.modules.ratio_variance_engine.domain.value_objects import (
     DefinitionVersionTokenInput,
     MetricRunTokenInput,
 )
-from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
+from financeops.shared_kernel.tokens import build_token, build_version_rows_token
 
 
 def build_definition_version_token(payload: DefinitionVersionTokenInput) -> str:
-    return sha256_hex_text(canonical_json_dumps(payload.rows))
+    return build_version_rows_token(payload.rows)
 
 
 def build_metric_run_token(payload: MetricRunTokenInput, *, status: str) -> str:
@@ -37,4 +37,4 @@ def build_metric_run_token(payload: MetricRunTokenInput, *, status: str) -> str:
         "input_signature_hash": payload.input_signature_hash,
         "status": status,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(value)

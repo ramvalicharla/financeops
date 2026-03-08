@@ -4,11 +4,11 @@ from financeops.modules.board_pack_narrative_engine.domain.value_objects import 
     BoardPackRunTokenInput,
     DefinitionVersionTokenInput,
 )
-from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
+from financeops.shared_kernel.tokens import build_token, build_version_rows_token
 
 
 def build_definition_version_token(payload: DefinitionVersionTokenInput) -> str:
-    return sha256_hex_text(canonical_json_dumps(payload.rows))
+    return build_version_rows_token(payload.rows)
 
 
 def build_board_pack_run_token(payload: BoardPackRunTokenInput) -> str:
@@ -20,9 +20,16 @@ def build_board_pack_run_token(payload: BoardPackRunTokenInput) -> str:
         "section_definition_version_token": payload.section_definition_version_token,
         "narrative_template_version_token": payload.narrative_template_version_token,
         "inclusion_rule_version_token": payload.inclusion_rule_version_token,
-        "source_metric_run_ids": sorted(payload.source_metric_run_ids),
-        "source_risk_run_ids": sorted(payload.source_risk_run_ids),
-        "source_anomaly_run_ids": sorted(payload.source_anomaly_run_ids),
+        "source_metric_run_ids": payload.source_metric_run_ids,
+        "source_risk_run_ids": payload.source_risk_run_ids,
+        "source_anomaly_run_ids": payload.source_anomaly_run_ids,
         "status": payload.status,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(
+        value,
+        sorted_list_fields=(
+            "source_metric_run_ids",
+            "source_risk_run_ids",
+            "source_anomaly_run_ids",
+        ),
+    )

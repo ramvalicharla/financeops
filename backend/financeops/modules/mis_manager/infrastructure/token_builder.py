@@ -4,7 +4,7 @@ from financeops.modules.mis_manager.domain.value_objects import (
     SnapshotTokenInput,
     VersionTokenInput,
 )
-from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
+from financeops.shared_kernel.tokens import build_token
 
 
 def build_version_token(payload: VersionTokenInput) -> str:
@@ -16,7 +16,7 @@ def build_version_token(payload: VersionTokenInput) -> str:
         "column_signature_hash": payload.column_signature_hash,
         "detection_summary_json": payload.detection_summary_json,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(value)
 
 
 def build_snapshot_token(payload: SnapshotTokenInput) -> str:
@@ -30,4 +30,4 @@ def build_snapshot_token(payload: SnapshotTokenInput) -> str:
         "template_version_id": str(payload.template_version_id),
         "status": payload.status,
     }
-    return sha256_hex_text(canonical_json_dumps(value))
+    return build_token(value)
