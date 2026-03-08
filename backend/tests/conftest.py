@@ -319,6 +319,7 @@ async def async_client(
         ("/api/v1/ratio-variance", "ratio_variance_engine"),
         ("/api/v1/financial-risk", "financial_risk_engine"),
         ("/api/v1/anomaly-engine", "anomaly_pattern_engine"),
+        ("/api/v1/board-pack", "board_pack_narrative_engine"),
         ("/api/v1/reconciliation", "reconciliation_bridge"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),

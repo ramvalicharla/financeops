@@ -48,7 +48,7 @@ async def test_migration_0016_applies_cleanly_on_fresh_db(ratio_phase1f4_db_url:
     )
     try:
         version = await conn.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0018_phase1f6_anomaly_pattern"
+        assert version == "0019_phase1f7_board_pack"
     finally:
         await conn.close()
 

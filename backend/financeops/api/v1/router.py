@@ -7,6 +7,7 @@ from financeops.api.v1 import (
     auth,
     auditor,
     bank_recon,
+    board_pack_narrative_engine,
     consolidation,
     financial_risk_engine,
     fixed_assets,
@@ -73,6 +74,12 @@ router.include_router(
     anomaly_pattern_engine.router,
     prefix="/anomaly-engine",
     tags=["Anomaly Pattern Engine"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    board_pack_narrative_engine.router,
+    prefix="/board-pack",
+    tags=["Board Pack Narrative Engine"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
