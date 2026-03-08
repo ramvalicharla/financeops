@@ -50,7 +50,7 @@ async def test_migration_0023_applies_cleanly_on_fresh_db(
     )
     try:
         version = await conn.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0023_phase2_6_cash_flow"
+        assert version == "0024_phase2_7_equity_engine"
     finally:
         await conn.close()
 
@@ -142,3 +142,4 @@ async def test_migration_0023_enables_and_forces_rls_on_cash_flow_tables(
             assert row["relforcerowsecurity"] is True
     finally:
         await conn.close()
+

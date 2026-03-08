@@ -60,7 +60,7 @@ async def test_migration_0022_applies_cleanly_on_fresh_db(
     )
     try:
         version = await conn.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0023_phase2_6_cash_flow"
+        assert version == "0024_phase2_7_equity_engine"
     finally:
         await conn.close()
 
@@ -153,3 +153,4 @@ async def test_migration_0022_creates_constraints_indexes_and_triggers(
             assert f"trg_append_only_{table}" in trigger_names
     finally:
         await conn.close()
+

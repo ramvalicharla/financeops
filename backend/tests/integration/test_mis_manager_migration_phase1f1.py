@@ -66,7 +66,7 @@ async def test_migration_0012_applies_cleanly_on_fresh_db(
         await mis_phase1f1_session.execute(text("SELECT version_num FROM alembic_version"))
     ).scalar_one()
     # Phase 1F.1 is expected to remain present while newer migrations are allowed.
-    assert version == "0023_phase2_6_cash_flow"
+    assert version == "0024_phase2_7_equity_engine"
 
 
 @pytest.mark.asyncio
@@ -186,3 +186,4 @@ async def test_migration_0012_enables_and_forces_rls_on_all_mis_tables(
             )
         ).scalar_one()
         assert policy_count == 1
+

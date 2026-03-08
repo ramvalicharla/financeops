@@ -235,6 +235,16 @@ from financeops.db.models.cash_flow_engine import (  # noqa: F401
     CashFlowRun,
     CashFlowStatementDefinition,
 )
+from financeops.db.models.equity_engine import (  # noqa: F401
+    EquityEvidenceLink,
+    EquityLineDefinition,
+    EquityLineResult,
+    EquityRollforwardRuleDefinition,
+    EquityRun,
+    EquitySourceMapping,
+    EquityStatementDefinition,
+    EquityStatementResult,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -368,6 +378,7 @@ async def async_client(
         ("/api/v1/fx/runs", "fx_translation_reporting"),
         ("/api/v1/ownership", "ownership_consolidation"),
         ("/api/v1/cash-flow", "cash_flow_engine"),
+        ("/api/v1/equity", "equity_engine"),
         ("/api/v1/fx", "fx"),
         ("/api/v1/consolidation/hierarchies", "multi_entity_consolidation"),
         ("/api/v1/consolidation/scopes", "multi_entity_consolidation"),

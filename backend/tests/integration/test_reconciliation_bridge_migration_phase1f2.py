@@ -14,7 +14,7 @@ async def test_migration_0013_applies_cleanly_on_fresh_db(
     conn = await asyncpg.connect(recon_phase1f2_db_url.replace("postgresql+asyncpg://", "postgresql://", 1))
     try:
         version = await conn.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0023_phase2_6_cash_flow"
+        assert version == "0024_phase2_7_equity_engine"
     finally:
         await conn.close()
 
@@ -63,3 +63,4 @@ async def test_migration_0013_enables_and_forces_rls_on_all_reconciliation_bridg
             assert row["relforcerowsecurity"] is True
     finally:
         await conn.close()
+

@@ -10,6 +10,7 @@ from financeops.api.v1 import (
     board_pack_narrative_engine,
     cash_flow_engine,
     consolidation,
+    equity_engine,
     financial_risk_engine,
     fixed_assets,
     fx_translation_reporting,
@@ -138,6 +139,12 @@ router.include_router(
     cash_flow_engine.router,
     prefix="/cash-flow",
     tags=["Cash Flow Engine"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    equity_engine.router,
+    prefix="/equity",
+    tags=["Equity Engine"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
