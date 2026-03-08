@@ -7,4 +7,5 @@ pytest_plugins = (
     "tests.integration.financial_risk_phase1f5_helpers",
     "tests.integration.anomaly_pattern_phase1f6_helpers",
     "tests.integration.board_pack_phase1f7_helpers",
+    "tests.integration.multi_entity_consolidation_phase2_3_helpers",
 )

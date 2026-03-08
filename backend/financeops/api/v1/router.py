@@ -17,6 +17,7 @@ from financeops.api.v1 import (
     lease,
     mis_manager,
     monthend,
+    multi_entity_consolidation,
     payroll_gl_reconciliation,
     payroll_gl_normalization,
     ratio_variance_engine,
@@ -110,6 +111,12 @@ router.include_router(
     consolidation.router,
     prefix="/consolidation",
     tags=["Multi-Currency Consolidation"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    multi_entity_consolidation.router,
+    prefix="/consolidation",
+    tags=["Multi-Entity Consolidation"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(

@@ -196,6 +196,18 @@ from financeops.db.models.anomaly_pattern_engine import (  # noqa: F401
     AnomalyRun,
     AnomalyStatisticalRule,
 )
+from financeops.db.models.multi_entity_consolidation import (  # noqa: F401
+    ConsolidationAdjustmentDefinition,
+    ConsolidationRuleDefinition,
+    ConsolidationScope,
+    EntityHierarchy,
+    EntityHierarchyNode,
+    IntercompanyMappingRule,
+    MultiEntityConsolidationEvidenceLink,
+    MultiEntityConsolidationMetricResult,
+    MultiEntityConsolidationRun,
+    MultiEntityConsolidationVarianceResult,
+)
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -324,6 +336,12 @@ async def async_client(
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),
         ("/api/v1/fx", "fx"),
+        ("/api/v1/consolidation/hierarchies", "multi_entity_consolidation"),
+        ("/api/v1/consolidation/scopes", "multi_entity_consolidation"),
+        ("/api/v1/consolidation/rules", "multi_entity_consolidation"),
+        ("/api/v1/consolidation/intercompany-rules", "multi_entity_consolidation"),
+        ("/api/v1/consolidation/adjustment-definitions", "multi_entity_consolidation"),
+        ("/api/v1/consolidation/runs", "multi_entity_consolidation"),
         ("/api/v1/consolidation", "consolidation"),
         ("/api/v1/revenue", "revenue"),
         ("/api/v1/lease", "lease"),
