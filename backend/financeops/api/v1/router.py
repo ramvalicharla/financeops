@@ -8,6 +8,7 @@ from financeops.api.v1 import (
     auditor,
     bank_recon,
     board_pack_narrative_engine,
+    cash_flow_engine,
     consolidation,
     financial_risk_engine,
     fixed_assets,
@@ -131,6 +132,12 @@ router.include_router(
     ownership_consolidation.router,
     prefix="/ownership",
     tags=["Ownership Consolidation"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    cash_flow_engine.router,
+    prefix="/cash-flow",
+    tags=["Cash Flow Engine"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
