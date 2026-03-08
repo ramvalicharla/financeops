@@ -67,7 +67,7 @@ async def test_migration_0017_applies_cleanly_on_fresh_db(
     )
     try:
         version = await conn.fetchval("SELECT version_num FROM alembic_version")
-        assert version == "0017_phase1f5_financial_risk"
+        assert version == "0018_phase1f6_anomaly_pattern"
     finally:
         await conn.close()
 
