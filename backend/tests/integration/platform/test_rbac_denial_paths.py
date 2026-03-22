@@ -57,8 +57,8 @@ async def test_rbac_denial_path_without_assignments(
         },
     )
     assert create_mod.status_code == 200
-    module_id = create_mod.json()["id"]
-    module_code = create_mod.json()["module_code"]
+    module_id = create_mod.json()["data"]["id"]
+    module_code = create_mod.json()["data"]["module_code"]
     enable = await async_client.post(
         f"/api/v1/platform/modules/tenants/{test_user.tenant_id}/enablement",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -83,6 +83,6 @@ async def test_rbac_denial_path_without_assignments(
         },
     )
     assert authorize.status_code == 200
-    payload = authorize.json()
+    payload = authorize.json()["data"]
     assert payload["decision"] == "deny"
     assert payload["reason_code"] == "PERMISSION_DENIED"

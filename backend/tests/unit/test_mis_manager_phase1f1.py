@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -165,6 +166,6 @@ def test_exception_table_registered_as_append_only() -> None:
 
 def test_migration_contains_rls_enforcement_blocks() -> None:
     migration_text = "migrations/versions/0012_phase1f1_mis_manager.py"
-    content = open(migration_text, encoding="utf-8").read()
+    content = Path(migration_text).read_text(encoding="utf-8")
     assert "FORCE ROW LEVEL SECURITY" in content
     assert "mis_data_snapshots" in content

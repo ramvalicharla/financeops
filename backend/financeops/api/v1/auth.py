@@ -4,9 +4,11 @@ import logging
 
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel, EmailStr
+import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, get_current_user, get_redis
+from financeops.config import limiter, settings
 from financeops.core.exceptions import AuthenticationError
 from financeops.core.security import decode_token, verify_password
 from financeops.db.models.tenants import TenantType
@@ -14,10 +16,12 @@ from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
+    create_mfa_challenge,
     login,
     logout,
     refresh_tokens,
     setup_totp,
+    verify_mfa_challenge,
     verify_totp_setup,
 )
 from financeops.services.credit_service import add_credits
@@ -52,6 +56,7 @@ class LogoutRequest(BaseModel):
 
 
 class MfaVerifyRequest(BaseModel):
+    mfa_challenge_token: str
     totp_code: str
 
 
@@ -118,7 +123,7 @@ async def register(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    await session.commit()
+    await session.flush()
     return {
         "user_id": str(user.id),
         "tenant_id": str(tenant.id),
@@ -136,42 +141,74 @@ async def mfa_setup(
     Generate and store TOTP secret. Returns secret + QR code URL.
     """
     result = await setup_totp(user, session)
-    await session.commit()
+    await session.flush()
     return {
         "totp_secret": result["totp_secret"],
         "qr_code_url": result["qr_code_url"],
     }
 
 
+@limiter.limit(settings.AUTH_MFA_RATE_LIMIT)
 @router.post("/mfa/verify")
 async def mfa_verify(
+    request: Request,
     body: MfaVerifyRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     """
     POST /api/v1/auth/mfa/verify
-    Verify TOTP code and activate MFA on account.
+    Verify MFA challenge token + TOTP and issue token pair.
     """
-    await verify_totp_setup(user, body.totp_code, session)
-    await session.commit()
-    return {"confirmed": True}
+    user, tokens = await verify_mfa_challenge(
+        session,
+        redis_client,
+        mfa_challenge_token=body.mfa_challenge_token,
+        totp_code=body.totp_code,
+        ip_address=request.client.host if request.client else None,
+        device_info=request.headers.get("user-agent"),
+    )
+    await log_action(
+        session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        action="user.login.mfa_verified",
+        resource_type="user",
+        resource_id=str(user.id),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await session.flush()
+    return tokens
 
 
+@limiter.limit(settings.AUTH_LOGIN_RATE_LIMIT)
 @router.post("/login")
 async def user_login(
-    body: LoginRequest,
     request: Request,
+    body: LoginRequest,
     session: AsyncSession = Depends(get_async_session),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     """
     POST /api/v1/auth/login
     Authenticate user, verify MFA if enabled, return token pair.
     """
     user = await get_user_by_email(session, body.email)
-    if user is None or not verify_password(body.password, user.hashed_password):
+    if (
+        user is None
+        or not user.is_active
+        or not verify_password(body.password, user.hashed_password)
+    ):
         raise AuthenticationError("Invalid email or password")
     await set_tenant_context(session, user.tenant_id)
+
+    if user.mfa_enabled:
+        challenge_token = await create_mfa_challenge(redis_client, user=user)
+        return {
+            "requires_mfa": True,
+            "mfa_challenge_token": challenge_token,
+        }
 
     tokens = await login(
         session,
@@ -190,12 +227,14 @@ async def user_login(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    await session.commit()
+    await session.flush()
     return tokens
 
 
+@limiter.limit(settings.AUTH_TOKEN_RATE_LIMIT)
 @router.post("/refresh")
 async def token_refresh(
+    request: Request,
     body: RefreshRequest,
     session: AsyncSession = Depends(get_async_session),
 ) -> dict:
@@ -205,7 +244,7 @@ async def token_refresh(
     """
     await _set_refresh_tenant_context(session, body.refresh_token)
     tokens = await refresh_tokens(session, body.refresh_token)
-    await session.commit()
+    await session.flush()
     return tokens
 
 
@@ -220,7 +259,7 @@ async def user_logout(
     """
     await _set_refresh_tenant_context(session, body.refresh_token)
     await logout(session, body.refresh_token)
-    await session.commit()
+    await session.flush()
     return {"logged_out": True}
 
 

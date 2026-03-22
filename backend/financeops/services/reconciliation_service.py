@@ -310,3 +310,4 @@ async def list_tb_rows(
     stmt = stmt.order_by(TrialBalanceRow.account_code).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+

@@ -106,8 +106,8 @@ async def create_anomaly_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "anomaly_code": row.anomaly_code, "version_token": row.version_token, "status": row.status}
 
 
@@ -156,8 +156,8 @@ async def _create_rule(
     try:
         row = await getattr(repository, create_fn)(**payload)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token, "status": row.status}
 
 
@@ -305,8 +305,8 @@ async def create_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return payload
 
 
@@ -325,10 +325,10 @@ async def execute_run(
             tenant_id=user.tenant_id, run_id=id, actor_user_id=user.id
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return payload
 
 

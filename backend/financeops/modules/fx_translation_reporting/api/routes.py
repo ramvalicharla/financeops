@@ -83,8 +83,8 @@ async def create_reporting_currency_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "reporting_currency_code": row.reporting_currency_code,
@@ -197,8 +197,8 @@ async def create_translation_rule_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token}
 
 
@@ -305,8 +305,8 @@ async def create_rate_selection_policy(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "policy_code": row.policy_code, "version_token": row.version_token}
 
 
@@ -404,8 +404,8 @@ async def create_fx_translation_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return FxTranslationRunCreateResponse(
         run_id=uuid.UUID(result["run_id"]),
         run_token=result["run_token"],
@@ -435,8 +435,8 @@ async def execute_fx_translation_run(
     try:
         result = await service.execute_run(tenant_id=user.tenant_id, run_id=id, created_by=user.id)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return FxTranslationRunExecuteResponse(
         run_id=uuid.UUID(result["run_id"]),
         run_token=result["run_token"],
@@ -489,7 +489,7 @@ async def get_fx_translation_run_summary(
     try:
         return await _build_service(session).summary(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
 
 
 @router.get(

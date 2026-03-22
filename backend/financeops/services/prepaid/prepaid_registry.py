@@ -128,3 +128,4 @@ async def register_prepaids(
 
     registered.sort(key=lambda row: (row.prepaid_code, str(row.prepaid_id)))
     return registered
+

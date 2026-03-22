@@ -27,3 +27,4 @@ def compute_fx_delta_component(
 ) -> Decimal:
     expected_parent = quantize_persisted_amount(local_amount * quantize_rate(expected_rate))
     return quantize_persisted_amount(parent_amount - expected_parent)
+

@@ -123,8 +123,8 @@ async def payroll_gl_recon_phase1f3_1_db_url() -> AsyncGenerator[str, None]:
     env = os.environ.copy()
     env["DATABASE_URL"] = target_url
     env.setdefault("SECRET_KEY", "test-secret-key")
-    env.setdefault("JWT_SECRET", "test-jwt-secret")
-    env.setdefault("FIELD_ENCRYPTION_KEY", "test-field-encryption-key")
+    env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
+    env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
     env.setdefault("REDIS_URL", "redis://localhost:6380/0")
     migration = subprocess.run(
         [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
@@ -623,4 +623,5 @@ async def seed_mapping_and_rule(
         status="active",
         created_by=created_by,
     )
+
 

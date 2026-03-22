@@ -23,3 +23,4 @@ __all__ = [
     "list_manual_monthly_rates",
     "resolve_selected_rate",
 ]
+

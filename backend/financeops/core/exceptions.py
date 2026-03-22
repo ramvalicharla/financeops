@@ -4,8 +4,11 @@ import logging
 from typing import Any
 
 from fastapi import Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from financeops.shared_kernel.response import err
 log = logging.getLogger(__name__)
 
 
@@ -99,20 +102,33 @@ class RateLimitError(FinanceOpsError):
         super().__init__(message)
 
 
+class FeatureNotImplementedError(FinanceOpsError):
+    """Feature exists in registry but is not yet implemented."""
+
+    status_code = 501
+    error_code = "feature_not_implemented"
+
+    def __init__(self, feature: str, message: str = "") -> None:
+        self.feature = feature
+        super().__init__(message or f"Feature '{feature}' is not yet available.")
+
+
 def _error_response(
     request: Request,
     status_code: int,
     error_code: str,
     message: str,
+    field: str | None = None,
 ) -> JSONResponse:
-    correlation_id = getattr(request.state, "correlation_id", "unknown")
+    request_id = getattr(request.state, "request_id", None)
     return JSONResponse(
         status_code=status_code,
-        content={
-            "error": error_code,
-            "message": message,
-            "correlation_id": correlation_id,
-        },
+        content=err(
+            code=error_code,
+            message=message,
+            field=field,
+            request_id=request_id,
+        ).model_dump(mode="json"),
     )
 
 
@@ -136,7 +152,66 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
     )
 
 
+async def feature_not_implemented_handler(
+    request: Request,
+    exc: FeatureNotImplementedError,
+) -> JSONResponse:
+    _ = request
+    return JSONResponse(
+        status_code=501,
+        content={"error": "feature_not_implemented", "feature": exc.feature},
+    )
+
+
+async def http_exception_handler(
+    request: Request,
+    exc: StarletteHTTPException,
+) -> JSONResponse:
+    detail = exc.detail
+    field: str | None = None
+    message: str
+
+    if isinstance(detail, list):
+        message = "Validation failed"
+        if detail and isinstance(detail[0], dict):
+            loc = detail[0].get("loc")
+            if isinstance(loc, list) and loc:
+                field = ".".join(str(item) for item in loc if item != "body")
+    else:
+        message = str(detail)
+
+    return _error_response(
+        request,
+        exc.status_code,
+        f"http_{exc.status_code}",
+        message,
+        field=field,
+    )
+
+
+async def request_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+) -> JSONResponse:
+    field: str | None = None
+    errors = exc.errors()
+    if errors and isinstance(errors[0], dict):
+        loc = errors[0].get("loc")
+        if isinstance(loc, list) and loc:
+            field = ".".join(str(item) for item in loc if item != "body")
+    return _error_response(
+        request,
+        422,
+        "validation_error",
+        "Validation failed",
+        field=field,
+    )
+
+
 def register_exception_handlers(app: Any) -> None:
     """Register all exception handlers on the FastAPI app."""
+    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+    app.add_exception_handler(FeatureNotImplementedError, feature_not_implemented_handler)
     app.add_exception_handler(FinanceOpsError, financeops_error_handler)
     app.add_exception_handler(Exception, unhandled_error_handler)

@@ -478,3 +478,4 @@ async def apply_contract_modifications(
         adjustment_count=created_adjustments,
         adjustments_by_contract=adjustments_by_contract,
     )
+

@@ -249,3 +249,4 @@ def match_intercompany_lines(
 
     decisions.sort(key=lambda row: row.match_key_hash)
     return decisions
+

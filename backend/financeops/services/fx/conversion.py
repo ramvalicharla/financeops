@@ -37,3 +37,4 @@ def apply_rate_to_lines(
         )
         for reference, amount in line_items
     ]
+

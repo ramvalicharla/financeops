@@ -145,14 +145,14 @@ async def test_reconciliation_create_and_run_allow_path(
         },
     )
     assert created.status_code == 201
-    session_id = created.json()["session_id"]
+    session_id = created.json()["data"]["session_id"]
 
     run = await async_client.post(
         f"/api/v1/reconciliation/sessions/{session_id}/run",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert run.status_code == 200
-    payload = run.json()
+    payload = run.json()["data"]
     assert payload["line_count"] >= 1
 
 
@@ -216,4 +216,5 @@ async def test_reconciliation_lines_endpoint_is_tenant_scoped(
     )
     assert response.status_code in (200, 404)
     if response.status_code == 200:
-        assert response.json() == []
+        assert response.json()["data"] == []
+

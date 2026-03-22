@@ -30,3 +30,4 @@ def compute_fx_variance(
         ),
         fx_variance=variance,
     )
+

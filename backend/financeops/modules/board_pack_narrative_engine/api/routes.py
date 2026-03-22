@@ -93,8 +93,8 @@ async def create_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "board_pack_code": row.board_pack_code,
@@ -207,8 +207,8 @@ async def create_section(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "section_code": row.section_code,
@@ -320,8 +320,8 @@ async def create_narrative_template(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "template_code": row.template_code,
@@ -428,8 +428,8 @@ async def create_inclusion_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "rule_code": row.rule_code,
@@ -527,8 +527,8 @@ async def create_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return payload
 
 
@@ -553,10 +553,10 @@ async def execute_run(
             tenant_id=user.tenant_id, run_id=id, actor_user_id=user.id
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return payload
 
 
@@ -599,7 +599,7 @@ async def run_summary(
     try:
         return await _build_service(session).summary(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
 
 
 @router.get(

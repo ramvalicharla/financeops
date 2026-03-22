@@ -250,7 +250,7 @@ async def test_normalized_lines_endpoint_returns_only_tenant_scoped_data(
     )
     assert response.status_code in (200, 404)
     if response.status_code == 200:
-        assert response.json() == []
+        assert response.json()["data"] == []
 
 
 @pytest.mark.asyncio
@@ -286,8 +286,7 @@ async def test_normalization_upload_allow_path(
         },
     )
     assert commit.status_code == 201
-    payload = commit.json()
-
+    payload = commit.json()["data"]
     upload = await async_client.post(
         "/api/v1/normalization/runs/upload",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -306,7 +305,7 @@ async def test_normalization_upload_allow_path(
         },
     )
     assert upload.status_code == 201
-    upload_payload = upload.json()
+    upload_payload = upload.json()["data"]
     assert upload_payload["payroll_line_count"] >= 1
 
     validate = await async_client.post(
@@ -314,7 +313,7 @@ async def test_normalization_upload_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert validate.status_code == 200
-    validate_payload = validate.json()
+    validate_payload = validate.json()["data"]
     assert validate_payload["run_status"] in ("validated", "failed")
 
     if validate_payload["run_status"] == "validated":
@@ -323,11 +322,12 @@ async def test_normalization_upload_allow_path(
             headers={"Authorization": f"Bearer {test_access_token}"},
         )
         assert finalize.status_code == 200
-        assert finalize.json()["run_status"] == "finalized"
+    assert finalize.json()["data"]["run_status"] == "finalized"
 
     summary = await async_client.get(
         f"/api/v1/normalization/runs/{upload_payload['run_id']}/summary",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert summary.status_code == 200
-    assert summary.json()["payroll_line_count"] >= 1
+    assert summary.json()["data"]["payroll_line_count"] >= 1
+

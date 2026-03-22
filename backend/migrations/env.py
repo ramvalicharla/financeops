@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from financeops.db.base import Base
 # Import all models so Alembic can detect them
-from financeops.db.models import tenants, users, audit, credits, prompts  # noqa: F401
+from financeops.db.models import tenants, users, audit, credits, prompts, ai_cost  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

@@ -6,9 +6,13 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any
 
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
+from financeops.db.models.payment import GracePeriodLog, TenantSubscription
+from financeops.modules.payment.domain.enums import SubscriptionStatus
 from financeops.platform.services.enforcement.context_token import issue_context_token
 from financeops.platform.services.isolation.routing_service import resolve_isolation_route
 from financeops.platform.services.quotas.quota_guard import QuotaGuard, QuotaGuardRequest
@@ -33,6 +37,49 @@ class CommandContext:
 
 
 class ControlPlaneAuthorizer:
+    @staticmethod
+    async def _billing_warning_header(
+        session: AsyncSession,
+        *,
+        tenant_id: uuid.UUID,
+    ) -> tuple[str | None, str | None]:
+        subscription = (
+            await session.execute(
+                select(TenantSubscription)
+                .where(TenantSubscription.tenant_id == tenant_id)
+                .order_by(TenantSubscription.created_at.desc(), TenantSubscription.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if subscription is None:
+            return None, None
+        if subscription.status == SubscriptionStatus.SUSPENDED:
+            raise HTTPException(
+                status_code=402,
+                detail="Account suspended. Please update payment method.",
+            )
+        if subscription.status != SubscriptionStatus.GRACE_PERIOD:
+            return None, None
+
+        grace_log = (
+            await session.execute(
+                select(GracePeriodLog)
+                .where(
+                    GracePeriodLog.tenant_id == tenant_id,
+                    GracePeriodLog.subscription_id == subscription.id,
+                    GracePeriodLog.resolved_at.is_(None),
+                )
+                .order_by(GracePeriodLog.created_at.desc(), GracePeriodLog.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        warning_value = (
+            f"grace_period_ending:{grace_log.grace_period_end.date().isoformat()}"
+            if grace_log is not None
+            else "grace_period_ending:unknown"
+        )
+        return warning_value, str(subscription.id)
+
     @staticmethod
     def _bounded_token(value: str, *, max_len: int = 128) -> str:
         text = str(value)
@@ -67,6 +114,10 @@ class ControlPlaneAuthorizer:
     @staticmethod
     async def authorize(session: AsyncSession, context: CommandContext) -> dict[str, Any]:
         await validate_tenant_active(session, tenant_id=context.tenant_id)
+        billing_warning, subscription_id = await ControlPlaneAuthorizer._billing_warning_header(
+            session,
+            tenant_id=context.tenant_id,
+        )
 
         module_id, module_enabled = await resolve_module_enablement(
             session,
@@ -179,6 +230,8 @@ class ControlPlaneAuthorizer:
                 "issued_at": issued_at.isoformat(),
                 "expires_at": expires_at.isoformat(),
                 "correlation_id": context.correlation_id,
+                "billing_warning": billing_warning,
+                "billing_subscription_id": subscription_id,
             }
         )
         return {
@@ -188,4 +241,5 @@ class ControlPlaneAuthorizer:
             "quota_check_id": str(quota_result.get("usage_event_id") or ""),
             "isolation_route_version": int(route.route_version),
             "context_token": token,
+            "billing_warning_header": billing_warning,
         }

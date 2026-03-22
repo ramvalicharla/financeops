@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.core.security import hash_password
-from financeops.db.models.users import IamUser, UserRole
+from financeops.db.models.users import IamSession, IamUser, UserRole
+from financeops.services.audit_service import log_action
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
@@ -134,3 +136,82 @@ async def update_user_role(
         ),
     )
     return user
+
+
+async def offboard_user(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    offboarded_by: uuid.UUID,
+    reason: str,
+) -> dict:
+    """
+    Atomically offboard a user. All or nothing.
+    """
+    user_result = await session.execute(
+        select(IamUser).where(
+            IamUser.id == user_id,
+            IamUser.tenant_id == tenant_id,
+        )
+    )
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise NotFoundError(f"User {user_id} not found in tenant {tenant_id}")
+    if not user.is_active:
+        raise ValidationError(f"User {user_id} is already inactive")
+
+    sessions_result = await session.execute(
+        delete(IamSession)
+        .where(IamSession.user_id == user_id)
+        .returning(IamSession.id)
+    )
+    sessions_revoked = len(list(sessions_result.fetchall()))
+
+    grants_revoked = 0
+    try:
+        from financeops.db.models.auditor import AuditorGrant
+
+        grants_result = await session.execute(
+            delete(AuditorGrant)
+            .where(AuditorGrant.user_id == user_id)
+            .returning(AuditorGrant.id)
+        )
+        grants_revoked = len(list(grants_result.fetchall()))
+    except Exception:
+        grants_revoked = 0
+
+    await session.execute(
+        update(IamUser)
+        .where(
+            IamUser.id == user_id,
+            IamUser.tenant_id == tenant_id,
+        )
+        .values(
+            is_active=False,
+            mfa_enabled=False,
+            totp_secret_encrypted=None,
+        )
+    )
+
+    await log_action(
+        session,
+        tenant_id=tenant_id,
+        user_id=offboarded_by,
+        action="user.offboarded",
+        resource_type="user",
+        resource_id=str(user_id),
+        resource_name=user.email,
+        new_value={
+            "reason": reason,
+            "sessions_revoked": sessions_revoked,
+            "grants_revoked": grants_revoked,
+        },
+    )
+    await session.commit()
+    return {
+        "user_id": str(user_id),
+        "offboarded_at": datetime.now(UTC).isoformat(),
+        "sessions_revoked": sessions_revoked,
+        "grants_revoked": grants_revoked,
+    }
+

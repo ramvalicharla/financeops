@@ -48,7 +48,13 @@ async def _runtime_stub_lineage(payload: PrepaidAmortizationWorkflowInput) -> di
 
 @activity.defn(name="prepaid_finalize_activity")
 async def _runtime_stub_finalize(payload: PrepaidFinalizeInput) -> dict:
-    return {"event_type": payload.event_type, "event_seq": 3, "metadata": payload.metadata_json}
+    if isinstance(payload, dict):
+        event_type = payload.get("event_type", "completed")
+        metadata = payload.get("metadata_json", {})
+    else:
+        event_type = getattr(payload, "event_type", "completed")
+        metadata = getattr(payload, "metadata_json", {})
+    return {"event_type": event_type, "event_seq": 3, "metadata": metadata}
 
 
 @pytest.mark.asyncio

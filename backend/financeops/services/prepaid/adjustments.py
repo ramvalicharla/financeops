@@ -272,3 +272,4 @@ async def resolve_effective_version_token(
     if latest is None:
         return root_schedule_version_token
     return latest.new_schedule_version_token
+

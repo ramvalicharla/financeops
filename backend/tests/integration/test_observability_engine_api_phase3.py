@@ -170,7 +170,7 @@ async def test_observability_endpoints_allow_authorized_tenant(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert run_response.status_code == 200
-    run_payload = run_response.json()
+    run_payload = run_response.json()["data"]
     assert run_payload["module_code"] == "equity_engine"
 
     dependency_response = await async_client.get(
@@ -178,7 +178,7 @@ async def test_observability_endpoints_allow_authorized_tenant(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert dependency_response.status_code == 200
-    assert dependency_response.json()["run_id"] == str(run_a_id)
+    assert dependency_response.json()["data"]["run_id"] == str(run_a_id)
 
     diff_response = await async_client.post(
         "/api/v1/observability/diff",
@@ -186,7 +186,7 @@ async def test_observability_endpoints_allow_authorized_tenant(
         json={"base_run_id": str(run_a_id), "compare_run_id": str(run_b_id)},
     )
     assert diff_response.status_code == 201
-    diff_payload = diff_response.json()
+    diff_payload = diff_response.json()["data"]
     assert diff_payload["drift_flag"] is True
 
     replay_response = await async_client.post(
@@ -194,12 +194,12 @@ async def test_observability_endpoints_allow_authorized_tenant(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert replay_response.status_code == 200
-    assert replay_response.json()["matches"] is True
+    assert replay_response.json()["data"]["matches"] is True
 
     graph_response = await async_client.get(
         f"/api/v1/observability/graph/{run_a_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert graph_response.status_code == 200
-    assert graph_response.json()["root_run_id"] == str(run_a_id)
+    assert graph_response.json()["data"]["root_run_id"] == str(run_a_id)
 

@@ -204,7 +204,7 @@ async def test_detect_commit_and_list_templates(
         },
     )
     assert detect.status_code == 200
-    detection_payload = detect.json()
+    detection_payload = detect.json()["data"]
     assert detection_payload["signature"]["structure_hash"]
 
     commit = await async_client.post(
@@ -232,7 +232,7 @@ async def test_detect_commit_and_list_templates(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert list_resp.status_code == 200
-    rows = list_resp.json()
+    rows = list_resp.json()["data"]
     assert any(row["template_code"] == "pnl_monthly_test" for row in rows)
 
 
@@ -265,8 +265,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
             "file_content_base64": csv_payload,
         },
     )
-    detection_payload = detect.json()
-
+    detection_payload = detect.json()["data"]
     commit = await async_client.post(
         "/api/v1/mis/templates/commit-version",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -285,8 +284,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
             "activate": True,
         },
     )
-    commit_payload = commit.json()
-
+    commit_payload = commit.json()["data"]
     upload_body = {
         "organisation_id": str(test_user.tenant_id),
         "template_id": commit_payload["template_id"],
@@ -304,7 +302,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
         json=upload_body,
     )
     assert first.status_code == 201
-    first_payload = first.json()
+    first_payload = first.json()["data"]
     assert first_payload["idempotent"] is False
 
     second = await async_client.post(
@@ -313,7 +311,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
         json=upload_body,
     )
     assert second.status_code == 201
-    second_payload = second.json()
+    second_payload = second.json()["data"]
     assert second_payload["idempotent"] is True
     assert second_payload["snapshot_id"] == first_payload["snapshot_id"]
     assert second_payload["snapshot_token"] == first_payload["snapshot_token"]
@@ -332,3 +330,4 @@ async def test_missing_control_plane_token_is_rejected(
         },
     )
     assert response.status_code == 401
+

@@ -257,3 +257,4 @@ async def apply_disposals(
 
     rows.sort(key=lambda row: (row.depreciation_date, row.period_seq, row.schedule_version_token))
     return DisposalApplicationResult(rows=rows, events=persisted_events, latest_schedule_version_token=latest_token)
+

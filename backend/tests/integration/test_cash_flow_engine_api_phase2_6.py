@@ -123,5 +123,6 @@ async def test_cash_flow_list_definitions_allows_authorized_tenant(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert list_response.status_code == 200
-    rows = list_response.json()
+    rows = list_response.json()["data"]
     assert any(row["definition_code"] == "CF_AUTH_MAIN" for row in rows)
+

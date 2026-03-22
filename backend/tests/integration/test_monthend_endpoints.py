@@ -19,7 +19,7 @@ async def test_create_monthend_checklist(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "checklist_id" in data
     assert data["status"] == "open"
     assert data["entity_name"] == "ME_API_Entity"
@@ -41,14 +41,14 @@ async def test_get_monthend_checklist_with_tasks(
             "add_default_tasks": True,
         },
     )
-    checklist_id = create_resp.json()["checklist_id"]
+    checklist_id = create_resp.json()["data"]["checklist_id"]
 
     get_resp = await async_client.get(
         f"/api/v1/monthend/{checklist_id}",
         headers=headers,
     )
     assert get_resp.status_code == 200
-    data = get_resp.json()
+    data = get_resp.json()["data"]
     assert data["checklist_id"] == checklist_id
     assert len(data["tasks"]) == 10
 
@@ -69,13 +69,13 @@ async def test_update_task_status(
             "add_default_tasks": True,
         },
     )
-    checklist_id = create_resp.json()["checklist_id"]
+    checklist_id = create_resp.json()["data"]["checklist_id"]
 
     get_resp = await async_client.get(
         f"/api/v1/monthend/{checklist_id}",
         headers=headers,
     )
-    task_id = get_resp.json()["tasks"][0]["task_id"]
+    task_id = get_resp.json()["data"]["tasks"][0]["task_id"]
 
     patch_resp = await async_client.patch(
         f"/api/v1/monthend/{checklist_id}/tasks/{task_id}",
@@ -83,7 +83,7 @@ async def test_update_task_status(
         json={"status": "completed"},
     )
     assert patch_resp.status_code == 200
-    assert patch_resp.json()["status"] == "completed"
+    assert patch_resp.json()["data"]["status"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -102,7 +102,7 @@ async def test_close_monthend_checklist(
             "add_default_tasks": False,
         },
     )
-    checklist_id = create_resp.json()["checklist_id"]
+    checklist_id = create_resp.json()["data"]["checklist_id"]
 
     close_resp = await async_client.post(
         f"/api/v1/monthend/{checklist_id}/close",
@@ -110,7 +110,7 @@ async def test_close_monthend_checklist(
         json={"notes": "Period closed successfully"},
     )
     assert close_resp.status_code == 201
-    data = close_resp.json()
+    data = close_resp.json()["data"]
     assert data["status"] == "closed"
     assert data["closed_at"] is not None
 
@@ -119,3 +119,4 @@ async def test_close_monthend_checklist(
 async def test_monthend_requires_auth(async_client: AsyncClient):
     r = await async_client.get("/api/v1/monthend/")
     assert r.status_code == 401
+

@@ -58,7 +58,7 @@ async def test_feature_flag_canary_rollout(
         },
     )
     assert module_response.status_code == 200
-    module_id = module_response.json()["id"]
+    module_id = module_response.json()["data"]["id"]
 
     create_flag = await async_client.post(
         f"/api/v1/platform/flags/tenants/{test_user.tenant_id}",
@@ -90,4 +90,4 @@ async def test_feature_flag_canary_rollout(
         },
     )
     assert evaluate.status_code == 200
-    assert evaluate.json()["enabled"] is False
+    assert evaluate.json()["data"]["enabled"] is False

@@ -1,0 +1,50 @@
+{
+  "uid": "finops-business",
+  "title": "FinanceOps Business",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "1m",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Active Tenants",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "financeops_active_tenants_total", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Credits Consumed Today",
+      "gridPos": { "h": 6, "w": 8, "x": 8, "y": 0 },
+      "targets": [{ "expr": "increase(financeops_credits_consumed_total[1d])", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "AI Cost Today",
+      "gridPos": { "h": 6, "w": 8, "x": 16, "y": 0 },
+      "targets": [{ "expr": "increase(financeops_ai_cost_usd_total[1d])", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "ERP Syncs Today",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 6 },
+      "targets": [{ "expr": "increase(financeops_erp_sync_total[1d])", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Workflow Completions Today",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
+      "targets": [{ "expr": "increase(financeops_workflow_completed_total[1d])", "refId": "A" }]
+    }
+  ]
+}
+

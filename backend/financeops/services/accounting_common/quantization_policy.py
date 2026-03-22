@@ -34,3 +34,4 @@ def quantize_mapping_values(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             result[key] = value
     return result
+

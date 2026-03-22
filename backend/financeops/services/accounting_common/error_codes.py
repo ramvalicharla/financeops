@@ -14,3 +14,4 @@ ACCOUNTING_ERROR_CODES: tuple[str, ...] = (
     DUPLICATE_IDEMPOTENT_REQUEST,
 )
 
+

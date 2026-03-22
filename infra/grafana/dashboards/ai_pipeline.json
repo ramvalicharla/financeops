@@ -1,0 +1,50 @@
+{
+  "uid": "finops-ai",
+  "title": "FinanceOps AI Pipeline",
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "AI Pipeline Runs per Hour",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(rate(financeops_workflow_started_total{workflow_type=\"ai_pipeline\"}[1h]))", "refId": "A" }]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "AI Cost by Model",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "sum(rate(financeops_ai_cost_usd_total[5m])) by (model)", "refId": "A" }]
+    },
+    {
+      "id": 3,
+      "type": "piechart",
+      "title": "Local vs Cloud Model Ratio",
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
+      "targets": [{ "expr": "sum(financeops_ai_tokens_total) by (provider)", "refId": "A" }]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Fallback Rate",
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 8 },
+      "targets": [{ "expr": "sum(rate(financeops_ai_fallback_total[5m]))", "refId": "A" }]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Token Budget Usage per Tenant",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 8 },
+      "targets": [{ "expr": "sum(financeops_ai_tokens_total) by (tenant_id)", "refId": "A", "format": "table" }]
+    }
+  ]
+}
+

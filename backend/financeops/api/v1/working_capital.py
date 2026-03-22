@@ -68,7 +68,7 @@ async def create_wc_snapshot(
         currency=body.currency,
         notes=body.notes,
     )
-    await session.commit()
+    await session.flush()
     return _snapshot_to_dict(snap)
 
 

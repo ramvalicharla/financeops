@@ -25,7 +25,7 @@ async def test_create_bank_statement(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "statement_id" in data
     assert data["bank_name"] == "HDFC Bank"
     assert data["status"] == "pending"
@@ -55,7 +55,7 @@ async def test_add_bank_transaction(
         },
     )
     assert stmt_resp.status_code == 201
-    stmt_id = stmt_resp.json()["statement_id"]
+    stmt_id = stmt_resp.json()["data"]["statement_id"]
 
     txn_resp = await async_client.post(
         "/api/v1/bank-recon/transactions",
@@ -70,7 +70,7 @@ async def test_add_bank_transaction(
         },
     )
     assert txn_resp.status_code == 201
-    data = txn_resp.json()
+    data = txn_resp.json()["data"]
     assert "transaction_id" in data
     assert data["match_status"] == "unmatched"
 
@@ -97,7 +97,7 @@ async def test_run_bank_reconciliation(
             "file_hash": "c" * 64,
         },
     )
-    stmt_id = stmt_resp.json()["statement_id"]
+    stmt_id = stmt_resp.json()["data"]["statement_id"]
 
     await async_client.post(
         "/api/v1/bank-recon/transactions",
@@ -117,7 +117,7 @@ async def test_run_bank_reconciliation(
         headers=headers,
     )
     assert run_resp.status_code == 201
-    data = run_resp.json()
+    data = run_resp.json()["data"]
     assert "open_items_created" in data
     assert data["open_items_created"] == 1
 
@@ -131,7 +131,7 @@ async def test_list_bank_statements(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "statements" in data
 
 
@@ -139,3 +139,4 @@ async def test_list_bank_statements(
 async def test_bank_recon_requires_auth(async_client: AsyncClient):
     r = await async_client.get("/api/v1/bank-recon/statements")
     assert r.status_code == 401
+

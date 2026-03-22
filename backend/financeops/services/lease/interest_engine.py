@@ -17,3 +17,4 @@ def compute_period_interest(
 ) -> Decimal:
     period_rate = quantize_rate(annual_discount_rate / Decimal(str(periods_per_year(payment_frequency))))
     return quantize_persisted_amount(opening_liability_reporting_currency * period_rate)
+

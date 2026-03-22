@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import secrets
 from datetime import UTC, datetime, timedelta
 
+import redis.asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,6 +59,21 @@ async def login(
         if not verify_totp(secret, totp_code):
             raise AuthenticationError("Invalid TOTP code")
 
+    return await _issue_session_tokens(
+        session,
+        user=user,
+        ip_address=ip_address,
+        device_info=device_info,
+    )
+
+
+async def _issue_session_tokens(
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    ip_address: str | None = None,
+    device_info: str | None = None,
+) -> dict:
     access_token = create_access_token(user.id, user.tenant_id, user.role.value)
     refresh_token = create_refresh_token(user.id, user.tenant_id)
     refresh_token_hash = _hash_token(refresh_token)
@@ -101,6 +119,78 @@ async def login(
         "refresh_token": refresh_token,
         "token_type": "bearer",
     }
+
+
+async def create_mfa_challenge(
+    redis_client: aioredis.Redis,
+    *,
+    user: IamUser,
+    ttl_seconds: int = 90,
+) -> str:
+    """
+    Issue a short-lived, single-use MFA challenge token stored in Redis.
+    """
+    token = secrets.token_urlsafe(32)
+    key = f"mfa_challenge:{token}"
+    payload = json.dumps(
+        {
+            "user_id": str(user.id),
+            "tenant_id": str(user.tenant_id),
+        }
+    )
+    await redis_client.setex(key, ttl_seconds, payload)
+    return token
+
+
+async def verify_mfa_challenge(
+    session: AsyncSession,
+    redis_client: aioredis.Redis,
+    *,
+    mfa_challenge_token: str,
+    totp_code: str,
+    ip_address: str | None = None,
+    device_info: str | None = None,
+) -> tuple[IamUser, dict]:
+    """
+    Validate MFA challenge token + TOTP and issue auth tokens.
+    """
+    key = f"mfa_challenge:{mfa_challenge_token}"
+    raw_payload = await redis_client.get(key)
+    if not raw_payload:
+        raise AuthenticationError("MFA challenge expired")
+
+    try:
+        challenge_payload = json.loads(raw_payload)
+        user_id = challenge_payload["user_id"]
+        tenant_id = challenge_payload["tenant_id"]
+    except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise AuthenticationError("Invalid MFA challenge payload") from exc
+
+    user_result = await session.execute(
+        select(IamUser).where(
+            IamUser.id == user_id,
+            IamUser.tenant_id == tenant_id,
+            IamUser.is_active.is_(True),
+        )
+    )
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        raise AuthenticationError("User not found")
+    if not user.mfa_enabled or not user.totp_secret_encrypted:
+        raise AuthenticationError("MFA is not configured for this account")
+
+    secret = decrypt_field(user.totp_secret_encrypted)
+    if not verify_totp(secret, totp_code):
+        raise AuthenticationError("Invalid TOTP code")
+
+    await redis_client.delete(key)
+    tokens = await _issue_session_tokens(
+        session,
+        user=user,
+        ip_address=ip_address,
+        device_info=device_info,
+    )
+    return user, tokens
 
 
 async def refresh_tokens(
@@ -257,3 +347,4 @@ async def verify_totp_setup(user: IamUser, code: str, session: AsyncSession) -> 
         ),
     )
     return True
+

@@ -34,3 +34,4 @@ def ensure_lineage_complete(result: LineageValidationResult) -> None:
     if result.is_complete:
         return
     raise AccountingValidationError(error_code=result.error_code)
+

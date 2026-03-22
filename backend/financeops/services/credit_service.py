@@ -18,7 +18,7 @@ from financeops.db.models.credits import (
     ReservationStatus,
 )
 from financeops.services.audit_writer import AuditEvent, AuditWriter
-from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
 
@@ -197,7 +197,7 @@ async def confirm_credits(
 
     reservation.status = ReservationStatus.confirmed
 
-    previous_hash = await get_previous_hash(session, CreditTransaction, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, CreditTransaction, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "task_type": reservation.task_type,
@@ -302,7 +302,7 @@ async def release_credits(
 
     reservation.status = ReservationStatus.released
 
-    previous_hash = await get_previous_hash(session, CreditTransaction, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, CreditTransaction, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "task_type": reservation.task_type,
@@ -419,7 +419,7 @@ async def add_credits(
     balance.balance = balance.balance + amount
     balance.updated_at = datetime.now(timezone.utc)
 
-    previous_hash = await get_previous_hash(session, CreditTransaction, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, CreditTransaction, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "task_type": reason,
@@ -481,3 +481,4 @@ async def add_credits(
         reason,
     )
     return tx
+

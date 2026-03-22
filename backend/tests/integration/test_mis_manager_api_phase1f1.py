@@ -331,4 +331,4 @@ async def test_normalized_lines_endpoint_returns_only_tenant_scoped_data(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert other.status_code == 200
-    assert other.json() == []
+    assert other.json()["data"] == []

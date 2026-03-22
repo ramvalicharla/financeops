@@ -370,3 +370,4 @@ async def fetch_all_provider_quotes(
             continue
         results.append(item)
     return results
+

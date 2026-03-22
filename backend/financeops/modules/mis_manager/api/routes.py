@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
@@ -37,6 +37,7 @@ from financeops.modules.mis_manager.infrastructure.repository import (
 from financeops.modules.mis_manager.policies.control_plane_policy import (
     mis_control_plane_dependency,
 )
+from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter()
 
@@ -84,7 +85,7 @@ async def detect_template(
             sheet_name=body.sheet_name,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="internal_error") from exc
     return result
 
 
@@ -123,8 +124,8 @@ async def commit_template_version(
             effective_from=body.effective_from,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return result
 
 
@@ -161,8 +162,8 @@ async def upload_snapshot(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return SnapshotUploadResponse(**result)
 
 
@@ -194,7 +195,7 @@ async def validate_snapshot(
         raise HTTPException(
             status_code=404 if "not found" in detail.lower() else 400, detail=detail
         ) from exc
-    await session.commit()
+    await session.flush()
     return SnapshotStatusActionResponse(**result)
 
 
@@ -226,13 +227,13 @@ async def finalize_snapshot(
         raise HTTPException(
             status_code=404 if "not found" in detail.lower() else 400, detail=detail
         ) from exc
-    await session.commit()
+    await session.flush()
     return SnapshotStatusActionResponse(**result)
 
 
 @router.get(
     "/templates",
-    response_model=list[TemplateSummaryResponse],
+    response_model=Paginated[TemplateSummaryResponse] | list[TemplateSummaryResponse],
     dependencies=[
         Depends(
             mis_control_plane_dependency(
@@ -242,12 +243,15 @@ async def finalize_snapshot(
     ],
 )
 async def list_templates(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> list[TemplateSummaryResponse]:
+) -> Paginated[TemplateSummaryResponse] | list[TemplateSummaryResponse]:
     service = _build_service(session)
     templates = await service.list_templates(tenant_id=user.tenant_id)
-    return [
+    data = [
         TemplateSummaryResponse(
             id=row.id,
             template_code=row.template_code,
@@ -258,11 +262,19 @@ async def list_templates(
         )
         for row in templates
     ]
+    if "limit" not in request.query_params and "offset" not in request.query_params:
+        return data
+    return Paginated[TemplateSummaryResponse](
+        data=data[offset : offset + limit],
+        total=len(data),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(
     "/templates/{id}/versions",
-    response_model=list[TemplateVersionSummaryResponse],
+    response_model=Paginated[TemplateVersionSummaryResponse] | list[TemplateVersionSummaryResponse],
     dependencies=[
         Depends(
             mis_control_plane_dependency(
@@ -273,14 +285,17 @@ async def list_templates(
 )
 async def list_template_versions(
     id: uuid.UUID,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> list[TemplateVersionSummaryResponse]:
+) -> Paginated[TemplateVersionSummaryResponse] | list[TemplateVersionSummaryResponse]:
     service = _build_service(session)
     versions = await service.list_template_versions(
         tenant_id=user.tenant_id, template_id=id
     )
-    return [
+    data = [
         TemplateVersionSummaryResponse(
             id=row.id,
             version_no=row.version_no,
@@ -291,6 +306,14 @@ async def list_template_versions(
         )
         for row in versions
     ]
+    if "limit" not in request.query_params and "offset" not in request.query_params:
+        return data
+    return Paginated[TemplateVersionSummaryResponse](
+        data=data[offset : offset + limit],
+        total=len(data),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(

@@ -89,8 +89,8 @@ async def create_mapping(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "mapping_code": row.mapping_code,
@@ -200,8 +200,8 @@ async def create_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "rule_code": row.rule_code,
@@ -305,8 +305,8 @@ async def create_run(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return RunCreateResponse(**result)
 
 
@@ -338,7 +338,7 @@ async def execute_run(
             status_code=404 if "not found" in detail.lower() else 400,
             detail=detail,
         ) from exc
-    await session.commit()
+    await session.flush()
     return RunExecuteResponse(**result)
 
 
@@ -386,7 +386,7 @@ async def get_run_summary(
     try:
         result = await service.summary(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
     return RunSummaryResponse(**result)
 
 
@@ -410,7 +410,7 @@ async def list_lines(
     try:
         return await service.list_lines(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
 
 
 @router.get(
@@ -433,7 +433,7 @@ async def list_exceptions(
     try:
         return await service.list_exceptions(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
 
 
 @router.post(
@@ -465,8 +465,8 @@ async def attach_evidence(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ActionResponse(
         evidence_id=uuid.UUID(result["evidence_id"]),
         event_id=uuid.UUID(result["event_id"]),
@@ -498,8 +498,8 @@ async def resolve_line(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ActionResponse(
         exception_id=uuid.UUID(result["exception_id"]),
         event_id=uuid.UUID(result["event_id"]),
@@ -531,8 +531,8 @@ async def reopen_line(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ActionResponse(
         exception_id=uuid.UUID(result["exception_id"]),
         event_id=uuid.UUID(result["event_id"]),

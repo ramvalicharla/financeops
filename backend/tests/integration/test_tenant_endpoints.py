@@ -13,7 +13,7 @@ async def test_get_tenant_me(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert data["tenant_id"] == str(test_tenant.id)
     assert data["display_name"] == "Test Tenant"
 
@@ -27,7 +27,7 @@ async def test_list_tenant_users(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "users" in data
     assert len(data["users"]) >= 1
 
@@ -41,7 +41,7 @@ async def test_get_credits(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "balance" in data
     assert "available" in data
     assert "transactions" in data
@@ -63,7 +63,7 @@ async def test_invite_user_requires_finance_leader(
     )
     # finance_leader should be allowed
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert data["email"] == "invited@example.com"
 
 
@@ -80,13 +80,14 @@ async def test_update_tenant_me_uses_mutation_path(
         },
     )
     assert response.status_code == 200
-    assert response.json()["updated"] is True
+    assert response.json()["data"]["updated"] is True
 
     verify_resp = await async_client.get(
         "/api/v1/tenants/me",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert verify_resp.status_code == 200
-    payload = verify_resp.json()
+    payload = verify_resp.json()["data"]
     assert payload["display_name"] == "Renamed Tenant"
     assert payload["timezone"] == "Asia/Kolkata"
+

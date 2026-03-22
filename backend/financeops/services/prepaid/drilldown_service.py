@@ -183,3 +183,4 @@ async def get_journal_drill(
         "credit_account": journal.credit_account,
         "amount_reporting_currency": _decimal_text(journal.amount_reporting_currency),
     }
+

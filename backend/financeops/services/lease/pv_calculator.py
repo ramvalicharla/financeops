@@ -74,3 +74,4 @@ def calculate_present_value(
         present_value_lease_currency=pv_lease_quantized,
         present_value_reporting_currency=pv_reporting,
     )
+

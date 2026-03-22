@@ -240,3 +240,4 @@ async def apply_fx_to_snapshots(
         key=lambda row: (str(row.entity_id), row.account_code, str(row.snapshot_line_id))
     )
     return applied_rows
+

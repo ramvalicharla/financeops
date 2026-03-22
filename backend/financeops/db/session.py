@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from financeops.config import settings
+from financeops.db.rls import clear_tenant_context, set_tenant_context
 
 log = logging.getLogger(__name__)
 
@@ -54,30 +55,14 @@ async def tenant_session(tenant_id: UUID | str) -> AsyncGenerator[AsyncSession, 
     """
     async with AsyncSessionLocal() as session:
         try:
-            await set_rls_context(session, str(tenant_id))
+            await set_tenant_context(session, str(tenant_id))
             yield session
         except Exception:
             await session.rollback()
             raise
         finally:
-            await clear_rls_context(session)
+            await clear_tenant_context(session)
             await session.close()
-
-
-async def set_rls_context(session: AsyncSession, tenant_id: str) -> None:
-    """Set PostgreSQL session variable for RLS enforcement."""
-    await session.execute(
-        text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
-        {"tenant_id": str(tenant_id)},
-    )
-
-
-async def clear_rls_context(session: AsyncSession) -> None:
-    """Clear the RLS context (sets empty string)."""
-    await session.execute(
-        text("SELECT set_config('app.current_tenant_id', '', true)")
-    )
-
 
 async def check_db_health() -> dict[str, Any]:
     """Return DB health status. Used by /health/deep endpoint."""

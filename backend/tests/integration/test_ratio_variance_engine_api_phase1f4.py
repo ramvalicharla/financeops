@@ -199,14 +199,14 @@ async def test_ratio_variance_allow_path(
         },
     )
     assert create.status_code == 201
-    run_id = create.json()["run_id"]
+    run_id = create.json()["data"]["run_id"]
 
     execute = await async_client.post(
         f"/api/v1/ratio-variance/runs/{run_id}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert execute.status_code == 200
-    executed = execute.json()
+    executed = execute.json()["data"]
     assert executed["metric_count"] >= 1
 
     summary = await async_client.get(
@@ -214,11 +214,12 @@ async def test_ratio_variance_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert summary.status_code == 200
-    assert summary.json()["metric_count"] >= 1
+    assert summary.json()["data"]["metric_count"] >= 1
 
     evidence = await async_client.get(
         f"/api/v1/ratio-variance/runs/{executed['run_id']}/evidence",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert evidence.status_code == 200
-    assert isinstance(evidence.json(), list)
+    assert isinstance(evidence.json()["data"], list)
+

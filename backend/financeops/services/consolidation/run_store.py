@@ -25,3 +25,4 @@ async def get_run_or_raise(
     if run is None:
         raise NotFoundError("Consolidation run not found")
     return run
+

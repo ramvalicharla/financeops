@@ -98,7 +98,7 @@ async def test_fx_fetch_live_endpoint_uses_temporal(
             json={"base_currency": "USD", "quote_currency": "INR", "rate_date": "2026-03-06"},
         )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert data["status"] == "success"
     assert data["selected_source"] == "provider_consensus"
 
@@ -119,7 +119,7 @@ async def test_fx_fetch_live_endpoint_surfaces_degraded_status(
         )
 
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert data["status"] == "degraded"
     assert len(data["providers"]) == 4
     assert data["providers"][2]["error"] == "OPEN_EXCHANGE_RATES_API_KEY not configured"
@@ -144,7 +144,7 @@ async def test_manual_monthly_create_and_list(
         },
     )
     assert create_response.status_code == 201
-    payload = create_response.json()
+    payload = create_response.json()["data"]
     assert payload["count"] == 1
     assert payload["rates"][0]["quote_currency"] == "TWD"
 
@@ -154,7 +154,7 @@ async def test_manual_monthly_create_and_list(
         params={"period_year": 2026, "period_month": 3, "base_currency": "USD", "quote_currency": "TWD"},
     )
     assert list_response.status_code == 200
-    assert list_response.json()["count"] >= 1
+    assert list_response.json()["data"]["count"] >= 1
 
 
 @pytest.mark.asyncio
@@ -193,7 +193,7 @@ async def test_convert_daily_uses_selected_rate(
         },
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert data["count"] == 1
     assert data["lines"][0]["applied_rate"] == "80.000000"
     assert data["lines"][0]["converted_amount"] == "800.00"
@@ -221,7 +221,7 @@ async def test_apply_month_end_endpoint_uses_temporal(
             },
         )
     assert response.status_code == 201
-    assert response.json()["lock_rate_id"] == "stub-lock-id"
+    assert response.json()["data"]["lock_rate_id"] == "stub-lock-id"
 
 
 @pytest.mark.asyncio
@@ -244,7 +244,7 @@ async def test_variance_endpoint_persists_result(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert data["fx_variance"] == "-20.000000"
 
 
@@ -254,3 +254,4 @@ async def test_fx_endpoints_require_auth(async_client: AsyncClient):
         "/api/v1/fx/manual-monthly",
     )
     assert response.status_code == 401
+

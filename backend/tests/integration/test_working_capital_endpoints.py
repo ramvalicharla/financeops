@@ -23,7 +23,7 @@ async def test_create_working_capital_snapshot(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "snapshot_id" in data
     assert data["entity_name"] == "WC_API_Entity"
     assert "current_ratio" in data
@@ -39,7 +39,7 @@ async def test_list_working_capital_snapshots(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "snapshots" in data
     assert "count" in data
 
@@ -69,7 +69,7 @@ async def test_get_latest_snapshot(
         headers=headers,
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert data["entity_name"] == entity
     assert data["period_year"] == 2025
 
@@ -78,3 +78,4 @@ async def test_get_latest_snapshot(
 async def test_working_capital_requires_auth(async_client: AsyncClient):
     r = await async_client.get("/api/v1/working-capital/snapshots")
     assert r.status_code == 401
+

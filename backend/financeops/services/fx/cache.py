@@ -138,3 +138,4 @@ async def invalidate_manual_monthly_cache(
         await redis_client.delete(key)
     except Exception:
         return
+

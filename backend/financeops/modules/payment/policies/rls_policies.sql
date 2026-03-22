@@ -1,0 +1,13 @@
+-- Payment module RLS policies are enforced by migration 0027_payment_module.
+-- This file documents the canonical tenant_isolation policy pattern used:
+--
+-- ALTER TABLE <table_name> ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE <table_name> FORCE ROW LEVEL SECURITY;
+-- CREATE POLICY tenant_isolation ON <table_name>
+--   USING (
+--     tenant_id = COALESCE(
+--       current_setting('app.tenant_id', true),
+--       current_setting('app.current_tenant_id', true)
+--     )::uuid
+--   );
+

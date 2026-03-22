@@ -67,3 +67,4 @@ def select_rate_with_precedence(
         )
 
     raise ValueError("No selectable FX rate available from manual/provider/previous sources")
+

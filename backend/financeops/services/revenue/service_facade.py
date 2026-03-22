@@ -887,3 +887,19 @@ def register_workflow() -> type[Any]:
     from financeops.temporal.revenue_workflows import RevenueRecognitionWorkflow
 
     return RevenueRecognitionWorkflow
+
+
+class RevenueFacade:
+    """Compatibility facade exposing revenue service entrypoints."""
+
+    create_run = staticmethod(create_run)
+    mark_run_running = staticmethod(mark_run_running)
+    load_contracts_and_obligations_for_run = staticmethod(load_contracts_and_obligations_for_run)
+    allocate_contract_value_for_run = staticmethod(allocate_contract_value_for_run)
+    generate_revenue_schedule_for_run = staticmethod(generate_revenue_schedule_for_run)
+    build_journal_preview_for_run = staticmethod(build_journal_preview_for_run)
+    validate_lineage_for_run = staticmethod(validate_lineage_for_run)
+    finalize_run = staticmethod(finalize_run)
+    get_run_status = staticmethod(get_run_status)
+    get_results = staticmethod(get_results)
+

@@ -137,3 +137,4 @@ def build_payment_timeline(
         if current.payment_sequence == previous.payment_sequence and current.payment_date < previous.payment_date:
             raise ValidationError("Lease payment timeline date regression detected")
     return timeline
+

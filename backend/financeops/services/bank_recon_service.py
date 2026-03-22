@@ -9,7 +9,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.bank_recon import BankStatement, BankTransaction, BankReconItem
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ async def create_bank_statement(
     transaction_count: int = 0,
 ) -> BankStatement:
     """Create a bank statement header record (INSERT ONLY)."""
-    previous_hash = await get_previous_hash(session, BankStatement, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, BankStatement, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "bank_name": bank_name,
@@ -80,7 +80,7 @@ async def add_bank_transaction(
     reference: str | None = None,
 ) -> BankTransaction:
     """Add a single bank transaction row (INSERT ONLY)."""
-    previous_hash = await get_previous_hash(session, BankTransaction, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, BankTransaction, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "statement_id": str(statement_id),
@@ -144,7 +144,7 @@ async def run_bank_reconciliation(
     for txn in unmatched_txns:
         amount = txn.credit_amount - txn.debit_amount
 
-        previous_hash = await get_previous_hash(session, BankReconItem, tenant_id)
+        previous_hash = await get_previous_hash_locked(session, BankReconItem, tenant_id)
         record_data = {
             "tenant_id": str(tenant_id),
             "statement_id": str(statement_id),
@@ -235,3 +235,4 @@ async def list_bank_recon_items(
     stmt = stmt.order_by(desc(BankReconItem.created_at)).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+

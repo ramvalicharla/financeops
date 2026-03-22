@@ -24,3 +24,4 @@ def _canonicalize_for_signature(value: Any) -> Any:
 def build_request_signature(payload: dict[str, Any]) -> str:
     canonical_payload = _canonicalize_for_signature(payload)
     return sha256_hex_text(canonical_json_dumps(canonical_payload))
+

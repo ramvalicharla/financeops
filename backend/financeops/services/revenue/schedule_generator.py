@@ -371,3 +371,4 @@ async def generate_schedule_rows(
             )
         )
     return ScheduleGenerationOutput(root_schedule_version_tokens=root_tokens, rows=sequenced_rows)
+

@@ -79,7 +79,7 @@ async def create_statement(
         uploaded_by=user.id,
         transaction_count=body.transaction_count,
     )
-    await session.commit()
+    await session.flush()
     return {
         "statement_id": str(stmt.id),
         "bank_name": stmt.bank_name,
@@ -146,7 +146,7 @@ async def add_transaction(
         balance=body.balance,
         reference=body.reference,
     )
-    await session.commit()
+    await session.flush()
     return {
         "transaction_id": str(txn.id),
         "transaction_date": txn.transaction_date.isoformat(),
@@ -202,7 +202,7 @@ async def run_bank_recon(
         statement_id=statement_id,
         run_by=user.id,
     )
-    await session.commit()
+    await session.flush()
     return {
         "statement_id": str(statement_id),
         "open_items_created": len(items),

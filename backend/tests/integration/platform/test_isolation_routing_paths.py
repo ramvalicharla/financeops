@@ -69,7 +69,7 @@ async def test_isolation_routing_endpoint_and_fail_closed(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert resolve_resp.status_code == 200
-    assert resolve_resp.json()["db_cluster"] == "shared-primary"
+    assert resolve_resp.json()["data"]["db_cluster"] == "shared-primary"
 
     now = datetime.now(UTC)
     await create_isolation_route(

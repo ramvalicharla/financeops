@@ -1,16 +1,1 @@
-pytest_plugins = (
-    "tests.integration.mis_phase1f1_helpers",
-    "tests.integration.reconciliation_phase1f2_helpers",
-    "tests.integration.normalization_phase1f3_helpers",
-    "tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers",
-    "tests.integration.ratio_variance_phase1f4_helpers",
-    "tests.integration.financial_risk_phase1f5_helpers",
-    "tests.integration.anomaly_pattern_phase1f6_helpers",
-    "tests.integration.board_pack_phase1f7_helpers",
-    "tests.integration.multi_entity_consolidation_phase2_3_helpers",
-    "tests.integration.fx_translation_phase2_4_helpers",
-    "tests.integration.ownership_consolidation_phase2_5_helpers",
-    "tests.integration.cash_flow_phase2_6_helpers",
-    "tests.integration.equity_phase2_7_helpers",
-    "tests.integration.observability_phase3_helpers",
-)
+"""Integration test package."""

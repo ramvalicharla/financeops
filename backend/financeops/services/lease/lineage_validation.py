@@ -100,3 +100,4 @@ async def validate_lease_lineage(
     }
     is_complete = all(value == 0 for value in details.values())
     return LineageValidationResult(is_complete=is_complete, details=details)
+

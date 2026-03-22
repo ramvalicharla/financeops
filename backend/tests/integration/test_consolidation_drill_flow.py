@@ -28,7 +28,7 @@ async def test_consolidation_drill_flow_end_to_end(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert account_response.status_code == 200
-    account_payload = account_response.json()
+    account_payload = account_response.json()["data"]
     assert account_payload["child_entity_ids"]
     assert account_payload["parent_reference_id"] == str(run_id)
     assert account_payload["source_reference_id"] == "4000"
@@ -39,7 +39,7 @@ async def test_consolidation_drill_flow_end_to_end(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert entity_response.status_code == 200
-    entity_payload = entity_response.json()
+    entity_payload = entity_response.json()["data"]
     assert entity_payload["child_line_item_ids"]
 
     line_item_id = entity_payload["child_line_item_ids"][0]
@@ -48,7 +48,7 @@ async def test_consolidation_drill_flow_end_to_end(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert line_item_response.status_code == 200
-    line_payload = line_item_response.json()
+    line_payload = line_item_response.json()["data"]
     assert line_payload["child_snapshot_line_id"]
     assert line_payload["source_reference_id"] == line_payload["child_snapshot_line_id"]
 
@@ -57,5 +57,6 @@ async def test_consolidation_drill_flow_end_to_end(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert snapshot_response.status_code == 200
-    snapshot_payload = snapshot_response.json()
+    snapshot_payload = snapshot_response.json()["data"]
     assert snapshot_payload["snapshot_line"]["snapshot_line_id"] == line_payload["child_snapshot_line_id"]
+

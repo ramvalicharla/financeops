@@ -63,8 +63,8 @@ async def multi_entity_phase2_3_db_url() -> AsyncGenerator[str, None]:
     env = os.environ.copy()
     env["DATABASE_URL"] = target_url
     env.setdefault("SECRET_KEY", "test-secret-key")
-    env.setdefault("JWT_SECRET", "test-jwt-secret")
-    env.setdefault("FIELD_ENCRYPTION_KEY", "test-field-encryption-key")
+    env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
+    env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
     env.setdefault("REDIS_URL", "redis://localhost:6380/0")
     migration = subprocess.run(
         [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
@@ -98,4 +98,5 @@ async def multi_entity_phase2_3_db_url() -> AsyncGenerator[str, None]:
             await cleanup_conn.execute(f'DROP DATABASE IF EXISTS "{temp_db}"')
         finally:
             await cleanup_conn.close()
+
 

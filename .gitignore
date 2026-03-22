@@ -65,6 +65,9 @@ migrations/versions/*.pyc
 *.env
 .env.*
 !.env.example
+infra/.env
+infra/.env.*
+!infra/.env.example
 secrets/
 *.pem
 *.key

@@ -21,7 +21,7 @@ async def test_register_creates_tenant_and_user(async_client: AsyncClient):
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "user_id" in data
     assert "tenant_id" in data
     assert data["mfa_setup_required"] is True
@@ -36,7 +36,7 @@ async def test_login_with_correct_credentials_returns_tokens(
         json={"email": "testuser@example.com", "password": "TestPass123!"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "access_token" in data
     assert "refresh_token" in data
     assert data["token_type"] == "bearer"
@@ -70,7 +70,7 @@ async def test_get_me_with_valid_token(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert data["email"] == test_user.email
     assert "tenant" in data
 
@@ -85,7 +85,7 @@ async def test_refresh_token_rotation(
         json={"email": "testuser@example.com", "password": "TestPass123!"},
     )
     assert login_resp.status_code == 200
-    initial_refresh = login_resp.json()["refresh_token"]
+    initial_refresh = login_resp.json()["data"]["refresh_token"]
 
     # Rotate
     refresh_resp = await async_client.post(
@@ -93,7 +93,7 @@ async def test_refresh_token_rotation(
         json={"refresh_token": initial_refresh},
     )
     assert refresh_resp.status_code == 200
-    new_tokens = refresh_resp.json()
+    new_tokens = refresh_resp.json()["data"]
     assert "access_token" in new_tokens
     new_refresh = new_tokens["refresh_token"]
     assert new_refresh != initial_refresh
@@ -114,7 +114,7 @@ async def test_logout_invalidates_refresh_token(
         "/api/v1/auth/login",
         json={"email": "testuser@example.com", "password": "TestPass123!"},
     )
-    refresh_token = login_resp.json()["refresh_token"]
+    refresh_token = login_resp.json()["data"]["refresh_token"]
 
     logout_resp = await async_client.post(
         "/api/v1/auth/logout",
@@ -139,7 +139,7 @@ async def test_refresh_sets_tenant_context_from_refresh_token(
         json={"email": "testuser@example.com", "password": "TestPass123!"},
     )
     assert login_resp.status_code == 200
-    refresh_token = login_resp.json()["refresh_token"]
+    refresh_token = login_resp.json()["data"]["refresh_token"]
 
     with patch(
         "financeops.api.v1.auth.set_tenant_context",
@@ -162,7 +162,7 @@ async def test_logout_sets_tenant_context_from_refresh_token(
         json={"email": "testuser@example.com", "password": "TestPass123!"},
     )
     assert login_resp.status_code == 200
-    refresh_token = login_resp.json()["refresh_token"]
+    refresh_token = login_resp.json()["data"]["refresh_token"]
 
     with patch(
         "financeops.api.v1.auth.set_tenant_context",
@@ -174,3 +174,4 @@ async def test_logout_sets_tenant_context_from_refresh_token(
         )
     assert logout_resp.status_code == 200
     assert set_ctx.await_count == 1
+

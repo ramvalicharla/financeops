@@ -119,3 +119,4 @@ async def validate_fixed_assets_lineage(
     }
     complete = all(value == 0 for value in details.values())
     return LineageValidationResult(is_complete=complete, details=details)
+

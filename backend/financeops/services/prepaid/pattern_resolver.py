@@ -218,3 +218,4 @@ def normalize_pattern(prepaid: PrepaidInput) -> NormalizedPattern:
         periods=sorted(normalized_periods, key=lambda row: row.period_seq),
         canonical_json=canonical_json,
     )
+

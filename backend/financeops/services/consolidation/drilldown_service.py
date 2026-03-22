@@ -326,3 +326,4 @@ async def get_snapshot_line_drilldown(
             "ic_account_class": snapshot_line.ic_account_class,
         },
     }
+

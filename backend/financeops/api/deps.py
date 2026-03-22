@@ -38,22 +38,22 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
             token = auth_header[7:]
-            try:
-                payload = decode_token(token)
-                tenant_id = str(payload.get("tenant_id", "") or "")
-            except AuthenticationError:
-                tenant_id = ""
+            payload = decode_token(token)
+            tenant_id = str(payload.get("tenant_id", "") or "")
+    if not tenant_id:
+        raise AuthenticationError(
+            "tenant_id missing from token - RLS context cannot be set"
+        )
     async with AsyncSessionLocal() as session:
         try:
-            if tenant_id:
-                await set_tenant_context(session, tenant_id)
+            await set_tenant_context(session, tenant_id)
             yield session
+            await session.flush()
         except Exception:
             await session.rollback()
             raise
         finally:
-            if tenant_id:
-                await clear_tenant_context(session)
+            await clear_tenant_context(session)
             await session.close()
 
 
@@ -68,18 +68,21 @@ async def get_session_with_rls(
     if not tenant_id:
         payload = decode_token(token)
         tenant_id = str(payload.get("tenant_id", "") or "")
+    if not tenant_id:
+        raise AuthenticationError(
+            "tenant_id missing from token - RLS context cannot be set"
+        )
 
     async with AsyncSessionLocal() as session:
         try:
-            if tenant_id:
-                await set_tenant_context(session, tenant_id)
+            await set_tenant_context(session, tenant_id)
             yield session
+            await session.flush()
         except Exception:
             await session.rollback()
             raise
         finally:
-            if tenant_id:
-                await clear_tenant_context(session)
+            await clear_tenant_context(session)
             await session.close()
 
 

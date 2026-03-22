@@ -52,7 +52,7 @@ async def start_revenue_run_endpoint(
         request_payload=body.model_dump(mode="json"),
         correlation_id=correlation_id,
     )
-    await session.commit()
+    await session.flush()
 
     if run["created_new"]:
         temporal_client = await get_temporal_client()

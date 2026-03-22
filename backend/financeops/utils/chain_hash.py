@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import select, desc
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.utils.determinism import canonical_json_dumps
@@ -88,22 +88,45 @@ def verify_chain(records: list[dict]) -> ChainVerificationResult:
     )
 
 
+async def get_previous_hash_locked(
+    session: AsyncSession,
+    model_class: type,
+    tenant_id: UUID,
+) -> str:
+    """
+    Acquire a transaction-scoped advisory lock for tenant+table, then
+    return the most recent chain_hash for the model.
+    Lock lifetime is tied to the current transaction.
+    """
+    lock_key = hashlib.md5(
+        f"{model_class.__tablename__}:{tenant_id}".encode(),
+        usedforsecurity=False,
+    ).hexdigest()
+    lock_int = int(lock_key[:15], 16)
+
+    await session.execute(
+        sa.text("SELECT pg_advisory_xact_lock(:k)"),
+        {"k": lock_int},
+    )
+
+    result = await session.execute(
+        sa.select(model_class.chain_hash)
+        .where(model_class.tenant_id == tenant_id)
+        .order_by(sa.desc(model_class.created_at))
+        .limit(1)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        return GENESIS_HASH
+    return str(row)
+
+
 async def get_previous_hash(
     session: AsyncSession,
     model_class: type,
     tenant_id: UUID,
 ) -> str:
     """
-    Query the DB for the most recent chain_hash for this tenant+model.
-    Returns GENESIS_HASH if no records exist yet.
+    Backward-compatible alias. Use get_previous_hash_locked directly.
     """
-    result = await session.execute(
-        select(model_class.chain_hash)
-        .where(model_class.tenant_id == tenant_id)
-        .order_by(desc(model_class.created_at))
-        .limit(1)
-    )
-    row = result.scalar()
-    if row is None:
-        return GENESIS_HASH
-    return str(row)
+    return await get_previous_hash_locked(session, model_class, tenant_id)

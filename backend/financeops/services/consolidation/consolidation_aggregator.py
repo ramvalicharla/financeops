@@ -82,3 +82,4 @@ def aggregate_consolidation(
         total_consolidated_amount_parent=total_amount,
         total_fx_impact_parent=total_fx,
     )
+

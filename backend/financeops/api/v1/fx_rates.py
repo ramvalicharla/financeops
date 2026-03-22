@@ -117,7 +117,7 @@ async def create_manual_monthly_rate_endpoint(
         supersedes_rate_id=body.supersedes_rate_id,
         redis_client=redis_client,
     )
-    await session.commit()
+    await session.flush()
     return {
         "rates": [
             {
@@ -260,7 +260,7 @@ async def compute_variance_endpoint(
         entity_name=body.entity_name,
         notes=body.notes,
     )
-    await session.commit()
+    await session.flush()
     return {
         "variance_id": str(variance.id),
         "period_year": variance.period_year,

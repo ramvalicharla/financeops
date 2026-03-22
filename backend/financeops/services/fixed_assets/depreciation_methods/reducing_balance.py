@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import calendar
-import math
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
-from financeops.services.accounting_common.quantization_policy import quantize_persisted_amount, quantize_rate
+from financeops.services.accounting_common.quantization_policy import quantize_persisted_amount
 
 
 @dataclass(frozen=True)
@@ -18,10 +17,14 @@ class ReducingBalanceRow:
     depreciation_amount_reporting_currency: Decimal
 
 
+def compute_monthly_rate(annual_rate: Decimal) -> Decimal:
+    one = Decimal("1")
+    monthly = one - (one - annual_rate) ** (one / Decimal("12"))
+    return monthly.quantize(Decimal("0.000000"), rounding=ROUND_HALF_UP)
+
+
 def reducing_balance_monthly_rate(annual_rate: Decimal) -> Decimal:
-    annual = float(annual_rate)
-    monthly = 1.0 - math.pow(1.0 - annual, 1.0 / 12.0)
-    return quantize_rate(Decimal(str(monthly)))
+    return compute_monthly_rate(annual_rate)
 
 
 def _days_in_month(value: date) -> int:
@@ -73,3 +76,4 @@ def compute_reducing_balance_rows(
         opening = quantize_persisted_amount(opening - amount)
 
     return rows
+

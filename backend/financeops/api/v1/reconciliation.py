@@ -85,7 +85,7 @@ async def import_gl_entry(
         currency=body.currency,
         uploaded_by=user.id,
     )
-    await session.commit()
+    await session.flush()
     return {
         "entry_id": str(entry.id),
         "account_code": entry.account_code,
@@ -155,7 +155,7 @@ async def import_tb_row(
         currency=body.currency,
         uploaded_by=user.id,
     )
-    await session.commit()
+    await session.flush()
     return {
         "row_id": str(row.id),
         "account_code": row.account_code,
@@ -220,7 +220,7 @@ async def run_reconciliation(
         entity_name=body.entity_name,
         run_by=user.id,
     )
-    await session.commit()
+    await session.flush()
     return {
         "period": f"{body.period_year}-{body.period_month:02d}",
         "entity_name": body.entity_name,

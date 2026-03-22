@@ -92,7 +92,7 @@ async def test_drilldown_endpoints_are_deterministic_and_read_only(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert account_resp.status_code == 200
-    account_payload = account_resp.json()
+    account_payload = account_resp.json()["data"]
     assert account_payload["account_code"] == "4000"
     assert account_payload["child_entity_ids"] == sorted(account_payload["child_entity_ids"])
 
@@ -102,7 +102,7 @@ async def test_drilldown_endpoints_are_deterministic_and_read_only(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert entity_resp.status_code == 200
-    entity_payload = entity_resp.json()
+    entity_payload = entity_resp.json()["data"]
     assert entity_payload["child_line_item_ids"] == sorted(entity_payload["child_line_item_ids"])
 
     line_item_id = entity_payload["child_line_item_ids"][0]
@@ -111,7 +111,7 @@ async def test_drilldown_endpoints_are_deterministic_and_read_only(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert line_resp.status_code == 200
-    line_payload = line_resp.json()
+    line_payload = line_resp.json()["data"]
     assert line_payload["child_snapshot_line_id"]
 
     snapshot_resp = await async_client.get(
@@ -119,7 +119,7 @@ async def test_drilldown_endpoints_are_deterministic_and_read_only(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert snapshot_resp.status_code == 200
-    snapshot_payload = snapshot_resp.json()
+    snapshot_payload = snapshot_resp.json()["data"]
     assert snapshot_payload["snapshot_line"]["snapshot_line_id"] == line_payload["child_snapshot_line_id"]
 
     after_audit = int(
@@ -171,3 +171,4 @@ async def test_drilldown_endpoints_enforce_tenant_isolation(
         headers={"Authorization": f"Bearer {other_token}"},
     )
     assert cross_tenant_response.status_code == 404
+

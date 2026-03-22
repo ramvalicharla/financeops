@@ -71,7 +71,7 @@ async def start_consolidation_run_endpoint(
         timing_tolerance_days=body.timing_tolerance_days,
         correlation_id=correlation_id,
     )
-    await session.commit()
+    await session.flush()
 
     if run.created_new:
         temporal_client = await get_temporal_client()

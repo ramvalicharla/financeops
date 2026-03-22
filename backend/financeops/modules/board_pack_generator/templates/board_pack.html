@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ pack_name }}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 14mm 20mm 14mm;
+      @bottom-center {
+        content: "Confidential \2014 FinanceOps  |  Page " counter(page) " of " counter(pages);
+        font-size: 10px;
+        color: #333333;
+      }
+    }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 11px;
+      color: #111111;
+      margin: 0;
+      padding: 0;
+      line-height: 1.4;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 8px 0;
+      padding: 0;
+    }
+
+    h1 {
+      font-size: 18px;
+    }
+
+    h2 {
+      font-size: 15px;
+      border-bottom: 1px solid #cccccc;
+      padding-bottom: 4px;
+      margin-bottom: 10px;
+    }
+
+    h3 {
+      font-size: 12px;
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+
+    .meta-table,
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 10px;
+      table-layout: fixed;
+      word-wrap: break-word;
+    }
+
+    .meta-table th,
+    .meta-table td,
+    .data-table th,
+    .data-table td {
+      border: 1px solid #d6d6d6;
+      padding: 6px;
+      vertical-align: top;
+      text-align: left;
+    }
+
+    .meta-table th,
+    .data-table th {
+      background: #f1f1f1;
+      font-weight: bold;
+    }
+
+    .section {
+      page-break-after: always;
+    }
+
+    .section:last-child {
+      page-break-after: auto;
+    }
+
+    .mono {
+      font-family: "Courier New", monospace;
+      font-size: 10px;
+      word-break: break-all;
+    }
+
+    .kv-key {
+      width: 35%;
+      font-weight: bold;
+    }
+
+    ul.compact-list {
+      margin: 0;
+      padding-left: 16px;
+    }
+
+    ul.compact-list li {
+      margin: 0 0 4px 0;
+    }
+  </style>
+</head>
+<body>
+{% macro render_scalar(value) -%}
+  {{ value if value is not none else "" }}
+{%- endmacro %}
+
+{% macro render_mapping(mapping) -%}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th class="kv-key">Field</th>
+        <th>Value</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for key, value in mapping.items() %}
+      <tr>
+        <td class="kv-key">{{ key }}</td>
+        <td>{{ render_value(value) }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{%- endmacro %}
+
+{% macro render_list(items) -%}
+  {% if items and (items[0] is mapping) %}
+    {% set headers = [] %}
+    {% for row in items %}
+      {% for key, _ in row.items() %}
+        {% if key not in headers %}
+          {% set _ = headers.append(key) %}
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+    <table class="data-table">
+      <thead>
+        <tr>
+        {% for header in headers %}
+          <th>{{ header }}</th>
+        {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in items %}
+        <tr>
+        {% for header in headers %}
+          <td>{{ render_value(row.get(header)) }}</td>
+        {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <ul class="compact-list">
+      {% for item in items %}
+        <li>{{ render_value(item) }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{%- endmacro %}
+
+{% macro render_value(value) -%}
+  {% if value is mapping %}
+    {{ render_mapping(value) }}
+  {% elif value is sequence and value is not string %}
+    {{ render_list(value) }}
+  {% else %}
+    {{ render_scalar(value) }}
+  {% endif %}
+{%- endmacro %}
+
+  <div class="section">
+    <h1>{{ pack_name }}</h1>
+    <table class="meta-table">
+      <tbody>
+        <tr>
+          <th>Period</th>
+          <td>{{ period_start }} &rarr; {{ period_end }}</td>
+        </tr>
+        <tr>
+          <th>Generated At</th>
+          <td>{{ generated_at }}</td>
+        </tr>
+        <tr>
+          <th>Chain Hash</th>
+          <td class="mono">{{ chain_hash }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% for section in sections %}
+  <div class="section">
+    <h2>{{ section.title }}</h2>
+    <table class="meta-table">
+      <tbody>
+        <tr>
+          <th>Section Type</th>
+          <td>{{ section.section_type }}</td>
+        </tr>
+        <tr>
+          <th>Section Order</th>
+          <td>{{ section.section_order }}</td>
+        </tr>
+        <tr>
+          <th>Section Hash</th>
+          <td class="mono">{{ section.section_hash }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Data Snapshot</h3>
+    {{ render_value(section.data_snapshot) }}
+  </div>
+  {% endfor %}
+</body>
+</html>

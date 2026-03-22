@@ -300,3 +300,4 @@ async def generate_schedule_rows(
         )
     )
     return PrepaidScheduleOutput(root_schedule_version_tokens=root_tokens, rows=generated)
+

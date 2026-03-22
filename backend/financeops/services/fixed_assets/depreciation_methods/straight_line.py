@@ -75,3 +75,4 @@ def compute_straight_line_rows(
         )
 
     return rows
+

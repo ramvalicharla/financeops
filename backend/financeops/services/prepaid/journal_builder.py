@@ -61,3 +61,4 @@ def build_prepaid_journal_preview(
             )
         )
     return preview
+

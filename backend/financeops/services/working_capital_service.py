@@ -8,7 +8,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.working_capital import WorkingCapitalSnapshot
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ async def create_snapshot(
     )
     cash_ratio = _safe_ratio(cash_and_equivalents, total_current_liabilities)
 
-    previous_hash = await get_previous_hash(session, WorkingCapitalSnapshot, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, WorkingCapitalSnapshot, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "period_year": period_year,
@@ -157,3 +157,4 @@ async def get_latest_snapshot(
         .limit(1)
     )
     return result.scalar_one_or_none()
+

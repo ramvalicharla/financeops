@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import csv
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from io import StringIO
 from typing import Any
 
@@ -36,7 +36,9 @@ def parse_csv_bytes(content: bytes, *, sheet_name: str = "csv") -> dict[str, Any
 
 def _is_number(value: str) -> bool:
     try:
-        float(value.replace(",", ""))
+        Decimal(value.replace(",", ""))
         return True
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         return False
+
+

@@ -216,3 +216,4 @@ async def apply_impairments(
         events=persisted_events,
         latest_schedule_version_token=latest_token,
     )
+

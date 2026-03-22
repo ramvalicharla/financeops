@@ -120,3 +120,4 @@ def ensure_append_targets_terminal(
             message="New supersession row must point to current terminal node",
         )
 
+

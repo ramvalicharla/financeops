@@ -8,8 +8,10 @@ from financeops.api.v1 import (
     auditor,
     bank_recon,
     board_pack_narrative_engine,
+    close,
     cash_flow_engine,
     consolidation,
+    erp_sync,
     equity_engine,
     financial_risk_engine,
     fixed_assets,
@@ -23,6 +25,7 @@ from financeops.api.v1 import (
     multi_entity_consolidation,
     observability_engine,
     ownership_consolidation,
+    payment,
     payroll_gl_reconciliation,
     payroll_gl_normalization,
     ratio_variance_engine,
@@ -30,6 +33,7 @@ from financeops.api.v1 import (
     reconciliation_bridge,
     revenue,
     reconciliation,
+    users,
     tenants,
     working_capital,
 )
@@ -44,6 +48,7 @@ finance_control_plane_guard = Depends(require_valid_context_token())
 router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 router.include_router(health.router, prefix="/health", tags=["Health"])
 router.include_router(tenants.router, prefix="/tenants", tags=["Tenants"])
+router.include_router(users.router, tags=["Users"])
 
 # Phase 1 - Core Finance Engine
 router.include_router(
@@ -155,6 +160,17 @@ router.include_router(
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(
+    erp_sync.router,
+    prefix="/erp-sync",
+    tags=["ERP Sync Kernel"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    payment.router,
+    prefix="/billing",
+    tags=["Billing"],
+)
+router.include_router(
     revenue.router,
     prefix="/revenue",
     tags=["Revenue Recognition"],
@@ -194,6 +210,11 @@ router.include_router(
     monthend.router,
     prefix="/monthend",
     tags=["Month-End Checklist"],
+    dependencies=[finance_control_plane_guard],
+)
+router.include_router(
+    close.router,
+    tags=["Month-End Close Workflow"],
     dependencies=[finance_control_plane_guard],
 )
 router.include_router(

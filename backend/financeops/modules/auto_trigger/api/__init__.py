@@ -1,0 +1,2 @@
+"""Auto-trigger API routes."""
+

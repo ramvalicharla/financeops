@@ -213,31 +213,36 @@ async def test_anomaly_allow_path(
         },
     )
     assert create.status_code == 201
-    run_id = create.json()["run_id"]
+    run_id = create.json()["data"]["run_id"]
 
     execute = await async_client.post(
         f"/api/v1/anomaly-engine/runs/{run_id}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert execute.status_code == 200
-    payload = execute.json()
-    assert payload["result_count"] >= 1
-    executed_run_id = payload["run_id"]
+    payload = execute.json()["data"]
+    result_count = payload.get("result_count")
+    if result_count is None and isinstance(payload.get("data"), dict):
+        result_count = payload["data"].get("result_count")
+    assert (result_count or 0) >= 1
+    executed_run_id = payload.get("run_id") or payload.get("data", {}).get("run_id")
+    assert executed_run_id is not None
 
     get_run = await async_client.get(
         f"/api/v1/anomaly-engine/runs/{executed_run_id}",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert get_run.status_code == 200
-    assert get_run.json()["status"] == "completed"
+    assert get_run.json()["data"]["status"] == "completed"
 
     results = await async_client.get(
         f"/api/v1/anomaly-engine/runs/{executed_run_id}/results",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert results.status_code == 200
-    assert isinstance(results.json(), list)
-    assert len(results.json()) >= 1
+    result_rows = results.json()["data"]
+    assert isinstance(result_rows, list)
+    assert len(result_rows) >= 1
 
     signals = await async_client.get(
         f"/api/v1/anomaly-engine/runs/{executed_run_id}/signals",
@@ -256,3 +261,4 @@ async def test_anomaly_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert evidence.status_code == 200
+

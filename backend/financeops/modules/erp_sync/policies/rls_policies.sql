@@ -1,0 +1,2 @@
+-- ERP Sync RLS policies are managed in Alembic migration 0026_phase4_erp_sync.
+-- This file exists for operational visibility and policy review.

@@ -124,8 +124,8 @@ async def create_metric_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "definition_code": row.definition_code,
@@ -253,8 +253,8 @@ async def create_variance_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "definition_code": row.definition_code,
@@ -382,8 +382,8 @@ async def create_trend_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "definition_code": row.definition_code,
@@ -507,8 +507,8 @@ async def create_materiality_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "definition_code": row.definition_code,
@@ -614,8 +614,8 @@ async def create_run(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return RunCreateResponse(**result)
 
 
@@ -649,7 +649,7 @@ async def execute_run(
             status_code=404 if "not found" in detail.lower() else 400,
             detail=detail,
         ) from exc
-    await session.commit()
+    await session.flush()
     return RunExecuteResponse(**result)
 
 
@@ -697,7 +697,7 @@ async def get_summary(
     try:
         result = await service.summary(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
     return RunSummaryResponse(**result)
 
 

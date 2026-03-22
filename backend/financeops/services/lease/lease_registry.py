@@ -140,3 +140,4 @@ async def register_leases(
 
     registered.sort(key=lambda item: (item.lease_number, str(item.lease_id)))
     return registered
+

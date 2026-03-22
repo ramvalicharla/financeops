@@ -84,3 +84,4 @@ def normalize_currency_pair(base_currency: str, quote_currency: str) -> tuple[st
     base = normalize_currency_code(base_currency)
     quote = normalize_currency_code(quote_currency)
     return base, quote
+

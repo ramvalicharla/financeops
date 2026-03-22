@@ -17,3 +17,4 @@ __all__ = [
     "compute_straight_line_rows",
     "reducing_balance_monthly_rate",
 ]
+

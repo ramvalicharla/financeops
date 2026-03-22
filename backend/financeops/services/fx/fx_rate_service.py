@@ -819,3 +819,4 @@ async def get_required_latest_comparison(
     if comparison is None:
         raise NotFoundError("No FX comparison available for this currency pair")
     return comparison
+

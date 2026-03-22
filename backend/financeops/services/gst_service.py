@@ -9,7 +9,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.gst import GstReturn, GstReconItem
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
 
@@ -45,7 +45,7 @@ async def create_gst_return(
     """Create a GST return record (INSERT ONLY)."""
     total_tax = igst_amount + cgst_amount + sgst_amount + cess_amount
 
-    previous_hash = await get_previous_hash(session, GstReturn, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, GstReturn, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "period_year": period_year,
@@ -135,7 +135,7 @@ async def run_gst_reconciliation(
         difference = val_b - val_a
 
         if difference != Decimal("0"):
-            previous_hash = await get_previous_hash(session, GstReconItem, tenant_id)
+            previous_hash = await get_previous_hash_locked(session, GstReconItem, tenant_id)
             record_data = {
                 "tenant_id": str(tenant_id),
                 "period_year": period_year,
@@ -223,3 +223,4 @@ async def list_gst_recon_items(
     stmt = stmt.order_by(desc(GstReconItem.created_at)).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+

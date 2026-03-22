@@ -89,7 +89,7 @@ async def update_my_tenant(
         display_name=body.display_name,
         timezone_str=body.timezone,
     )
-    await session.commit()
+    await session.flush()
     return {"tenant_id": str(tenant.id), "updated": True}
 
 
@@ -132,7 +132,7 @@ async def invite_user(
         full_name=body.full_name,
         role=body.role,
     )
-    await session.commit()
+    await session.flush()
     return {
         "user_id": str(new_user.id),
         "email": new_user.email,
@@ -149,7 +149,7 @@ async def update_user(
 ) -> dict:
     """PATCH /api/v1/tenants/me/users/{user_id} — update user role."""
     updated = await update_user_role(session, user_id, body.role)
-    await session.commit()
+    await session.flush()
     return {
         "user_id": str(updated.id),
         "role": updated.role.value,
@@ -165,7 +165,7 @@ async def delete_user(
 ) -> dict:
     """DELETE /api/v1/tenants/me/users/{user_id} — deactivate user (soft delete)."""
     deactivated = await deactivate_user(session, user_id)
-    await session.commit()
+    await session.flush()
     return {"user_id": str(deactivated.id), "deactivated": True}
 
 

@@ -125,8 +125,8 @@ async def create_hierarchy(
                 rows=to_create,
             )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(hierarchy.id),
         "hierarchy_code": hierarchy.hierarchy_code,
@@ -235,8 +235,8 @@ async def create_scope(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "scope_code": row.scope_code, "version_token": row.version_token}
 
 
@@ -336,8 +336,8 @@ async def create_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token}
 
 
@@ -441,8 +441,8 @@ async def create_intercompany_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token}
 
 
@@ -544,8 +544,8 @@ async def create_adjustment_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "adjustment_code": row.adjustment_code,
@@ -644,8 +644,8 @@ async def create_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return ConsolidationRunCreateResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
@@ -679,8 +679,8 @@ async def execute_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return ConsolidationRunExecuteResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
@@ -734,7 +734,7 @@ async def get_run_summary(
     try:
         return await _build_service(session).summary(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
 
 
 @router.get(

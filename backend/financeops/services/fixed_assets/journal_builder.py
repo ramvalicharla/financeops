@@ -128,3 +128,4 @@ def build_far_journal_preview(
         sequence += 1
 
     return preview
+

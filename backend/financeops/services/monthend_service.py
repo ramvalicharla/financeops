@@ -8,7 +8,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.monthend import MonthEndChecklist, MonthEndTask
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ async def create_checklist(
     Create a month-end closing checklist for a period/entity (INSERT ONLY).
     Optionally adds a standard set of default tasks.
     """
-    previous_hash = await get_previous_hash(session, MonthEndChecklist, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, MonthEndChecklist, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "period_year": period_year,
@@ -171,7 +171,7 @@ async def close_checklist(
         return existing
 
     now = datetime.now(timezone.utc)
-    previous_hash = await get_previous_hash(session, MonthEndChecklist, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, MonthEndChecklist, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "period_year": existing.period_year,
@@ -246,3 +246,4 @@ async def list_tasks(
         .order_by(MonthEndTask.sort_order, MonthEndTask.created_at)
     )
     return list(result.scalars().all())
+

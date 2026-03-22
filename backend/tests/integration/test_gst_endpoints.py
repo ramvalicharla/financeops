@@ -24,7 +24,7 @@ async def test_create_gst_return(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "return_id" in data
     assert data["return_type"] == "GSTR1"
     assert data["total_tax"] == "18000"
@@ -65,7 +65,7 @@ async def test_run_gst_reconciliation(
         },
     )
     assert recon_resp.status_code == 201
-    data = recon_resp.json()
+    data = recon_resp.json()["data"]
     assert "breaks_found" in data
     assert data["breaks_found"] == 0
 
@@ -79,7 +79,7 @@ async def test_list_gst_returns(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "returns" in data
     assert "count" in data
 
@@ -89,3 +89,4 @@ async def test_gst_endpoints_require_auth(async_client: AsyncClient):
     for path in ["/api/v1/gst/returns", "/api/v1/gst/recon-items"]:
         r = await async_client.get(path)
         assert r.status_code == 401
+

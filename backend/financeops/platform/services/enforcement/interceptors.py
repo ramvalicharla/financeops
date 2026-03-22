@@ -63,6 +63,9 @@ def control_plane_guard(
             raise AuthorizationError(decision["reason_code"])
 
         request.state.control_plane_context_token = str(decision["context_token"])
+        billing_warning = decision.get("billing_warning_header")
+        if billing_warning:
+            request.state.billing_warning = str(billing_warning)
         return decision
 
     return _dependency

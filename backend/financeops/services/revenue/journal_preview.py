@@ -62,3 +62,4 @@ def build_revenue_journal_preview(
             )
         )
     return rows
+

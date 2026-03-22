@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
 
 from financeops.core.exceptions import AllModelsFailedError
 from financeops.llm.circuit_breaker import CircuitBreakerRegistry
@@ -27,6 +28,10 @@ class AIResult:
     attempt_number: int
     duration_ms: float
     tokens_used: int
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    was_cached: bool = False
+    pii_was_masked: bool = False
 
 
 FALLBACK_CHAINS: dict[str, list[ModelConfig]] = {
@@ -88,6 +93,11 @@ async def execute_with_fallback(
     tenant_id: str,
     circuit_registry: CircuitBreakerRegistry,
     context: dict | None = None,
+    provider_invoke: Callable[
+        [ModelConfig, str, str, str],
+        Awaitable[tuple[LLMResponse, bool, bool]],
+    ]
+    | None = None,
 ) -> AIResult:
     """
     Execute a prompt using the fallback chain for the given task_type.
@@ -109,14 +119,24 @@ async def execute_with_fallback(
 
         start = time.monotonic()
         try:
-            provider = _get_provider(model_cfg.provider, model_cfg.model_name)
-            request = LLMRequest(
-                prompt=prompt,
-                system_prompt=system_prompt,
-                model=model_cfg.model_name,
-                tenant_id=tenant_id,
-            )
-            response: LLMResponse = await provider.generate(request)
+            was_cached = False
+            pii_was_masked = False
+            if provider_invoke is not None:
+                response, was_cached, pii_was_masked = await provider_invoke(
+                    model_cfg,
+                    prompt,
+                    system_prompt,
+                    tenant_id,
+                )
+            else:
+                provider = _get_provider(model_cfg.provider, model_cfg.model_name)
+                request = LLMRequest(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    model=model_cfg.model_name,
+                    tenant_id=tenant_id,
+                )
+                response = await provider.generate(request)
             duration_ms = (time.monotonic() - start) * 1000
 
             await circuit_registry.record_success(model_key)
@@ -135,6 +155,10 @@ async def execute_with_fallback(
                 attempt_number=attempt + 1,
                 duration_ms=duration_ms,
                 tokens_used=response.total_tokens,
+                prompt_tokens=response.prompt_tokens,
+                completion_tokens=response.completion_tokens,
+                was_cached=was_cached,
+                pii_was_masked=pii_was_masked,
             )
         except Exception as exc:
             await circuit_registry.record_failure(model_key)

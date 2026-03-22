@@ -1051,6 +1051,23 @@ def register_workflow() -> type[Any]:
     return FixedAssetsWorkflow
 
 
+class FixedAssetsFacade:
+    """Compatibility facade exposing fixed-assets service entrypoints."""
+
+    create_run = staticmethod(create_run)
+    mark_run_running = staticmethod(mark_run_running)
+    load_assets_for_run = staticmethod(load_assets_for_run)
+    generate_depreciation_schedule_for_run = staticmethod(generate_depreciation_schedule_for_run)
+    apply_impairment_and_disposal_events_for_run = staticmethod(
+        apply_impairment_and_disposal_events_for_run
+    )
+    build_journal_preview_for_run = staticmethod(build_journal_preview_for_run)
+    validate_lineage_for_run = staticmethod(validate_lineage_for_run)
+    finalize_run = staticmethod(finalize_run)
+    get_run_status = staticmethod(get_run_status)
+    get_results = staticmethod(get_results)
+
+
 __all__ = [
     "MissingLockedRateError",
     "apply_impairment_and_disposal_events_for_run",
@@ -1071,3 +1088,4 @@ __all__ = [
     "register_workflow",
     "validate_lineage_for_run",
 ]
+

@@ -494,3 +494,4 @@ async def aggregate_results_for_run(
         "total_consolidated_amount_parent": str(aggregate_output.total_consolidated_amount_parent),
         "total_fx_impact_parent": str(aggregate_output.total_fx_impact_parent),
     }
+

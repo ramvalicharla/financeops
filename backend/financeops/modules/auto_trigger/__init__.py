@@ -1,0 +1,2 @@
+"""Auto-trigger pipeline module."""
+

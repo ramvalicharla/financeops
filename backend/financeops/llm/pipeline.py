@@ -4,15 +4,17 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 
-from financeops.llm.fallback import AIResult, execute_with_fallback, FALLBACK_CHAINS
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from financeops.llm.fallback import AIResult
 from financeops.llm.circuit_breaker import CircuitBreakerRegistry
 
 log = logging.getLogger(__name__)
 
-AGREEMENT_THRESHOLD = 0.85
+AGREEMENT_THRESHOLD = Decimal("0.85")
 
 
 @dataclass
@@ -33,7 +35,7 @@ class PipelineResult:
     output_data: dict[str, Any]
     stage2_model: str
     stage3_model: str
-    agreement_score: float
+    agreement_score: Decimal
     total_duration_ms: float
     credits_used: Decimal
     audit_trail_id: str | None = None
@@ -57,7 +59,7 @@ async def _prepare_context(ctx: PipelineContext) -> dict[str, Any]:
     }
 
 
-def _compute_agreement(primary_result: AIResult, validation_result: AIResult) -> float:
+def _compute_agreement(primary_result: AIResult, validation_result: AIResult) -> Decimal:
     """
     Stage 4: Compute agreement score between primary and validation outputs.
     Simple token overlap heuristic for Phase 0 (full semantic comparison in Phase 4).
@@ -65,17 +67,21 @@ def _compute_agreement(primary_result: AIResult, validation_result: AIResult) ->
     primary_tokens = set(primary_result.content.lower().split())
     validation_tokens = set(validation_result.content.lower().split())
     if not primary_tokens and not validation_tokens:
-        return 1.0
+        return Decimal("1.0000")
     if not primary_tokens or not validation_tokens:
-        return 0.0
+        return Decimal("0.0000")
     intersection = primary_tokens & validation_tokens
     union = primary_tokens | validation_tokens
-    return len(intersection) / len(union)
+    score = Decimal(str(len(intersection))) / Decimal(str(len(union)))
+    return score.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
 
 async def run_pipeline(
     ctx: PipelineContext,
     circuit_registry: CircuitBreakerRegistry,
+    *,
+    redis_client=None,
+    db_session: AsyncSession | None = None,
 ) -> PipelineResult:
     """
     5-stage AI processing pipeline.
@@ -91,21 +97,27 @@ async def run_pipeline(
     prepared = await _prepare_context(ctx)
 
     # Stage 2: Primary execution
-    primary_result = await execute_with_fallback(
+    from financeops.llm.gateway import gateway_generate
+
+    primary_result = await gateway_generate(
         task_type=ctx.task_type,
         prompt=prepared["prompt"],
         system_prompt=prepared["system_prompt"],
         tenant_id=ctx.tenant_id,
+        redis_client=redis_client,
+        db_session=db_session,
         circuit_registry=circuit_registry,
     )
 
     # Stage 3: Validation (use 'validation' chain for cross-provider check)
     try:
-        validation_result = await execute_with_fallback(
+        validation_result = await gateway_generate(
             task_type="validation",
             prompt=f"Verify and rate this output (0.0-1.0 confidence):\n{primary_result.content}",
             system_prompt="You are a financial output validator. Rate the quality and accuracy.",
             tenant_id=ctx.tenant_id,
+            redis_client=redis_client,
+            db_session=db_session,
             circuit_registry=circuit_registry,
         )
     except Exception as exc:
@@ -123,17 +135,15 @@ async def run_pipeline(
     # Stage 4: Agreement check
     agreement_score = _compute_agreement(primary_result, validation_result)
     total_duration_ms = (time.monotonic() - pipeline_start) * 1000
-    credits_used = Decimal(
-        str(
-            round(
-                (primary_result.tokens_used + validation_result.tokens_used) / 1000.0, 6
-            )
-        )
+    credits_used = (
+        Decimal(str(primary_result.tokens_used + validation_result.tokens_used))
+        / Decimal("1000")
     )
+    credits_used = credits_used.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
     if agreement_score < AGREEMENT_THRESHOLD:
         log.warning(
-            "Agreement score %.2f below threshold %.2f — queuing for human review",
+            "Agreement score %s below threshold %s — queuing for human review",
             agreement_score,
             AGREEMENT_THRESHOLD,
         )

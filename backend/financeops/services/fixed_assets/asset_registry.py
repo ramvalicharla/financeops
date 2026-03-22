@@ -185,3 +185,4 @@ async def register_assets(
 
     registered.sort(key=lambda row: (row.asset_code, str(row.asset_id)))
     return registered
+

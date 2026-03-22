@@ -123,5 +123,6 @@ async def test_equity_list_statements_allows_authorized_tenant(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert list_response.status_code == 200
-    rows = list_response.json()
+    rows = list_response.json()["data"]
     assert any(row["statement_code"] == "EQ_AUTH_MAIN" for row in rows)
+

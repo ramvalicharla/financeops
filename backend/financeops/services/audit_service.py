@@ -12,7 +12,7 @@ from financeops.utils.chain_hash import (
     ChainVerificationResult,
     GENESIS_HASH,
     compute_chain_hash,
-    get_previous_hash,
+    get_previous_hash_locked,
     verify_chain,
 )
 from financeops.utils.determinism import sha256_hex_text, canonical_json_dumps
@@ -45,7 +45,7 @@ async def log_action(
         sha256_hex_text(canonical_json_dumps(new_value)) if new_value is not None else None
     )
 
-    previous_hash = await get_previous_hash(session, AuditTrail, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, AuditTrail, tenant_id)
 
     record_data = {
         "tenant_id": str(tenant_id),
@@ -142,3 +142,4 @@ async def get_audit_trail(
         query = query.where(AuditTrail.resource_id == resource_id)
     result = await session.execute(query)
     return list(result.scalars().all())
+

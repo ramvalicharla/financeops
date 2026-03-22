@@ -57,3 +57,4 @@ def validate_lineage_chain(chain: Sequence[LineageMetadata]) -> bool:
             return False
 
     return True
+

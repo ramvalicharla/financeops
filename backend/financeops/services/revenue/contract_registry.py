@@ -133,3 +133,4 @@ async def register_contracts(
 
     registered.sort(key=lambda item: (item.contract_number, str(item.contract_id)))
     return registered
+

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import AuthorizationError
 from financeops.db.models.auditor import AuditorGrant, AuditorAccessLog
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ async def grant_auditor_access(
     """
     modules_payload: dict[str, Any] = {"modules": allowed_modules or []}
 
-    previous_hash = await get_previous_hash(session, AuditorGrant, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, AuditorGrant, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "auditor_user_id": str(auditor_user_id),
@@ -88,7 +88,7 @@ async def revoke_auditor_access(
         return None
 
     now = datetime.now(timezone.utc)
-    previous_hash = await get_previous_hash(session, AuditorGrant, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, AuditorGrant, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "auditor_user_id": str(existing.auditor_user_id),
@@ -169,7 +169,7 @@ async def log_auditor_access(
     access_result: str = "granted",
 ) -> AuditorAccessLog:
     """Log an auditor access event (INSERT ONLY — immutable)."""
-    previous_hash = await get_previous_hash(session, AuditorAccessLog, tenant_id)
+    previous_hash = await get_previous_hash_locked(session, AuditorAccessLog, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "grant_id": str(grant_id),
@@ -224,3 +224,4 @@ async def list_access_logs(
     stmt = stmt.order_by(desc(AuditorAccessLog.created_at)).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+

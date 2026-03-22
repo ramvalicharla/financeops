@@ -87,9 +87,9 @@ async def test_quota_enforced_at_api_and_internal_paths(
         },
     )
     assert first.status_code == 200
-    assert first.json()["allowed"] is True
+    assert first.json()["data"]["allowed"] is True
     assert second.status_code == 200
-    assert second.json()["allowed"] is False
+    assert second.json()["data"]["allowed"] is False
 
     internal = await QuotaGuard.check_and_record(
         async_session,

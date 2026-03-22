@@ -267,14 +267,13 @@ async def test_payroll_gl_reconciliation_allow_path(
         },
     )
     assert create.status_code == 201
-    create_payload = create.json()
-
+    create_payload = create.json()["data"]
     execute = await async_client.post(
         f"/api/v1/payroll-gl-reconciliation/runs/{create_payload['run_id']}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert execute.status_code == 200
-    execute_payload = execute.json()
+    execute_payload = execute.json()["data"]
     assert execute_payload["line_count"] >= 1
 
     summary = await async_client.get(
@@ -282,5 +281,6 @@ async def test_payroll_gl_reconciliation_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert summary.status_code == 200
-    assert summary.json()["line_count"] >= 1
+    assert summary.json()["data"]["line_count"] >= 1
+
 

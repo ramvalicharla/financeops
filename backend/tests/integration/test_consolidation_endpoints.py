@@ -124,7 +124,7 @@ async def test_consolidation_run_status_results_and_export_endpoints(
             },
         )
     assert run_response.status_code == 202
-    run_payload = run_response.json()
+    run_payload = run_response.json()["data"]
     run_id = run_payload["run_id"]
     assert run_payload["status"] == "accepted"
     assert stub_temporal.started
@@ -134,21 +134,21 @@ async def test_consolidation_run_status_results_and_export_endpoints(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert status_response.status_code == 200
-    assert status_response.json()["status"] in {"accepted", "running", "completed", "failed"}
+    assert status_response.json()["data"]["status"] in {"accepted", "running", "completed", "failed"}
 
     results_response = await async_client.get(
         f"/api/v1/consolidation/results/{run_id}",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert results_response.status_code == 200
-    assert results_response.json()["count"] == 0
+    assert results_response.json()["data"]["count"] == 0
 
     ic_response = await async_client.get(
         f"/api/v1/consolidation/ic-differences/{run_id}",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert ic_response.status_code == 200
-    assert ic_response.json()["count"] == 0
+    assert ic_response.json()["data"]["count"] == 0
 
     export_response = await async_client.get(
         f"/api/v1/consolidation/export/{run_id}",
@@ -205,3 +205,4 @@ async def test_consolidation_endpoints_require_auth(async_client: AsyncClient) -
         },
     )
     assert response.status_code == 401
+

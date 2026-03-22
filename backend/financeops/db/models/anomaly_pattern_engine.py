@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -413,6 +414,10 @@ class AnomalyResult(FinancialBase):
             "persistence_classification IN ('first_detected','recurring','sustained','escalating','resolved','reopened')",
             name="ck_anomaly_results_persistence",
         ),
+        CheckConstraint(
+            "alert_status IN ('OPEN','SNOOZED','RESOLVED','ESCALATED')",
+            name="ck_anomaly_results_alert_status",
+        ),
         Index("idx_anomaly_results_run", "tenant_id", "run_id", "line_no"),
         Index(
             "idx_anomaly_results_domain_severity",
@@ -435,6 +440,20 @@ class AnomalyResult(FinancialBase):
     anomaly_score: Mapped[Decimal] = mapped_column(Numeric(12, 6), nullable=False)
     z_score: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
     severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    alert_status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        server_default=text("'OPEN'"),
+        default="OPEN",
+    )
+    snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status_updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
     persistence_classification: Mapped[str] = mapped_column(String(32), nullable=False)
     correlation_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     materiality_elevated: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

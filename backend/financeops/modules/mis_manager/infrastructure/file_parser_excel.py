@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from openpyxl import load_workbook
@@ -85,7 +85,9 @@ def _find_section_breaks(row_labels: list[str]) -> list[str]:
 
 def _is_number(value: str) -> bool:
     try:
-        float(value.replace(",", ""))
+        Decimal(value.replace(",", ""))
         return True
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         return False
+
+

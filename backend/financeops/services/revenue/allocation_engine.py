@@ -84,3 +84,4 @@ def allocate_contract_values(
 
     allocations.sort(key=lambda item: (str(item.contract_id), item.obligation_code))
     return allocations
+

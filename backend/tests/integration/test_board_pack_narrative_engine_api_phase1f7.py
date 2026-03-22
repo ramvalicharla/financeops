@@ -192,7 +192,7 @@ async def test_definition_section_template_rule_endpoints_allow_path(
         },
     )
     assert definition.status_code == 201
-    definition_id = definition.json()["id"]
+    definition_id = definition.json()["data"]["id"]
 
     section = await async_client.post(
         "/api/v1/board-pack/sections",
@@ -208,7 +208,7 @@ async def test_definition_section_template_rule_endpoints_allow_path(
         },
     )
     assert section.status_code == 201
-    section_id = section.json()["id"]
+    section_id = section.json()["data"]["id"]
 
     template = await async_client.post(
         "/api/v1/board-pack/narrative-templates",
@@ -224,7 +224,7 @@ async def test_definition_section_template_rule_endpoints_allow_path(
         },
     )
     assert template.status_code == 201
-    template_id = template.json()["id"]
+    template_id = template.json()["data"]["id"]
 
     rule = await async_client.post(
         "/api/v1/board-pack/inclusion-rules",
@@ -240,7 +240,7 @@ async def test_definition_section_template_rule_endpoints_allow_path(
         },
     )
     assert rule.status_code == 201
-    rule_id = rule.json()["id"]
+    rule_id = rule.json()["data"]["id"]
 
     assert (
         await async_client.get(
@@ -334,14 +334,14 @@ async def test_board_pack_run_and_result_endpoints_allow_path(
         },
     )
     assert create.status_code == 201
-    run_id = create.json()["run_id"]
+    run_id = create.json()["data"]["run_id"]
 
     execute = await async_client.post(
         f"/api/v1/board-pack/runs/{run_id}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert execute.status_code == 200
-    payload = execute.json()
+    payload = execute.json()["data"]
     assert payload["section_count"] >= 1
     executed_run_id = payload["run_id"]
 
@@ -350,7 +350,7 @@ async def test_board_pack_run_and_result_endpoints_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert get_run.status_code == 200
-    assert get_run.json()["status"] == "completed"
+    assert get_run.json()["data"]["status"] == "completed"
 
     summary = await async_client.get(
         f"/api/v1/board-pack/runs/{executed_run_id}/summary",
@@ -376,3 +376,4 @@ async def test_board_pack_run_and_result_endpoints_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert evidence.status_code == 200
+

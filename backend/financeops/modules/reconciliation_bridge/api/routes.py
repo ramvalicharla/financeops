@@ -79,8 +79,8 @@ async def create_reconciliation_session(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return ReconciliationSessionCreateResponse(**result)
 
 
@@ -114,7 +114,7 @@ async def run_reconciliation_session(
             status_code=404 if "not found" in detail.lower() else 400,
             detail=detail,
         ) from exc
-    await session.commit()
+    await session.flush()
     return ReconciliationSessionRunResponse(**result)
 
 
@@ -230,8 +230,8 @@ async def add_reconciliation_line_explanation(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ReconciliationActionResponse(event_id=uuid.UUID(result["event_id"]))
 
 
@@ -264,8 +264,8 @@ async def attach_reconciliation_line_evidence(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ReconciliationActionResponse(evidence_id=uuid.UUID(result["evidence_id"]))
 
 
@@ -294,8 +294,8 @@ async def resolve_reconciliation_line(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ReconciliationActionResponse(
         exception_id=uuid.UUID(result["exception_id"]),
         event_id=uuid.UUID(result["event_id"]),
@@ -327,8 +327,8 @@ async def reopen_reconciliation_line(
             actor_user_id=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return ReconciliationActionResponse(
         exception_id=uuid.UUID(result["exception_id"]),
         event_id=uuid.UUID(result["event_id"]),

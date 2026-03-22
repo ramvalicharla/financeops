@@ -82,8 +82,8 @@ async def get_run(
                 created_by=user.id,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        await session.commit()
+            raise HTTPException(status_code=404, detail="internal_error") from exc
+        await session.flush()
     return row
 
 
@@ -141,8 +141,8 @@ async def create_diff(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return DiffResponse(
         diff_id=uuid.UUID(str(payload["diff_id"])),
         base_run_id=uuid.UUID(str(payload["base_run_id"])),
@@ -198,8 +198,8 @@ async def replay_validate(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return ReplayValidateResponse(
         run_id=uuid.UUID(str(payload["run_id"])),
         module_code=str(payload["module_code"]),
@@ -235,8 +235,8 @@ async def get_graph(
                 created_by=user.id,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        await session.commit()
+            raise HTTPException(status_code=400, detail="internal_error") from exc
+        await session.flush()
     return GraphResponse(
         graph_snapshot_id=uuid.UUID(str(row["graph_snapshot_id"])),
         root_run_id=uuid.UUID(str(row["root_run_id"])),

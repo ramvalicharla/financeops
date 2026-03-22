@@ -1,9 +1,17 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     gcc libpq-dev curl \
+    libgobject-2.0-0 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcairo2 \
+    libffi-dev \
+    shared-mime-info \
+    fonts-liberation \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -14,8 +22,25 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml .
 RUN uv sync --no-dev
+RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
+print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
+    && python -c "import importlib.util as _u; \
+import sys; \
+m=_u.find_spec('weasyprint'); \
+sys.exit(0 if m is None else 42)" \
+    || python -c "import weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf(); print('WeasyPrint OK')"
 
 COPY . .
+
+RUN groupadd -g 1000 financeops \
+    && useradd -g financeops -u 1000 -d /app -s /sbin/nologin financeops \
+    && mkdir -p /app/.cache \
+    && chown -R financeops:financeops /app
+
+ENV HOME=/app
+
+USER financeops
+ENV CLAMAV_REQUIRED=True
 
 EXPOSE 8000
 

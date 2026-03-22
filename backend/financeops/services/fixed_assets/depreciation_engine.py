@@ -342,3 +342,4 @@ async def generate_base_depreciation_rows(
         )
     )
     return DepreciationGenerationResult(root_schedule_version_tokens=root_tokens, rows=generated)
+

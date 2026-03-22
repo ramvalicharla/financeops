@@ -321,3 +321,4 @@ async def validate_lineage_before_finalize(
         raise
 
     return result
+

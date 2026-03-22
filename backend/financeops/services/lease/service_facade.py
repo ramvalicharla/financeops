@@ -1229,3 +1229,21 @@ def register_workflow() -> type[Any]:
     from financeops.temporal.lease_workflows import LeaseAccountingWorkflow
 
     return LeaseAccountingWorkflow
+
+
+class LeaseFacade:
+    """Compatibility facade exposing lease service entrypoints."""
+
+    create_run = staticmethod(create_run)
+    mark_run_running = staticmethod(mark_run_running)
+    load_leases_and_payments_for_run = staticmethod(load_leases_and_payments_for_run)
+    build_payment_timeline_for_run = staticmethod(build_payment_timeline_for_run)
+    calculate_present_value_for_run = staticmethod(calculate_present_value_for_run)
+    generate_liability_schedule_for_run = staticmethod(generate_liability_schedule_for_run)
+    generate_rou_schedule_for_run = staticmethod(generate_rou_schedule_for_run)
+    build_journal_preview_for_run = staticmethod(build_journal_preview_for_run)
+    validate_lineage_for_run = staticmethod(validate_lineage_for_run)
+    finalize_run = staticmethod(finalize_run)
+    get_run_status = staticmethod(get_run_status)
+    get_results = staticmethod(get_results)
+

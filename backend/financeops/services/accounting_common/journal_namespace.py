@@ -35,3 +35,4 @@ def build_journal_reference(
     prefix = build_journal_prefix(engine_namespace)
     run_token = str(run_id).replace("-", "")[:12].upper()
     return f"{prefix}{run_token}-{sequence:06d}"
+

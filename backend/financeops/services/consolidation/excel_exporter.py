@@ -335,3 +335,4 @@ def build_consolidation_excel(
     normalized = _normalize_xlsx_zip(raw.getvalue())
     checksum = sha256_hex_bytes(normalized)
     return normalized, checksum
+

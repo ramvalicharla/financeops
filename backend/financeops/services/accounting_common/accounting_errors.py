@@ -8,3 +8,4 @@ class AccountingValidationError(ValidationError):
         super().__init__(message or error_code)
         self.error_code = error_code
 
+

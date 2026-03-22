@@ -63,3 +63,4 @@ class RunStatusSnapshot:
     event_seq: int
     event_time: datetime
     metadata: dict[str, Any] | None
+

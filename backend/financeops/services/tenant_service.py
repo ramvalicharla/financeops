@@ -148,3 +148,4 @@ async def list_workspaces(
         select(IamWorkspace).where(IamWorkspace.tenant_id == tenant_id)
     )
     return list(result.scalars().all())
+

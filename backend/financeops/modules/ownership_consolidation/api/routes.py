@@ -84,8 +84,8 @@ async def create_structure(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "ownership_structure_code": row.ownership_structure_code,
@@ -193,8 +193,8 @@ async def create_relationship(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "ownership_structure_id": str(row.ownership_structure_id),
@@ -311,8 +311,8 @@ async def create_ownership_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token}
 
 
@@ -417,8 +417,8 @@ async def create_minority_interest_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token}
 
 
@@ -516,8 +516,8 @@ async def create_run(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return OwnershipRunCreateResponse(**response)
 
 
@@ -545,8 +545,8 @@ async def execute_run(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=404, detail="internal_error") from exc
+    await session.flush()
     return OwnershipRunExecuteResponse(**response)
 
 
@@ -591,7 +591,7 @@ async def get_run_summary(
     try:
         return await _build_service(session).summary(tenant_id=user.tenant_id, run_id=id)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail="internal_error") from exc
 
 
 @router.get(

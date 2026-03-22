@@ -98,3 +98,4 @@ def config_mappings(configuration_json: dict[str, Any]) -> list[EntitySnapshotMa
         )
         for row in raw_rows
     ]
+

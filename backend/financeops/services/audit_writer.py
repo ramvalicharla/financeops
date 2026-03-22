@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.base import FinancialBase
 from financeops.services.audit_service import log_action
-from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash
+from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 TAnyModel = TypeVar("TAnyModel")
 TFinancialModel = TypeVar("TFinancialModel", bound=FinancialBase)
@@ -92,7 +92,7 @@ class AuditWriter:
         values: Mapping[str, Any],
         audit: AuditEvent | None = None,
     ) -> TFinancialModel:
-        previous_hash = await get_previous_hash(session, model_class, tenant_id)
+        previous_hash = await get_previous_hash_locked(session, model_class, tenant_id)
         chain_hash = compute_chain_hash(dict(record_data), previous_hash)
 
         payload = dict(values)
@@ -102,3 +102,4 @@ class AuditWriter:
 
         record = model_class(**payload)
         return await AuditWriter.insert_record(session, record=record, audit=audit)
+

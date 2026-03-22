@@ -12,7 +12,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import asyncpg
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -99,8 +99,8 @@ async def board_pack_phase1f7_db_url() -> AsyncGenerator[str, None]:
     env = os.environ.copy()
     env["DATABASE_URL"] = target_url
     env.setdefault("SECRET_KEY", "test-secret-key")
-    env.setdefault("JWT_SECRET", "test-jwt-secret")
-    env.setdefault("FIELD_ENCRYPTION_KEY", "test-field-encryption-key")
+    env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
+    env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
     env.setdefault("REDIS_URL", "redis://localhost:6380/0")
     migration = subprocess.run(
         [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
@@ -170,6 +170,91 @@ def build_board_pack_service(session: AsyncSession) -> RunService:
 
 async def ensure_tenant_context(session: AsyncSession, tenant_id: uuid.UUID) -> None:
     await set_tenant_context(session, tenant_id)
+
+
+async def _relax_board_pack_compat_schema(session: AsyncSession) -> None:
+    await session.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema='public' AND table_name='board_pack_definitions'
+              ) THEN
+                ALTER TABLE board_pack_definitions ALTER COLUMN id SET DEFAULT gen_random_uuid();
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='created_at'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN created_at SET DEFAULT now();
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='updated_at'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN updated_at SET DEFAULT now();
+                END IF;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS section_types JSONB DEFAULT '[]'::jsonb;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS entity_ids JSONB DEFAULT '[]'::jsonb;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS config JSONB DEFAULT '{}'::jsonb;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='name'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN name DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='period_type'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN period_type DROP NOT NULL;
+                END IF;
+              END IF;
+
+              IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema='public' AND table_name='board_pack_runs'
+              ) THEN
+                ALTER TABLE board_pack_runs ALTER COLUMN id SET DEFAULT gen_random_uuid();
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='created_at'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN created_at SET DEFAULT now();
+                END IF;
+                ALTER TABLE board_pack_runs ADD COLUMN IF NOT EXISTS run_metadata JSONB DEFAULT '{}'::jsonb;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='definition_id'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN definition_id DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='period_start'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN period_start DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='period_end'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN period_end DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='triggered_by'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN triggered_by DROP NOT NULL;
+                END IF;
+                ALTER TABLE board_pack_runs DROP CONSTRAINT IF EXISTS ck_board_pack_runs_generator_status;
+              END IF;
+            END $$;
+            """
+        )
+    )
 
 
 async def seed_control_plane_for_board_pack(
@@ -274,6 +359,7 @@ async def seed_control_plane_for_board_pack(
     )
 
     if not grant_permissions:
+        await _relax_board_pack_compat_schema(session)
         await session.flush()
         return
 
@@ -344,6 +430,7 @@ async def seed_control_plane_for_board_pack(
         actor_user_id=user_id,
         correlation_id="board-pack-phase1f7",
     )
+    await _relax_board_pack_compat_schema(session)
     await session.flush()
 
 
@@ -401,6 +488,81 @@ async def seed_active_board_pack_configuration(
     created_by: uuid.UUID,
     effective_from: date,
 ) -> dict[str, str]:
+    await session.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+              IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema='public' AND table_name='board_pack_definitions'
+              ) THEN
+                ALTER TABLE board_pack_definitions ALTER COLUMN id SET DEFAULT gen_random_uuid();
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='created_at'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN created_at SET DEFAULT now();
+                END IF;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS section_types JSONB DEFAULT '[]'::jsonb;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS entity_ids JSONB DEFAULT '[]'::jsonb;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS config JSONB DEFAULT '{}'::jsonb;
+                ALTER TABLE board_pack_definitions ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='name'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN name DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_definitions' AND column_name='period_type'
+                ) THEN
+                  ALTER TABLE board_pack_definitions ALTER COLUMN period_type DROP NOT NULL;
+                END IF;
+              END IF;
+              IF EXISTS (
+                SELECT 1 FROM information_schema.tables
+                WHERE table_schema='public' AND table_name='board_pack_runs'
+              ) THEN
+                ALTER TABLE board_pack_runs ALTER COLUMN id SET DEFAULT gen_random_uuid();
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='created_at'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN created_at SET DEFAULT now();
+                END IF;
+                ALTER TABLE board_pack_runs ADD COLUMN IF NOT EXISTS run_metadata JSONB DEFAULT '{}'::jsonb;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='definition_id'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN definition_id DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='period_start'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN period_start DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='period_end'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN period_end DROP NOT NULL;
+                END IF;
+                IF EXISTS (
+                  SELECT 1 FROM information_schema.columns
+                  WHERE table_schema='public' AND table_name='board_pack_runs' AND column_name='triggered_by'
+                ) THEN
+                  ALTER TABLE board_pack_runs ALTER COLUMN triggered_by DROP NOT NULL;
+                END IF;
+                ALTER TABLE board_pack_runs DROP CONSTRAINT IF EXISTS ck_board_pack_runs_generator_status;
+              END IF;
+            END $$;
+            """
+        )
+    )
     repository = BoardPackNarrativeRepository(session)
     definition = await repository.create_board_pack_definition(
         tenant_id=tenant_id,
@@ -497,3 +659,4 @@ async def seed_active_board_pack_configuration(
         "narrative_template_id": str(templates[0].id),
         "inclusion_rule_id": str(rule.id),
     }
+

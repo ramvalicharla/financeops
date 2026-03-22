@@ -76,7 +76,7 @@ async def test_lease_run_status_and_results_endpoints(
         )
 
     assert response.status_code == 202
-    payload = response.json()
+    payload = response.json()["data"]
     assert payload["status"] == "accepted"
     assert stub_temporal.started
 
@@ -93,7 +93,7 @@ async def test_lease_run_status_and_results_endpoints(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert results_response.status_code == 200
-    assert results_response.json()["liability_count"] == 0
+    assert results_response.json()["data"]["liability_count"] == 0
 
 
 @pytest.mark.asyncio
@@ -124,3 +124,4 @@ async def test_lease_endpoints_require_auth(async_client: AsyncClient) -> None:
         json=_run_request_payload(),
     )
     assert response.status_code == 401
+

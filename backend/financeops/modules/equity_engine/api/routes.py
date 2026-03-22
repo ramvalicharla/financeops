@@ -78,8 +78,8 @@ async def create_statement_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "statement_code": row.statement_code,
@@ -188,8 +188,8 @@ async def create_line_definition(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "line_code": row.line_code,
@@ -236,8 +236,8 @@ async def create_source_mapping(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {
         "id": str(row.id),
         "mapping_code": row.mapping_code,
@@ -287,8 +287,8 @@ async def create_rule(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return {"id": str(row.id), "rule_code": row.rule_code, "version_token": row.version_token}
 
 
@@ -380,8 +380,8 @@ async def create_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return EquityRunCreateResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
@@ -412,8 +412,8 @@ async def execute_run(
             created_by=user.id,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return EquityRunExecuteResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],

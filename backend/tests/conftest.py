@@ -9,6 +9,24 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 
+pytest_plugins = (
+    "tests.integration.mis_phase1f1_helpers",
+    "tests.integration.reconciliation_phase1f2_helpers",
+    "tests.integration.normalization_phase1f3_helpers",
+    "tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers",
+    "tests.integration.ratio_variance_phase1f4_helpers",
+    "tests.integration.financial_risk_phase1f5_helpers",
+    "tests.integration.anomaly_pattern_phase1f6_helpers",
+    "tests.integration.board_pack_phase1f7_helpers",
+    "tests.integration.multi_entity_consolidation_phase2_3_helpers",
+    "tests.integration.fx_translation_phase2_4_helpers",
+    "tests.integration.ownership_consolidation_phase2_5_helpers",
+    "tests.integration.cash_flow_phase2_6_helpers",
+    "tests.integration.equity_phase2_7_helpers",
+    "tests.integration.observability_phase3_helpers",
+    "tests.integration.erp_sync_phase4c_helpers",
+)
+
 # On Windows, asyncpg's persistent IOCP socket readers cause GetQueuedCompletionStatus
 # to block indefinitely between run_until_complete() calls (test → teardown boundary).
 # Switching to SelectorEventLoop (non-IOCP) avoids this issue entirely.
@@ -16,8 +34,36 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 import os
 
+# Ensure deterministic local integration endpoints for host-run pytest.
+# These defaults are only applied when not explicitly provided by the environment.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
+)
+os.environ.setdefault(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
+)
+os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
+os.environ.setdefault("TEST_REDIS_URL", "redis://localhost:6380/0")
+os.environ.setdefault("TEMPORAL_ADDRESS", "localhost:7233")
+os.environ.setdefault("TEMPORAL_NAMESPACE", "default")
+if os.environ.get("DEBUG", "").strip().lower() not in {
+    "",
+    "0",
+    "1",
+    "true",
+    "false",
+    "yes",
+    "no",
+    "on",
+    "off",
+}:
+    os.environ["DEBUG"] = "false"
+
 from fastapi import Request
 from httpx import ASGITransport, AsyncClient, Request as HttpxRequest
+from itsdangerous import URLSafeSerializer
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -256,6 +302,48 @@ from financeops.db.models.observability_engine import (  # noqa: F401
     RunTokenDiffDefinition,
     RunTokenDiffResult,
 )
+from financeops.db.models.erp_sync import (  # noqa: F401
+    ExternalBackdatedModificationAlert,
+    ExternalConnection,
+    ExternalConnectionVersion,
+    ExternalConnectorCapabilityRegistry,
+    ExternalConnectorVersionRegistry,
+    ExternalDataConsentLog,
+    ExternalMappingDefinition,
+    ExternalMappingVersion,
+    ExternalNormalizedSnapshot,
+    ExternalPeriodLock,
+    ExternalRawSnapshot,
+    ExternalSyncDefinition,
+    ExternalSyncDefinitionVersion,
+    ExternalSyncDriftReport,
+    ExternalSyncError,
+    ExternalSyncEvidenceLink,
+    ExternalSyncHealthAlert,
+    ExternalSyncPublishEvent,
+    ExternalSyncRun,
+    ExternalSyncSLAConfig,
+)
+from financeops.db.models.payment import (  # noqa: F401
+    BillingInvoice,
+    BillingPlan,
+    CreditLedger,
+    CreditTopUp,
+    GracePeriodLog,
+    PaymentMethod,
+    ProrationRecord,
+    SubscriptionEvent,
+    TenantSubscription,
+    WebhookEvent,
+)
+from financeops.modules.auto_trigger.models import (  # noqa: F401
+    PipelineRun,
+    PipelineStepLog,
+)
+from financeops.modules.secret_rotation.models import SecretRotationLog  # noqa: F401
+from financeops.modules.template_onboarding.models import OnboardingState  # noqa: F401
+from financeops.modules.compliance.models import ErasureLog, UserPiiKey  # noqa: F401
+from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -270,6 +358,21 @@ TEST_DATABASE_URL = os.getenv(
     "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
 )
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
+    """Close module-level Redis pools before the event loop is torn down."""
+    yield
+    from financeops.api import deps as api_deps
+    pool = api_deps._redis_pool
+    if pool is not None:
+        try:
+            await pool.aclose()
+        except Exception:
+            pass
+        finally:
+            api_deps._redis_pool = None
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -369,6 +472,7 @@ async def async_client(
     loop_scope="session" ensures the AsyncClient teardown uses the same loop.
     """
     from financeops.api.deps import get_async_session
+    from financeops.config import settings
     from financeops.db.rls import clear_tenant_context, set_tenant_context
     from financeops.main import app
 
@@ -380,6 +484,8 @@ async def async_client(
         ("/api/v1/financial-risk", "financial_risk_engine"),
         ("/api/v1/anomaly-engine", "anomaly_pattern_engine"),
         ("/api/v1/board-pack", "board_pack_narrative_engine"),
+        ("/api/v1/billing", "payment"),
+        ("/api/v1/erp-sync", "erp_sync"),
         ("/api/v1/reconciliation", "reconciliation_bridge"),
         ("/api/v1/recon", "reconciliation"),
         ("/api/v1/bank-recon", "bank_reconciliation"),
@@ -444,6 +550,33 @@ async def async_client(
         }
         request.headers["X-Control-Plane-Token"] = issue_context_token(claims)
 
+    csrf_serializer = URLSafeSerializer(settings.SECRET_KEY, "csrftoken")
+
+    async def _inject_csrf_token(request: HttpxRequest) -> None:
+        if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
+            return
+        if "x-csrftoken" in request.headers:
+            return
+
+        existing_cookie = request.headers.get("cookie", "")
+        if "csrftoken=" in existing_cookie:
+            for cookie_part in existing_cookie.split(";"):
+                part = cookie_part.strip()
+                if part.startswith("csrftoken="):
+                    request.headers["x-csrftoken"] = part.split("=", 1)[1]
+                    return
+            return
+        token = csrf_serializer.dumps("test-csrf")
+        request.headers["x-csrftoken"] = token
+        csrf_cookie = f"csrftoken={token}"
+        if existing_cookie:
+            request.headers["cookie"] = f"{existing_cookie}; {csrf_cookie}"
+        else:
+            request.headers["cookie"] = csrf_cookie
+
+    async def _consume_response(response) -> None:
+        await response.aread()
+
     # Redirect commit() to flush() — keeps data in the outer transaction so
     # session.rollback() in async_session can undo everything after the test.
     original_commit = async_session.commit
@@ -451,19 +584,34 @@ async def async_client(
 
     async def override_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
         tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+        if not tenant_id:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+                try:
+                    payload = decode_token(token)
+                except Exception:
+                    payload = {}
+                tenant_id = str(payload.get("tenant_id", "") or "")
         if tenant_id:
             await set_tenant_context(async_session, tenant_id)
         try:
             yield async_session
         finally:
             if tenant_id:
-                await clear_tenant_context(async_session)
+                try:
+                    await clear_tenant_context(async_session)
+                except Exception:
+                    await async_session.rollback()
 
     app.dependency_overrides[get_async_session] = override_session
     async with AsyncClient(
-        transport=ASGITransport(app=app),
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://test",
-        event_hooks={"request": [_inject_control_plane_token]},
+        event_hooks={
+            "request": [_inject_control_plane_token, _inject_csrf_token],
+            "response": [_consume_response],
+        },
     ) as client:
         yield client
     app.dependency_overrides.clear()

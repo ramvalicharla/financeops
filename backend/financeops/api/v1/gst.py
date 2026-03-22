@@ -72,7 +72,7 @@ async def create_return(
         notes=body.notes,
         created_by=user.id,
     )
-    await session.commit()
+    await session.flush()
     return {
         "return_id": str(ret.id),
         "return_type": ret.return_type,
@@ -141,7 +141,7 @@ async def run_gst_recon(
         return_type_b=body.return_type_b,
         run_by=user.id,
     )
-    await session.commit()
+    await session.flush()
     return {
         "period": f"{body.period_year}-{body.period_month:02d}",
         "entity_name": body.entity_name,

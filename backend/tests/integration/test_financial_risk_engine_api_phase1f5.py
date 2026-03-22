@@ -202,14 +202,14 @@ async def test_financial_risk_allow_path(
         },
     )
     assert create.status_code == 201
-    run_id = create.json()["run_id"]
+    run_id = create.json()["data"]["run_id"]
 
     execute = await async_client.post(
         f"/api/v1/financial-risk/runs/{run_id}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert execute.status_code == 200
-    executed = execute.json()
+    executed = execute.json()["data"]
     assert executed["result_count"] >= 1
     executed_run_id = executed["run_id"]
 
@@ -218,14 +218,14 @@ async def test_financial_risk_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert summary.status_code == 200
-    assert summary.json()["result_count"] >= 1
+    assert summary.json()["data"]["result_count"] >= 1
 
     results = await async_client.get(
         f"/api/v1/financial-risk/runs/{executed_run_id}/results",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert results.status_code == 200
-    assert isinstance(results.json(), list)
+    assert isinstance(results.json()["data"], list)
 
     signals = await async_client.get(
         f"/api/v1/financial-risk/runs/{executed_run_id}/signals",
@@ -244,3 +244,4 @@ async def test_financial_risk_allow_path(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert evidence.status_code == 200
+

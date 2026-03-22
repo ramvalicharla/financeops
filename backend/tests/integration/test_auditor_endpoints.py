@@ -22,7 +22,7 @@ async def test_create_auditor_grant(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "grant_id" in data
     assert data["is_active"] is True
     assert data["scope"] == "limited"
@@ -37,7 +37,7 @@ async def test_list_auditor_grants(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "grants" in data
     assert "count" in data
 
@@ -56,7 +56,7 @@ async def test_revoke_auditor_grant(
         json={"auditor_user_id": auditor_id, "scope": "full"},
     )
     assert grant_resp.status_code == 201
-    grant_id = grant_resp.json()["grant_id"]
+    grant_id = grant_resp.json()["data"]["grant_id"]
 
     revoke_resp = await async_client.request(
         "DELETE",
@@ -65,7 +65,7 @@ async def test_revoke_auditor_grant(
         json={"notes": "Engagement completed"},
     )
     assert revoke_resp.status_code == 200
-    data = revoke_resp.json()
+    data = revoke_resp.json()["data"]
     assert data["is_active"] is False
     assert data["revoked_at"] is not None
 
@@ -87,3 +87,4 @@ async def test_auditor_endpoints_require_auth(async_client: AsyncClient):
     for path in ["/api/v1/auditor/grants", "/api/v1/auditor/access-logs"]:
         r = await async_client.get(path)
         assert r.status_code == 401
+

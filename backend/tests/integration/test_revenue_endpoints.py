@@ -82,7 +82,7 @@ async def test_revenue_run_status_and_results_endpoints(
         )
 
     assert response.status_code == 202
-    payload = response.json()
+    payload = response.json()["data"]
     assert payload["status"] == "accepted"
     assert stub_temporal.started
 
@@ -93,14 +93,14 @@ async def test_revenue_run_status_and_results_endpoints(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert status_response.status_code == 200
-    assert status_response.json()["status"] in {"accepted", "running", "completed", "failed"}
+    assert status_response.json()["data"]["status"] in {"accepted", "running", "completed", "failed"}
 
     results_response = await async_client.get(
         f"/api/v1/revenue/results/{run_id}",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert results_response.status_code == 200
-    assert results_response.json()["count"] == 0
+    assert results_response.json()["data"]["count"] == 0
 
 
 @pytest.mark.asyncio
@@ -131,3 +131,4 @@ async def test_revenue_endpoints_require_auth(async_client: AsyncClient) -> None
         json=_run_request_payload(),
     )
     assert response.status_code == 401
+

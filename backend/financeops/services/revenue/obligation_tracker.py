@@ -236,3 +236,4 @@ async def register_obligations_and_line_items(
     obligations.sort(key=lambda item: (item.contract_number, item.obligation_code))
     line_items.sort(key=lambda item: (item.contract_number, item.line_code))
     return RegisteredObligationSet(obligations=obligations, line_items=line_items)
+

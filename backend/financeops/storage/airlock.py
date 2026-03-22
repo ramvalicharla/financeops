@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from financeops.config import settings
+from financeops.security.antivirus import AntivirusUnavailableError, scan_file
 
 log = logging.getLogger(__name__)
 
@@ -20,6 +21,23 @@ _ALLOWED_MIME_TYPES = {
     "image/png",
     "image/jpeg",
 }
+
+
+def detect_mime_type(
+    file_bytes: bytes,
+    filename: str,
+    *,
+    fail_on_missing_magic: bool = False,
+) -> str:
+    """Detect MIME with libmagic; optionally fail closed when libmagic is unavailable."""
+    try:
+        import magic
+    except ImportError:
+        if fail_on_missing_magic:
+            raise RuntimeError("libmagic unavailable")
+        log.warning("python-magic not installed - falling back to filename extension")
+        return _guess_mime_from_filename(filename)
+    return str(magic.from_buffer(file_bytes[:4096], mime=True))
 
 
 @dataclass
@@ -43,16 +61,11 @@ async def scan_and_seal(
     1. Validate file type via magic bytes
     2. Validate file size
     3. SHA256 hash
-    4. ClamAV scan (stubbed for Phase 0 with warning)
+    4. ClamAV scan
     5. Return AirlockResult
     """
     # Step 1: Validate file type using python-magic
-    try:
-        import magic
-        mime_type = magic.from_buffer(file_bytes[:4096], mime=True)
-    except ImportError:
-        log.warning("python-magic not installed — falling back to filename extension")
-        mime_type = _guess_mime_from_filename(filename)
+    mime_type = detect_mime_type(file_bytes, filename, fail_on_missing_magic=False)
 
     if mime_type not in _ALLOWED_MIME_TYPES:
         log.warning(
@@ -87,28 +100,96 @@ async def scan_and_seal(
     # Step 3: SHA256 hash
     sha256 = hashlib.sha256(file_bytes).hexdigest()
 
-    # Step 4: ClamAV scan stub
-    log.warning(
-        "ClamAV not configured — skipping AV scan for file=%s sha256=%s",
-        filename,
-        sha256[:12],
-    )
-    scan_result = "scan_skipped"
+    # Step 4: ClamAV scan (fail-closed when required)
+    try:
+        av_result = await scan_file(file_bytes, filename)
+    except AntivirusUnavailableError:
+        if settings.CLAMAV_REQUIRED:
+            return AirlockResult(
+                status="REJECTED",
+                sha256=sha256,
+                filename=filename,
+                size_bytes=len(file_bytes),
+                mime_type=mime_type,
+                scan_result="rejected",
+                rejection_reason=(
+                    "AV scan could not complete and CLAMAV_REQUIRED=True. "
+                    "File rejected. Check ClamAV service health."
+                ),
+            )
+        log.warning(
+            "ClamAV unavailable - scan skipped (CLAMAV_REQUIRED=False) tenant=%s",
+            str(tenant_id)[:8],
+        )
+        return AirlockResult(
+            status="SCAN_SKIPPED",
+            sha256=sha256,
+            filename=filename,
+            size_bytes=len(file_bytes),
+            mime_type=mime_type,
+            scan_result="scan_skipped",
+            rejection_reason=None,
+        )
+
+    if not av_result.clean:
+        log.critical(
+            "Malicious file detected - rejecting upload tenant=%s filename=%s threat=%s",
+            str(tenant_id)[:8],
+            filename,
+            av_result.threat_name,
+        )
+        return AirlockResult(
+            status="REJECTED",
+            sha256=sha256,
+            filename=filename,
+            size_bytes=len(file_bytes),
+            mime_type=mime_type,
+            scan_result="rejected",
+            rejection_reason=f"File rejected: malware detected ({av_result.threat_name})",
+        )
+
+    if av_result.scanner != "clamav":
+        if settings.CLAMAV_REQUIRED:
+            return AirlockResult(
+                status="REJECTED",
+                sha256=sha256,
+                filename=filename,
+                size_bytes=len(file_bytes),
+                mime_type=mime_type,
+                scan_result="rejected",
+                rejection_reason=(
+                    "AV scan could not complete and CLAMAV_REQUIRED=True. "
+                    "File rejected. Check ClamAV service health."
+                ),
+            )
+        log.warning(
+            "ClamAV unavailable - scan skipped (CLAMAV_REQUIRED=False) tenant=%s",
+            str(tenant_id)[:8],
+        )
+        return AirlockResult(
+            status="SCAN_SKIPPED",
+            sha256=sha256,
+            filename=filename,
+            size_bytes=len(file_bytes),
+            mime_type=mime_type,
+            scan_result="scan_skipped",
+            rejection_reason=None,
+        )
 
     log.info(
-        "Airlock APPROVED (scan_skipped): tenant=%s file=%s size=%d sha256=%s",
+        "Airlock APPROVED: tenant=%s file=%s size=%d sha256=%s",
         str(tenant_id)[:8],
         filename,
         len(file_bytes),
         sha256[:12],
     )
     return AirlockResult(
-        status="SCAN_SKIPPED",
+        status="APPROVED",
         sha256=sha256,
         filename=filename,
         size_bytes=len(file_bytes),
         mime_type=mime_type,
-        scan_result=scan_result,
+        scan_result="clean",
         rejection_reason=None,
     )
 

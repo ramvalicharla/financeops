@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from typing import Any
 
@@ -54,7 +54,9 @@ def _pick_sheet(visible_sheets: list, preferred_sheet: str | None):
 
 def _is_number(value: str) -> bool:
     try:
-        float(value.replace(",", ""))
+        Decimal(value.replace(",", ""))
         return True
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, InvalidOperation):
         return False
+
+

@@ -31,3 +31,4 @@ def build_hyperlink_formula(
     )
     escaped_label = _escape_excel_text(label)
     return f'=HYPERLINK("#{anchor}","{escaped_label}")'
+

@@ -22,7 +22,7 @@ async def test_import_gl_entry(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "entry_id" in data
     assert data["account_code"] == "1000"
 
@@ -47,7 +47,7 @@ async def test_import_tb_row(
         },
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "row_id" in data
     assert data["closing_balance"] == "1000"
 
@@ -85,7 +85,7 @@ async def test_run_reconciliation_returns_result(
         json={"period_year": 2025, "period_month": 8, "entity_name": entity},
     )
     assert response.status_code == 201
-    data = response.json()
+    data = response.json()["data"]
     assert "breaks_found" in data
     assert data["breaks_found"] == 0
 
@@ -99,7 +99,7 @@ async def test_list_gl_entries(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    data = response.json()
+    data = response.json()["data"]
     assert "entries" in data
     assert "count" in data
 
@@ -109,3 +109,4 @@ async def test_recon_endpoints_require_auth(async_client: AsyncClient):
     for path in ["/api/v1/recon/gl-entries", "/api/v1/recon/tb-rows", "/api/v1/recon/items"]:
         r = await async_client.get(path)
         assert r.status_code == 401
+

@@ -74,7 +74,7 @@ async def create_monthend_checklist(
         notes=body.notes,
         add_default_tasks=body.add_default_tasks,
     )
-    await session.commit()
+    await session.flush()
     return {
         "checklist_id": str(checklist.id),
         "period_year": checklist.period_year,
@@ -176,7 +176,7 @@ async def add_checklist_task(
         due_date=body.due_date,
         is_required=body.is_required,
     )
-    await session.commit()
+    await session.flush()
     return {
         "task_id": str(task.id),
         "task_name": task.task_name,
@@ -204,7 +204,7 @@ async def update_task(
     )
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    await session.commit()
+    await session.flush()
     return {
         "task_id": str(task.id),
         "task_name": task.task_name,
@@ -230,7 +230,7 @@ async def close_monthend_checklist(
     )
     if closed is None:
         raise HTTPException(status_code=404, detail="Checklist not found")
-    await session.commit()
+    await session.flush()
     return {
         "checklist_id": str(closed.id),
         "status": closed.status,

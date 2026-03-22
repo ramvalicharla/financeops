@@ -148,3 +148,4 @@ async def load_entity_snapshots(
         )
         bundles.append(LoadedEntitySnapshot(header=header, lines=bundle_lines))
     return bundles
+

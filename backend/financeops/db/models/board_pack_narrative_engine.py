@@ -54,6 +54,7 @@ class BoardPackDefinition(FinancialBase):
             unique=True,
             postgresql_where=text("status = 'active'"),
         ),
+        {"extend_existing": True},
     )
 
     organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -278,6 +279,7 @@ class BoardPackRun(FinancialBase):
             "created_at",
         ),
         Index("idx_board_pack_runs_token", "tenant_id", "run_token", unique=True),
+        {"extend_existing": True},
     )
 
     organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

@@ -71,7 +71,7 @@ async def create_auditor_grant(
         expires_at=body.expires_at,
         notes=body.notes,
     )
-    await session.commit()
+    await session.flush()
     return {
         "grant_id": str(grant.id),
         "auditor_user_id": str(grant.auditor_user_id),
@@ -100,7 +100,7 @@ async def revoke_grant(
     )
     if revoked is None:
         raise HTTPException(status_code=404, detail="Grant not found or already revoked")
-    await session.commit()
+    await session.flush()
     return {
         "grant_id": str(revoked.id),
         "is_active": revoked.is_active,
@@ -205,7 +205,7 @@ async def check_my_access(
             user_agent=request.headers.get("user-agent"),
             access_result="granted",
         )
-        await session.commit()
+        await session.flush()
         return {
             "access": "granted",
             "grant_id": str(grant.id),
@@ -225,5 +225,5 @@ async def check_my_access(
             user_agent=request.headers.get("user-agent"),
             access_result="denied",
         )
-        await session.commit()
-        raise HTTPException(status_code=403, detail=str(exc))
+        await session.flush()
+        raise HTTPException(status_code=403, detail="internal_error")

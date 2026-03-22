@@ -475,3 +475,4 @@ async def resolve_lineage(
         "Unsupported lineage record_type; expected one of "
         "consolidation_result, consolidation_line_item, intercompany_pair, elimination, snapshot_line"
     )
+

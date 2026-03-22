@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
@@ -41,6 +41,7 @@ from financeops.modules.payroll_gl_normalization.infrastructure.repository impor
 from financeops.modules.payroll_gl_normalization.policies.control_plane_policy import (
     normalization_control_plane_dependency,
 )
+from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter()
 
@@ -84,7 +85,7 @@ async def detect_source(
             sheet_name=body.sheet_name,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="internal_error") from exc
 
 
 @router.post(
@@ -120,14 +121,14 @@ async def commit_source_version(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return result
 
 
 @router.get(
     "/sources",
-    response_model=list[SourceSummaryResponse],
+    response_model=Paginated[SourceSummaryResponse] | list[SourceSummaryResponse],
     dependencies=[
         Depends(
             normalization_control_plane_dependency(
@@ -138,12 +139,15 @@ async def commit_source_version(
     ],
 )
 async def list_sources(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> list[SourceSummaryResponse]:
+) -> Paginated[SourceSummaryResponse] | list[SourceSummaryResponse]:
     service = _build_service(session)
     rows = await service.list_sources(tenant_id=user.tenant_id)
-    return [
+    data = [
         SourceSummaryResponse(
             id=row.id,
             source_family=row.source_family,
@@ -154,11 +158,19 @@ async def list_sources(
         )
         for row in rows
     ]
+    if "limit" not in request.query_params and "offset" not in request.query_params:
+        return data
+    return Paginated[SourceSummaryResponse](
+        data=data[offset : offset + limit],
+        total=len(data),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get(
     "/sources/{id}/versions",
-    response_model=list[SourceVersionSummaryResponse],
+    response_model=Paginated[SourceVersionSummaryResponse] | list[SourceVersionSummaryResponse],
     dependencies=[
         Depends(
             normalization_control_plane_dependency(
@@ -170,12 +182,15 @@ async def list_sources(
 )
 async def list_source_versions(
     id: uuid.UUID,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> list[SourceVersionSummaryResponse]:
+) -> Paginated[SourceVersionSummaryResponse] | list[SourceVersionSummaryResponse]:
     service = _build_service(session)
     rows = await service.list_source_versions(tenant_id=user.tenant_id, source_id=id)
-    return [
+    data = [
         SourceVersionSummaryResponse(
             id=row.id,
             version_no=row.version_no,
@@ -186,6 +201,14 @@ async def list_source_versions(
         )
         for row in rows
     ]
+    if "limit" not in request.query_params and "offset" not in request.query_params:
+        return data
+    return Paginated[SourceVersionSummaryResponse](
+        data=data[offset : offset + limit],
+        total=len(data),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -222,8 +245,8 @@ async def upload_run(
             created_by=user.id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    await session.commit()
+        raise HTTPException(status_code=400, detail="internal_error") from exc
+    await session.flush()
     return RunUploadResponse(**result)
 
 
@@ -256,7 +279,7 @@ async def validate_run(
         raise HTTPException(
             status_code=404 if "not found" in detail.lower() else 400, detail=detail
         ) from exc
-    await session.commit()
+    await session.flush()
     return RunActionResponse(**result)
 
 
@@ -289,7 +312,7 @@ async def finalize_run(
         raise HTTPException(
             status_code=404 if "not found" in detail.lower() else 400, detail=detail
         ) from exc
-    await session.commit()
+    await session.flush()
     return RunActionResponse(**result)
 
 
