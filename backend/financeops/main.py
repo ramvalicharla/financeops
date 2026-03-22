@@ -30,6 +30,9 @@ from financeops.modules.scheduled_delivery.api.routes import router as scheduled
 from financeops.modules.secret_rotation.api.routes import router as secret_rotation_router
 from financeops.modules.template_onboarding.api.routes import router as onboarding_router
 from financeops.modules.compliance.api.routes import router as compliance_router
+from financeops.modules.closing_checklist.api.routes import router as closing_checklist_router
+from financeops.modules.working_capital.api.routes import router as working_capital_router
+from financeops.modules.expense_management.api.routes import router as expense_router
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     RequestLoggingMiddleware,
@@ -201,6 +204,9 @@ def create_app() -> FastAPI:
     app.include_router(onboarding_router, prefix="/api/v1")
     app.include_router(secret_rotation_router, prefix="/api/v1")
     app.include_router(compliance_router, prefix="/api/v1")
+    app.include_router(closing_checklist_router, prefix="/api/v1")
+    app.include_router(working_capital_router, prefix="/api/v1")
+    app.include_router(expense_router, prefix="/api/v1")
 
     # OpenTelemetry instrumentation
     if settings.OTEL_EXPORTER_OTLP_ENDPOINT:

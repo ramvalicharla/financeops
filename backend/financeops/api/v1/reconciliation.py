@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from decimal import Decimal
 from uuid import UUID
@@ -14,6 +15,7 @@ from financeops.api.deps import (
     require_finance_team,
 )
 from financeops.db.models.users import IamUser
+from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.services.reconciliation_service import (
     create_gl_entry,
     create_tb_row,
@@ -221,6 +223,13 @@ async def run_reconciliation(
         run_by=user.id,
     )
     await session.flush()
+    asyncio.create_task(
+        run_auto_complete_for_event(
+            tenant_id=user.tenant_id,
+            period=f"{body.period_year:04d}-{body.period_month:02d}",
+            event="recon_complete",
+        )
+    )
     return {
         "period": f"{body.period_year}-{body.period_month:02d}",
         "entity_name": body.entity_name,

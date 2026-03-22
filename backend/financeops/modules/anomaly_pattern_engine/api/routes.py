@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +36,7 @@ from financeops.modules.anomaly_pattern_engine.application.statistical_service i
 from financeops.modules.anomaly_pattern_engine.application.validation_service import (
     ValidationService,
 )
+from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.modules.anomaly_pattern_engine.domain.value_objects import (
     DefinitionVersionTokenInput,
 )
@@ -329,6 +332,17 @@ async def execute_run(
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
+    status_text = str(payload.get("status") or payload.get("run_status") or "").lower()
+    if status_text in {"completed", "complete"}:
+        period_value = str(payload.get("reporting_period") or payload.get("period") or datetime.now(UTC).strftime("%Y-%m"))
+        period = period_value[:7] if len(period_value) >= 7 else datetime.now(UTC).strftime("%Y-%m")
+        asyncio.create_task(
+            run_auto_complete_for_event(
+                tenant_id=user.tenant_id,
+                period=period,
+                event="anomaly_detection_complete",
+            )
+        )
     return payload
 
 

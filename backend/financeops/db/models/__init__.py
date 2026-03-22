@@ -21,6 +21,16 @@ __all__ = [
     "ErasureLog",
     "AICostEvent",
     "TenantTokenBudget",
+    "ChecklistTemplate",
+    "ChecklistTemplateTask",
+    "ChecklistRun",
+    "ChecklistRunTask",
+    "WCSnapshot",
+    "ARLineItem",
+    "APLineItem",
+    "ExpensePolicy",
+    "ExpenseClaim",
+    "ExpenseApproval",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -53,6 +63,16 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "ErasureLog": ("financeops.modules.compliance.models", "ErasureLog"),
     "AICostEvent": ("financeops.db.models.ai_cost", "AICostEvent"),
     "TenantTokenBudget": ("financeops.db.models.ai_cost", "TenantTokenBudget"),
+    "ChecklistTemplate": ("financeops.modules.closing_checklist.models", "ChecklistTemplate"),
+    "ChecklistTemplateTask": ("financeops.modules.closing_checklist.models", "ChecklistTemplateTask"),
+    "ChecklistRun": ("financeops.modules.closing_checklist.models", "ChecklistRun"),
+    "ChecklistRunTask": ("financeops.modules.closing_checklist.models", "ChecklistRunTask"),
+    "WCSnapshot": ("financeops.modules.working_capital.models", "WCSnapshot"),
+    "ARLineItem": ("financeops.modules.working_capital.models", "ARLineItem"),
+    "APLineItem": ("financeops.modules.working_capital.models", "APLineItem"),
+    "ExpensePolicy": ("financeops.modules.expense_management.models", "ExpensePolicy"),
+    "ExpenseClaim": ("financeops.modules.expense_management.models", "ExpenseClaim"),
+    "ExpenseApproval": ("financeops.modules.expense_management.models", "ExpenseApproval"),
 }
 
 

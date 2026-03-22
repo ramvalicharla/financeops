@@ -8,14 +8,44 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from financeops.db.base import Base
-# Import all models so Alembic can detect them
-from financeops.db.models import tenants, users, audit, credits, prompts, ai_cost  # noqa: F401
+# Import model modules covered by the current migration chain checks.
+from financeops.db.models import ai_cost, tenants, users  # noqa: F401
+from financeops.modules.closing_checklist import models as closing_checklist_models  # noqa: F401
+from financeops.modules.compliance import models as compliance_models  # noqa: F401
+from financeops.modules.expense_management import models as expense_management_models  # noqa: F401
+from financeops.modules.working_capital import models as working_capital_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+
+def include_object(object_, name, type_, reflected, compare_to):
+    """Ignore reflected-only legacy objects not represented in app metadata."""
+    if reflected and compare_to is None:
+        return False
+    if name == "idx_erasure_log_tenant_created":
+        return False
+    if type_ == "index":
+        table_name = getattr(getattr(object_, "table", None), "name", "")
+        tracked_index_tables = {
+            "ai_cost_events",
+            "tenant_token_budgets",
+            "checklist_templates",
+            "checklist_template_tasks",
+            "checklist_runs",
+            "checklist_run_tasks",
+            "wc_snapshots",
+            "ar_line_items",
+            "ap_line_items",
+            "expense_policies",
+            "expense_claims",
+            "expense_approvals",
+        }
+        return table_name in tracked_index_tables
+    return True
 
 
 def get_url() -> str:
@@ -31,6 +61,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -41,6 +72,7 @@ def do_run_migrations(connection):
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()

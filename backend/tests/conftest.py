@@ -343,6 +343,18 @@ from financeops.modules.auto_trigger.models import (  # noqa: F401
 from financeops.modules.secret_rotation.models import SecretRotationLog  # noqa: F401
 from financeops.modules.template_onboarding.models import OnboardingState  # noqa: F401
 from financeops.modules.compliance.models import ErasureLog, UserPiiKey  # noqa: F401
+from financeops.modules.closing_checklist.models import (  # noqa: F401
+    ChecklistRun,
+    ChecklistRunTask,
+    ChecklistTemplate,
+    ChecklistTemplateTask,
+)
+from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot  # noqa: F401
+from financeops.modules.expense_management.models import (  # noqa: F401
+    ExpenseApproval,
+    ExpenseClaim,
+    ExpensePolicy,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.

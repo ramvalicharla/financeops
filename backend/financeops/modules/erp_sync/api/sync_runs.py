@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -20,6 +22,7 @@ from financeops.db.models.users import IamUser
 from financeops.modules.erp_sync.application.publish_service import PublishService
 from financeops.modules.erp_sync.application.sync_service import SyncService
 from financeops.modules.erp_sync.domain.enums import DatasetType
+from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.modules.auto_trigger.pipeline import trigger_post_sync_pipeline
 from financeops.security.antivirus import AntivirusUnavailableError, scan_file
 from financeops.security.file_validation import FileValidationError, validate_file
@@ -92,6 +95,14 @@ async def create_sync_run(
                 user.tenant_id,
                 exc,
             )
+        period = str(body.get("period") or body.get("reporting_period_label") or datetime.now(UTC).strftime("%Y-%m"))
+        asyncio.create_task(
+            run_auto_complete_for_event(
+                tenant_id=user.tenant_id,
+                period=period,
+                event="erp_sync_complete",
+            )
+        )
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from uuid import UUID
 
@@ -14,6 +15,7 @@ from financeops.api.deps import (
 )
 from financeops.config import settings
 from financeops.db.models.users import IamUser
+from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.schemas.consolidation import (
     ConsolidationAccountDrillResponse,
     ConsolidationEntityDrillResponse,
@@ -103,11 +105,29 @@ async def get_consolidation_run_status_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    return await get_run_status(
+    payload = await get_run_status(
         session,
         tenant_id=user.tenant_id,
         run_id=run_id,
     )
+    status_text = str(payload.get("status") or "").lower()
+    if status_text in {"completed", "complete"}:
+        year = payload.get("period_year")
+        month = payload.get("period_month")
+        if isinstance(year, int) and isinstance(month, int):
+            period = f"{year:04d}-{month:02d}"
+        else:
+            period = payload.get("period") or payload.get("reporting_period") or ""
+            period = str(period)[:7] if str(period) else ""
+        if period:
+            asyncio.create_task(
+                run_auto_complete_for_event(
+                    tenant_id=user.tenant_id,
+                    period=period,
+                    event="consolidation_complete",
+                )
+            )
+    return payload
 
 
 @router.get("/results/{run_id}", response_model=ConsolidationResultsResponse)
