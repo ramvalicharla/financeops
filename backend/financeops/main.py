@@ -38,6 +38,9 @@ from financeops.modules.forecasting.api.routes import router as forecasting_rout
 from financeops.modules.scenario_modelling.api.routes import router as scenario_router
 from financeops.modules.backup.api.routes import router as backup_router
 from financeops.api.v1.platform_users import router as platform_users_router
+from financeops.modules.fdd.api.routes import router as fdd_router
+from financeops.modules.ppa.api.routes import router as ppa_router
+from financeops.modules.ma_workspace.api.routes import router as ma_router
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     RequestLoggingMiddleware,
@@ -222,6 +225,9 @@ def create_app() -> FastAPI:
     app.include_router(scenario_router, prefix="/api/v1")
     app.include_router(backup_router, prefix="/api/v1")
     app.include_router(platform_users_router, prefix="/api/v1")
+    app.include_router(fdd_router, prefix="/api/v1")
+    app.include_router(ppa_router, prefix="/api/v1")
+    app.include_router(ma_router, prefix="/api/v1")
 
     # OpenTelemetry instrumentation
     if settings.OTEL_EXPORTER_OTLP_ENDPOINT:

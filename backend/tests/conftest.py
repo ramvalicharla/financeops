@@ -378,6 +378,23 @@ from financeops.modules.scenario_modelling.models import (  # noqa: F401
     ScenarioSet,
 )
 from financeops.modules.backup.models import BackupRunLog  # noqa: F401
+from financeops.modules.fdd.models import (  # noqa: F401
+    FDDEngagement,
+    FDDFinding,
+    FDDSection,
+)
+from financeops.modules.ppa.models import (  # noqa: F401
+    PPAAllocation,
+    PPAEngagement,
+    PPAIntangible,
+)
+from financeops.modules.ma_workspace.models import (  # noqa: F401
+    MADDItem,
+    MADocument,
+    MAValuation,
+    MAWorkspace,
+    MAWorkspaceMember,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.

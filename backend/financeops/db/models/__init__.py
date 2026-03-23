@@ -46,6 +46,17 @@ __all__ = [
     "ScenarioDefinition",
     "ScenarioResult",
     "ScenarioLineItem",
+    "FDDEngagement",
+    "FDDSection",
+    "FDDFinding",
+    "PPAEngagement",
+    "PPAAllocation",
+    "PPAIntangible",
+    "MAWorkspace",
+    "MAWorkspaceMember",
+    "MAValuation",
+    "MADDItem",
+    "MADocument",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -103,6 +114,17 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "ScenarioDefinition": ("financeops.modules.scenario_modelling.models", "ScenarioDefinition"),
     "ScenarioResult": ("financeops.modules.scenario_modelling.models", "ScenarioResult"),
     "ScenarioLineItem": ("financeops.modules.scenario_modelling.models", "ScenarioLineItem"),
+    "FDDEngagement": ("financeops.modules.fdd.models", "FDDEngagement"),
+    "FDDSection": ("financeops.modules.fdd.models", "FDDSection"),
+    "FDDFinding": ("financeops.modules.fdd.models", "FDDFinding"),
+    "PPAEngagement": ("financeops.modules.ppa.models", "PPAEngagement"),
+    "PPAAllocation": ("financeops.modules.ppa.models", "PPAAllocation"),
+    "PPAIntangible": ("financeops.modules.ppa.models", "PPAIntangible"),
+    "MAWorkspace": ("financeops.modules.ma_workspace.models", "MAWorkspace"),
+    "MAWorkspaceMember": ("financeops.modules.ma_workspace.models", "MAWorkspaceMember"),
+    "MAValuation": ("financeops.modules.ma_workspace.models", "MAValuation"),
+    "MADDItem": ("financeops.modules.ma_workspace.models", "MADDItem"),
+    "MADocument": ("financeops.modules.ma_workspace.models", "MADocument"),
 }
 
 

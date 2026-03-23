@@ -19,6 +19,9 @@ from financeops.modules.budgeting import models as budgeting_models  # noqa: F40
 from financeops.modules.forecasting import models as forecasting_models  # noqa: F401
 from financeops.modules.scenario_modelling import models as scenario_models  # noqa: F401
 from financeops.modules.backup import models as backup_models  # noqa: F401
+from financeops.modules.fdd import models as fdd_models  # noqa: F401
+from financeops.modules.ppa import models as ppa_models  # noqa: F401
+from financeops.modules.ma_workspace import models as ma_workspace_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -63,6 +66,17 @@ def include_object(object_, name, type_, reflected, compare_to):
             "gdpr_data_requests",
             "gdpr_breach_records",
             "backup_run_log",
+            "fdd_engagements",
+            "fdd_sections",
+            "fdd_findings",
+            "ppa_engagements",
+            "ppa_allocations",
+            "ppa_intangibles",
+            "ma_workspaces",
+            "ma_workspace_members",
+            "ma_valuations",
+            "ma_dd_items",
+            "ma_documents",
         }
         return table_name in tracked_index_tables
     return True
