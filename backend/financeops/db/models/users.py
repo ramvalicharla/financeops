@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,6 +13,9 @@ from financeops.db.base import Base, UUIDBase, utc_now
 
 class UserRole(str, enum.Enum):
     super_admin = "super_admin"
+    platform_owner = "platform_owner"
+    platform_admin = "platform_admin"
+    platform_support = "platform_support"
     finance_leader = "finance_leader"
     finance_team = "finance_team"
     auditor = "auditor"
@@ -46,6 +49,12 @@ class IamUser(UUIDBase):
     totp_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    force_mfa_setup: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

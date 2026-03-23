@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import (
     get_async_session,
     get_current_user,
-    require_auditor_or_above,
     require_finance_leader,
 )
 from financeops.core.exceptions import NotFoundError, ValidationError
@@ -99,14 +98,37 @@ class GDPRBreachRequest(BaseModel):
 
 
 def _require_platform_admin(user: IamUser) -> IamUser:
-    if user.role != UserRole.super_admin:
+    if user.role not in {
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }:
         raise HTTPException(status_code=403, detail="platform_admin role required")
     return user
 
 
 def _require_finance_or_platform(user: IamUser) -> IamUser:
-    if user.role not in {UserRole.super_admin, UserRole.finance_leader}:
+    if user.role not in {
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.finance_leader,
+    }:
         raise HTTPException(status_code=403, detail="finance_leader or platform_admin role required")
+    return user
+
+
+def _require_auditor_finance_or_platform(user: IamUser) -> IamUser:
+    if user.role not in {
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.platform_support,
+        UserRole.finance_leader,
+        UserRole.finance_team,
+        UserRole.auditor,
+    }:
+        raise HTTPException(status_code=403, detail="auditor or higher role required")
     return user
 
 
@@ -218,8 +240,9 @@ async def soc2_evaluate(
 @router.get("/soc2/evidence")
 async def soc2_evidence(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_auditor_or_above),
+    user: IamUser = Depends(get_current_user),
 ) -> dict:
+    _require_auditor_finance_or_platform(user)
     payload = await get_soc2_evidence_package(session, user.tenant_id)
     return _serialize(payload)
 
@@ -302,8 +325,9 @@ async def iso_evaluate(
 @router.get("/iso27001/evidence")
 async def iso_evidence(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_auditor_or_above),
+    user: IamUser = Depends(get_current_user),
 ) -> dict:
+    _require_auditor_finance_or_platform(user)
     payload = await get_iso27001_evidence_package(session, user.tenant_id)
     return _serialize(payload)
 

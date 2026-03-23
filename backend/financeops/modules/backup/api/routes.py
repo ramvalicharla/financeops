@@ -32,7 +32,11 @@ class BackupLogRequest(BaseModel):
 
 
 def _require_platform_admin(user: IamUser) -> IamUser:
-    if user.role != UserRole.super_admin:
+    if user.role not in {
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }:
         raise HTTPException(status_code=403, detail="platform_admin role required")
     return user
 

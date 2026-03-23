@@ -17,6 +17,7 @@ from financeops.db.rls import set_tenant_context
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
     create_mfa_challenge,
+    create_mfa_setup_token,
     login,
     logout,
     refresh_tokens,
@@ -203,6 +204,12 @@ async def user_login(
         raise AuthenticationError("Invalid email or password")
     await set_tenant_context(session, user.tenant_id)
 
+    if user.force_mfa_setup:
+        setup_token = await create_mfa_setup_token(redis_client, user=user)
+        return {
+            "requires_mfa_setup": True,
+            "setup_token": setup_token,
+        }
     if user.mfa_enabled:
         challenge_token = await create_mfa_challenge(redis_client, user=user)
         return {

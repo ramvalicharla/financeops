@@ -142,6 +142,27 @@ async def create_mfa_challenge(
     return token
 
 
+async def create_mfa_setup_token(
+    redis_client: aioredis.Redis,
+    *,
+    user: IamUser,
+    ttl_seconds: int = 3600,
+) -> str:
+    """
+    Issue a setup token used when force_mfa_setup is enabled.
+    """
+    token = secrets.token_urlsafe(32)
+    key = f"mfa_setup:{token}"
+    payload = json.dumps(
+        {
+            "user_id": str(user.id),
+            "tenant_id": str(user.tenant_id),
+        }
+    )
+    await redis_client.setex(key, ttl_seconds, payload)
+    return token
+
+
 async def verify_mfa_challenge(
     session: AsyncSession,
     redis_client: aioredis.Redis,
@@ -333,6 +354,7 @@ async def verify_totp_setup(user: IamUser, code: str, session: AsyncSession) -> 
         raise AuthenticationError("Invalid TOTP code — please try again")
     old_state = {"mfa_enabled": user.mfa_enabled}
     user.mfa_enabled = True
+    user.force_mfa_setup = False
     await AuditWriter.flush_with_audit(
         session,
         audit=AuditEvent(
@@ -343,7 +365,10 @@ async def verify_totp_setup(user: IamUser, code: str, session: AsyncSession) -> 
             resource_id=str(user.id),
             resource_name=user.email,
             old_value=old_state,
-            new_value={"mfa_enabled": user.mfa_enabled},
+            new_value={
+                "mfa_enabled": user.mfa_enabled,
+                "force_mfa_setup": user.force_mfa_setup,
+            },
         ),
     )
     return True
