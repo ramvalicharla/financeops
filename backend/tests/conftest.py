@@ -64,6 +64,7 @@ if os.environ.get("DEBUG", "").strip().lower() not in {
 from fastapi import Request
 from httpx import ASGITransport, AsyncClient, Request as HttpxRequest
 from itsdangerous import URLSafeSerializer
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -343,6 +344,12 @@ from financeops.modules.auto_trigger.models import (  # noqa: F401
 from financeops.modules.secret_rotation.models import SecretRotationLog  # noqa: F401
 from financeops.modules.template_onboarding.models import OnboardingState  # noqa: F401
 from financeops.modules.compliance.models import ErasureLog, UserPiiKey  # noqa: F401
+from financeops.modules.compliance.models import ComplianceControl, ComplianceEvent  # noqa: F401
+from financeops.modules.compliance.gdpr_models import (  # noqa: F401
+    GDPRBreachRecord,
+    GDPRConsentRecord,
+    GDPRDataRequest,
+)
 from financeops.modules.closing_checklist.models import (  # noqa: F401
     ChecklistRun,
     ChecklistRunTask,
@@ -370,6 +377,7 @@ from financeops.modules.scenario_modelling.models import (  # noqa: F401
     ScenarioResult,
     ScenarioSet,
 )
+from financeops.modules.backup.models import BackupRunLog  # noqa: F401
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.
@@ -413,6 +421,11 @@ async def engine():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
+        await conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        await conn.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES ('0031_anomaly_ui_layer')")
+        )
     yield test_engine
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)

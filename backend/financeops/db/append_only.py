@@ -233,6 +233,10 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "cp_tenant_isolation_policy",
     "cp_tenant_migration_events",
     "ai_cost_events",
+    "compliance_events",
+    "gdpr_data_requests",
+    "gdpr_breach_records",
+    "backup_run_log",
 )
 
 APPEND_ONLY_TRIGGER_FUNCTION = "financeops_block_update_delete"

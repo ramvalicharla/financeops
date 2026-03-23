@@ -12,11 +12,13 @@ from financeops.db.base import Base
 from financeops.db.models import ai_cost, tenants, users  # noqa: F401
 from financeops.modules.closing_checklist import models as closing_checklist_models  # noqa: F401
 from financeops.modules.compliance import models as compliance_models  # noqa: F401
+from financeops.modules.compliance import gdpr_models as compliance_gdpr_models  # noqa: F401
 from financeops.modules.expense_management import models as expense_management_models  # noqa: F401
 from financeops.modules.working_capital import models as working_capital_models  # noqa: F401
 from financeops.modules.budgeting import models as budgeting_models  # noqa: F401
 from financeops.modules.forecasting import models as forecasting_models  # noqa: F401
 from financeops.modules.scenario_modelling import models as scenario_models  # noqa: F401
+from financeops.modules.backup import models as backup_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -55,6 +57,12 @@ def include_object(object_, name, type_, reflected, compare_to):
             "scenario_definitions",
             "scenario_results",
             "scenario_line_items",
+            "compliance_controls",
+            "compliance_events",
+            "gdpr_consent_records",
+            "gdpr_data_requests",
+            "gdpr_breach_records",
+            "backup_run_log",
         }
         return table_name in tracked_index_tables
     return True
