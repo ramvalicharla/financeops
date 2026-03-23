@@ -31,6 +31,15 @@ __all__ = [
     "ExpensePolicy",
     "ExpenseClaim",
     "ExpenseApproval",
+    "BudgetVersion",
+    "BudgetLineItem",
+    "ForecastRun",
+    "ForecastAssumption",
+    "ForecastLineItem",
+    "ScenarioSet",
+    "ScenarioDefinition",
+    "ScenarioResult",
+    "ScenarioLineItem",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -73,6 +82,15 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "ExpensePolicy": ("financeops.modules.expense_management.models", "ExpensePolicy"),
     "ExpenseClaim": ("financeops.modules.expense_management.models", "ExpenseClaim"),
     "ExpenseApproval": ("financeops.modules.expense_management.models", "ExpenseApproval"),
+    "BudgetVersion": ("financeops.modules.budgeting.models", "BudgetVersion"),
+    "BudgetLineItem": ("financeops.modules.budgeting.models", "BudgetLineItem"),
+    "ForecastRun": ("financeops.modules.forecasting.models", "ForecastRun"),
+    "ForecastAssumption": ("financeops.modules.forecasting.models", "ForecastAssumption"),
+    "ForecastLineItem": ("financeops.modules.forecasting.models", "ForecastLineItem"),
+    "ScenarioSet": ("financeops.modules.scenario_modelling.models", "ScenarioSet"),
+    "ScenarioDefinition": ("financeops.modules.scenario_modelling.models", "ScenarioDefinition"),
+    "ScenarioResult": ("financeops.modules.scenario_modelling.models", "ScenarioResult"),
+    "ScenarioLineItem": ("financeops.modules.scenario_modelling.models", "ScenarioLineItem"),
 }
 
 

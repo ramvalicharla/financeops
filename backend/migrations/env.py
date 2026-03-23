@@ -14,6 +14,9 @@ from financeops.modules.closing_checklist import models as closing_checklist_mod
 from financeops.modules.compliance import models as compliance_models  # noqa: F401
 from financeops.modules.expense_management import models as expense_management_models  # noqa: F401
 from financeops.modules.working_capital import models as working_capital_models  # noqa: F401
+from financeops.modules.budgeting import models as budgeting_models  # noqa: F401
+from financeops.modules.forecasting import models as forecasting_models  # noqa: F401
+from financeops.modules.scenario_modelling import models as scenario_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -43,6 +46,15 @@ def include_object(object_, name, type_, reflected, compare_to):
             "expense_policies",
             "expense_claims",
             "expense_approvals",
+            "budget_versions",
+            "budget_line_items",
+            "forecast_runs",
+            "forecast_assumptions",
+            "forecast_line_items",
+            "scenario_sets",
+            "scenario_definitions",
+            "scenario_results",
+            "scenario_line_items",
         }
         return table_name in tracked_index_tables
     return True

@@ -355,6 +355,21 @@ from financeops.modules.expense_management.models import (  # noqa: F401
     ExpenseClaim,
     ExpensePolicy,
 )
+from financeops.modules.budgeting.models import (  # noqa: F401
+    BudgetLineItem,
+    BudgetVersion,
+)
+from financeops.modules.forecasting.models import (  # noqa: F401
+    ForecastAssumption,
+    ForecastLineItem,
+    ForecastRun,
+)
+from financeops.modules.scenario_modelling.models import (  # noqa: F401
+    ScenarioDefinition,
+    ScenarioLineItem,
+    ScenarioResult,
+    ScenarioSet,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.
