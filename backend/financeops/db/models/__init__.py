@@ -59,6 +59,16 @@ __all__ = [
     "MADocument",
     "ModuleRegistry",
     "TaskRegistry",
+    "MarketplaceContributor",
+    "MarketplaceTemplate",
+    "MarketplacePurchase",
+    "MarketplacePayout",
+    "MarketplaceRating",
+    "WhiteLabelConfig",
+    "WhiteLabelAuditLog",
+    "PartnerProfile",
+    "ReferralTracking",
+    "PartnerCommission",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -129,6 +139,16 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "MADocument": ("financeops.modules.ma_workspace.models", "MADocument"),
     "ModuleRegistry": ("financeops.modules.service_registry.models", "ModuleRegistry"),
     "TaskRegistry": ("financeops.modules.service_registry.models", "TaskRegistry"),
+    "MarketplaceContributor": ("financeops.modules.marketplace.models", "MarketplaceContributor"),
+    "MarketplaceTemplate": ("financeops.modules.marketplace.models", "MarketplaceTemplate"),
+    "MarketplacePurchase": ("financeops.modules.marketplace.models", "MarketplacePurchase"),
+    "MarketplacePayout": ("financeops.modules.marketplace.models", "MarketplacePayout"),
+    "MarketplaceRating": ("financeops.modules.marketplace.models", "MarketplaceRating"),
+    "WhiteLabelConfig": ("financeops.modules.white_label.models", "WhiteLabelConfig"),
+    "WhiteLabelAuditLog": ("financeops.modules.white_label.models", "WhiteLabelAuditLog"),
+    "PartnerProfile": ("financeops.modules.partner_program.models", "PartnerProfile"),
+    "ReferralTracking": ("financeops.modules.partner_program.models", "ReferralTracking"),
+    "PartnerCommission": ("financeops.modules.partner_program.models", "PartnerCommission"),
 }
 
 

@@ -396,6 +396,22 @@ from financeops.modules.ma_workspace.models import (  # noqa: F401
     MAWorkspaceMember,
 )
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry  # noqa: F401
+from financeops.modules.marketplace.models import (  # noqa: F401
+    MarketplaceContributor,
+    MarketplacePayout,
+    MarketplacePurchase,
+    MarketplaceRating,
+    MarketplaceTemplate,
+)
+from financeops.modules.white_label.models import (  # noqa: F401
+    WhiteLabelAuditLog,
+    WhiteLabelConfig,
+)
+from financeops.modules.partner_program.models import (  # noqa: F401
+    PartnerCommission,
+    PartnerProfile,
+    ReferralTracking,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.

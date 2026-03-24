@@ -42,6 +42,9 @@ from financeops.modules.fdd.api.routes import router as fdd_router
 from financeops.modules.ppa.api.routes import router as ppa_router
 from financeops.modules.ma_workspace.api.routes import router as ma_router
 from financeops.modules.service_registry.api.routes import router as service_registry_router
+from financeops.modules.marketplace.api.routes import router as marketplace_router
+from financeops.modules.white_label.api.routes import router as white_label_router
+from financeops.modules.partner_program.api.routes import router as partner_router
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     RequestLoggingMiddleware,
@@ -230,6 +233,9 @@ def create_app() -> FastAPI:
     app.include_router(ppa_router, prefix="/api/v1")
     app.include_router(ma_router, prefix="/api/v1")
     app.include_router(service_registry_router, prefix="/api/v1")
+    app.include_router(marketplace_router, prefix="/api/v1")
+    app.include_router(white_label_router, prefix="/api/v1")
+    app.include_router(partner_router, prefix="/api/v1")
 
     # OpenTelemetry instrumentation
     if settings.OTEL_EXPORTER_OTLP_ENDPOINT:
