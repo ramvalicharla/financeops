@@ -1,0 +1,37 @@
+name: Schema Drift Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "backend/financeops/db/models/**"
+      - "backend/migrations/**"
+
+jobs:
+  schema-drift:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: financeops_schema_check
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        working-directory: backend
+        run: pip install -e ".[dev]"
+      - name: Check for schema drift
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:testpassword@localhost:5432/financeops_schema_check
+        run: |
+          alembic upgrade head
+          alembic check
+          echo "PASS: no schema drift detected"
+

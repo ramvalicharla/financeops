@@ -395,6 +395,7 @@ from financeops.modules.ma_workspace.models import (  # noqa: F401
     MAWorkspace,
     MAWorkspaceMember,
 )
+from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry  # noqa: F401
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.

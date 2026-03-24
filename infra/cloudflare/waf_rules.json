@@ -1,0 +1,56 @@
+{
+  "description": "FinanceOps WAF Rules",
+  "rules": [
+    {
+      "id": "rate_limit_api",
+      "description": "Rate limit API endpoints",
+      "expression": "(http.request.uri.path matches \"^/api/v1/\")",
+      "action": "challenge",
+      "ratelimit": {
+        "requests_per_period": 1000,
+        "period": 60,
+        "mitigation_timeout": 600
+      }
+    },
+    {
+      "id": "block_sql_injection",
+      "description": "Block SQL injection attempts",
+      "expression": "(cf.waf.score.sqli gt 40)",
+      "action": "block"
+    },
+    {
+      "id": "block_xss",
+      "description": "Block XSS attempts",
+      "expression": "(cf.waf.score.xss gt 40)",
+      "action": "block"
+    },
+    {
+      "id": "block_path_traversal",
+      "description": "Block path traversal",
+      "expression": "(http.request.uri.path contains \"../\")",
+      "action": "block"
+    },
+    {
+      "id": "challenge_admin_routes",
+      "description": "Challenge non-platform IPs on admin routes",
+      "expression": "(http.request.uri.path matches \"^/admin\")",
+      "action": "managed_challenge"
+    },
+    {
+      "id": "block_known_bad_bots",
+      "description": "Block known malicious bots",
+      "expression": "(cf.client.bot)",
+      "action": "block"
+    },
+    {
+      "id": "allow_health_checks",
+      "description": "Allow health check endpoints unrestricted",
+      "expression": "(http.request.uri.path eq \"/health\")",
+      "action": "skip",
+      "action_parameters": {
+        "ruleset": "current"
+      }
+    }
+  ]
+}
+

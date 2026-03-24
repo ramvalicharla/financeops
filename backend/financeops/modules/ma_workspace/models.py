@@ -120,7 +120,7 @@ class MAValuation(Base):
             "valuation_method IN ('dcf','comparable_companies','precedent_transactions','asset_based','lbo')",
             name="ck_ma_valuations_method",
         ),
-        Index("idx_ma_valuations_workspace_computed", "workspace_id", "computed_at"),
+        Index("idx_ma_valuations_workspace_computed", "workspace_id", text("computed_at DESC")),
         {"extend_existing": True},
     )
 

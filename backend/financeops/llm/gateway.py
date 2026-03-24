@@ -7,7 +7,7 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.core.exceptions import ValidationError
+from financeops.core.exceptions import PromptInjectionError, ValidationError
 from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
 from financeops.llm.cache import CACHE_TTL_SECONDS, compute_cache_key
@@ -16,11 +16,13 @@ from financeops.llm.cost_ledger import check_budget, record_ai_call
 from financeops.llm.fallback import AIResult, ModelConfig, _get_provider, execute_with_fallback
 from financeops.llm.pii_masker import PIIMasker
 from financeops.llm.providers.base import LLMRequest, LLMResponse
+from financeops.security.prompt_injection import PromptInjectionScanner
 from financeops.observability.ai_metrics import observe_ai_cost, observe_ai_tokens
 from financeops.llm.pipeline import PipelineContext, PipelineResult, run_pipeline
 
 log = logging.getLogger(__name__)
 _masker = PIIMasker()
+_scanner = PromptInjectionScanner()
 
 
 async def execute_with_cache(
@@ -66,8 +68,22 @@ async def _call_provider(
     tenant_id: str,
     redis_client,
 ) -> tuple[LLMResponse, bool, bool]:
+    scan_result = _scanner.scan(prompt)
+    prompt_after_scan = prompt
+    if scan_result.is_injection:
+        log.warning(
+            "prompt_injection_detected risk=%s pattern=%s tenant=%s",
+            scan_result.risk_level,
+            scan_result.matched_pattern,
+            tenant_id,
+        )
+        if scan_result.risk_level in {"critical", "high"}:
+            raise PromptInjectionError("Request contains unsafe content and cannot be processed.")
+        if scan_result.sanitised_text:
+            prompt_after_scan = scan_result.sanitised_text
+
     masking_result = None
-    prompt_to_send = prompt
+    prompt_to_send = prompt_after_scan
     system_prompt_to_send = system_prompt
     pii_was_masked = False
 

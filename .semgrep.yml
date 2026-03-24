@@ -1,0 +1,40 @@
+rules:
+  - id: no-float-in-financial-modules
+    pattern: float(...)
+    message: "Float used in financial code. Use Decimal instead."
+    languages: [python]
+    severity: ERROR
+    paths:
+      include:
+        - backend/financeops/services/**
+        - backend/financeops/modules/**
+      exclude:
+        - "**/*test*"
+        - "**/__pycache__/**"
+
+  - id: no-hardcoded-secrets
+    pattern-regex: "(?i)(password|secret|api_key|token|key)\\s*=\\s*[\"'][A-Za-z0-9+/=_-]{20,}[\"']"
+    message: "Potential hardcoded secret detected."
+    languages: [python]
+    severity: ERROR
+
+  - id: no-session-commit-in-routes
+    patterns:
+      - pattern-inside: |
+          @router.$METHOD(...)
+          async def $FUNC(...):
+              ...
+      - pattern: await $SESSION.commit()
+    message: "session.commit() in route handler. Move to service layer."
+    languages: [python]
+    severity: WARNING
+
+  - id: sql-injection-risk
+    patterns:
+      - pattern-either:
+          - pattern: text(f"...{$VAR}...")
+          - pattern: text("..." + $VAR + "...")
+    message: "Potential SQL injection via f-string in text()."
+    languages: [python]
+    severity: ERROR
+

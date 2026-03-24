@@ -57,6 +57,8 @@ __all__ = [
     "MAValuation",
     "MADDItem",
     "MADocument",
+    "ModuleRegistry",
+    "TaskRegistry",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -125,6 +127,8 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "MAValuation": ("financeops.modules.ma_workspace.models", "MAValuation"),
     "MADDItem": ("financeops.modules.ma_workspace.models", "MADDItem"),
     "MADocument": ("financeops.modules.ma_workspace.models", "MADocument"),
+    "ModuleRegistry": ("financeops.modules.service_registry.models", "ModuleRegistry"),
+    "TaskRegistry": ("financeops.modules.service_registry.models", "TaskRegistry"),
 }
 
 

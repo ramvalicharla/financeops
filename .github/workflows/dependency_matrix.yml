@@ -1,0 +1,32 @@
+name: Dependency Matrix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/pyproject.toml"
+      - "frontend/package.json"
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Generate dependency matrix
+        run: python scripts/generate_dependency_matrix.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add DEPENDENCY_MATRIX.md
+          git diff --staged --quiet || git commit -m "chore: update DEPENDENCY_MATRIX.md [skip ci]"
+          git push
+

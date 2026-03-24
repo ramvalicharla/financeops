@@ -113,6 +113,14 @@ class FeatureNotImplementedError(FinanceOpsError):
         super().__init__(message or f"Feature '{feature}' is not yet available.")
 
 
+class PromptInjectionError(FinanceOpsError):
+    status_code = 400
+    error_code = "prompt_injection_detected"
+
+    def __init__(self, message: str = "Request contains unsafe content and cannot be processed.") -> None:
+        super().__init__(message)
+
+
 def _error_response(
     request: Request,
     status_code: int,
