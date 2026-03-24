@@ -48,6 +48,14 @@ from financeops.modules.partner_program.api.routes import router as partner_rout
 from financeops.modules.notifications.api.routes import router as notifications_router
 from financeops.modules.learning_engine.api.routes import router as learning_router
 from financeops.modules.search.api.routes import router as search_router
+from financeops.modules.cash_flow_forecast.api.routes import router as treasury_router
+from financeops.modules.tax_provision.api.routes import router as tax_router
+from financeops.modules.debt_covenants.api.routes import router as covenants_router
+from financeops.modules.transfer_pricing.api.routes import router as tp_router
+from financeops.modules.digital_signoff.api.routes import router as signoff_router
+from financeops.modules.statutory.api.routes import router as statutory_router
+from financeops.modules.multi_gaap.api.routes import router as gaap_router
+from financeops.modules.auditor_portal.api.routes import router as audit_router
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     RequestLoggingMiddleware,
@@ -242,6 +250,14 @@ def create_app() -> FastAPI:
     app.include_router(notifications_router, prefix="/api/v1")
     app.include_router(learning_router, prefix="/api/v1")
     app.include_router(search_router, prefix="/api/v1")
+    app.include_router(treasury_router, prefix="/api/v1")
+    app.include_router(tax_router, prefix="/api/v1")
+    app.include_router(covenants_router, prefix="/api/v1")
+    app.include_router(tp_router, prefix="/api/v1")
+    app.include_router(signoff_router, prefix="/api/v1")
+    app.include_router(statutory_router, prefix="/api/v1")
+    app.include_router(gaap_router, prefix="/api/v1")
+    app.include_router(audit_router, prefix="/api/v1")
 
     # OpenTelemetry instrumentation
     if settings.OTEL_EXPORTER_OTLP_ENDPOINT:

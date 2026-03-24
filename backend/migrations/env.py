@@ -22,6 +22,14 @@ from financeops.modules.backup import models as backup_models  # noqa: F401
 from financeops.modules.fdd import models as fdd_models  # noqa: F401
 from financeops.modules.ppa import models as ppa_models  # noqa: F401
 from financeops.modules.ma_workspace import models as ma_workspace_models  # noqa: F401
+from financeops.modules.cash_flow_forecast import models as cash_flow_forecast_models  # noqa: F401
+from financeops.modules.tax_provision import models as tax_provision_models  # noqa: F401
+from financeops.modules.debt_covenants import models as debt_covenants_models  # noqa: F401
+from financeops.modules.transfer_pricing import models as transfer_pricing_models  # noqa: F401
+from financeops.modules.digital_signoff import models as digital_signoff_models  # noqa: F401
+from financeops.modules.statutory import models as statutory_models  # noqa: F401
+from financeops.modules.multi_gaap import models as multi_gaap_models  # noqa: F401
+from financeops.modules.auditor_portal import models as auditor_portal_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

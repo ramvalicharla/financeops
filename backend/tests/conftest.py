@@ -423,6 +423,36 @@ from financeops.modules.learning_engine.models import (  # noqa: F401
     LearningSignal,
 )
 from financeops.modules.search.models import SearchIndexEntry  # noqa: F401
+from financeops.modules.cash_flow_forecast.models import (  # noqa: F401
+    CashFlowForecastAssumption,
+    CashFlowForecastRun,
+)
+from financeops.modules.tax_provision.models import (  # noqa: F401
+    TaxPosition,
+    TaxProvisionRun,
+)
+from financeops.modules.debt_covenants.models import (  # noqa: F401
+    CovenantBreachEvent,
+    CovenantDefinition,
+)
+from financeops.modules.transfer_pricing.models import (  # noqa: F401
+    ICTransaction,
+    TPConfig,
+    TransferPricingDoc,
+)
+from financeops.modules.digital_signoff.models import DirectorSignoff  # noqa: F401
+from financeops.modules.statutory.models import (  # noqa: F401
+    StatutoryFiling,
+    StatutoryRegisterEntry,
+)
+from financeops.modules.multi_gaap.models import (  # noqa: F401
+    MultiGAAPConfig,
+    MultiGAAPRun,
+)
+from financeops.modules.auditor_portal.models import (  # noqa: F401
+    AuditorPortalAccess,
+    AuditorRequest,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.
