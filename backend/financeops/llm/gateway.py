@@ -19,10 +19,22 @@ from financeops.llm.providers.base import LLMRequest, LLMResponse
 from financeops.security.prompt_injection import PromptInjectionScanner
 from financeops.observability.ai_metrics import observe_ai_cost, observe_ai_tokens
 from financeops.llm.pipeline import PipelineContext, PipelineResult, run_pipeline
+from financeops.modules.learning_engine.service import get_tenant_context_for_task
 
 log = logging.getLogger(__name__)
 _masker = PIIMasker()
 _scanner = PromptInjectionScanner()
+
+
+def _format_learning_examples(examples: list[dict]) -> str:
+    lines: list[str] = []
+    for idx, row in enumerate(examples, start=1):
+        quality = row.get("quality_score")
+        lines.append(f"Example {idx} (quality={quality}):")
+        lines.append(f"Input: {row.get('input_context', '')}")
+        lines.append(f"Correct Output: {row.get('correct_output', '')}")
+        lines.append("")
+    return "\n".join(lines).strip()
 
 
 async def execute_with_cache(
@@ -177,6 +189,22 @@ async def gateway_generate(
         await set_tenant_context(session, tenant_id)
 
     try:
+        enriched_system_prompt = system_prompt
+        if session is not None and tenant_uuid is not None:
+            try:
+                examples = await get_tenant_context_for_task(
+                    session,
+                    tenant_id=tenant_uuid,
+                    task_type=task_type,
+                )
+                if examples:
+                    enriched_system_prompt = (
+                        f"{system_prompt}\n\nExamples from previous corrections:\n"
+                        f"{_format_learning_examples(examples)}"
+                    )
+            except Exception as exc:
+                log.warning("learning_context_injection_failed tenant=%s task=%s error=%s", tenant_id, task_type, exc)
+
         if session is not None and tenant_uuid is not None:
             budget_status = await check_budget(session, tenant_uuid)
             if not bool(budget_status["allowed"]):
@@ -230,7 +258,7 @@ async def gateway_generate(
         result = await execute_with_fallback(
             task_type=task_type,
             prompt=prompt,
-            system_prompt=system_prompt,
+            system_prompt=enriched_system_prompt,
             tenant_id=tenant_id,
             circuit_registry=registry,
             provider_invoke=_provider_invoke,

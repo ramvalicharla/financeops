@@ -10,12 +10,14 @@ from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
 from financeops.db.session import AsyncSessionLocal, clear_tenant_context, set_tenant_context
 from financeops.db.models.board_pack_generator import BoardPackGeneratorRun
+from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.board_pack_generator.application.generate_service import (
     BoardPackGenerateService,
     BoardPackGenerationError,
     InvalidRunStateError,
 )
 from financeops.modules.closing_checklist.service import run_auto_complete_for_event
+from financeops.modules.notifications.service import send_notification
 from financeops.tasks.celery_app import celery_app
 
 
@@ -72,6 +74,29 @@ def generate_board_pack_task(
                             period=period,
                             event="board_pack_generated",
                         )
+                        finance_leader = (
+                            await session_execute(
+                                select(IamUser).where(
+                                    IamUser.tenant_id == parsed_tenant_id,
+                                    IamUser.role == UserRole.finance_leader,
+                                    IamUser.is_active.is_(True),
+                                )
+                            )
+                        ).scalars().first()
+                        if finance_leader is not None:
+                            try:
+                                await send_notification(
+                                    session,
+                                    tenant_id=parsed_tenant_id,
+                                    recipient_user_id=finance_leader.id,
+                                    notification_type="board_pack_ready",
+                                    title="Board pack ready",
+                                    body="Your board pack has been generated.",
+                                    action_url=f"/board-pack/{run_row.id}",
+                                    metadata={"board_pack_id": str(run_row.id), "period": period},
+                                )
+                            except Exception:
+                                pass
                 return {"run_id": str(parsed_run_id), "status": "COMPLETE"}
             finally:
                 await clear_tenant_context(session)

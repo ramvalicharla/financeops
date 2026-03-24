@@ -37,6 +37,7 @@ from financeops.modules.anomaly_pattern_engine.application.validation_service im
     ValidationService,
 )
 from financeops.modules.closing_checklist.service import run_auto_complete_for_event
+from financeops.modules.notifications.service import send_notification
 from financeops.modules.anomaly_pattern_engine.domain.value_objects import (
     DefinitionVersionTokenInput,
 )
@@ -343,6 +344,20 @@ async def execute_run(
                 event="anomaly_detection_complete",
             )
         )
+        try:
+            await send_notification(
+                session,
+                tenant_id=user.tenant_id,
+                recipient_user_id=user.id,
+                notification_type="anomaly_detected",
+                title="Anomaly detection run completed",
+                body="New anomaly results are available for review.",
+                action_url=f"/anomalies/runs/{id}",
+                metadata={"run_id": str(id), "period": period},
+            )
+        except Exception:
+            # Notification delivery is best-effort and must not break anomaly execution.
+            pass
     return payload
 
 

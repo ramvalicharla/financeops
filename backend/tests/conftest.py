@@ -412,6 +412,17 @@ from financeops.modules.partner_program.models import (  # noqa: F401
     PartnerProfile,
     ReferralTracking,
 )
+from financeops.modules.notifications.models import (  # noqa: F401
+    NotificationEvent,
+    NotificationPreferences,
+    NotificationReadState,
+)
+from financeops.modules.learning_engine.models import (  # noqa: F401
+    AIBenchmarkResult,
+    LearningCorrection,
+    LearningSignal,
+)
+from financeops.modules.search.models import SearchIndexEntry  # noqa: F401
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.

@@ -69,6 +69,13 @@ __all__ = [
     "PartnerProfile",
     "ReferralTracking",
     "PartnerCommission",
+    "NotificationEvent",
+    "NotificationReadState",
+    "NotificationPreferences",
+    "LearningSignal",
+    "LearningCorrection",
+    "AIBenchmarkResult",
+    "SearchIndexEntry",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -149,6 +156,13 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "PartnerProfile": ("financeops.modules.partner_program.models", "PartnerProfile"),
     "ReferralTracking": ("financeops.modules.partner_program.models", "ReferralTracking"),
     "PartnerCommission": ("financeops.modules.partner_program.models", "PartnerCommission"),
+    "NotificationEvent": ("financeops.modules.notifications.models", "NotificationEvent"),
+    "NotificationReadState": ("financeops.modules.notifications.models", "NotificationReadState"),
+    "NotificationPreferences": ("financeops.modules.notifications.models", "NotificationPreferences"),
+    "LearningSignal": ("financeops.modules.learning_engine.models", "LearningSignal"),
+    "LearningCorrection": ("financeops.modules.learning_engine.models", "LearningCorrection"),
+    "AIBenchmarkResult": ("financeops.modules.learning_engine.models", "AIBenchmarkResult"),
+    "SearchIndexEntry": ("financeops.modules.search.models", "SearchIndexEntry"),
 }
 
 

@@ -25,6 +25,7 @@ from financeops.modules.closing_checklist.service import (
     period_start_date,
     update_task_status,
 )
+from financeops.modules.notifications.service import send_notification
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/close", tags=["closing-checklist"])
@@ -494,6 +495,19 @@ async def assign_task(
     task.assigned_to = assignee.id
     task.updated_at = datetime.now(UTC)
     await session.flush()
+    try:
+        await send_notification(
+            session,
+            tenant_id=user.tenant_id,
+            recipient_user_id=assignee.id,
+            notification_type="task_assigned",
+            title=f"Task assigned: {task.task_name}",
+            body="You have been assigned a closing checklist task.",
+            action_url=f"/close/{normalized_period}",
+            metadata={"task_id": str(task.id), "period": normalized_period},
+        )
+    except Exception:
+        pass
 
     return {
         "task_id": str(task.id),

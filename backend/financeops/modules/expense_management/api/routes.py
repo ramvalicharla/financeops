@@ -22,6 +22,7 @@ from financeops.modules.expense_management.service import (
     resolve_claim_status,
     submit_claim,
 )
+from financeops.modules.notifications.service import send_notification
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -299,6 +300,33 @@ async def approve_expense_claim(
         raise HTTPException(status_code=404, detail=exc.message) from exc
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
+
+    claim = (
+        await session.execute(
+            select(ExpenseClaim).where(
+                ExpenseClaim.id == claim_id,
+                ExpenseClaim.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if claim is not None:
+        try:
+            action_value = str(body.action).strip().lower()
+            notification_type = (
+                "expense_approved" if action_value == "approved" else "expense_rejected"
+            )
+            await send_notification(
+                session,
+                tenant_id=user.tenant_id,
+                recipient_user_id=claim.submitted_by,
+                notification_type=notification_type,
+                title=f"Expense {action_value}: {claim.vendor_name}",
+                body=f"Your expense claim has been {action_value}.",
+                action_url=f"/expenses/{claim.id}",
+                metadata={"claim_id": str(claim.id), "status": payload.get("status")},
+            )
+        except Exception:
+            pass
 
     await session.flush()
     return payload
