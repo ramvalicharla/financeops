@@ -60,6 +60,19 @@ class IamUser(UUIDBase):
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    terms_version_accepted: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
+    invite_token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    invite_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    invite_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     sessions: Mapped[list["IamSession"]] = relationship(

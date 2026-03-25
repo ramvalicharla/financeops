@@ -171,6 +171,8 @@ async def check_all_covenants(
     tenant_id: uuid.UUID,
     period: str,
 ) -> list[CovenantBreachEvent]:
+    # unbounded-ok: active covenant definitions are tenant-scoped and operationally capped.
+    # Full active set is required to compute period compliance in one run.
     defs = (
         await session.execute(
             select(CovenantDefinition)
@@ -202,6 +204,23 @@ async def check_all_covenants(
     return events
 
 
+async def get_all_covenants(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[CovenantDefinition]:
+    result = await session.execute(
+        select(CovenantDefinition)
+        .where(CovenantDefinition.tenant_id == tenant_id)
+        .where(CovenantDefinition.is_active.is_(True))
+        .order_by(desc(CovenantDefinition.created_at), desc(CovenantDefinition.id))
+        .limit(limit)
+        .offset(offset)
+    )
+    return result.scalars().all()
+
+
 def _headroom_pct(definition: CovenantDefinition, event: CovenantBreachEvent | None) -> Decimal:
     if event is None:
         return Decimal("0.0000")
@@ -231,13 +250,7 @@ async def get_covenant_dashboard(
     session: AsyncSession,
     tenant_id: uuid.UUID,
 ) -> dict:
-    defs = (
-        await session.execute(
-            select(CovenantDefinition)
-            .where(CovenantDefinition.tenant_id == tenant_id, CovenantDefinition.is_active.is_(True))
-            .order_by(CovenantDefinition.created_at)
-        )
-    ).scalars().all()
+    defs = await get_all_covenants(session, tenant_id=tenant_id, limit=100, offset=0)
 
     rows: list[dict] = []
     passing = 0
@@ -285,5 +298,6 @@ async def get_covenant_dashboard(
 __all__ = [
     "compute_covenant_value",
     "check_all_covenants",
+    "get_all_covenants",
     "get_covenant_dashboard",
 ]

@@ -31,6 +31,10 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     task_reject_on_worker_lost=True,
+    worker_concurrency=4,
+    worker_max_tasks_per_child=1000,
+    task_soft_time_limit=300,
+    task_time_limit=600,
     # Retry settings
     task_max_retries=3,
     task_default_retry_delay=60,  # seconds; tasks use exponential backoff
@@ -44,6 +48,11 @@ celery_app.conf.update(
     task_default_queue="normal_q",
     task_default_exchange="normal_q",
     task_default_routing_key="normal",
+    task_routes={
+        "financeops.tasks.*": {"queue": "default"},
+        "financeops.modules.search.tasks.*": {"queue": "search"},
+        "financeops.modules.*.tasks.*": {"queue": "finance"},
+    },
     imports=(
         "financeops.tasks.payment_tasks",
         "financeops.modules.scheduled_delivery.tasks",

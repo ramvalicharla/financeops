@@ -195,6 +195,22 @@ async def get_tenant_context_for_task(
     return payload
 
 
+async def get_recent_corrections(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    task_type: str,
+    limit: int = 20,
+) -> list[LearningCorrection]:
+    result = await session.execute(
+        select(LearningCorrection)
+        .where(LearningCorrection.tenant_id == tenant_id)
+        .where(LearningCorrection.task_type == task_type)
+        .order_by(desc(LearningCorrection.created_at), desc(LearningCorrection.id))
+        .limit(limit)
+    )
+    return result.scalars().all()
+
+
 async def validate_correction(
     session: AsyncSession,
     correction_id: uuid.UUID,
@@ -241,8 +257,8 @@ __all__ = [
     "capture_signal",
     "compute_correction_delta",
     "get_learning_stats",
+    "get_recent_corrections",
     "get_tenant_context_for_task",
     "list_benchmark_results",
     "validate_correction",
 ]
-

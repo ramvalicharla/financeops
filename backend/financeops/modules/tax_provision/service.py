@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -8,12 +9,18 @@ from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.db.models.mis_manager import MisDataSnapshot, MisNormalizedLine
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.tax_provision.models import TaxPosition, TaxProvisionRun
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 
 _MONEY = Decimal("0.01")
 _RATE = Decimal("0.0001")
+
+
+@dataclass(frozen=True)
+class _MisPnlData:
+    profit_before_tax: Decimal
 
 
 def _money(value: Decimal | int | str | None) -> Decimal:
@@ -57,6 +64,38 @@ async def _profit_before_tax(session: AsyncSession, tenant_id: uuid.UUID, fiscal
         )
     ).scalar_one()
     return _money(total)
+
+
+async def get_mis_pnl_for_period(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    period: str,
+    entity_id: uuid.UUID | None,
+) -> _MisPnlData | None:
+    parts = period.split("-")
+    if len(parts) != 2:
+        raise ValidationError("period must be YYYY-MM")
+    year = int(parts[0])
+    month = int(parts[1])
+
+    stmt = (
+        select(func.coalesce(func.sum(MisNormalizedLine.period_value), 0))
+        .join(MisDataSnapshot, MisDataSnapshot.id == MisNormalizedLine.snapshot_id)
+        .where(MisDataSnapshot.tenant_id == tenant_id)
+        .where(MisNormalizedLine.tenant_id == tenant_id)
+        .where(func.extract("year", MisDataSnapshot.reporting_period) == year)
+        .where(func.extract("month", MisDataSnapshot.reporting_period) == month)
+        .where(MisDataSnapshot.snapshot_status.in_(("validated", "finalized")))
+        .where(MisNormalizedLine.canonical_metric_code.in_(("pbt", "profit_before_tax")))
+    )
+    if entity_id is not None:
+        stmt = stmt.where(MisDataSnapshot.organisation_id == entity_id)
+
+    total = (await session.execute(stmt)).scalar_one()
+    amount = _money(total)
+    if amount == Decimal("0.00"):
+        return None
+    return _MisPnlData(profit_before_tax=amount)
 
 
 async def upsert_tax_position(
@@ -134,8 +173,19 @@ async def compute_tax_provision(
         )
     fiscal_year = _fiscal_year_from_period(period)
     tax_rate = _rate(applicable_tax_rate)
-
-    profit_before_tax = await _profit_before_tax(session, tenant_id, fiscal_year)
+    mis_data = await get_mis_pnl_for_period(
+        session=session,
+        tenant_id=tenant_id,
+        period=period,
+        entity_id=entity_id,
+    )
+    # Prefer MIS P&L as the authoritative source. Keep budget fallback for legacy
+    # tenants with no MIS snapshots yet.
+    profit_before_tax = (
+        mis_data.profit_before_tax
+        if mis_data is not None
+        else await _profit_before_tax(session, tenant_id, fiscal_year)
+    )
 
     positions = (
         await session.execute(

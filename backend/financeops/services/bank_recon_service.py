@@ -9,6 +9,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.bank_recon import BankStatement, BankTransaction, BankReconItem
+from financeops.modules.bank_reconciliation.parsers.base import BankTransaction as ParsedBankTransaction
 from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
@@ -235,4 +236,60 @@ async def list_bank_recon_items(
     stmt = stmt.order_by(desc(BankReconItem.created_at)).limit(limit).offset(offset)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def store_bank_transactions(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    bank_name: str,
+    transactions: list[ParsedBankTransaction],
+    uploaded_by: uuid.UUID,
+) -> list[BankTransaction]:
+    if not transactions:
+        return []
+
+    first = min(t.transaction_date for t in transactions)
+    last = max(t.transaction_date for t in transactions)
+    statement = await create_bank_statement(
+        session,
+        tenant_id=tenant_id,
+        bank_name=bank_name,
+        account_number_masked="****0000",
+        currency="INR",
+        period_year=last.year,
+        period_month=last.month,
+        entity_name="default",
+        opening_balance=transactions[0].balance or Decimal("0.00"),
+        closing_balance=transactions[-1].balance or Decimal("0.00"),
+        file_name=f"{bank_name}_{first.isoformat()}_{last.isoformat()}.csv",
+        file_hash=compute_chain_hash(
+            {
+                "tenant_id": str(tenant_id),
+                "bank_name": bank_name,
+                "first": first.isoformat(),
+                "last": last.isoformat(),
+                "count": len(transactions),
+            },
+            None,
+        ),
+        uploaded_by=uploaded_by,
+        transaction_count=len(transactions),
+    )
+
+    stored: list[BankTransaction] = []
+    for txn in transactions:
+        row = await add_bank_transaction(
+            session,
+            tenant_id=tenant_id,
+            statement_id=statement.id,
+            transaction_date=txn.transaction_date,
+            description=txn.description,
+            debit_amount=txn.debit or Decimal("0.00"),
+            credit_amount=txn.credit or Decimal("0.00"),
+            balance=txn.balance or Decimal("0.00"),
+            reference=txn.reference or None,
+        )
+        stored.append(row)
+    return stored
 

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 from xml.etree import ElementTree as ET
 
@@ -18,6 +19,19 @@ from financeops.modules.erp_sync.infrastructure.secret_store import SecretStore
 
 
 _NUMERIC_PATTERN = re.compile(r"^-?\d+(?:\.\d+)?$")
+
+
+@dataclass(frozen=True)
+class ConnectionResult:
+    success: bool
+    message: str
+
+
+@dataclass(frozen=True)
+class TrialBalanceRow:
+    account_name: str
+    amount: Decimal
+    is_debit: bool
 
 
 def _strip_ns(tag: str) -> str:
@@ -101,6 +115,17 @@ def _decode_xml(raw: bytes) -> str:
             return raw.decode("cp1252")
         except UnicodeDecodeError as exc:
             raise ExtractionError("Unable to decode Tally XML response") from exc
+
+
+def get_indian_fiscal_year(dt: date) -> tuple[date, date]:
+    """Return Indian FY start/end for a given date."""
+    if dt.month >= 4:
+        fy_start = date(dt.year, 4, 1)
+        fy_end = date(dt.year + 1, 3, 31)
+    else:
+        fy_start = date(dt.year - 1, 4, 1)
+        fy_end = date(dt.year, 3, 31)
+    return fy_start, fy_end
 
 
 class TallyConnector(AbstractConnector):
@@ -207,6 +232,18 @@ class TallyConnector(AbstractConnector):
             result["erp_control_totals"] = control_totals
         return result
 
+    async def extract_trial_balance(
+        self,
+        *,
+        from_date: date,
+        to_date: date,
+        credentials: dict[str, Any],
+    ) -> list[TrialBalanceRow]:
+        """Extract trial balance rows from Tally Gateway XML response."""
+        xml = self._build_trial_balance_request(from_date, to_date)
+        response = await self._post_tally_xml(xml, credentials=credentials)
+        return self._parse_trial_balance_response(response)
+
     async def _resolve_credentials(
         self,
         *,
@@ -245,6 +282,64 @@ class TallyConnector(AbstractConnector):
         if response.status_code >= 400:
             raise ExtractionError(f"Tally gateway returned HTTP {response.status_code}")
         return _decode_xml(response.content)
+
+    async def _post_tally_xml(self, xml: str, *, credentials: dict[str, Any]) -> str:
+        """POST XML payload to Tally Gateway using existing connector auth settings."""
+        return await self._post_xml(credentials, xml)
+
+    def _build_trial_balance_request(self, from_date: date, to_date: date) -> str:
+        return f"""
+        <ENVELOPE>
+          <HEADER>
+            <TALLYREQUEST>Export Data</TALLYREQUEST>
+          </HEADER>
+          <BODY>
+            <EXPORTDATA>
+              <REQUESTDESC>
+                <REPORTNAME>Trial Balance</REPORTNAME>
+                <STATICVARIABLES>
+                  <SVFROMDATE>{from_date.strftime('%Y%m%d')}</SVFROMDATE>
+                  <SVTODATE>{to_date.strftime('%Y%m%d')}</SVTODATE>
+                  <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
+                </STATICVARIABLES>
+              </REQUESTDESC>
+            </EXPORTDATA>
+          </BODY>
+        </ENVELOPE>
+        """.strip()
+
+    def _parse_trial_balance_response(self, xml_response: str) -> list[TrialBalanceRow]:
+        """Parse XML trial balance payload into Decimal-safe rows."""
+        try:
+            root = ET.fromstring(xml_response)
+        except ET.ParseError as exc:
+            raise ExtractionError("Invalid Tally XML response") from exc
+
+        rows: list[TrialBalanceRow] = []
+        for ledger in root.iter():
+            if _strip_ns(ledger.tag).upper() != "LEDGER":
+                continue
+            name = str(ledger.attrib.get("NAME", "")).strip()
+            closing = None
+            for child in list(ledger):
+                if _strip_ns(child.tag).upper() == "CLOSINGBALANCE":
+                    closing = child
+                    break
+            if closing is None:
+                continue
+            amount_str = str(closing.text or "0").replace(",", "").strip() or "0"
+            try:
+                amount = Decimal(amount_str).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            except (InvalidOperation, ValueError):
+                continue
+            rows.append(
+                TrialBalanceRow(
+                    account_name=name,
+                    amount=amount,
+                    is_debit=amount >= Decimal("0.00"),
+                )
+            )
+        return rows
 
     def _build_connection_probe_xml(self, *, company_name: str | None) -> str:
         company_node = (

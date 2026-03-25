@@ -96,11 +96,20 @@ async def seed_pbc_checklist(
 ) -> list[AuditorRequest]:
     existing = (
         await session.execute(
-            select(AuditorRequest).where(AuditorRequest.access_id == access_id)
+            select(AuditorRequest)
+            .where(AuditorRequest.access_id == access_id)
+            .limit(1)
         )
-    ).scalars().all()
+    ).scalars().first()
     if existing:
-        return existing
+        # unbounded-ok: checklist rows are bounded to per-engagement PBC items.
+        return (
+            await session.execute(
+                select(AuditorRequest)
+                .where(AuditorRequest.access_id == access_id)
+                .order_by(desc(AuditorRequest.created_at), desc(AuditorRequest.id))
+            )
+        ).scalars().all()
 
     now = datetime.now(UTC)
     rows: list[AuditorRequest] = []
@@ -163,6 +172,8 @@ async def get_pbc_tracker(
     session: AsyncSession,
     access_id: uuid.UUID,
     tenant_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
 ) -> dict:
     access = (
         await session.execute(
@@ -172,11 +183,23 @@ async def get_pbc_tracker(
     if access is None:
         raise NotFoundError("Audit engagement not found")
 
+    total_rows = int(
+        (
+            await session.execute(
+                select(func.count(AuditorRequest.id))
+                .where(AuditorRequest.access_id == access_id)
+                .where(AuditorRequest.tenant_id == tenant_id)
+            )
+        ).scalar_one()
+        or 0
+    )
     rows = (
         await session.execute(
             select(AuditorRequest)
             .where(AuditorRequest.access_id == access_id, AuditorRequest.tenant_id == tenant_id)
             .order_by(desc(AuditorRequest.created_at), desc(AuditorRequest.id))
+            .limit(limit)
+            .offset(offset)
         )
     ).scalars().all()
 
@@ -214,6 +237,9 @@ async def get_pbc_tracker(
 
     return {
         "engagement_name": access.engagement_name,
+        "records_total": total_rows,
+        "limit": limit,
+        "offset": offset,
         "total_requests": total,
         "open": open_count,
         "in_progress": in_progress,

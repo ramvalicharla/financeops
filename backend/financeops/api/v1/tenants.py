@@ -1,7 +1,10 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import hashlib
 import logging
+import secrets
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, EmailStr
@@ -12,7 +15,11 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_leader,
 )
+from financeops.config import settings
 from financeops.db.models.users import IamUser, UserRole
+from financeops.modules.notifications.channels.email_channel import send_direct
+from financeops.modules.notifications.templates.emails import user_invited_email
+from financeops.platform.db.models.user_membership import CpUserEntityAssignment
 from financeops.services.credit_service import get_balance
 from financeops.services.tenant_service import (
     get_tenant,
@@ -20,9 +27,7 @@ from financeops.services.tenant_service import (
     update_tenant_settings,
 )
 from financeops.services.user_service import (
-    create_user,
     deactivate_user,
-    get_user_by_id,
     list_tenant_users,
     update_user_role,
 )
@@ -40,7 +45,7 @@ class InviteUserRequest(BaseModel):
     email: EmailStr
     full_name: str
     role: UserRole
-    password: str
+    entity_ids: list[uuid.UUID] = []
 
 
 class UpdateRoleRequest(BaseModel):
@@ -52,7 +57,6 @@ async def get_my_tenant(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    """GET /api/v1/tenants/me — current tenant details."""
     tenant = await get_tenant(session, user.tenant_id)
     workspaces = await list_workspaces(session, user.tenant_id)
     return {
@@ -80,7 +84,6 @@ async def update_my_tenant(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    """PATCH /api/v1/tenants/me — update tenant settings."""
     tenant = await get_tenant(session, user.tenant_id)
     await update_tenant_settings(
         session,
@@ -98,7 +101,6 @@ async def list_my_users(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    """GET /api/v1/tenants/me/users — list users in tenant."""
     users = await list_tenant_users(session, user.tenant_id)
     return {
         "users": [
@@ -123,20 +125,56 @@ async def invite_user(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    """POST /api/v1/tenants/me/users — invite a new user to tenant."""
-    new_user = await create_user(
-        session,
+    invite_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
+
+    new_user = IamUser(
         tenant_id=user.tenant_id,
         email=body.email,
-        password=body.password,
         full_name=body.full_name,
         role=body.role,
+        hashed_password="INVITE_PENDING",
+        force_mfa_setup=True,
+        is_active=False,
+        invite_token_hash=token_hash,
+        invite_expires_at=datetime.now(UTC) + timedelta(hours=48),
     )
+    session.add(new_user)
+    await session.flush()
+
+    for entity_id in body.entity_ids:
+        session.add(
+            CpUserEntityAssignment(
+                tenant_id=user.tenant_id,
+                user_id=new_user.id,
+                entity_id=entity_id,
+                is_active=True,
+            )
+        )
+
+    tenant = await get_tenant(session, user.tenant_id)
+    frontend_base = str(getattr(settings, "FRONTEND_URL", "http://localhost:3000")).rstrip("/")
+    invite_url = f"{frontend_base}/accept-invite?token={invite_token}"
+    subject, html = user_invited_email(
+        invitee_name=body.full_name,
+        inviter_name=user.full_name,
+        company_name=tenant.display_name,
+        invite_url=invite_url,
+        unsubscribe_url=f"{frontend_base}/settings/privacy",
+    )
+    await send_direct(
+        to=body.email,
+        subject=subject,
+        html_body=html,
+        text_body=f"You are invited to FinanceOps. Accept invitation: {invite_url}",
+    )
+
     await session.flush()
     return {
         "user_id": str(new_user.id),
         "email": new_user.email,
         "role": new_user.role.value,
+        "message": f"Invitation sent to {new_user.email}",
     }
 
 
@@ -147,7 +185,7 @@ async def update_user(
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    """PATCH /api/v1/tenants/me/users/{user_id} — update user role."""
+    _ = current_user
     updated = await update_user_role(session, user_id, body.role)
     await session.flush()
     return {
@@ -163,7 +201,7 @@ async def delete_user(
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    """DELETE /api/v1/tenants/me/users/{user_id} — deactivate user (soft delete)."""
+    _ = current_user
     deactivated = await deactivate_user(session, user_id)
     await session.flush()
     return {"user_id": str(deactivated.id), "deactivated": True}
@@ -174,8 +212,8 @@ async def get_credits(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    """GET /api/v1/tenants/me/credits — current credit balance + history."""
-    from sqlalchemy import select, desc
+    from sqlalchemy import desc, select
+
     from financeops.db.models.credits import CreditTransaction
 
     balance = await get_balance(session, user.tenant_id)

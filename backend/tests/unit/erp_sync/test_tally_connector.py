@@ -1,5 +1,6 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -7,10 +8,12 @@ import pytest
 from financeops.modules.erp_sync.domain.enums import DatasetType
 from financeops.modules.erp_sync.infrastructure.connectors.base import (
     ConnectorCapabilityNotSupported,
+    ExtractionError,
 )
 from financeops.modules.erp_sync.infrastructure.connectors.tally import (
     TallyConnector,
     _decode_xml,
+    get_indian_fiscal_year,
 )
 
 
@@ -105,3 +108,85 @@ async def test_tally_unsupported_dataset_raises_capability_error() -> None:
 def test_tally_decoder_handles_cp1252() -> None:
     text = "Caf\xe9".encode("cp1252")
     assert _decode_xml(text) == "Café"
+
+
+def test_tally_trial_balance_xml_request_format() -> None:
+    connector = TallyConnector()
+    xml = connector._build_trial_balance_request(date(2026, 4, 1), date(2026, 4, 30))
+    assert "<REPORTNAME>Trial Balance</REPORTNAME>" in xml
+    assert "<SVFROMDATE>20260401</SVFROMDATE>" in xml
+    assert "<SVTODATE>20260430</SVTODATE>" in xml
+
+
+def test_tally_trial_balance_response_parsing() -> None:
+    connector = TallyConnector()
+    xml = """
+    <ENVELOPE>
+      <BODY>
+        <LEDGER NAME="Cash"><CLOSINGBALANCE>1234.56</CLOSINGBALANCE></LEDGER>
+        <LEDGER NAME="Payable"><CLOSINGBALANCE>-100.00</CLOSINGBALANCE></LEDGER>
+      </BODY>
+    </ENVELOPE>
+    """
+    rows = connector._parse_trial_balance_response(xml)
+    assert len(rows) == 2
+    assert rows[0].account_name == "Cash"
+    assert rows[0].amount == Decimal("1234.56")
+    assert rows[1].is_debit is False
+
+
+def test_tally_decimal_amounts_not_float() -> None:
+    connector = TallyConnector()
+    xml = """
+    <ENVELOPE>
+      <BODY>
+        <LEDGER NAME="Cash"><CLOSINGBALANCE>10.10</CLOSINGBALANCE></LEDGER>
+      </BODY>
+    </ENVELOPE>
+    """
+    rows = connector._parse_trial_balance_response(xml)
+    assert isinstance(rows[0].amount, Decimal)
+
+
+def test_tally_indian_fiscal_year_computation() -> None:
+    fy_start, fy_end = get_indian_fiscal_year(date(2026, 5, 1))
+    assert fy_start == date(2026, 4, 1)
+    assert fy_end == date(2027, 3, 31)
+    fy_start_prev, fy_end_prev = get_indian_fiscal_year(date(2026, 2, 1))
+    assert fy_start_prev == date(2025, 4, 1)
+    assert fy_end_prev == date(2026, 3, 31)
+
+
+@pytest.mark.asyncio
+async def test_tally_connection_test_success() -> None:
+    connector = TallyConnector()
+
+    async def fake_post_xml(credentials: dict[str, object], request_xml: str) -> str:
+        return SAMPLE_TALLY_XML
+
+    connector._post_xml = fake_post_xml  # type: ignore[method-assign]
+    result = await connector.test_connection(
+        {"tally_host": "localhost", "tally_port": 9000, "tally_company_name": "Demo Co"}
+    )
+    assert result["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_tally_connection_test_failure_handling() -> None:
+    connector = TallyConnector()
+
+    async def fake_post_xml(credentials: dict[str, object], request_xml: str) -> str:
+        raise ExtractionError("gateway down")
+
+    connector._post_xml = fake_post_xml  # type: ignore[method-assign]
+    with pytest.raises(ExtractionError):
+        await connector.extract(
+            DatasetType.TRIAL_BALANCE,
+            credentials={"tally_host": "localhost", "tally_port": 9000, "tally_company_name": "Demo Co"},
+        )
+
+
+def test_tally_xml_parse_error_handling() -> None:
+    connector = TallyConnector()
+    with pytest.raises(ExtractionError):
+        connector._parse_trial_balance_response("<ENVELOPE><BODY><LEDGER></BODY></ENVELOPE>")

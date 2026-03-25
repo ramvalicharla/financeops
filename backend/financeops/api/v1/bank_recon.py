@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import logging
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,10 @@ from financeops.api.deps import (
     require_finance_team,
 )
 from financeops.db.models.users import IamUser
+from financeops.modules.bank_reconciliation.parsers.factory import (
+    detect_bank_from_content,
+    get_parser,
+)
 from financeops.services.bank_recon_service import (
     add_bank_transaction,
     create_bank_statement,
@@ -22,13 +26,12 @@ from financeops.services.bank_recon_service import (
     list_bank_statements,
     list_bank_transactions,
     run_bank_reconciliation,
+    store_bank_transactions,
 )
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ── Schemas ────────────────────────────────────────────────────────────────
 
 class CreateStatementRequest(BaseModel):
     bank_name: str
@@ -54,7 +57,50 @@ class AddTransactionRequest(BaseModel):
     reference: str | None = None
 
 
-# ── Endpoints ──────────────────────────────────────────────────────────────
+@router.post("/upload-statement")
+async def upload_bank_statement(
+    bank_name: str,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    """
+    Upload and parse a bank statement CSV.
+    Supported banks: HDFC, ICICI, SBI, Axis
+    """
+    content = (await file.read()).decode("utf-8", errors="replace")
+
+    if bank_name == "auto":
+        bank_name = detect_bank_from_content(content)
+
+    parser = get_parser(bank_name)
+    transactions = parser.parse_csv(content)
+
+    if not transactions:
+        raise HTTPException(
+            status_code=400,
+            detail="No transactions found in statement. Check bank format and file encoding.",
+        )
+
+    stored = await store_bank_transactions(
+        session,
+        tenant_id=user.tenant_id,
+        bank_name=bank_name,
+        transactions=transactions,
+        uploaded_by=user.id,
+    )
+
+    await session.flush()
+    return {
+        "bank": bank_name,
+        "transactions_parsed": len(transactions),
+        "transactions_stored": len(stored),
+        "date_range": {
+            "from": min(t.transaction_date for t in transactions).isoformat(),
+            "to": max(t.transaction_date for t in transactions).isoformat(),
+        },
+    }
+
 
 @router.post("/statements", status_code=status.HTTP_201_CREATED)
 async def create_statement(
@@ -62,7 +108,6 @@ async def create_statement(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    """Upload a bank statement header (INSERT ONLY)."""
     stmt = await create_bank_statement(
         session,
         tenant_id=user.tenant_id,
@@ -134,7 +179,6 @@ async def add_transaction(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    """Add a single bank transaction row (INSERT ONLY)."""
     txn = await add_bank_transaction(
         session,
         tenant_id=user.tenant_id,
@@ -195,7 +239,6 @@ async def run_bank_recon(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    """Run bank reconciliation for a statement (generates open items for unmatched txns)."""
     items = await run_bank_reconciliation(
         session,
         tenant_id=user.tenant_id,

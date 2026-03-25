@@ -58,7 +58,7 @@ async def test_invite_user_requires_finance_leader(
             "email": "invited@example.com",
             "full_name": "Invited User",
             "role": "read_only",
-            "password": "TempPass123!",
+            "entity_ids": [],
         },
     )
     # finance_leader should be allowed

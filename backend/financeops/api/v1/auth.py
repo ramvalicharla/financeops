@@ -21,6 +21,7 @@ from financeops.core.security import (
     create_refresh_token,
     decode_token,
     encrypt_field,
+    hash_password,
     verify_password,
     verify_totp,
 )
@@ -28,6 +29,8 @@ from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken
 from financeops.db.models.tenants import TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
+from financeops.modules.notifications.channels.email_channel import send_direct
+from financeops.modules.notifications.templates.emails import welcome_email
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
     create_mfa_challenge,
@@ -53,6 +56,8 @@ class RegisterRequest(BaseModel):
     tenant_name: str
     tenant_type: TenantType
     country: str
+    phone: str | None = None
+    terms_accepted: bool = True
 
 
 class LoginRequest(BaseModel):
@@ -87,6 +92,12 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    password: str
+    terms_accepted: bool = True
 
 
 def generate_mfa_setup_token(user: IamUser) -> str:
@@ -164,6 +175,12 @@ async def register(
     Creates tenant + user + initial credit balance.
     Returns user_id, tenant_id, mfa_setup_required=True.
     """
+    if not body.terms_accepted:
+        raise HTTPException(
+            status_code=400,
+            detail="Terms of Service must be accepted",
+        )
+
     tenant = await create_tenant(
         session,
         display_name=body.tenant_name,
@@ -202,6 +219,21 @@ async def register(
         resource_name=user.email,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
+    )
+    user.terms_accepted_at = datetime.now(UTC)
+    user.terms_version_accepted = "2026-03"
+    frontend_base = str(getattr(settings, "FRONTEND_URL", "http://localhost:3000")).rstrip("/")
+    subject, html = welcome_email(
+        full_name=user.full_name,
+        company_name=tenant.display_name,
+        dashboard_url=f"{frontend_base}/dashboard",
+        unsubscribe_url=f"{frontend_base}/settings/privacy",
+    )
+    await send_direct(
+        to=user.email,
+        subject=subject,
+        html_body=html,
+        text_body="Welcome to FinanceOps. Your account is ready.",
     )
     await session.flush()
     setup_token = generate_mfa_setup_token(user)
@@ -394,12 +426,45 @@ async def reset_password(
     user = await session.get(IamUser, record.user_id)
     if user is None:
         raise HTTPException(status_code=400, detail="Invalid reset token")
-    from financeops.core.security import hash_password
 
     user.hashed_password = hash_password(body.new_password)
     record.used_at = datetime.now(UTC)
     await session.flush()
     return {"message": "Password reset successful. Please sign in."}
+
+
+@router.post("/accept-invite")
+async def accept_invite(
+    body: AcceptInviteRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> dict:
+    if not body.terms_accepted:
+        raise HTTPException(status_code=400, detail="Terms of Service must be accepted")
+
+    token_hash = hashlib.sha256(body.token.encode("utf-8")).hexdigest()
+    user = (
+        await session.execute(
+            select(IamUser)
+            .where(IamUser.invite_token_hash == token_hash)
+            .where(IamUser.is_active.is_(False))
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid invitation link")
+    if user.invite_expires_at and user.invite_expires_at < datetime.now(UTC):
+        raise HTTPException(
+            status_code=400,
+            detail="Invitation has expired. Request a new one from your administrator.",
+        )
+
+    user.hashed_password = hash_password(body.password)
+    user.is_active = True
+    user.invite_token_hash = None
+    user.invite_accepted_at = datetime.now(UTC)
+    user.terms_accepted_at = datetime.now(UTC)
+    user.terms_version_accepted = "2026-03"
+    await session.flush()
+    return {"message": "Account activated. Please sign in."}
 
 
 @limiter.limit(settings.AUTH_TOKEN_RATE_LIMIT)
