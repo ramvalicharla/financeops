@@ -1,29 +1,41 @@
 from __future__ import annotations
 
+import hashlib
 import logging
+import secrets
+import uuid
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from financeops.api.deps import get_async_session, get_current_user, get_redis
 from financeops.config import limiter, settings
 from financeops.core.exceptions import AuthenticationError
-from financeops.core.security import decode_token, verify_password
+from financeops.core.security import (
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    encrypt_field,
+    verify_password,
+    verify_totp,
+)
+from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken
 from financeops.db.models.tenants import TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
     create_mfa_challenge,
-    create_mfa_setup_token,
     login,
     logout,
     refresh_tokens,
     setup_totp,
     verify_mfa_challenge,
-    verify_totp_setup,
 )
 from financeops.services.credit_service import add_credits
 from financeops.services.tenant_service import create_default_workspace, create_tenant
@@ -31,6 +43,7 @@ from financeops.services.user_service import create_user, get_user_by_email
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 class RegisterRequest(BaseModel):
@@ -58,7 +71,73 @@ class LogoutRequest(BaseModel):
 
 class MfaVerifyRequest(BaseModel):
     mfa_challenge_token: str
-    totp_code: str
+    totp_code: str | None = None
+    recovery_code: str | None = None
+
+
+class MFAVerifySetupRequest(BaseModel):
+    secret: str
+    code: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+def generate_mfa_setup_token(user: IamUser) -> str:
+    return create_access_token(
+        user.id,
+        user.tenant_id,
+        user.role.value,
+        additional_claims={"scope": "mfa_setup_only"},
+        expires_delta=timedelta(minutes=15),
+    )
+
+
+def generate_recovery_codes(count: int = 8) -> list[str]:
+    return [
+        f"{secrets.token_hex(4).upper()}-{secrets.token_hex(4).upper()}"
+        for _ in range(count)
+    ]
+
+
+async def get_current_user_or_setup_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: AsyncSession = Depends(get_async_session),
+) -> IamUser:
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=401, detail="Missing authorization token")
+    payload = decode_token(credentials.credentials)
+    token_type = payload.get("type")
+    if token_type != "access":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    user_id_raw = payload.get("sub")
+    tenant_id_raw = payload.get("tenant_id")
+    if not user_id_raw or not tenant_id_raw:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    try:
+        user_id = uuid.UUID(str(user_id_raw))
+        tenant_id = uuid.UUID(str(tenant_id_raw))
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token payload") from exc
+    await set_tenant_context(session, tenant_id)
+    user = (
+        await session.execute(
+            select(IamUser).where(IamUser.id == user_id, IamUser.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
+    if payload.get("scope") == "mfa_setup_only":
+        return user
+    if user.force_mfa_setup and not user.mfa_enabled:
+        return user
+    return user
 
 
 async def _set_refresh_tenant_context(
@@ -125,9 +204,12 @@ async def register(
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
+    setup_token = generate_mfa_setup_token(user)
     return {
         "user_id": str(user.id),
         "tenant_id": str(tenant.id),
+        "status": "requires_mfa_setup",
+        "setup_token": setup_token,
         "mfa_setup_required": True,
     }
 
@@ -135,7 +217,7 @@ async def register(
 @router.post("/mfa/setup")
 async def mfa_setup(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(get_current_user_or_setup_token),
 ) -> dict:
     """
     POST /api/v1/auth/mfa/setup
@@ -144,8 +226,42 @@ async def mfa_setup(
     result = await setup_totp(user, session)
     await session.flush()
     return {
-        "totp_secret": result["totp_secret"],
-        "qr_code_url": result["qr_code_url"],
+        "secret": result["totp_secret"],
+        "qr_url": result["qr_code_url"],
+    }
+
+
+@router.post("/mfa/verify-setup")
+async def verify_mfa_setup(
+    body: MFAVerifySetupRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user_or_setup_token),
+) -> dict:
+    if not verify_totp(body.secret, body.code):
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+
+    user.totp_secret_encrypted = encrypt_field(body.secret)
+    user.mfa_enabled = True
+    user.force_mfa_setup = False
+
+    plain_codes = generate_recovery_codes(8)
+    for code in plain_codes:
+        session.add(
+            MfaRecoveryCode(
+                user_id=user.id,
+                code_hash=hashlib.sha256(code.encode("utf-8")).hexdigest(),
+            )
+        )
+
+    await session.flush()
+
+    access_token = create_access_token(user.id, user.tenant_id, user.role.value)
+    refresh_token = create_refresh_token(user.id, user.tenant_id)
+    return {
+        "status": "mfa_enabled",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "recovery_codes": plain_codes,
     }
 
 
@@ -166,6 +282,7 @@ async def mfa_verify(
         redis_client,
         mfa_challenge_token=body.mfa_challenge_token,
         totp_code=body.totp_code,
+        recovery_code=body.recovery_code,
         ip_address=request.client.host if request.client else None,
         device_info=request.headers.get("user-agent"),
     )
@@ -204,9 +321,10 @@ async def user_login(
         raise AuthenticationError("Invalid email or password")
     await set_tenant_context(session, user.tenant_id)
 
-    if user.force_mfa_setup:
-        setup_token = await create_mfa_setup_token(redis_client, user=user)
+    if user.force_mfa_setup and not user.mfa_enabled:
+        setup_token = generate_mfa_setup_token(user)
         return {
+            "status": "requires_mfa_setup",
             "requires_mfa_setup": True,
             "setup_token": setup_token,
         }
@@ -236,6 +354,52 @@ async def user_login(
     )
     await session.flush()
     return tokens
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> dict:
+    user = await get_user_by_email(session, body.email)
+    if user is not None:
+        token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+        session.add(
+            PasswordResetToken(
+                user_id=user.id,
+                token_hash=token_hash,
+                expires_at=datetime.now(UTC) + timedelta(minutes=15),
+            )
+        )
+        await session.flush()
+    return {"message": "If that email exists, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_async_session),
+) -> dict:
+    token_hash = hashlib.sha256(body.token.encode("utf-8")).hexdigest()
+    record = (
+        await session.execute(
+            select(PasswordResetToken)
+            .where(PasswordResetToken.token_hash == token_hash)
+            .where(PasswordResetToken.used_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    if record is None or record.expires_at < datetime.now(UTC):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+    user = await session.get(IamUser, record.user_id)
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid reset token")
+    from financeops.core.security import hash_password
+
+    user.hashed_password = hash_password(body.new_password)
+    record.used_at = datetime.now(UTC)
+    await session.flush()
+    return {"message": "Password reset successful. Please sign in."}
 
 
 @limiter.limit(settings.AUTH_TOKEN_RATE_LIMIT)
@@ -292,6 +456,7 @@ async def get_me(
         "tenant": {
             "tenant_id": str(tenant.id),
             "display_name": tenant.display_name,
+            "slug": tenant.slug,
             "tenant_type": tenant.tenant_type.value,
             "country": tenant.country,
             "timezone": tenant.timezone,

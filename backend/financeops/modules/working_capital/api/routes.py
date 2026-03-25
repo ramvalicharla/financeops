@@ -11,6 +11,7 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
 from financeops.modules.working_capital.service import compute_wc_snapshot, get_wc_dashboard
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/working-capital", tags=["working-capital"])
@@ -28,6 +29,13 @@ async def wc_dashboard(
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     target_period = period or _current_period()
+    await assert_entity_access(
+        session=session,
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
     if (
         await session.execute(
             select(WCSnapshot.id).where(
@@ -42,6 +50,8 @@ async def wc_dashboard(
             tenant_id=user.tenant_id,
             period=target_period,
             entity_id=entity_id,
+            requester_user_id=user.id,
+            requester_user_role=user.role.value,
         )
         await session.flush()
     return await get_wc_dashboard(session, user.tenant_id, period=target_period)

@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -102,6 +102,11 @@ async def get_current_user(
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise AuthenticationError("Invalid token type")
+    if payload.get("scope") == "mfa_setup_only":
+        raise HTTPException(
+            status_code=403,
+            detail="MFA setup required before accessing this resource. Complete MFA setup at /api/v1/auth/mfa/setup",
+        )
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise AuthenticationError("Token missing subject")
@@ -115,6 +120,15 @@ async def get_current_user(
         raise AuthenticationError("User not found")
     if not user.is_active:
         raise AuthenticationError("Account deactivated")
+    if user.force_mfa_setup and not user.mfa_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "mfa_setup_required",
+                "message": "MFA setup required",
+                "setup_url": "/mfa/setup",
+            },
+        )
     return user
 
 
@@ -162,6 +176,18 @@ def require_auditor_or_above(
     if user.role not in allowed:
         raise AuthorizationError("auditor or higher required")
     return user
+
+
+async def require_director(
+    current_user: IamUser = Depends(get_current_user),
+) -> IamUser:
+    if current_user.role not in {
+        UserRole.director,
+        UserRole.finance_leader,
+        UserRole.platform_owner,
+    }:
+        raise HTTPException(status_code=403, detail="Director or Finance Leader role required")
+    return current_user
 
 
 async def get_redis() -> AsyncGenerator[aioredis.Redis, None]:

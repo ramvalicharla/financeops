@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.tax_provision.models import TaxPosition, TaxProvisionRun
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 
 _MONEY = Decimal("0.01")
 _RATE = Decimal("0.0001")
@@ -120,7 +121,17 @@ async def compute_tax_provision(
     entity_id: uuid.UUID | None,
     applicable_tax_rate: Decimal,
     created_by: uuid.UUID,
+    requester_user_id: uuid.UUID | None = None,
+    requester_user_role: str | None = None,
 ) -> TaxProvisionRun:
+    if entity_id is not None and requester_user_id is not None and requester_user_role is not None:
+        await assert_entity_access(
+            session=session,
+            tenant_id=tenant_id,
+            entity_id=entity_id,
+            user_id=requester_user_id,
+            user_role=requester_user_role,
+        )
     fiscal_year = _fiscal_year_from_period(period)
     tax_rate = _rate(applicable_tax_rate)
 

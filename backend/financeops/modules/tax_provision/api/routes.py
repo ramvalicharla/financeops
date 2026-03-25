@@ -17,6 +17,7 @@ from financeops.modules.tax_provision.service import (
     list_tax_positions,
     upsert_tax_position,
 )
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/tax", tags=["tax"])
@@ -87,6 +88,13 @@ async def compute_provision_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    await assert_entity_access(
+        session=session,
+        tenant_id=user.tenant_id,
+        entity_id=body.entity_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
     row = await compute_tax_provision(
         session,
         tenant_id=user.tenant_id,
@@ -94,6 +102,8 @@ async def compute_provision_endpoint(
         entity_id=body.entity_id,
         applicable_tax_rate=body.applicable_tax_rate,
         created_by=user.id,
+        requester_user_id=user.id,
+        requester_user_role=user.role.value,
     )
     return _serialize_provision(row)
 

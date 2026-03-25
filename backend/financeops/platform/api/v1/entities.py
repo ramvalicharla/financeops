@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_team
 from financeops.db.models.users import IamUser
-from financeops.platform.db.models.entities import CpEntity
+from financeops.platform.services.tenancy.entity_access import (
+    get_entities_for_user,
+    get_entity_for_user,
+)
 
 router = APIRouter()
 
@@ -16,10 +20,11 @@ async def list_entities_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> list[dict]:
-    result = await session.execute(
-        select(CpEntity)
-        .where(CpEntity.tenant_id == user.tenant_id)
-        .order_by(CpEntity.entity_code)
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
     )
     return [
         {
@@ -28,5 +33,26 @@ async def list_entities_endpoint(
             "entity_name": item.entity_name,
             "organisation_id": str(item.organisation_id),
         }
-        for item in result.scalars().all()
+        for item in entities
     ]
+
+
+@router.get("/{entity_id}")
+async def get_entity_endpoint(
+    entity_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    item = await get_entity_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    return {
+        "id": str(item.id),
+        "entity_code": item.entity_code,
+        "entity_name": item.entity_name,
+        "organisation_id": str(item.organisation_id),
+    }

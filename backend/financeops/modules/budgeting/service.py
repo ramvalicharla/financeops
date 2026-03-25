@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.db.models.mis_manager import MisUpload
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 
 MONTH_COLUMNS = (
     "month_01",
@@ -192,6 +193,8 @@ async def upsert_budget_line(
     monthly_values: list[Decimal],
     basis: str | None = None,
     entity_id: uuid.UUID | None = None,
+    requester_user_id: uuid.UUID | None = None,
+    requester_user_role: str | None = None,
 ) -> BudgetLineItem:
     """
     Insert a new budget line item (append-only).
@@ -204,6 +207,14 @@ async def upsert_budget_line(
         tenant_id=tenant_id,
         budget_version_id=budget_version_id,
     )
+    if entity_id is not None and requester_user_id is not None and requester_user_role is not None:
+        await assert_entity_access(
+            session=session,
+            tenant_id=tenant_id,
+            entity_id=entity_id,
+            user_id=requester_user_id,
+            user_role=requester_user_role,
+        )
     if len(monthly_values) != 12:
         raise ValueError("monthly_values must contain exactly 12 values")
 
@@ -282,11 +293,21 @@ async def get_budget_vs_actual(
     period: str,
     budget_version_id: uuid.UUID | None = None,
     entity_id: uuid.UUID | None = None,
+    requester_user_id: uuid.UUID | None = None,
+    requester_user_role: str | None = None,
 ) -> dict:
     """
     Compare approved budget to actual MIS data.
     """
     month_idx = _month_index_from_period(period)
+    if entity_id is not None and requester_user_id is not None and requester_user_role is not None:
+        await assert_entity_access(
+            session=session,
+            tenant_id=tenant_id,
+            entity_id=entity_id,
+            user_id=requester_user_id,
+            user_role=requester_user_role,
+        )
     if budget_version_id is not None:
         version = await _load_budget_version(
             session,
@@ -420,4 +441,3 @@ async def get_budget_summary(
             .order_by(desc(BudgetVersion.version_number))
         )
     ).scalars().all()
-

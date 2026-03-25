@@ -41,16 +41,25 @@ def _make_token(payload: dict, expires_delta: timedelta) -> str:
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
-def create_access_token(user_id: uuid.UUID, tenant_id: uuid.UUID, role: str) -> str:
+def create_access_token(
+    user_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    role: str,
+    additional_claims: dict | None = None,
+    expires_delta: timedelta | None = None,
+) -> str:
     """Create a JWT access token (15 minutes by default)."""
+    payload = {
+        "sub": str(user_id),
+        "tenant_id": str(tenant_id),
+        "role": role,
+        "type": "access",
+    }
+    if additional_claims:
+        payload.update(additional_claims)
     return _make_token(
-        {
-            "sub": str(user_id),
-            "tenant_id": str(tenant_id),
-            "role": role,
-            "type": "access",
-        },
-        timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
+        payload,
+        expires_delta or timedelta(minutes=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
 

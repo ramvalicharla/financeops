@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from sqlalchemy import select
@@ -19,6 +20,12 @@ from financeops.services.audit_writer import AuditEvent, AuditWriter
 log = logging.getLogger(__name__)
 
 
+def generate_tenant_slug(name: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]", "-", str(name).lower())
+    slug = re.sub(r"-+", "-", slug).strip("-")
+    return (slug or "tenant")[:100]
+
+
 async def create_tenant(
     session: AsyncSession,
     *,
@@ -30,12 +37,14 @@ async def create_tenant(
 ) -> IamTenant:
     """Create a new tenant with genesis chain hash."""
     tenant_id = uuid.uuid4()
+    tenant_slug = generate_tenant_slug(display_name)
     tenant = await AuditWriter.insert_financial_record(
         session,
         model_class=IamTenant,
         tenant_id=tenant_id,
         record_data={
             "display_name": display_name,
+            "slug": tenant_slug,
             "tenant_type": tenant_type.value,
             "country": country,
             "timezone": timezone_str,
@@ -44,6 +53,7 @@ async def create_tenant(
         values={
             "id": tenant_id,
             "display_name": display_name,
+            "slug": tenant_slug,
             "tenant_type": tenant_type,
             "country": country,
             "timezone": timezone_str,

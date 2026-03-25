@@ -5,8 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from workbench.backend import db
-from workbench.backend import determinism
+from financeops.utils.workbench_compat import db, determinism
 
 QUALITY_SIGNAL_VERSION = "v1"
 ANALYZER_JOB_TYPES = {"code.analysis.v1", "finance.analysis.v1"}

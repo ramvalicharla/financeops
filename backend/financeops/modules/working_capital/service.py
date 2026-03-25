@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.working_capital import WorkingCapitalSnapshot
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 
 
 def _parse_period(period: str) -> tuple[int, int]:
@@ -122,6 +123,8 @@ async def compute_wc_snapshot(
     tenant_id: uuid.UUID,
     period: str,
     entity_id: uuid.UUID | None = None,
+    requester_user_id: uuid.UUID | None = None,
+    requester_user_role: str | None = None,
 ) -> WCSnapshot:
     """
     Compute WC metrics from GL/TB data for the period.
@@ -161,6 +164,15 @@ async def compute_wc_snapshot(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+
+    if entity_id is not None and requester_user_id is not None and requester_user_role is not None:
+        await assert_entity_access(
+            session=session,
+            tenant_id=tenant_id,
+            entity_id=entity_id,
+            user_id=requester_user_id,
+            user_role=requester_user_role,
+        )
 
     inputs = await _load_financial_inputs(
         session,

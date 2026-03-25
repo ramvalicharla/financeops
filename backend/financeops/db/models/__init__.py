@@ -92,6 +92,8 @@ __all__ = [
     "MultiGAAPRun",
     "AuditorPortalAccess",
     "AuditorRequest",
+    "MfaRecoveryCode",
+    "PasswordResetToken",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -195,6 +197,8 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "MultiGAAPRun": ("financeops.modules.multi_gaap.models", "MultiGAAPRun"),
     "AuditorPortalAccess": ("financeops.modules.auditor_portal.models", "AuditorPortalAccess"),
     "AuditorRequest": ("financeops.modules.auditor_portal.models", "AuditorRequest"),
+    "MfaRecoveryCode": ("financeops.db.models.auth_tokens", "MfaRecoveryCode"),
+    "PasswordResetToken": ("financeops.db.models.auth_tokens", "PasswordResetToken"),
 }
 
 

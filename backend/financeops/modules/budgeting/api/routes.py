@@ -22,6 +22,7 @@ from financeops.modules.budgeting.service import (
     get_budget_vs_actual,
     upsert_budget_line,
 )
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/budget", tags=["budgeting"])
@@ -203,6 +204,13 @@ async def add_line(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    await assert_entity_access(
+        session=session,
+        tenant_id=user.tenant_id,
+        entity_id=body.entity_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
     monthly_values = [_to_decimal(value, "monthly_values") for value in body.monthly_values]
     try:
         line = await upsert_budget_line(
@@ -214,6 +222,8 @@ async def add_line(
             monthly_values=monthly_values,
             basis=body.basis,
             entity_id=body.entity_id,
+            requester_user_id=user.id,
+            requester_user_role=user.role.value,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -251,6 +261,13 @@ async def vs_actual(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    await assert_entity_access(
+        session=session,
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
     try:
         payload = await get_budget_vs_actual(
             session,
@@ -259,6 +276,8 @@ async def vs_actual(
             period=period,
             budget_version_id=version_id,
             entity_id=entity_id,
+            requester_user_id=user.id,
+            requester_user_role=user.role.value,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -276,6 +295,13 @@ async def export_vs_actual(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Response:
+    await assert_entity_access(
+        session=session,
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
     try:
         payload = await get_budget_vs_actual(
             session,
@@ -284,6 +310,8 @@ async def export_vs_actual(
             period=period,
             budget_version_id=version_id,
             entity_id=entity_id,
+            requester_user_id=user.id,
+            requester_user_role=user.role.value,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -315,4 +343,3 @@ async def export_vs_actual(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-

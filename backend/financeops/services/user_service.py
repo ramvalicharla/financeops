@@ -42,6 +42,7 @@ async def create_user(
             role=role,
             is_active=True,
             mfa_enabled=False,
+            force_mfa_setup=True,
         ),
         audit=AuditEvent(
             tenant_id=tenant_id,

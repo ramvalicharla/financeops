@@ -37,6 +37,13 @@ class IamTenant(FinancialBase):
     __tablename__ = "iam_tenants"
 
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+        unique=True,
+        index=True,
+        default=lambda: f"tenant-{uuid.uuid4().hex[:8]}",
+    )
     tenant_type: Mapped[TenantType] = mapped_column(
         Enum(TenantType, name="tenant_type_enum"), nullable=False
     )

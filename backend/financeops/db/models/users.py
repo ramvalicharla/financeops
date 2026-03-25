@@ -18,6 +18,8 @@ class UserRole(str, enum.Enum):
     platform_support = "platform_support"
     finance_leader = "finance_leader"
     finance_team = "finance_team"
+    director = "director"
+    entity_user = "entity_user"
     auditor = "auditor"
     hr_manager = "hr_manager"
     employee = "employee"

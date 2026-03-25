@@ -371,7 +371,10 @@ async def get_metrics(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    current_user: IamUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
 ) -> Paginated[MetricDefinition] | list[MetricDefinition]:
+    _ = (current_user, session)
     rows = list_metrics()
     total = len(rows)
     paged_rows = rows[offset : offset + limit]

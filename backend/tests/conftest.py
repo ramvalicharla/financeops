@@ -454,6 +454,7 @@ from financeops.modules.auditor_portal.models import (  # noqa: F401
     AuditorRequest,
 )
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
+from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken  # noqa: F401
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.

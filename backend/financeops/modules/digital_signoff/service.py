@@ -14,6 +14,15 @@ from financeops.db.models.users import IamUser
 from financeops.modules.digital_signoff.models import DirectorSignoff
 from financeops.modules.notifications.service import send_notification
 
+VALID_SIGNATORY_ROLES = {
+    "Director",
+    "CFO",
+    "MD",
+    "Company Secretary",
+    "Finance Leader",
+    "CEO",
+}
+
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -23,6 +32,15 @@ def _content_bytes(document_content: bytes | str) -> bytes:
     if isinstance(document_content, bytes):
         return document_content
     return document_content.encode("utf-8")
+
+
+def validate_signatory_role(role: str) -> str:
+    normalized = str(role).strip()
+    if normalized not in VALID_SIGNATORY_ROLES:
+        raise ValueError(
+            f"Invalid signatory role: {normalized}. Must be one of {sorted(VALID_SIGNATORY_ROLES)}"
+        )
+    return normalized
 
 
 async def initiate_signoff(
@@ -46,6 +64,7 @@ async def initiate_signoff(
         raise NotFoundError("Signatory not found")
 
     content_hash = _sha256(_content_bytes(document_content))
+    normalized_role = validate_signatory_role(signatory_role)
     signature_seed = f"{signatory_user_id}:{content_hash}:pending".encode("utf-8")
     placeholder_signature = _sha256(signature_seed)
 
@@ -57,7 +76,7 @@ async def initiate_signoff(
         period=period,
         signatory_user_id=signatory_user_id,
         signatory_name=user.full_name,
-        signatory_role=signatory_role,
+        signatory_role=normalized_role,
         mfa_verified=False,
         declaration_text=declaration_text,
         content_hash=content_hash,
@@ -250,6 +269,7 @@ async def list_signoffs(
 __all__ = [
     "initiate_signoff",
     "complete_signoff",
+    "validate_signatory_role",
     "verify_signoff",
     "generate_certificate",
     "list_signoffs",

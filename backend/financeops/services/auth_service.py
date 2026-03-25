@@ -22,6 +22,7 @@ from financeops.core.security import (
     verify_totp,
 )
 from financeops.db.models.users import IamSession, IamUser
+from financeops.db.models.auth_tokens import MfaRecoveryCode
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
@@ -168,7 +169,8 @@ async def verify_mfa_challenge(
     redis_client: aioredis.Redis,
     *,
     mfa_challenge_token: str,
-    totp_code: str,
+    totp_code: str | None = None,
+    recovery_code: str | None = None,
     ip_address: str | None = None,
     device_info: str | None = None,
 ) -> tuple[IamUser, dict]:
@@ -201,8 +203,24 @@ async def verify_mfa_challenge(
         raise AuthenticationError("MFA is not configured for this account")
 
     secret = decrypt_field(user.totp_secret_encrypted)
-    if not verify_totp(secret, totp_code):
-        raise AuthenticationError("Invalid TOTP code")
+    if recovery_code:
+        recovery_hash = hashlib.sha256(recovery_code.strip().upper().encode("utf-8")).hexdigest()
+        recovery_row = (
+            await session.execute(
+                select(MfaRecoveryCode)
+                .where(MfaRecoveryCode.user_id == user.id)
+                .where(MfaRecoveryCode.code_hash == recovery_hash)
+                .where(MfaRecoveryCode.used_at.is_(None))
+            )
+        ).scalar_one_or_none()
+        if recovery_row is None:
+            raise AuthenticationError("Invalid recovery code")
+        recovery_row.used_at = datetime.now(UTC)
+    else:
+        if not totp_code:
+            raise AuthenticationError("TOTP code required")
+        if not verify_totp(secret, totp_code):
+            raise AuthenticationError("Invalid TOTP code")
 
     await redis_client.delete(key)
     tokens = await _issue_session_tokens(
