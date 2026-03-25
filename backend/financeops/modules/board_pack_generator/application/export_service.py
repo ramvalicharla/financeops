@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from financeops.modules.board_pack_generator.domain.pack_definition import AssembledPack
+from financeops.utils.display_scale import (
+    DisplayScale,
+    SCALE_FULL_LABELS,
+    scale_amount,
+)
 
 
 def get_weasyprint_mode() -> str:
@@ -72,6 +77,18 @@ def _format_decimal(value: Any) -> Any:
         return [_format_decimal(item) for item in value]
     if isinstance(value, tuple):
         return [_format_decimal(item) for item in value]
+    return value
+
+
+def _scale_board_pack_data(value: Any, scale: DisplayScale) -> Any:
+    if isinstance(value, Decimal):
+        return scale_amount(value, scale)
+    if isinstance(value, dict):
+        return {key: _scale_board_pack_data(child, scale) for key, child in value.items()}
+    if isinstance(value, list):
+        return [_scale_board_pack_data(child, scale) for child in value]
+    if isinstance(value, tuple):
+        return [_scale_board_pack_data(child, scale) for child in value]
     return value
 
 
@@ -141,6 +158,7 @@ class BoardPackExportService:
         pack: AssembledPack,
         pack_name: str,
         generated_at: datetime,
+        display_scale: DisplayScale = DisplayScale.LAKHS,
     ) -> tuple[bytes, str]:
         """
         Render AssembledPack to PDF bytes using WeasyPrint + Jinja2.
@@ -164,7 +182,9 @@ class BoardPackExportService:
                 "section_type": section.section_type.value,
                 "section_order": section.section_order,
                 "title": section.title,
-                "data_snapshot": _format_decimal(section.data_snapshot),
+                "data_snapshot": _format_decimal(
+                    _scale_board_pack_data(section.data_snapshot, display_scale)
+                ),
                 "section_hash": section.section_hash,
             }
             for section in ordered_sections
@@ -177,6 +197,7 @@ class BoardPackExportService:
             period_end=pack.period_end.isoformat(),
             generated_at=generated_at.isoformat(),
             chain_hash=pack.chain_hash,
+            amount_unit_label=SCALE_FULL_LABELS[display_scale],
             sections=sections_payload,
         )
 
@@ -191,6 +212,7 @@ class BoardPackExportService:
         pack: AssembledPack,
         pack_name: str,
         generated_at: datetime,
+        display_scale: DisplayScale = DisplayScale.LAKHS,
     ) -> tuple[bytes, str]:
         """
         Render AssembledPack to Excel bytes using openpyxl.
@@ -223,7 +245,9 @@ class BoardPackExportService:
         cover_sheet["B4"] = generated_at.isoformat()
         cover_sheet["A5"] = "Chain Hash"
         cover_sheet["B5"] = pack.chain_hash
-        for cell in ("A1", "A2", "A3", "A4", "A5"):
+        cover_sheet["A6"] = "Amount Unit"
+        cover_sheet["B6"] = SCALE_FULL_LABELS[display_scale]
+        for cell in ("A1", "A2", "A3", "A4", "A5", "A6"):
             cover_sheet[cell].font = Font(bold=True)
         cover_sheet.column_dimensions["A"].width = 18
         cover_sheet.column_dimensions["B"].width = 50
@@ -235,18 +259,22 @@ class BoardPackExportService:
         for section in ordered_sections:
             title = _safe_sheet_title(section.title, used_titles)
             sheet = workbook.create_sheet(title=title)
-            formatted_payload = _format_decimal(section.data_snapshot)
+            sheet["A1"] = f"({SCALE_FULL_LABELS[display_scale]})"
+            sheet["A1"].font = Font(italic=True, color="888888", size=9)
+            formatted_payload = _format_decimal(
+                _scale_board_pack_data(section.data_snapshot, display_scale)
+            )
             headers, rows = _as_table(formatted_payload)
 
             sheet.append(headers)
-            for cell in sheet[1]:
+            for cell in sheet[2]:
                 cell.font = Font(bold=True)
                 cell.fill = header_fill
 
             for row in rows:
                 sheet.append([_to_cell_value(value) for value in row])
 
-            sheet.freeze_panes = "A2"
+            sheet.freeze_panes = "A3"
 
             for column_index, column_cells in enumerate(sheet.columns, start=1):
                 max_length = 0

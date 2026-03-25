@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser
 from financeops.modules.mis_manager.api.schemas import (
     SnapshotStatusActionResponse,
@@ -28,6 +29,10 @@ from financeops.modules.mis_manager.application.snapshot_service import Snapshot
 from financeops.modules.mis_manager.application.template_detection_service import (
     TemplateDetectionService,
 )
+from financeops.modules.mis_manager.application.report_service import (
+    apply_scale_to_mis_report,
+    get_mis_report_by_id,
+)
 from financeops.modules.mis_manager.application.validation_service import (
     ValidationService,
 )
@@ -38,6 +43,7 @@ from financeops.modules.mis_manager.policies.control_plane_policy import (
     mis_control_plane_dependency,
 )
 from financeops.shared_kernel.pagination import Paginated
+from financeops.utils.display_scale import DisplayScale, get_effective_scale
 
 router = APIRouter()
 
@@ -270,6 +276,46 @@ async def list_templates(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/reports/{report_id}",
+    dependencies=[
+        Depends(
+            mis_control_plane_dependency(
+                action="mis_snapshot_view", resource_type="mis_snapshot"
+            )
+        )
+    ],
+)
+async def get_mis_report(
+    report_id: uuid.UUID,
+    display_scale: str | None = Query(
+        default=None,
+        description="Override display scale: INR|LAKHS|CRORES|THOUSANDS|MILLIONS|BILLIONS",
+    ),
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> dict:
+    report = await get_mis_report_by_id(
+        session=session,
+        report_id=report_id,
+        tenant_id=current_user.tenant_id,
+    )
+    if report is None:
+        raise HTTPException(status_code=404, detail="MIS report not found")
+
+    tenant = await session.get(IamTenant, current_user.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    user_scale = display_scale or current_user.display_scale_override
+    scale = get_effective_scale(user_scale, tenant.default_display_scale)
+    try:
+        scale = DisplayScale(scale.value)
+    except ValueError:
+        scale = DisplayScale.LAKHS
+    return apply_scale_to_mis_report(report, scale)
 
 
 @router.get(

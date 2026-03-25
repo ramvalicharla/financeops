@@ -6,7 +6,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from financeops.api.deps import (
     require_finance_leader,
 )
 from financeops.config import settings
+from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import user_invited_email
@@ -30,6 +31,11 @@ from financeops.services.user_service import (
     deactivate_user,
     list_tenant_users,
     update_user_role,
+)
+from financeops.utils.display_scale import (
+    DisplayScale,
+    SCALE_FULL_LABELS,
+    get_effective_scale,
 )
 
 log = logging.getLogger(__name__)
@@ -50,6 +56,11 @@ class InviteUserRequest(BaseModel):
 
 class UpdateRoleRequest(BaseModel):
     role: UserRole
+
+
+class UpdateDisplayPreferencesRequest(BaseModel):
+    user_scale: str | None = None
+    tenant_scale: str | None = None
 
 
 @router.get("/me")
@@ -240,3 +251,49 @@ async def get_credits(
             for tx in transactions
         ],
     }
+
+
+@router.get("/display-preferences")
+async def get_display_preferences(
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> dict:
+    tenant = await session.get(IamTenant, current_user.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    effective = get_effective_scale(
+        current_user.display_scale_override,
+        tenant.default_display_scale,
+    )
+    return {
+        "effective_scale": effective.value,
+        "user_override": current_user.display_scale_override,
+        "tenant_default": tenant.default_display_scale,
+        "currency": tenant.default_currency,
+        "locale": tenant.number_format_locale,
+        "scale_label": SCALE_FULL_LABELS[effective],
+    }
+
+
+@router.patch("/display-preferences")
+async def update_display_preferences(
+    body: UpdateDisplayPreferencesRequest,
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> dict:
+    if body.user_scale is not None:
+        current_user.display_scale_override = DisplayScale(body.user_scale).value
+
+    if body.tenant_scale is not None:
+        if current_user.role not in {UserRole.finance_leader, UserRole.platform_owner}:
+            raise HTTPException(
+                status_code=403,
+                detail="Finance Leader role required to set tenant default",
+            )
+        tenant = await session.get(IamTenant, current_user.tenant_id)
+        if tenant is None:
+            raise HTTPException(status_code=404, detail="Tenant not found")
+        tenant.default_display_scale = DisplayScale(body.tenant_scale).value
+
+    await session.flush()
+    return {"message": "Display preferences updated"}

@@ -73,6 +73,11 @@ class IamUser(UUIDBase):
     invite_accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    display_scale_override: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+        default=None,
+    )
 
     # Relationships
     sessions: Mapped[list["IamSession"]] = relationship(

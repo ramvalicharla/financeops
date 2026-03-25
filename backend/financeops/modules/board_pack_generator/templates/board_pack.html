@@ -7,6 +7,11 @@
     @page {
       size: A4;
       margin: 18mm 14mm 20mm 14mm;
+      @bottom-left {
+        content: "All amounts are {{ amount_unit_label }}";
+        font-size: 10px;
+        color: #666666;
+      }
       @bottom-center {
         content: "Confidential \2014 FinanceOps  |  Page " counter(page) " of " counter(pages);
         font-size: 10px;
@@ -185,6 +190,10 @@
         <tr>
           <th>Chain Hash</th>
           <td class="mono">{{ chain_hash }}</td>
+        </tr>
+        <tr>
+          <th>Amount Unit</th>
+          <td>{{ amount_unit_label }}</td>
         </tr>
       </tbody>
     </table>

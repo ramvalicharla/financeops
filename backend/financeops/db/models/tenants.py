@@ -65,6 +65,21 @@ class IamTenant(FinancialBase):
         default=False,
         server_default=text("false"),
     )
+    default_display_scale: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'LAKHS'"),
+    )
+    default_currency: Mapped[str] = mapped_column(
+        String(3),
+        nullable=False,
+        server_default=text("'INR'"),
+    )
+    number_format_locale: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'en-IN'"),
+    )
 
     # Relationships
     workspaces: Mapped[list["IamWorkspace"]] = relationship(

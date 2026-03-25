@@ -27,6 +27,7 @@ from financeops.modules.board_pack_generator.domain.pack_definition import (
     SectionConfig,
 )
 from financeops.modules.board_pack_generator.domain.section_renderer import get_renderer
+from financeops.utils.display_scale import DisplayScale
 
 if TYPE_CHECKING:
     from financeops.db.models.board_pack_generator import (
@@ -114,16 +115,37 @@ class BoardPackGenerateService:
             )
 
             generated_at = datetime.now(UTC)
-            pdf_bytes, pdf_filename = self._export_service.export_pdf(
-                pack=assembled_pack,
-                pack_name=context.definition.name,
-                generated_at=generated_at,
-            )
-            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
-                pack=assembled_pack,
-                pack_name=context.definition.name,
-                generated_at=generated_at,
-            )
+            display_scale_raw = str(context.definition.config.get("display_scale", "LAKHS"))
+            try:
+                display_scale = DisplayScale(display_scale_raw)
+            except ValueError:
+                display_scale = DisplayScale.LAKHS
+            try:
+                pdf_bytes, pdf_filename = self._export_service.export_pdf(
+                    pack=assembled_pack,
+                    pack_name=context.definition.name,
+                    generated_at=generated_at,
+                    display_scale=display_scale,
+                )
+            except TypeError:
+                pdf_bytes, pdf_filename = self._export_service.export_pdf(
+                    pack=assembled_pack,
+                    pack_name=context.definition.name,
+                    generated_at=generated_at,
+                )
+            try:
+                xlsx_bytes, xlsx_filename = self._export_service.export_excel(
+                    pack=assembled_pack,
+                    pack_name=context.definition.name,
+                    generated_at=generated_at,
+                    display_scale=display_scale,
+                )
+            except TypeError:
+                xlsx_bytes, xlsx_filename = self._export_service.export_excel(
+                    pack=assembled_pack,
+                    pack_name=context.definition.name,
+                    generated_at=generated_at,
+                )
 
             await self._persist_artifact(
                 db=db,
