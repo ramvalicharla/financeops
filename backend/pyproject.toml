@@ -1,6 +1,6 @@
 [project]
 name = "financeops-backend"
-version = "0.1.0"
+version = "1.1.0"
 requires-python = ">=3.11,<3.13"
 dependencies = [
     # Web Framework
@@ -85,13 +85,13 @@ finos-engine = "financeops.prompt_engine.cli:main"
 
 [tool.ruff]
 line-length = 88
-target-version = "py312"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 strict = true
 ignore_missing_imports = true
 

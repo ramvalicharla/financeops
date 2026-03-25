@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import hashlib
 import uuid
 from datetime import UTC, datetime
@@ -7,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.core.exceptions import AuthenticationError, NotFoundError
+from financeops.core.exceptions import AuthenticationError, NotFoundError, ValidationError
 from financeops.core.security import decrypt_field, verify_totp
 from financeops.db.models.users import IamUser
 from financeops.modules.digital_signoff.models import DirectorSignoff
@@ -89,7 +90,7 @@ async def complete_signoff(
     ip_address: str,
     user_agent: str,
 ) -> DirectorSignoff:
-    row = (
+    pending = (
         await session.execute(
             select(DirectorSignoff).where(
                 DirectorSignoff.id == signoff_id,
@@ -97,10 +98,12 @@ async def complete_signoff(
             )
         )
     ).scalar_one_or_none()
-    if row is None:
+    if pending is None:
         raise NotFoundError("Signoff request not found")
-    if row.signatory_user_id != signatory_user_id:
+    if pending.signatory_user_id != signatory_user_id:
         raise AuthenticationError("Only designated signatory can sign")
+    if pending.status != "pending":
+        raise ValidationError("Signoff is not in pending state")
 
     user = (
         await session.execute(
@@ -115,30 +118,50 @@ async def complete_signoff(
         raise AuthenticationError("Invalid TOTP code")
 
     now = datetime.now(UTC)
-    signature_seed = f"{signatory_user_id}{row.content_hash}{now.isoformat()}".encode("utf-8")
-    row.mfa_verified = True
-    row.mfa_verified_at = now
-    row.signature_hash = _sha256(signature_seed)
-    row.status = "signed"
-    row.signed_at = now
-    row.ip_address = ip_address
-    row.user_agent = user_agent
+    signature_seed = f"{signatory_user_id}{pending.content_hash}{now.isoformat()}".encode("utf-8")
+    signed_row = DirectorSignoff(
+        tenant_id=tenant_id,
+        document_type=pending.document_type,
+        document_id=pending.document_id,
+        document_reference=pending.document_reference,
+        period=pending.period,
+        signatory_user_id=signatory_user_id,
+        signatory_name=pending.signatory_name,
+        signatory_role=pending.signatory_role,
+        mfa_verified=True,
+        mfa_verified_at=now,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        declaration_text=pending.declaration_text,
+        content_hash=pending.content_hash,
+        signature_hash=_sha256(signature_seed),
+        status="signed",
+        signed_at=now,
+        created_at=now,
+    )
+    session.add(signed_row)
     await session.flush()
-    return row
+    return signed_row
 
 
-def verify_signoff(content_hash: str, signoff: DirectorSignoff) -> bool:
+def verify_signoff(
+    content_hash: str,
+    signatory_user_id: uuid.UUID | str,
+    signed_at: datetime | None,
+    signoff: DirectorSignoff,
+) -> bool:
     if signoff.status != "signed":
         return False
-    if content_hash != signoff.content_hash:
+    if signed_at is None or signoff.signed_at is None:
+        return False
+    if content_hash != signoff.content_hash or signed_at != signoff.signed_at:
+        return False
+    if str(signatory_user_id) != str(signoff.signatory_user_id):
         return False
     if len(signoff.signature_hash) != 64:
         return False
-    try:
-        int(signoff.signature_hash, 16)
-    except ValueError:
-        return False
-    return True
+    expected = _sha256(f"{signatory_user_id}{content_hash}{signed_at.isoformat()}".encode("utf-8"))
+    return hmac.compare_digest(expected, signoff.signature_hash)
 
 
 async def generate_certificate(
@@ -151,11 +174,36 @@ async def generate_certificate(
             select(DirectorSignoff).where(
                 DirectorSignoff.id == signoff_id,
                 DirectorSignoff.tenant_id == tenant_id,
+                DirectorSignoff.status == "signed",
             )
         )
     ).scalar_one_or_none()
     if row is None:
-        raise NotFoundError("Signoff not found")
+        pending = (
+            await session.execute(
+                select(DirectorSignoff).where(
+                    DirectorSignoff.id == signoff_id,
+                    DirectorSignoff.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if pending is not None:
+            row = (
+                await session.execute(
+                    select(DirectorSignoff)
+                    .where(
+                        DirectorSignoff.tenant_id == tenant_id,
+                        DirectorSignoff.status == "signed",
+                        DirectorSignoff.document_reference == pending.document_reference,
+                        DirectorSignoff.period == pending.period,
+                        DirectorSignoff.signatory_user_id == pending.signatory_user_id,
+                    )
+                    .order_by(desc(DirectorSignoff.created_at), desc(DirectorSignoff.id))
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+    if row is None:
+        raise NotFoundError("Signed signoff not found")
 
     certificate_number = f"SIG-{row.created_at.year}-{str(row.id)[:8].upper()}"
     return {
@@ -167,7 +215,7 @@ async def generate_certificate(
         "signed_at": row.signed_at,
         "content_hash": row.content_hash,
         "signature_hash": row.signature_hash,
-        "is_valid": verify_signoff(row.content_hash, row),
+        "is_valid": verify_signoff(row.content_hash, row.signatory_user_id, row.signed_at, row),
         "declaration_text": row.declaration_text,
     }
 

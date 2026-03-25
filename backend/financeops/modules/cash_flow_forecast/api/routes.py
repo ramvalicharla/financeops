@@ -206,7 +206,12 @@ async def publish_forecast_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> PublishResponse:
-    row = await publish_forecast(session, tenant_id=user.tenant_id, forecast_run_id=forecast_id)
+    row = await publish_forecast(
+        session,
+        tenant_id=user.tenant_id,
+        forecast_run_id=forecast_id,
+        published_by=user.id,
+    )
     return PublishResponse(id=str(row.id), status=row.status, is_published=row.is_published)
 
 

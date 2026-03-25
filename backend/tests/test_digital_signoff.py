@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from decimal import Decimal
+from datetime import UTC, datetime
 
 import pyotp
 import pytest
@@ -96,6 +96,12 @@ async def test_complete_signoff_sets_mfa_verified(async_session: AsyncSession, t
         user_agent="pytest",
     )
     assert completed.mfa_verified is True
+    assert completed.status == "signed"
+    assert completed.id != row.id
+    pending = await async_session.get(DirectorSignoff, row.id)
+    assert pending is not None
+    assert pending.status == "pending"
+    assert pending.mfa_verified is False
 
 
 @pytest.mark.asyncio
@@ -151,11 +157,17 @@ async def test_verify_signoff_valid(async_session: AsyncSession, test_user: IamU
         ip_address="127.0.0.1",
         user_agent="pytest",
     )
-    assert verify_signoff(completed.content_hash, completed) is True
+    assert verify_signoff(
+        completed.content_hash,
+        completed.signatory_user_id,
+        completed.signed_at,
+        completed,
+    ) is True
 
 
 @pytest.mark.asyncio
 async def test_verify_signoff_tampered(async_session: AsyncSession, test_user: IamUser) -> None:
+    signed_at = datetime.now(UTC)
     row = DirectorSignoff(
         tenant_id=test_user.tenant_id,
         document_type="board_pack",
@@ -170,14 +182,18 @@ async def test_verify_signoff_tampered(async_session: AsyncSession, test_user: I
         content_hash="a" * 64,
         signature_hash="b" * 64,
         status="signed",
+        signed_at=signed_at,
     )
     async_session.add(row)
     await async_session.flush()
-    assert verify_signoff("c" * 64, row) is False
+    assert verify_signoff("c" * 64, row.signatory_user_id, row.signed_at, row) is False
 
 
 @pytest.mark.asyncio
 async def test_signoff_append_only(async_session: AsyncSession, test_user: IamUser) -> None:
+    secret = generate_totp_secret()
+    test_user.totp_secret_encrypted = encrypt_field(secret)
+    code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
         tenant_id=test_user.tenant_id,
@@ -189,6 +205,28 @@ async def test_signoff_append_only(async_session: AsyncSession, test_user: IamUs
         document_content="doc",
         declaration_text="I approve",
     )
+    completed = await complete_signoff(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        signoff_id=row.id,
+        signatory_user_id=test_user.id,
+        totp_code=code,
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+    )
+    assert completed.id != row.id
+    related = (
+        await async_session.execute(
+            select(DirectorSignoff).where(
+                DirectorSignoff.tenant_id == test_user.tenant_id,
+                DirectorSignoff.document_reference == row.document_reference,
+                DirectorSignoff.period == row.period,
+                DirectorSignoff.signatory_user_id == row.signatory_user_id,
+            )
+        )
+    ).scalars().all()
+    assert len(related) == 2
+
     await async_session.execute(text(append_only_function_sql()))
     await async_session.execute(text(drop_trigger_sql("director_signoffs")))
     await async_session.execute(text(create_trigger_sql("director_signoffs")))
@@ -209,6 +247,9 @@ async def test_signoff_rls(async_session: AsyncSession, test_user: IamUser) -> N
 
 @pytest.mark.asyncio
 async def test_certificate_structure(async_session: AsyncSession, test_user: IamUser) -> None:
+    secret = generate_totp_secret()
+    test_user.totp_secret_encrypted = encrypt_field(secret)
+    code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
         tenant_id=test_user.tenant_id,
@@ -220,12 +261,24 @@ async def test_certificate_structure(async_session: AsyncSession, test_user: Iam
         document_content="doc",
         declaration_text="I approve",
     )
-    cert = await generate_certificate(async_session, test_user.tenant_id, row.id)
+    completed = await complete_signoff(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        signoff_id=row.id,
+        signatory_user_id=test_user.id,
+        totp_code=code,
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+    )
+    cert = await generate_certificate(async_session, test_user.tenant_id, completed.id)
     assert {"certificate_number", "document_reference", "period", "content_hash"}.issubset(cert)
 
 
 @pytest.mark.asyncio
 async def test_certificate_includes_hashes(async_session: AsyncSession, test_user: IamUser) -> None:
+    secret = generate_totp_secret()
+    test_user.totp_secret_encrypted = encrypt_field(secret)
+    code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
         tenant_id=test_user.tenant_id,
@@ -237,7 +290,16 @@ async def test_certificate_includes_hashes(async_session: AsyncSession, test_use
         document_content="doc",
         declaration_text="I approve",
     )
-    cert = await generate_certificate(async_session, test_user.tenant_id, row.id)
+    completed = await complete_signoff(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        signoff_id=row.id,
+        signatory_user_id=test_user.id,
+        totp_code=code,
+        ip_address="127.0.0.1",
+        user_agent="pytest",
+    )
+    cert = await generate_certificate(async_session, test_user.tenant_id, completed.id)
     assert len(cert["content_hash"]) == 64
     assert len(cert["signature_hash"]) == 64
 

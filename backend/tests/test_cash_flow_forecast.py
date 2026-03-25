@@ -269,10 +269,32 @@ async def test_publish_supersedes_previous(async_session: AsyncSession, test_use
         currency="INR",
         created_by=test_user.id,
     )
-    await publish_forecast(async_session, test_user.tenant_id, run1.id)
-    await publish_forecast(async_session, test_user.tenant_id, run2.id)
-    assert run2.status == "published"
-    assert run1.status == "superseded"
+    published1 = await publish_forecast(
+        async_session,
+        test_user.tenant_id,
+        run1.id,
+        published_by=test_user.id,
+    )
+    published2 = await publish_forecast(
+        async_session,
+        test_user.tenant_id,
+        run2.id,
+        published_by=test_user.id,
+    )
+
+    assert published1.status == "published"
+    assert published2.status == "published"
+
+    superseded = (
+        await async_session.execute(
+            select(CashFlowForecastRun).where(
+                CashFlowForecastRun.tenant_id == test_user.tenant_id,
+                CashFlowForecastRun.status == "superseded",
+                CashFlowForecastRun.run_name == published1.run_name,
+            )
+        )
+    ).scalars().all()
+    assert superseded
 
 
 @pytest.mark.asyncio

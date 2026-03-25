@@ -1,0 +1,1009 @@
+[
+  {
+    "module": "MIS Manager",
+    "status": "PARTIAL",
+    "files_found_count": 31,
+    "files_sample": [
+      "financeops/modules/mis_manager/__init__.py",
+      "financeops/modules/mis_manager/api/routes.py",
+      "financeops/modules/mis_manager/api/schemas.py",
+      "financeops/modules/mis_manager/api/__init__.py",
+      "financeops/modules/mis_manager/application/canonical_dictionary_service.py",
+      "financeops/modules/mis_manager/application/drift_detection_service.py",
+      "financeops/modules/mis_manager/application/ingest_service.py",
+      "financeops/modules/mis_manager/application/mapping_service.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "POST /",
+      "POST /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/mis/page.tsx"
+    ],
+    "tests_present": 43,
+    "test_files": [
+      "tests/integration/test_mis_manager_api_phase1f1.py",
+      "tests/integration/test_mis_manager_append_only_phase1f1.py",
+      "tests/integration/test_mis_manager_determinism_phase1f1.py",
+      "tests/integration/test_mis_manager_isolation_phase1f1.py",
+      "tests/integration/test_mis_manager_migration_phase1f1.py",
+      "tests/integration/test_mis_manager_rls_phase1f1.py",
+      "tests/integration/test_mis_manager_snapshot_idempotency_phase1f1.py",
+      "tests/integration/test_mis_manager_supersession_phase1f1.py"
+    ]
+  },
+  {
+    "module": "GL/TB Reconciliation",
+    "status": "COMPLETE",
+    "files_found_count": 20,
+    "files_sample": [
+      "financeops/modules/reconciliation_bridge/__init__.py",
+      "financeops/modules/reconciliation_bridge/api/routes.py",
+      "financeops/modules/reconciliation_bridge/api/schemas.py",
+      "financeops/modules/reconciliation_bridge/api/__init__.py",
+      "financeops/modules/reconciliation_bridge/application/exception_classification_service.py",
+      "financeops/modules/reconciliation_bridge/application/matching_service.py",
+      "financeops/modules/reconciliation_bridge/application/run_service.py",
+      "financeops/modules/reconciliation_bridge/application/__init__.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "POST /",
+      "POST /",
+      "POST /gl-entries",
+      "GET /gl-entries",
+      "POST /tb-rows",
+      "GET /tb-rows",
+      "POST /run",
+      "GET /items"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/reconciliation/gl-tb/page.tsx",
+      "app/(dashboard)/reconciliation/payroll/page.tsx"
+    ],
+    "tests_present": 8,
+    "test_files": [
+      "tests/integration/test_reconciliation_bridge_api_phase1f2.py",
+      "tests/unit/test_reconciliation_bridge_phase1f2.py"
+    ]
+  },
+  {
+    "module": "Multi-entity Consolidation (IAS 21)",
+    "status": "COMPLETE",
+    "files_found_count": 25,
+    "files_sample": [
+      "financeops/modules/multi_entity_consolidation/__init__.py",
+      "financeops/modules/multi_entity_consolidation/api/routes.py",
+      "financeops/modules/multi_entity_consolidation/api/schemas.py",
+      "financeops/modules/multi_entity_consolidation/api/__init__.py",
+      "financeops/modules/multi_entity_consolidation/application/adjustment_service.py",
+      "financeops/modules/multi_entity_consolidation/application/aggregation_service.py",
+      "financeops/modules/multi_entity_consolidation/application/hierarchy_service.py",
+      "financeops/modules/multi_entity_consolidation/application/intercompany_service.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "POST /run",
+      "GET /run/{run_id}",
+      "GET /results/{run_id}",
+      "GET /ic-differences/{run_id}",
+      "GET /export/{run_id}",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/consolidation/page.tsx"
+    ],
+    "tests_present": 4,
+    "test_files": [
+      "tests/integration/test_multi_entity_consolidation_api_phase2_3.py",
+      "tests/unit/test_multi_entity_consolidation_phase2_3.py"
+    ]
+  },
+  {
+    "module": "IFRS 16 Leases",
+    "status": "PARTIAL",
+    "files_found_count": 1,
+    "files_sample": [
+      "financeops/api/v1/lease.py"
+    ],
+    "api_routes": [
+      "POST /run",
+      "GET /run/{run_id}",
+      "GET /results/{run_id}",
+      "GET /run/{run_id}/leases/{lease_id}",
+      "GET /run/{run_id}/payments/{payment_id}",
+      "GET /run/{run_id}/liability-lines/{line_id}",
+      "GET /run/{run_id}/rou-lines/{line_id}",
+      "GET /run/{run_id}/journal-entries/{journal_id}"
+    ],
+    "frontend_pages": [],
+    "tests_present": 4,
+    "test_files": [
+      "tests/integration/test_lease_endpoints.py",
+      "tests/unit/test_lease_interest_engine.py"
+    ]
+  },
+  {
+    "module": "IAS 16 Fixed Assets",
+    "status": "COMPLETE",
+    "files_found_count": 1,
+    "files_sample": [
+      "financeops/api/v1/fixed_assets.py"
+    ],
+    "api_routes": [
+      "POST /run",
+      "GET /run/{run_id}",
+      "GET /results/{run_id}",
+      "GET /run/{run_id}/assets/{asset_id}",
+      "GET /run/{run_id}/depreciation-lines/{line_id}",
+      "GET /run/{run_id}/impairments/{impairment_id}",
+      "GET /run/{run_id}/disposals/{disposal_id}",
+      "GET /run/{run_id}/journal-entries/{journal_id}"
+    ],
+    "frontend_pages": [],
+    "tests_present": 4,
+    "test_files": [
+      "tests/integration/test_fixed_assets_endpoints.py",
+      "tests/unit/test_fixed_assets_journal_builder.py"
+    ]
+  },
+  {
+    "module": "IFRS 15 Revenue Recognition",
+    "status": "PARTIAL",
+    "files_found_count": 1,
+    "files_sample": [
+      "financeops/api/v1/revenue.py"
+    ],
+    "api_routes": [
+      "POST /run",
+      "GET /run/{run_id}",
+      "GET /results/{run_id}",
+      "GET /run/{run_id}/contracts/{contract_id}",
+      "GET /run/{run_id}/obligations/{obligation_id}",
+      "GET /run/{run_id}/schedule-lines/{schedule_id}",
+      "GET /run/{run_id}/journal-entries/{journal_id}"
+    ],
+    "frontend_pages": [],
+    "tests_present": 3,
+    "test_files": [
+      "tests/integration/test_revenue_endpoints.py"
+    ]
+  },
+  {
+    "module": "Payroll GL",
+    "status": "PARTIAL",
+    "files_found_count": 28,
+    "files_sample": [
+      "financeops/modules/payroll_gl_normalization/__init__.py",
+      "financeops/modules/payroll_gl_normalization/api/routes.py",
+      "financeops/modules/payroll_gl_normalization/api/schemas.py",
+      "financeops/modules/payroll_gl_normalization/api/__init__.py",
+      "financeops/modules/payroll_gl_normalization/application/gl_normalization_service.py",
+      "financeops/modules/payroll_gl_normalization/application/mapping_service.py",
+      "financeops/modules/payroll_gl_normalization/application/payroll_normalization_service.py",
+      "financeops/modules/payroll_gl_normalization/application/run_service.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/reconciliation/payroll/page.tsx"
+    ],
+    "tests_present": 6,
+    "test_files": [
+      "tests/integration/test_payroll_gl_normalization_api_phase1f3.py"
+    ]
+  },
+  {
+    "module": "Cash Flow (IAS 7)",
+    "status": "COMPLETE",
+    "files_found_count": 23,
+    "files_sample": [
+      "financeops/modules/cash_flow_engine/__init__.py",
+      "financeops/modules/cash_flow_engine/api/routes.py",
+      "financeops/modules/cash_flow_engine/api/schemas.py",
+      "financeops/modules/cash_flow_engine/api/__init__.py",
+      "financeops/modules/cash_flow_engine/application/bridge_service.py",
+      "financeops/modules/cash_flow_engine/application/mapping_service.py",
+      "financeops/modules/cash_flow_engine/application/run_service.py",
+      "financeops/modules/cash_flow_engine/application/validation_service.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /"
+    ],
+    "frontend_pages": [],
+    "tests_present": 6,
+    "test_files": [
+      "tests/unit/test_cash_flow_engine_phase2_6.py"
+    ]
+  },
+  {
+    "module": "Equity Engine (SOCIE)",
+    "status": "COMPLETE",
+    "files_found_count": 23,
+    "files_sample": [
+      "financeops/modules/equity_engine/__init__.py",
+      "financeops/modules/equity_engine/api/routes.py",
+      "financeops/modules/equity_engine/api/schemas.py",
+      "financeops/modules/equity_engine/api/__init__.py",
+      "financeops/modules/equity_engine/application/mapping_service.py",
+      "financeops/modules/equity_engine/application/rollforward_service.py",
+      "financeops/modules/equity_engine/application/run_service.py",
+      "financeops/modules/equity_engine/application/validation_service.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /"
+    ],
+    "frontend_pages": [],
+    "tests_present": 5,
+    "test_files": [
+      "tests/unit/test_equity_engine_phase2_7.py"
+    ]
+  },
+  {
+    "module": "60+ Financial Ratios",
+    "status": "COMPLETE",
+    "files_found_count": 25,
+    "files_sample": [
+      "financeops/modules/ratio_variance_engine/__init__.py",
+      "financeops/modules/ratio_variance_engine/api/routes.py",
+      "financeops/modules/ratio_variance_engine/api/schemas.py",
+      "financeops/modules/ratio_variance_engine/api/__init__.py",
+      "financeops/modules/ratio_variance_engine/application/materiality_service.py",
+      "financeops/modules/ratio_variance_engine/application/metric_definition_service.py",
+      "financeops/modules/ratio_variance_engine/application/run_service.py",
+      "financeops/modules/ratio_variance_engine/application/trend_service.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "POST /",
+      "POST /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /",
+      "GET /"
+    ],
+    "frontend_pages": [],
+    "tests_present": 5,
+    "test_files": [
+      "tests/unit/test_ratio_variance_engine_phase1f4.py"
+    ]
+  },
+  {
+    "module": "GST Reconciliation",
+    "status": "PARTIAL",
+    "files_found_count": 1,
+    "files_sample": [
+      "financeops/api/v1/gst.py"
+    ],
+    "api_routes": [
+      "POST /returns",
+      "GET /returns",
+      "POST /reconcile",
+      "GET /recon-items"
+    ],
+    "frontend_pages": [],
+    "tests_present": 9,
+    "test_files": [
+      "tests/integration/test_gst_endpoints.py",
+      "tests/unit/test_gst_service.py"
+    ]
+  },
+  {
+    "module": "Bank Reconciliation",
+    "status": "PARTIAL",
+    "files_found_count": 1,
+    "files_sample": [
+      "financeops/api/v1/bank_recon.py"
+    ],
+    "api_routes": [
+      "POST /statements",
+      "GET /statements",
+      "POST /transactions",
+      "GET /transactions/{statement_id}",
+      "POST /run/{statement_id}",
+      "GET /items"
+    ],
+    "frontend_pages": [],
+    "tests_present": 10,
+    "test_files": [
+      "tests/integration/test_bank_recon_endpoints.py",
+      "tests/unit/test_bank_recon_service.py"
+    ]
+  },
+  {
+    "module": "23 ERP Connectors",
+    "status": "PARTIAL",
+    "files_found_count": 101,
+    "files_sample": [
+      "financeops/modules/erp_sync/__init__.py",
+      "financeops/modules/erp_sync/api/connections.py",
+      "financeops/modules/erp_sync/api/datasets.py",
+      "financeops/modules/erp_sync/api/drift.py",
+      "financeops/modules/erp_sync/api/health.py",
+      "financeops/modules/erp_sync/api/mappings.py",
+      "financeops/modules/erp_sync/api/publish.py",
+      "financeops/modules/erp_sync/api/router.py"
+    ],
+    "api_routes": [],
+    "frontend_pages": [
+      "app/(dashboard)/sync/connect/page.tsx",
+      "app/(dashboard)/sync/page.tsx"
+    ],
+    "tests_present": 3,
+    "test_files": [
+      "tests/unit/erp_sync/test_erp_sync_connector_registry.py"
+    ]
+  },
+  {
+    "module": "Closing Checklist",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/closing_checklist/models.py",
+      "financeops/modules/closing_checklist/service.py",
+      "financeops/modules/closing_checklist/__init__.py",
+      "financeops/modules/closing_checklist/api/routes.py",
+      "financeops/modules/closing_checklist/api/__init__.py"
+    ],
+    "api_routes": [
+      "GET /history",
+      "GET /analytics",
+      "POST /templates",
+      "GET /templates",
+      "GET /{period}",
+      "PATCH /{period}/tasks/{task_id}",
+      "POST /{period}/tasks/{task_id}/assign"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/close/[period]/page.tsx",
+      "app/(dashboard)/close/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_closing_checklist.py"
+    ]
+  },
+  {
+    "module": "Working Capital Dashboard",
+    "status": "PARTIAL",
+    "files_found_count": 6,
+    "files_sample": [
+      "financeops/modules/working_capital/models.py",
+      "financeops/modules/working_capital/service.py",
+      "financeops/modules/working_capital/__init__.py",
+      "financeops/modules/working_capital/api/routes.py",
+      "financeops/modules/working_capital/api/__init__.py",
+      "financeops/api/v1/working_capital.py"
+    ],
+    "api_routes": [
+      "GET /dashboard",
+      "GET /ar",
+      "GET /ap",
+      "GET /trends",
+      "POST /snapshots",
+      "GET /snapshots",
+      "GET /snapshots/latest/{entity_name}"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/working-capital/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_working_capital.py",
+      "tests/unit/test_working_capital_service.py"
+    ]
+  },
+  {
+    "module": "Expense Management",
+    "status": "PARTIAL",
+    "files_found_count": 6,
+    "files_sample": [
+      "financeops/modules/expense_management/models.py",
+      "financeops/modules/expense_management/policy_engine.py",
+      "financeops/modules/expense_management/service.py",
+      "financeops/modules/expense_management/__init__.py",
+      "financeops/modules/expense_management/api/routes.py",
+      "financeops/modules/expense_management/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /analytics",
+      "GET /policy",
+      "PATCH /policy",
+      "GET /{claim_id}",
+      "POST /{claim_id}/approve"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/expenses/[id]/page.tsx",
+      "app/(dashboard)/expenses/page.tsx",
+      "app/(dashboard)/expenses/submit/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_expense_management.py"
+    ]
+  },
+  {
+    "module": "Budgeting",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/budgeting/models.py",
+      "financeops/modules/budgeting/service.py",
+      "financeops/modules/budgeting/__init__.py",
+      "financeops/modules/budgeting/api/routes.py",
+      "financeops/modules/budgeting/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /versions",
+      "GET /versions",
+      "GET /versions/{version_id}",
+      "POST /versions/{version_id}/lines",
+      "POST /versions/{version_id}/approve",
+      "GET /vs-actual",
+      "GET /vs-actual/export"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/budget/[year]/edit/page.tsx",
+      "app/(dashboard)/budget/[year]/page.tsx",
+      "app/(dashboard)/budget/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_budgeting.py"
+    ]
+  },
+  {
+    "module": "Forecasting",
+    "status": "COMPLETE",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/forecasting/models.py",
+      "financeops/modules/forecasting/service.py",
+      "financeops/modules/forecasting/__init__.py",
+      "financeops/modules/forecasting/api/routes.py",
+      "financeops/modules/forecasting/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /{run_id}",
+      "PATCH /{run_id}/assumptions/{key}",
+      "POST /{run_id}/compute",
+      "POST /{run_id}/publish",
+      "GET /{run_id}/vs-budget",
+      "GET /{run_id}/export"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/forecast/[id]/page.tsx",
+      "app/(dashboard)/forecast/page.tsx"
+    ],
+    "tests_present": 26,
+    "test_files": [
+      "tests/test_forecasting.py"
+    ]
+  },
+  {
+    "module": "Scenario Modelling",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/scenario_modelling/models.py",
+      "financeops/modules/scenario_modelling/service.py",
+      "financeops/modules/scenario_modelling/__init__.py",
+      "financeops/modules/scenario_modelling/api/routes.py",
+      "financeops/modules/scenario_modelling/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /",
+      "GET /",
+      "GET /{set_id}",
+      "PATCH /{set_id}/scenarios/{definition_id}",
+      "POST /{set_id}/compute",
+      "GET /{set_id}/comparison",
+      "GET /{set_id}/export"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/scenarios/[id]/page.tsx",
+      "app/(dashboard)/scenarios/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_scenario_modelling.py"
+    ]
+  },
+  {
+    "module": "FDD",
+    "status": "PARTIAL",
+    "files_found_count": 12,
+    "files_sample": [
+      "financeops/modules/fdd/models.py",
+      "financeops/modules/fdd/service.py",
+      "financeops/modules/fdd/tasks.py",
+      "financeops/modules/fdd/__init__.py",
+      "financeops/modules/fdd/api/routes.py",
+      "financeops/modules/fdd/api/__init__.py",
+      "financeops/modules/fdd/sections/debt_liability_review.py",
+      "financeops/modules/fdd/sections/headcount_normalisation.py"
+    ],
+    "api_routes": [
+      "POST /engagements",
+      "GET /engagements",
+      "GET /engagements/{engagement_id}",
+      "POST /engagements/{engagement_id}/run",
+      "GET /engagements/{engagement_id}/report",
+      "GET /engagements/{engagement_id}/export"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/advisory/fdd/[id]/page.tsx",
+      "app/(dashboard)/advisory/fdd/[id]/report/page.tsx",
+      "app/(dashboard)/advisory/fdd/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_fdd.py"
+    ]
+  },
+  {
+    "module": "PPA",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/ppa/models.py",
+      "financeops/modules/ppa/service.py",
+      "financeops/modules/ppa/__init__.py",
+      "financeops/modules/ppa/api/routes.py",
+      "financeops/modules/ppa/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /engagements",
+      "GET /engagements",
+      "GET /engagements/{engagement_id}",
+      "POST /engagements/{engagement_id}/identify-intangibles",
+      "POST /engagements/{engagement_id}/run",
+      "GET /engagements/{engagement_id}/report",
+      "GET /engagements/{engagement_id}/export"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/advisory/ppa/[id]/page.tsx",
+      "app/(dashboard)/advisory/ppa/page.tsx"
+    ],
+    "tests_present": 20,
+    "test_files": [
+      "tests/test_ppa.py"
+    ]
+  },
+  {
+    "module": "M&A Workspace",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/ma_workspace/models.py",
+      "financeops/modules/ma_workspace/service.py",
+      "financeops/modules/ma_workspace/__init__.py",
+      "financeops/modules/ma_workspace/api/routes.py",
+      "financeops/modules/ma_workspace/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /workspaces",
+      "GET /workspaces",
+      "GET /workspaces/{workspace_id}",
+      "PATCH /workspaces/{workspace_id}",
+      "POST /workspaces/{workspace_id}/members",
+      "GET /workspaces/{workspace_id}/valuations",
+      "POST /workspaces/{workspace_id}/valuations",
+      "GET /workspaces/{workspace_id}/dd",
+      "POST /workspaces/{workspace_id}/dd",
+      "PATCH /workspaces/{workspace_id}/dd/{item_id}",
+      "GET /workspaces/{workspace_id}/documents",
+      "POST /workspaces/{workspace_id}/documents"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/advisory/ma/[id]/documents/page.tsx",
+      "app/(dashboard)/advisory/ma/[id]/page.tsx",
+      "app/(dashboard)/advisory/ma/[id]/valuation/page.tsx",
+      "app/(dashboard)/advisory/ma/page.tsx"
+    ],
+    "tests_present": 25,
+    "test_files": [
+      "tests/test_ma_workspace.py"
+    ]
+  },
+  {
+    "module": "Notification Engine",
+    "status": "PARTIAL",
+    "files_found_count": 9,
+    "files_sample": [
+      "financeops/modules/notifications/models.py",
+      "financeops/modules/notifications/service.py",
+      "financeops/modules/notifications/__init__.py",
+      "financeops/modules/notifications/api/routes.py",
+      "financeops/modules/notifications/api/__init__.py",
+      "financeops/modules/notifications/channels/email_channel.py",
+      "financeops/modules/notifications/channels/inapp_channel.py",
+      "financeops/modules/notifications/channels/push_channel.py"
+    ],
+    "api_routes": [
+      "GET /",
+      "POST /read",
+      "POST /read-all",
+      "GET /unread-count",
+      "GET /preferences",
+      "PATCH /preferences",
+      "GET /stream"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/notifications/page.tsx"
+    ],
+    "tests_present": 22,
+    "test_files": [
+      "tests/test_notifications.py"
+    ]
+  },
+  {
+    "module": "Global Search",
+    "status": "PARTIAL",
+    "files_found_count": 12,
+    "files_sample": [
+      "financeops/modules/search/models.py",
+      "financeops/modules/search/service.py",
+      "financeops/modules/search/__init__.py",
+      "financeops/modules/search/api/routes.py",
+      "financeops/modules/search/api/__init__.py",
+      "financeops/modules/search/indexers/anomaly_indexer.py",
+      "financeops/modules/search/indexers/checklist_indexer.py",
+      "financeops/modules/search/indexers/expense_indexer.py"
+    ],
+    "api_routes": [
+      "GET /",
+      "POST /reindex"
+    ],
+    "frontend_pages": [],
+    "tests_present": 20,
+    "test_files": [
+      "tests/test_search.py"
+    ]
+  },
+  {
+    "module": "Learning Engine",
+    "status": "COMPLETE",
+    "files_found_count": 8,
+    "files_sample": [
+      "financeops/modules/learning_engine/models.py",
+      "financeops/modules/learning_engine/service.py",
+      "financeops/modules/learning_engine/__init__.py",
+      "financeops/modules/learning_engine/api/routes.py",
+      "financeops/modules/learning_engine/api/__init__.py",
+      "financeops/modules/learning_engine/benchmarks/classification_benchmark.py",
+      "financeops/modules/learning_engine/benchmarks/commentary_benchmark.py",
+      "financeops/modules/learning_engine/benchmarks/__init__.py"
+    ],
+    "api_routes": [
+      "POST /signal",
+      "GET /stats",
+      "POST /benchmark/run",
+      "GET /benchmark/results",
+      "POST /corrections/{correction_id}/validate"
+    ],
+    "frontend_pages": [
+      "app/(admin)/admin/ai-quality/page.tsx"
+    ],
+    "tests_present": 20,
+    "test_files": [
+      "tests/test_learning_engine.py"
+    ]
+  },
+  {
+    "module": "13-Week Cash Flow Forecast",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/cash_flow_forecast/models.py",
+      "financeops/modules/cash_flow_forecast/service.py",
+      "financeops/modules/cash_flow_forecast/__init__.py",
+      "financeops/modules/cash_flow_forecast/api/routes.py",
+      "financeops/modules/cash_flow_forecast/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /forecasts",
+      "GET /forecasts",
+      "GET /forecasts/{forecast_id}",
+      "PATCH /forecasts/{forecast_id}/weeks/{week_number}",
+      "POST /forecasts/{forecast_id}/publish"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/treasury/[id]/page.tsx",
+      "app/(dashboard)/treasury/page.tsx"
+    ],
+    "tests_present": 15,
+    "test_files": [
+      "tests/test_cash_flow_forecast.py"
+    ]
+  },
+  {
+    "module": "Tax Provision IAS 12",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/tax_provision/models.py",
+      "financeops/modules/tax_provision/service.py",
+      "financeops/modules/tax_provision/__init__.py",
+      "financeops/modules/tax_provision/api/routes.py",
+      "financeops/modules/tax_provision/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /provision/compute",
+      "GET /provision/{period}",
+      "GET /schedule",
+      "GET /positions",
+      "POST /positions"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/tax/[id]/page.tsx",
+      "app/(dashboard)/tax/page.tsx"
+    ],
+    "tests_present": 15,
+    "test_files": [
+      "tests/test_tax_provision.py"
+    ]
+  },
+  {
+    "module": "Debt Covenant Compliance",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/debt_covenants/models.py",
+      "financeops/modules/debt_covenants/service.py",
+      "financeops/modules/debt_covenants/__init__.py",
+      "financeops/modules/debt_covenants/api/routes.py",
+      "financeops/modules/debt_covenants/api/__init__.py"
+    ],
+    "api_routes": [
+      "GET /dashboard",
+      "POST /",
+      "PATCH /{covenant_id}",
+      "POST /check",
+      "GET /{covenant_id}/history"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/covenants/page.tsx"
+    ],
+    "tests_present": 15,
+    "test_files": [
+      "tests/test_debt_covenants.py"
+    ]
+  },
+  {
+    "module": "Transfer Pricing Form 3CEB",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/transfer_pricing/models.py",
+      "financeops/modules/transfer_pricing/service.py",
+      "financeops/modules/transfer_pricing/__init__.py",
+      "financeops/modules/transfer_pricing/api/routes.py",
+      "financeops/modules/transfer_pricing/api/__init__.py"
+    ],
+    "api_routes": [
+      "GET /applicability",
+      "POST /transactions",
+      "GET /transactions",
+      "POST /generate-3ceb",
+      "GET /documents",
+      "GET /documents/{document_id}"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/transfer-pricing/[id]/page.tsx",
+      "app/(dashboard)/transfer-pricing/page.tsx"
+    ],
+    "tests_present": 12,
+    "test_files": [
+      "tests/test_transfer_pricing.py"
+    ]
+  },
+  {
+    "module": "Director/CFO Digital Signoff",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/digital_signoff/models.py",
+      "financeops/modules/digital_signoff/service.py",
+      "financeops/modules/digital_signoff/__init__.py",
+      "financeops/modules/digital_signoff/api/routes.py",
+      "financeops/modules/digital_signoff/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /initiate",
+      "POST /{signoff_id}/sign",
+      "GET /{signoff_id}/certificate",
+      "GET /",
+      "POST /{signoff_id}/verify"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/signoff/page.tsx"
+    ],
+    "tests_present": 12,
+    "test_files": [
+      "tests/test_digital_signoff.py"
+    ]
+  },
+  {
+    "module": "Statutory Registers MCA",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/statutory/models.py",
+      "financeops/modules/statutory/service.py",
+      "financeops/modules/statutory/__init__.py",
+      "financeops/modules/statutory/api/routes.py",
+      "financeops/modules/statutory/api/__init__.py"
+    ],
+    "api_routes": [
+      "GET /calendar",
+      "GET /filings",
+      "POST /filings/{filing_id}/file",
+      "GET /registers/{register_type}",
+      "POST /registers/{register_type}"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/statutory/page.tsx"
+    ],
+    "tests_present": 12,
+    "test_files": [
+      "tests/test_statutory.py"
+    ]
+  },
+  {
+    "module": "Multi-GAAP Reporting",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/multi_gaap/models.py",
+      "financeops/modules/multi_gaap/service.py",
+      "financeops/modules/multi_gaap/__init__.py",
+      "financeops/modules/multi_gaap/api/routes.py",
+      "financeops/modules/multi_gaap/api/__init__.py"
+    ],
+    "api_routes": [
+      "GET /config",
+      "PATCH /config",
+      "POST /compute",
+      "GET /comparison",
+      "GET /{gaap_framework}/{period}"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/gaap/page.tsx"
+    ],
+    "tests_present": 12,
+    "test_files": [
+      "tests/test_multi_gaap.py"
+    ]
+  },
+  {
+    "module": "Auditor Portal PBC Tracker",
+    "status": "PARTIAL",
+    "files_found_count": 5,
+    "files_sample": [
+      "financeops/modules/auditor_portal/models.py",
+      "financeops/modules/auditor_portal/service.py",
+      "financeops/modules/auditor_portal/__init__.py",
+      "financeops/modules/auditor_portal/api/routes.py",
+      "financeops/modules/auditor_portal/api/__init__.py"
+    ],
+    "api_routes": [
+      "POST /access/grant",
+      "GET /access",
+      "PATCH /access/{access_id}/revoke",
+      "GET /{engagement_id}/pbc",
+      "POST /{engagement_id}/requests/{request_id}/respond",
+      "GET /portal/requests",
+      "POST /portal/requests"
+    ],
+    "frontend_pages": [
+      "app/(dashboard)/audit/[engagement_id]/page.tsx",
+      "app/(dashboard)/audit/page.tsx"
+    ],
+    "tests_present": 15,
+    "test_files": [
+      "tests/test_auditor_portal.py"
+    ]
+  }
+]

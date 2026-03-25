@@ -276,27 +276,91 @@ async def publish_forecast(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     forecast_run_id: uuid.UUID,
+    published_by: uuid.UUID,
 ) -> CashFlowForecastRun:
-    run = await _get_run(session, tenant_id, forecast_run_id)
+    draft = await _get_run(session, tenant_id, forecast_run_id)
+    if draft.status != "draft":
+        raise ValidationError("Only draft forecasts can be published")
 
-    previous = (
-        await session.execute(
-            select(CashFlowForecastRun).where(
-                CashFlowForecastRun.tenant_id == tenant_id,
-                CashFlowForecastRun.is_published.is_(True),
-                CashFlowForecastRun.id != run.id,
+    async def _clone_assumptions(source_run_id: uuid.UUID, target_run_id: uuid.UUID) -> None:
+        source_rows = (
+            await session.execute(
+                select(CashFlowForecastAssumption)
+                .where(
+                    CashFlowForecastAssumption.forecast_run_id == source_run_id,
+                    CashFlowForecastAssumption.tenant_id == tenant_id,
+                )
+                .order_by(CashFlowForecastAssumption.week_number)
             )
+        ).scalars().all()
+        for row in source_rows:
+            session.add(
+                CashFlowForecastAssumption(
+                    forecast_run_id=target_run_id,
+                    tenant_id=tenant_id,
+                    week_number=row.week_number,
+                    week_start_date=row.week_start_date,
+                    customer_collections=_d(row.customer_collections),
+                    other_inflows=_d(row.other_inflows),
+                    supplier_payments=_d(row.supplier_payments),
+                    payroll=_d(row.payroll),
+                    rent_and_utilities=_d(row.rent_and_utilities),
+                    loan_repayments=_d(row.loan_repayments),
+                    tax_payments=_d(row.tax_payments),
+                    capex=_d(row.capex),
+                    other_outflows=_d(row.other_outflows),
+                    total_inflows=_d(row.total_inflows),
+                    total_outflows=_d(row.total_outflows),
+                    net_cash_flow=_d(row.net_cash_flow),
+                    closing_balance=_d(row.closing_balance),
+                    notes=row.notes,
+                )
+            )
+
+    current_published = (
+        await session.execute(
+            select(CashFlowForecastRun)
+            .where(
+                CashFlowForecastRun.tenant_id == tenant_id,
+                CashFlowForecastRun.status == "published",
+            )
+            .order_by(CashFlowForecastRun.created_at.desc(), CashFlowForecastRun.id.desc())
+            .limit(1)
         )
-    ).scalars().all()
+    ).scalar_one_or_none()
 
-    for row in previous:
-        row.status = "superseded"
-        row.is_published = False
+    if current_published is not None:
+        superseded = CashFlowForecastRun(
+            tenant_id=tenant_id,
+            run_name=current_published.run_name,
+            base_date=current_published.base_date,
+            weeks=current_published.weeks,
+            opening_cash_balance=_d(current_published.opening_cash_balance),
+            currency=current_published.currency,
+            status="superseded",
+            is_published=False,
+            created_by=published_by,
+        )
+        session.add(superseded)
+        await session.flush()
+        await _clone_assumptions(current_published.id, superseded.id)
 
-    run.status = "published"
-    run.is_published = True
+    published = CashFlowForecastRun(
+        tenant_id=tenant_id,
+        run_name=draft.run_name,
+        base_date=draft.base_date,
+        weeks=draft.weeks,
+        opening_cash_balance=_d(draft.opening_cash_balance),
+        currency=draft.currency,
+        status="published",
+        is_published=True,
+        created_by=published_by,
+    )
+    session.add(published)
     await session.flush()
-    return run
+    await _clone_assumptions(draft.id, published.id)
+    await session.flush()
+    return published
 
 
 __all__ = [

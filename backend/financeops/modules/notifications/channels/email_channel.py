@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import smtplib
+from concurrent.futures import ThreadPoolExecutor
 from email.message import EmailMessage
 
 from financeops.config import settings
 from financeops.modules.notifications.models import NotificationEvent
 
 log = logging.getLogger(__name__)
+_smtp_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="smtp")
 
 
 def _smtp_configured() -> bool:
@@ -63,7 +66,7 @@ async def send_email(
     message.set_content(notification_event.body)
     message.add_alternative(html, subtype="html")
 
-    try:
+    def _send_smtp_blocking(email_message: EmailMessage) -> None:
         with smtplib.SMTP(
             host=settings.SMTP_HOST,
             port=int(settings.SMTP_PORT),
@@ -77,7 +80,11 @@ async def send_email(
                 pass
             if settings.SMTP_USER and settings.SMTP_PASSWORD:
                 smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            smtp.send_message(message)
+            smtp.send_message(email_message)
+
+    try:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(_smtp_executor, _send_smtp_blocking, message)
         return True
     except Exception as exc:  # noqa: BLE001
         log.warning("notification_email_send_failed recipient=%s error=%s", recipient_email, exc)
@@ -85,4 +92,3 @@ async def send_email(
 
 
 __all__ = ["send_email"]
-

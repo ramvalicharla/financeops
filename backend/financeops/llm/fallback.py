@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import logging
 import time
+from decimal import Decimal
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 
 from financeops.core.exceptions import AllModelsFailedError
 from financeops.llm.circuit_breaker import CircuitBreakerRegistry
+from financeops.llm.provider_registry import ProviderSlot, provider_registry
 from financeops.llm.providers.base import LLMRequest, LLMResponse
+from financeops.llm.retry import with_retry
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +35,7 @@ class AIResult:
     completion_tokens: int = 0
     was_cached: bool = False
     pii_was_masked: bool = False
+    trace_id: str | None = None
 
 
 FALLBACK_CHAINS: dict[str, list[ModelConfig]] = {
@@ -63,6 +67,28 @@ FALLBACK_CHAINS: dict[str, list[ModelConfig]] = {
         # NO cloud models — HR data stays local only
     ],
 }
+
+_REGISTRY_INITIALIZED = False
+
+
+def _init_provider_registry() -> None:
+    global _REGISTRY_INITIALIZED
+    if _REGISTRY_INITIALIZED:
+        return
+    for task_type, chain in FALLBACK_CHAINS.items():
+        for index, cfg in enumerate(chain, start=1):
+            provider_registry.register(
+                ProviderSlot(
+                    name=f"{task_type}:{cfg.provider}:{cfg.model_name}",
+                    provider=cfg.provider,
+                    model=cfg.model_name,
+                    task_types=[task_type],
+                    priority=index,
+                    max_tokens=1000,
+                    cost_per_1k_tokens=Decimal("0.003"),
+                )
+            )
+    _REGISTRY_INITIALIZED = True
 
 
 def _get_provider(provider_name: str, model_name: str):
@@ -104,7 +130,15 @@ async def execute_with_fallback(
     Checks circuit breaker before each attempt.
     Raises AllModelsFailedError if all models in the chain fail.
     """
-    chain = FALLBACK_CHAINS.get(task_type)
+    _init_provider_registry()
+    registry_slots = provider_registry.get_for_task(task_type, allow_cloud=True)
+    if registry_slots:
+        chain = [
+            ModelConfig(model_name=slot.model, provider=slot.provider, timeout=60)
+            for slot in registry_slots
+        ]
+    else:
+        chain = FALLBACK_CHAINS.get(task_type)
     if not chain:
         raise ValueError(f"Unknown task_type for fallback chain: {task_type}")
 
@@ -136,7 +170,7 @@ async def execute_with_fallback(
                     model=model_cfg.model_name,
                     tenant_id=tenant_id,
                 )
-                response = await provider.generate(request)
+                response = await with_retry(provider.generate, None, request)
             duration_ms = (time.monotonic() - start) * 1000
 
             await circuit_registry.record_success(model_key)

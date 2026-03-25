@@ -47,6 +47,21 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def get_raw_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Yield an async DB session without JWT/RLS tenant context wiring.
+    Intended for token-auth integrations that apply their own scope controls.
+    """
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            try:
+                yield session
+                await session.flush()
+            except Exception:
+                await session.rollback()
+                raise
+
+
 @asynccontextmanager
 async def tenant_session(tenant_id: UUID | str) -> AsyncGenerator[AsyncSession, None]:
     """

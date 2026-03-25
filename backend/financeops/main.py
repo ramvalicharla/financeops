@@ -4,6 +4,8 @@ import os
 import re
 import logging
 import asyncio
+import sys
+from importlib.metadata import PackageNotFoundError, version as package_version
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -16,6 +18,9 @@ from slowapi.errors import RateLimitExceeded
 from starlette_csrf import CSRFMiddleware
 from alembic import command
 from alembic.config import Config
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 from financeops.api.v1.router import router as v1_router
 from financeops.config import limiter, settings
@@ -56,6 +61,8 @@ from financeops.modules.digital_signoff.api.routes import router as signoff_rout
 from financeops.modules.statutory.api.routes import router as statutory_router
 from financeops.modules.multi_gaap.api.routes import router as gaap_router
 from financeops.modules.auditor_portal.api.routes import router as audit_router
+from financeops.api.v1.ai_stream import router as ai_stream_router
+from financeops.api.v1.admin_ai_providers import router as admin_ai_providers_router
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     RequestLoggingMiddleware,
@@ -74,6 +81,11 @@ from financeops.db.session import engine
 
 log = logging.getLogger(__name__)
 configure_logging(log_level=settings.LOG_LEVEL)
+
+try:
+    APP_VERSION = package_version("financeops-backend")
+except PackageNotFoundError:
+    APP_VERSION = settings.APP_RELEASE
 
 def run_migrations_with_lock() -> None:
     """
@@ -163,7 +175,7 @@ def create_app() -> FastAPI:
     """Application factory."""
     app = FastAPI(
         title=settings.APP_NAME,
-        version="0.1.0",
+        version=APP_VERSION,
         description="FinanceOps — Production-grade multi-tenant financial SaaS",
         docs_url="/docs" if settings.DEBUG else None,
         redoc_url="/redoc" if settings.DEBUG else None,
@@ -258,6 +270,8 @@ def create_app() -> FastAPI:
     app.include_router(statutory_router, prefix="/api/v1")
     app.include_router(gaap_router, prefix="/api/v1")
     app.include_router(audit_router, prefix="/api/v1")
+    app.include_router(ai_stream_router, prefix="/api/v1")
+    app.include_router(admin_ai_providers_router, prefix="/api/v1")
 
     # OpenTelemetry instrumentation
     if settings.OTEL_EXPORTER_OTLP_ENDPOINT:

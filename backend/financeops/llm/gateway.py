@@ -16,6 +16,8 @@ from financeops.llm.cost_ledger import check_budget, record_ai_call
 from financeops.llm.fallback import AIResult, ModelConfig, _get_provider, execute_with_fallback
 from financeops.llm.pii_masker import PIIMasker
 from financeops.llm.providers.base import LLMRequest, LLMResponse
+from financeops.llm.retry import with_retry
+from financeops.llm.token_manager import compute_token_budget
 from financeops.security.prompt_injection import PromptInjectionScanner
 from financeops.observability.ai_metrics import observe_ai_cost, observe_ai_tokens
 from financeops.llm.pipeline import PipelineContext, PipelineResult, run_pipeline
@@ -79,6 +81,7 @@ async def _call_provider(
     system_prompt: str,
     tenant_id: str,
     redis_client,
+    trace_id: str | None = None,
 ) -> tuple[LLMResponse, bool, bool]:
     scan_result = _scanner.scan(prompt)
     prompt_after_scan = prompt
@@ -100,7 +103,7 @@ async def _call_provider(
     pii_was_masked = False
 
     if _masker.should_mask(model_config.provider):
-        prompt_masking = _masker.mask(prompt)
+        prompt_masking = _masker.mask(prompt_after_scan)
         system_masking = _masker.mask(system_prompt)
         combined_map: dict[str, str] = {}
         combined_map.update(prompt_masking.mask_map)
@@ -112,11 +115,26 @@ async def _call_provider(
         pii_was_masked = bool(combined_map)
         if pii_types:
             log.info(
-                "pii_masked provider=%s types=%s tenant=%s",
+                "pii_masked provider=%s types=%s tenant=%s trace_id=%s",
                 model_config.provider,
                 pii_types,
                 tenant_id,
+                trace_id,
             )
+
+    budget = compute_token_budget(
+        model=model_config.model_name,
+        system_prompt=system_prompt_to_send,
+        user_prompt=prompt_to_send,
+    )
+    if budget.truncated:
+        prompt_to_send = budget.truncated_user_prompt
+        log.warning(
+            "prompt_truncated model=%s truncation_pct=%s trace_id=%s",
+            model_config.model_name,
+            str(budget.truncation_pct),
+            trace_id,
+        )
 
     provider = _get_provider(model_config.provider, model_config.model_name)
 
@@ -127,7 +145,7 @@ async def _call_provider(
             model=model_config.model_name,
             tenant_id=tenant_id,
         )
-        response = await provider.generate(request)
+        response = await with_retry(provider.generate, None, request)
         payload = {
             "content": response.content,
             "prompt_tokens": response.prompt_tokens,
@@ -174,12 +192,14 @@ async def gateway_generate(
     redis_client=None,
     db_session: AsyncSession | None = None,
     circuit_registry: CircuitBreakerRegistry | None = None,
+    trace_id: str | None = None,
 ) -> AIResult:
     """
     Top-level gateway entry point for single-shot LLM requests (no pipeline).
     Uses circuit breaker + fallback chain.
     """
     registry = circuit_registry or CircuitBreakerRegistry(redis_client=redis_client)
+    request_trace_id = trace_id or str(uuid.uuid4())
     tenant_uuid = _safe_uuid(tenant_id)
     own_session = db_session is None
     session: AsyncSession | None = db_session
@@ -189,6 +209,13 @@ async def gateway_generate(
         await set_tenant_context(session, tenant_id)
 
     try:
+        log.info(
+            "ai_request_started trace_id=%s task_type=%s tenant=%s prompt_length=%d",
+            request_trace_id,
+            task_type,
+            tenant_id,
+            len(prompt),
+        )
         enriched_system_prompt = system_prompt
         if session is not None and tenant_uuid is not None:
             try:
@@ -227,6 +254,7 @@ async def gateway_generate(
                 system_prompt=system_prompt_value,
                 tenant_id=tenant_value,
                 redis_client=redis_client,
+                trace_id=request_trace_id,
             )
             if session is not None and tenant_uuid is not None:
                 event = await record_ai_call(
@@ -263,11 +291,20 @@ async def gateway_generate(
             circuit_registry=registry,
             provider_invoke=_provider_invoke,
         )
+        result.trace_id = request_trace_id
 
         if session is not None:
             await session.flush()
             if own_session:
                 await session.commit()
+        log.info(
+            "ai_request_completed trace_id=%s task_type=%s tenant=%s model=%s provider=%s",
+            request_trace_id,
+            task_type,
+            tenant_id,
+            result.model_used,
+            result.provider,
+        )
         return result
     except Exception:
         if session is not None and own_session:

@@ -4,16 +4,17 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.config import limiter
 from financeops.db.models.users import IamUser
+from financeops.modules.auditor_portal.deps import get_auditor_access
 from financeops.modules.auditor_portal.models import AuditorPortalAccess, AuditorRequest
 from financeops.modules.auditor_portal.service import (
-    authenticate_auditor,
     create_auditor_request,
     get_pbc_tracker,
     grant_auditor_access,
@@ -167,15 +168,14 @@ async def respond_endpoint(
     return _serialize_request(row)
 
 
+@limiter.limit("30/minute")
 @router.get("/portal/requests")
 async def auditor_list_requests_endpoint(
-    x_auditor_token: str = Header(alias="X-Auditor-Token"),
+    request: Request,
+    access: AuditorPortalAccess = Depends(get_auditor_access),
     session: AsyncSession = Depends(get_async_session),
 ) -> dict:
-    access = await authenticate_auditor(session, access_token=x_auditor_token)
-    if access is None:
-        return {"requests": []}
-
+    del request
     rows = (
         await session.execute(
             select(AuditorRequest)
@@ -186,15 +186,15 @@ async def auditor_list_requests_endpoint(
     return {"requests": [_serialize_request(row) for row in rows]}
 
 
+@limiter.limit("10/minute")
 @router.post("/portal/requests")
 async def auditor_create_request_endpoint(
+    request: Request,
     body: AuditorCreateRequest,
-    x_auditor_token: str = Header(alias="X-Auditor-Token"),
+    access: AuditorPortalAccess = Depends(get_auditor_access),
     session: AsyncSession = Depends(get_async_session),
 ) -> dict:
-    access = await authenticate_auditor(session, access_token=x_auditor_token)
-    if access is None:
-        return {"created": False}
+    del request
     row = await create_auditor_request(
         session,
         access=access,

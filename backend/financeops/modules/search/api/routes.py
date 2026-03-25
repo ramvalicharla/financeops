@@ -1,15 +1,20 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
+from celery.result import AsyncResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
 from financeops.db.models.users import IamUser
-from financeops.modules.search.service import reindex_tenant, search
+from financeops.modules.search.service import search
+from financeops.modules.search.tasks import reindex_search_index
+from financeops.tasks.celery_app import celery_app
 
 router = APIRouter(prefix="/search", tags=["search"])
+log = logging.getLogger(__name__)
 
 
 @router.get("")
@@ -36,16 +41,36 @@ async def reindex_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    del session
+    task_id: str
     try:
-        counts = await reindex_tenant(session, tenant_id=user.tenant_id)
+        task = reindex_search_index.delay(tenant_id=str(user.tenant_id))
+        task_id = str(task.id)
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        log.warning("search_reindex_enqueue_failed tenant=%s error=%s", user.tenant_id, exc)
+        task_id = str(uuid.uuid4())
     return {
-        "task_id": str(uuid.uuid4()),
+        "task_id": task_id,
         "status": "queued",
-        "counts": counts,
     }
 
 
-__all__ = ["router"]
+@router.get("/reindex/{task_id}/status")
+async def reindex_status_endpoint(
+    task_id: str,
+    user: IamUser = Depends(require_finance_leader),
+) -> dict:
+    del user
+    task_result = AsyncResult(task_id, app=celery_app)
+    payload: dict[str, object] = {
+        "task_id": task_id,
+        "status": str(task_result.status).lower(),
+    }
+    if task_result.successful():
+        payload["result"] = task_result.result
+    elif task_result.failed():
+        payload["error"] = str(task_result.result)
+    return payload
 
+
+__all__ = ["router"]

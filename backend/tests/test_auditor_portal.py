@@ -287,3 +287,60 @@ async def test_api_pbc_tracker_structure(async_client, async_session: AsyncSessi
     assert response.status_code == 200
     payload = response.json()["data"]
     assert {"engagement_name", "total_requests", "completion_pct", "recent_activity"}.issubset(payload)
+
+
+@pytest.mark.asyncio
+async def test_auditor_portal_reachable_without_jwt(async_client, test_user: IamUser) -> None:
+    grant = await async_client.post(
+        "/api/v1/audit/access/grant",
+        headers=_auth_headers(test_user),
+        json={
+            "auditor_email": "portalvalid@example.com",
+            "auditor_firm": "Firm",
+            "engagement_name": "Audit",
+            "valid_from": date.today().isoformat(),
+            "valid_until": (date.today() + timedelta(days=30)).isoformat(),
+            "modules_accessible": [],
+        },
+    )
+    assert grant.status_code == 200
+    token = grant.json()["data"]["token"]
+    assert token.startswith(f"{test_user.tenant_id}.")
+    response = await async_client.get(
+        "/api/v1/audit/portal/requests",
+        headers={"X-Auditor-Token": token},
+    )
+    assert response.status_code == 200
+    assert "requests" in response.json()["data"]
+
+
+@pytest.mark.asyncio
+async def test_auditor_portal_rejects_invalid_token(async_client) -> None:
+    response = await async_client.get(
+        "/api/v1/audit/portal/requests",
+        headers={"X-Auditor-Token": "invalid-token"},
+    )
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_auditor_portal_rejects_expired_access(async_client, test_user: IamUser) -> None:
+    grant = await async_client.post(
+        "/api/v1/audit/access/grant",
+        headers=_auth_headers(test_user),
+        json={
+            "auditor_email": "portalexpired@example.com",
+            "auditor_firm": "Firm",
+            "engagement_name": "Audit",
+            "valid_from": (date.today() - timedelta(days=10)).isoformat(),
+            "valid_until": (date.today() - timedelta(days=1)).isoformat(),
+            "modules_accessible": [],
+        },
+    )
+    assert grant.status_code == 200
+    token = grant.json()["data"]["token"]
+    response = await async_client.get(
+        "/api/v1/audit/portal/requests",
+        headers={"X-Auditor-Token": token},
+    )
+    assert response.status_code == 401

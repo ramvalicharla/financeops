@@ -41,6 +41,14 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
             payload = decode_token(token)
             tenant_id = str(payload.get("tenant_id", "") or "")
     if not tenant_id:
+        auditor_token = request.headers.get("X-Auditor-Token", "").strip()
+        if auditor_token:
+            tenant_prefix = auditor_token.split(".", 1)[0]
+            try:
+                tenant_id = str(uuid.UUID(tenant_prefix))
+            except ValueError:
+                tenant_id = ""
+    if not tenant_id:
         raise AuthenticationError(
             "tenant_id missing from token - RLS context cannot be set"
         )

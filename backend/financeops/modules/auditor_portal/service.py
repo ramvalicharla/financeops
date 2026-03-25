@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
@@ -44,7 +44,7 @@ async def grant_auditor_access(
     created_by: uuid.UUID,
     access_level: str = "read_only",
 ) -> tuple[AuditorPortalAccess, str]:
-    plain_token = secrets.token_urlsafe(32)
+    plain_token = f"{tenant_id}.{secrets.token_urlsafe(32)}"
     token_hash = _hash_token(plain_token)
     now = datetime.now(UTC)
 
@@ -227,13 +227,23 @@ async def get_pbc_tracker(
 async def authenticate_auditor(
     session: AsyncSession,
     access_token: str,
+    expected_tenant_id: uuid.UUID | None = None,
 ) -> AuditorPortalAccess | None:
     token_hash = _hash_token(access_token)
-    row = (
-        await session.execute(
-            select(AuditorPortalAccess).where(AuditorPortalAccess.access_token_hash == token_hash)
-        )
-    ).scalar_one_or_none()
+    stmt = select(AuditorPortalAccess).where(AuditorPortalAccess.access_token_hash == token_hash)
+    if expected_tenant_id is not None:
+        stmt = stmt.where(AuditorPortalAccess.tenant_id == expected_tenant_id)
+    try:
+        await session.execute(text("SET LOCAL row_security = off"))
+    except Exception:
+        pass
+
+    row = (await session.execute(stmt)).scalar_one_or_none()
+
+    try:
+        await session.execute(text("SET LOCAL row_security = on"))
+    except Exception:
+        pass
     if row is None:
         return None
 

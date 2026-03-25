@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncGenerator
 
 import httpx
 
@@ -75,6 +76,15 @@ class AnthropicProvider(BaseLLMProvider):
             duration_ms=duration_ms,
             raw_response=data,
         )
+
+    async def stream_complete(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        """
+        Lightweight streaming adapter.
+        Uses regular completion and yields chunked text when SDK streaming is unavailable.
+        """
+        response = await self.generate(request)
+        for token in response.content.split():
+            yield f"{token} "
 
     async def health_check(self) -> bool:
         try:

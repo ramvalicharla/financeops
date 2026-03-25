@@ -48,6 +48,7 @@ celery_app.conf.update(
         "financeops.tasks.payment_tasks",
         "financeops.modules.scheduled_delivery.tasks",
         "financeops.modules.auto_trigger.pipeline",
+        "financeops.modules.search.tasks",
     ),
     beat_schedule={
         "payment-check-trial-conversions-daily-0000-utc": {

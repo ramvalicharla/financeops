@@ -1,0 +1,3852 @@
+[
+  {
+    "file": "tests/integration/erp_sync/test_erp_sync_append_only.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/erp_sync/test_erp_sync_no_upstream_mutation.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/erp_sync/test_erp_sync_publish_governance.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/erp_sync/test_erp_sync_rls.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_api.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_append_only.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_celery_tasks.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_credit_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_idempotency.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_plan_change.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_rls.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_subscription_lifecycle.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_webhook_razorpay.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/payment/test_payment_webhook_stripe.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_feature_flag_canary.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_finance_route_token_enforcement.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_isolation_routing_paths.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_missing_control_plane_token_rejected.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_module_enablement_enforcement.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_parallel_approval_race_safety.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_quota_enforcement_api_async.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_rbac_denial_paths.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_tenant_migration_workflow.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/platform/test_tenant_onboarding_endpoints.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_api_phase1f6.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_append_only_phase1f6.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_determinism_phase1f6.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_isolation_phase1f6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_migration_phase1f6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_rls_phase1f6.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_pattern_engine_supersession_phase1f6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_ui_api.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_anomaly_ui_migration.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_auditor_endpoints.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_auth_endpoints.py",
+    "total": 9,
+    "PASSED": 9,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_bank_recon_endpoints.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_api.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_generate_service.py",
+    "total": 9,
+    "PASSED": 9,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_migration.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_api_phase1f7.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_append_only_phase1f7.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_determinism_phase1f7.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_isolation_phase1f7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_migration_phase1f7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_rls_phase1f7.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_board_pack_narrative_engine_supersession_phase1f7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_api_phase2_6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_append_only_phase2_6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_determinism_phase2_6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_isolation_phase2_6.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_migration_phase2_6.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_rls_phase2_6.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_cash_flow_engine_supersession_phase2_6.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_consolidation_drill_flow.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_consolidation_endpoints.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_consolidation_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_delivery_api.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_delivery_migration.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_api_phase2_7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_append_only_phase2_7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_determinism_phase2_7.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_isolation_phase2_7.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_migration_phase2_7.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_rls_phase2_7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_equity_engine_supersession_phase2_7.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_api_phase1f5.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_append_only_phase1f5.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_determinism_phase1f5.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_isolation_phase1f5.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_migration_phase1f5.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_rls_phase1f5.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_financial_risk_engine_supersession_phase1f5.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fixed_assets_endpoints.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fixed_assets_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_endpoints.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_translation_api_phase2_4.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_translation_append_only_phase2_4.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_translation_determinism_phase2_4.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_translation_migration_phase2_4.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_fx_translation_rls_phase2_4.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_gst_endpoints.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_health.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_lease_endpoints.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_lease_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_endpoints.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_api_phase1f1.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_append_only_phase1f1.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_determinism_phase1f1.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_isolation_phase1f1.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_migration_phase1f1.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_rls_phase1f1.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_snapshot_idempotency_phase1f1.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_mis_manager_supersession_phase1f1.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_monthend_endpoints.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_multi_entity_consolidation_api_phase2_3.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_multi_entity_consolidation_append_only_phase2_3.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_multi_entity_consolidation_migration_phase2_3.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_observability_engine_api_phase3.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_observability_engine_append_only_phase3.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_observability_engine_determinism_phase3.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_observability_engine_migration_phase3.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_observability_engine_rls_phase3.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_observability_engine_supersession_phase3.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ownership_consolidation_api_phase2_5.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ownership_consolidation_append_only_phase2_5.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ownership_consolidation_determinism_phase2_5.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ownership_consolidation_migration_phase2_5.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ownership_consolidation_rls_phase2_5.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_api_phase1f3.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_append_only_phase1f3.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_determinism_phase1f3.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_isolation_phase1f3.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_migration_phase1f3.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_rls_phase1f3.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_snapshot_idempotency_phase1f3.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_normalization_supersession_phase1f3.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_api_phase1f3_1.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_append_only_phase1f3_1.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_determinism_phase1f3_1.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_isolation_phase1f3_1.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_migration_phase1f3_1.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_rls_phase1f3_1.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_payroll_gl_reconciliation_supersession_phase1f3_1.py",
+    "total": 9,
+    "PASSED": 9,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_phase5_cross_module.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_prepaid_endpoints.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_prepaid_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_api_phase1f4.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_append_only_phase1f4.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_determinism_phase1f4.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_isolation_phase1f4.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_migration_phase1f4.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_rls_phase1f4.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_ratio_variance_engine_supersession_phase1f4.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_bridge_api_phase1f2.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_bridge_append_only_phase1f2.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_bridge_determinism_phase1f2.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_bridge_isolation_phase1f2.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_bridge_migration_phase1f2.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_bridge_rls_phase1f2.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_reconciliation_endpoints.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_report_api.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_report_migration.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_report_run_service.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_revenue_endpoints.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_revenue_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_temporal_runtime_integration.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_tenant_endpoints.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/integration/test_working_capital_endpoints.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_cli_root_resolution_integration.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_cli_runner_injection.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_codex_runner.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_dependency_gate.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_dependency_graph.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_execution_lock.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_execution_pipeline.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_file_size_enforcer.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_guardrails.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_ledger_hash_chain.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_patch_limits.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_prompt_governance.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_prompt_loader.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/prompt_engine/test_rework_engine.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_ai_cache.py",
+    "total": 13,
+    "PASSED": 13,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_ai_cost_ledger.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_airlock_clamav.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_auditor_portal.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_auth_rate_limiting.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_auto_trigger_pipeline.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_backup_dr.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_budgeting.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_cash_flow_forecast.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_chain_hash_concurrency.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_ci_hardening.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_closing_checklist.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_config_validation.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_debt_covenants.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_digital_signoff.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_error_response_safety.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_expense_management.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_fdd.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_float_elimination.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_forecasting.py",
+    "total": 26,
+    "PASSED": 26,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_gdpr_erasure.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_gdpr_operational.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_health_endpoints.py",
+    "total": 11,
+    "PASSED": 11,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_iso27001_controls.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_layer6_security.py",
+    "total": 16,
+    "PASSED": 16,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_learning_engine.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_llm_gateway_state.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_ma_workspace.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_marketplace.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_mfa_challenge_flow.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_multi_gaap.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_notifications.py",
+    "total": 22,
+    "PASSED": 22,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_observability.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_pagination.py",
+    "total": 22,
+    "PASSED": 22,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_partner_program.py",
+    "total": 26,
+    "PASSED": 26,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_pii_masker.py",
+    "total": 13,
+    "PASSED": 13,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_placeholder_services.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_platform_bootstrap.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_ppa.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_rls_bypass_fix.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_rls_function_consolidation.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_scenario_modelling.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_schema_tower.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_search.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_secret_encryption_at_rest.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_secret_rotation.py",
+    "total": 25,
+    "PASSED": 25,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_service_registry.py",
+    "total": 21,
+    "PASSED": 21,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_smtp_smoke.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_soc2_controls.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_statutory.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_tax_provision.py",
+    "total": 15,
+    "PASSED": 15,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_template_onboarding.py",
+    "total": 23,
+    "PASSED": 23,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_temporal_workflows.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_transaction_atomicity.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_transfer_pricing.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_user_offboarding.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_weasyprint_smoke.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_white_label.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/test_working_capital.py",
+    "total": 20,
+    "PASSED": 20,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_aa_framework_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_busy_connector.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_darwinbox_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_dynamics365_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_26as_schemas.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_canonical_schemas.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_connector_registry.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_drift_service.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_gstr9_schemas.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_india_compliance_stack.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_tds_reconciliation.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_token_determinism.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_erp_sync_validation.py",
+    "total": 41,
+    "PASSED": 41,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_freshbooks_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_keka_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_marg_connector.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_munim_connector.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_netsuite_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_odoo_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_oracle_connector.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_plaid_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_quickbooks_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_razorpay_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_razorpay_payroll_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_sage_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_sap_connector.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_stripe_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_tally_connector.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_wave_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/erp_sync/test_xero_connector.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_canonical_events.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_credit_service.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_grace_period_service.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_proration_service.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_provider_router.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_razorpay_provider.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_stripe_provider.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_trial_service.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/payment/test_payment_webhook_service.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_context_token.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_control_plane_authorizer.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_feature_flag_precedence.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_hierarchy_service.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_isolation_routing.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_quota_guard.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_rbac_evaluator.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_tenant_provisioning.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_workflow_approval_idempotency.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/platform/test_workflow_template_versioning.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/security/test_antivirus.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/security/test_file_validation.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_anomaly_pattern_engine_phase1f6.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_append_only_enforcement.py",
+    "total": 16,
+    "PASSED": 16,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_auditor_service.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_auth_service.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_bank_recon_service.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_board_pack_domain.py",
+    "total": 14,
+    "PASSED": 14,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_board_pack_export.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_board_pack_narrative_engine_phase1f7.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_board_pack_state_machine.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_cash_flow_engine_phase2_6.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_chain_hash.py",
+    "total": 11,
+    "PASSED": 11,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_aggregator.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_append_only.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_elimination_engine.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_entity_loader.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_excel_exporter.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_fx_application.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_fx_impact.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_ic_matcher.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_rls_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_consolidation_service.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_credit_service.py",
+    "total": 11,
+    "PASSED": 11,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_delivery_domain.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_determinism.py",
+    "total": 9,
+    "PASSED": 9,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_drill_response_schema.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_drilldown_endpoints.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_equity_engine_phase2_7.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_excel_cross_links.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_financial_risk_engine_phase1f5.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_append_only.py",
+    "total": 14,
+    "PASSED": 14,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_depreciation_engine.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_disposal_handler.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_drilldown_service.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_impairment_handler.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_journal_builder.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_lineage_validation.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_reducing_balance.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_registry.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_rls_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fixed_assets_straight_line.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_cache.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_conversion.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_normalization.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_provider_clients.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_rate_service.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_rls_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_selector.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_temporal_workflows.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_translation_reporting_phase2_4.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_fx_variance.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_gst_service.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_journal_namespace.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_append_only.py",
+    "total": 16,
+    "PASSED": 16,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_drilldown_service.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_interest_engine.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_journal_effective_version.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_liability_schedule.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_lineage_validation.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_payment_schedule.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_pv_calculator.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_registry.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_remeasurement.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_rls_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lease_rou_schedule.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lineage_completeness_enforced.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lineage_contract.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lineage_resolver.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_lineage_validation.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_mis_manager_phase1f1.py",
+    "total": 11,
+    "PASSED": 11,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_mis_service.py",
+    "total": 10,
+    "PASSED": 10,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_monthend_service.py",
+    "total": 6,
+    "PASSED": 6,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_multi_entity_consolidation_phase2_3.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_observability_engine_phase3.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_ownership_consolidation_phase2_5.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_payroll_gl_normalization_phase1f3.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_payroll_gl_reconciliation_phase1f3_1.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_phase2_1_shared_kernel_token_equivalence.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_adjustments.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_append_only.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_drilldown_service.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_journal_builder.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_lineage_validation.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_pattern_resolver.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_registry.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_rls_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_prepaid_schedule_generator.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_quantization_policy.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_ratio_variance_engine_phase1f4.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_reconciliation_bridge_phase1f2.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_reconciliation_service.py",
+    "total": 8,
+    "PASSED": 8,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_remeasurement_replay_stability.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_report_domain.py",
+    "total": 14,
+    "PASSED": 14,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_report_export.py",
+    "total": 7,
+    "PASSED": 7,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_report_state_machine.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_allocation_engine.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_append_only.py",
+    "total": 12,
+    "PASSED": 12,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_contract_registry.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_drilldown_service.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_journal_effective_version.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_journal_preview.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_lineage_validation.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_obligation_tracker.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_remeasurement.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_rls_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_revenue_schedule_generator.py",
+    "total": 4,
+    "PASSED": 4,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_rls_runtime.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_run_lifecycle_base.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_run_signature_idempotency.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_supersession_validator.py",
+    "total": 3,
+    "PASSED": 3,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_temporal_runtime.py",
+    "total": 1,
+    "PASSED": 1,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_tenant_service.py",
+    "total": 2,
+    "PASSED": 2,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  },
+  {
+    "file": "tests/unit/test_working_capital_service.py",
+    "total": 5,
+    "PASSED": 5,
+    "FAILED": 0,
+    "ERROR": 0,
+    "SKIPPED": 0,
+    "XFAIL": 0,
+    "all_pass": true
+  }
+]

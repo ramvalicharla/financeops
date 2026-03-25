@@ -11,7 +11,7 @@ async def test_health_returns_200_without_auth(async_client: AsyncClient):
     data = response.json()["data"]
     assert data["status"] == "ok"
     assert "timestamp" in data
-    assert data["version"] == "0.1.0"
+    assert data["version"] == "1.1.0"
 
 
 @pytest.mark.asyncio

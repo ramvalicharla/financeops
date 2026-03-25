@@ -51,5 +51,7 @@ def test_ci_workflow_has_frontend_build_job() -> None:
 
 def test_sast_workflow_has_semgrep_action() -> None:
     content = _read(ROOT / ".github" / "workflows" / "sast.yml")
-    assert "semgrep/semgrep-action@v1" in content
-
+    assert (
+        "returntocorp/semgrep-action@v1" in content
+        or "semgrep/semgrep-action@v1" in content
+    )

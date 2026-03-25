@@ -5,6 +5,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
@@ -147,11 +148,24 @@ async def verify_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    rows = await list_signoffs(session, tenant_id=user.tenant_id, limit=1_000, offset=0)
-    match = next((row for row in rows["data"] if row.id == signoff_id), None)
+    match = (
+        await session.execute(
+            select(DirectorSignoff).where(
+                DirectorSignoff.id == signoff_id,
+                DirectorSignoff.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
     if match is None:
         return {"is_valid": False}
-    return {"is_valid": verify_signoff(body.content_hash, match)}
+    return {
+        "is_valid": verify_signoff(
+            body.content_hash,
+            match.signatory_user_id,
+            match.signed_at,
+            match,
+        )
+    }
 
 
 __all__ = ["router"]

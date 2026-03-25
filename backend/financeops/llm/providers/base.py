@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,6 +36,14 @@ class BaseLLMProvider(ABC):
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate a response from the LLM."""
         ...
+
+    async def stream_complete(self, request: LLMRequest) -> AsyncGenerator[str, None]:
+        """
+        Default streaming implementation: fallback to single-shot generation.
+        Provider adapters can override with true token streaming.
+        """
+        response = await self.generate(request)
+        yield response.content
 
     @abstractmethod
     async def health_check(self) -> bool:

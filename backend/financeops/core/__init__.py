@@ -7,11 +7,10 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import bcrypt as _bcrypt
-import pyotp
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from jose import JWTError, jwt
-
+try:
+    import bcrypt as _bcrypt
+except ModuleNotFoundError:  # pragma: no cover - environment-dependent optional import
+    _bcrypt = None
 from financeops.config import settings
 from financeops.core.exceptions import AuthenticationError
 
@@ -27,15 +26,21 @@ def _normalize_password(password: str) -> bytes:
 
 def hash_password(password: str) -> str:
     """Hash a plaintext password with bcrypt (SHA-256 pre-hashed)."""
+    if _bcrypt is None:
+        raise RuntimeError("bcrypt dependency is required for password hashing")
     return _bcrypt.hashpw(_normalize_password(password), _bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
+    if _bcrypt is None:
+        raise RuntimeError("bcrypt dependency is required for password verification")
     return _bcrypt.checkpw(_normalize_password(plain), hashed.encode("utf-8"))
 
 
 def _make_token(payload: dict, expires_delta: timedelta) -> str:
+    from jose import jwt
+
     expire = datetime.now(timezone.utc) + expires_delta
     payload = {**payload, "exp": expire, "iat": datetime.now(timezone.utc)}
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
@@ -72,6 +77,8 @@ def decode_token(token: str) -> dict:
     Decode and validate a JWT token.
     Raises AuthenticationError on invalid or expired token.
     """
+    from jose import JWTError, jwt
+
     try:
         payload = jwt.decode(
             token,
@@ -86,17 +93,23 @@ def decode_token(token: str) -> dict:
 
 def generate_totp_secret() -> str:
     """Generate a new TOTP secret using pyotp."""
+    import pyotp
+
     return pyotp.random_base32()
 
 
 def verify_totp(secret: str, code: str) -> bool:
     """Verify a TOTP code against a secret. Allows 1-step drift."""
+    import pyotp
+
     totp = pyotp.TOTP(secret)
     return totp.verify(code, valid_window=1)
 
 
 def get_totp_uri(secret: str, email: str) -> str:
     """Return the otpauth:// URI for QR code generation."""
+    import pyotp
+
     totp = pyotp.TOTP(secret)
     return totp.provisioning_uri(name=email, issuer_name=settings.APP_NAME)
 
@@ -111,6 +124,8 @@ def encrypt_field(plaintext: str) -> str:
     Encrypt a string field using AES-256-GCM.
     Returns: base64(nonce + ciphertext_with_tag)
     """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
     key = _get_aes_key()
     nonce = os.urandom(_NONCE_SIZE)
     aesgcm = AESGCM(key)
@@ -123,6 +138,8 @@ def decrypt_field(ciphertext_b64: str) -> str:
     Decrypt a base64-encoded AES-256-GCM ciphertext.
     Expects: base64(nonce + ciphertext_with_tag)
     """
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
     key = _get_aes_key()
     raw = base64.b64decode(ciphertext_b64)
     nonce = raw[:_NONCE_SIZE]

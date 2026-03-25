@@ -1,0 +1,392 @@
+[
+  {
+    "module": "MIS Manager",
+    "test_files": 9,
+    "tests": 54,
+    "pass": true,
+    "files": [
+      "tests/integration/test_mis_manager_api_phase1f1.py",
+      "tests/integration/test_mis_manager_append_only_phase1f1.py",
+      "tests/integration/test_mis_manager_determinism_phase1f1.py",
+      "tests/integration/test_mis_manager_isolation_phase1f1.py",
+      "tests/integration/test_mis_manager_migration_phase1f1.py",
+      "tests/integration/test_mis_manager_rls_phase1f1.py",
+      "tests/integration/test_mis_manager_snapshot_idempotency_phase1f1.py",
+      "tests/integration/test_mis_manager_supersession_phase1f1.py",
+      "tests/unit/test_mis_manager_phase1f1.py"
+    ]
+  },
+  {
+    "module": "GL/TB Reconciliation",
+    "test_files": 7,
+    "tests": 21,
+    "pass": true,
+    "files": [
+      "tests/integration/test_reconciliation_bridge_api_phase1f2.py",
+      "tests/integration/test_reconciliation_bridge_append_only_phase1f2.py",
+      "tests/integration/test_reconciliation_bridge_determinism_phase1f2.py",
+      "tests/integration/test_reconciliation_bridge_isolation_phase1f2.py",
+      "tests/integration/test_reconciliation_bridge_migration_phase1f2.py",
+      "tests/integration/test_reconciliation_bridge_rls_phase1f2.py",
+      "tests/unit/test_reconciliation_bridge_phase1f2.py"
+    ]
+  },
+  {
+    "module": "Multi-entity Consolidation (IAS 21)",
+    "test_files": 17,
+    "tests": 37,
+    "pass": true,
+    "files": [
+      "tests/integration/test_consolidation_drill_flow.py",
+      "tests/integration/test_consolidation_endpoints.py",
+      "tests/integration/test_consolidation_temporal_runtime_integration.py",
+      "tests/integration/test_multi_entity_consolidation_api_phase2_3.py",
+      "tests/integration/test_multi_entity_consolidation_append_only_phase2_3.py",
+      "tests/integration/test_multi_entity_consolidation_migration_phase2_3.py",
+      "tests/unit/test_consolidation_aggregator.py",
+      "tests/unit/test_consolidation_append_only.py",
+      "tests/unit/test_consolidation_elimination_engine.py",
+      "tests/unit/test_consolidation_entity_loader.py"
+    ]
+  },
+  {
+    "module": "IFRS 16 Leases",
+    "test_files": 14,
+    "tests": 35,
+    "pass": true,
+    "files": [
+      "tests/integration/test_lease_endpoints.py",
+      "tests/integration/test_lease_temporal_runtime_integration.py",
+      "tests/unit/test_lease_append_only.py",
+      "tests/unit/test_lease_drilldown_service.py",
+      "tests/unit/test_lease_interest_engine.py",
+      "tests/unit/test_lease_journal_effective_version.py",
+      "tests/unit/test_lease_liability_schedule.py",
+      "tests/unit/test_lease_lineage_validation.py",
+      "tests/unit/test_lease_payment_schedule.py",
+      "tests/unit/test_lease_pv_calculator.py"
+    ]
+  },
+  {
+    "module": "IAS 16 Fixed Assets",
+    "test_files": 13,
+    "tests": 34,
+    "pass": true,
+    "files": [
+      "tests/integration/test_fixed_assets_endpoints.py",
+      "tests/integration/test_fixed_assets_temporal_runtime_integration.py",
+      "tests/unit/test_fixed_assets_append_only.py",
+      "tests/unit/test_fixed_assets_depreciation_engine.py",
+      "tests/unit/test_fixed_assets_disposal_handler.py",
+      "tests/unit/test_fixed_assets_drilldown_service.py",
+      "tests/unit/test_fixed_assets_impairment_handler.py",
+      "tests/unit/test_fixed_assets_journal_builder.py",
+      "tests/unit/test_fixed_assets_lineage_validation.py",
+      "tests/unit/test_fixed_assets_reducing_balance.py"
+    ]
+  },
+  {
+    "module": "IFRS 15 Revenue Recognition",
+    "test_files": 13,
+    "tests": 35,
+    "pass": true,
+    "files": [
+      "tests/integration/test_revenue_endpoints.py",
+      "tests/integration/test_revenue_temporal_runtime_integration.py",
+      "tests/unit/test_revenue_allocation_engine.py",
+      "tests/unit/test_revenue_append_only.py",
+      "tests/unit/test_revenue_contract_registry.py",
+      "tests/unit/test_revenue_drilldown_service.py",
+      "tests/unit/test_revenue_journal_effective_version.py",
+      "tests/unit/test_revenue_journal_preview.py",
+      "tests/unit/test_revenue_lineage_validation.py",
+      "tests/unit/test_revenue_obligation_tracker.py"
+    ]
+  },
+  {
+    "module": "Payroll GL",
+    "test_files": 17,
+    "tests": 88,
+    "pass": true,
+    "files": [
+      "tests/integration/test_payroll_gl_normalization_api_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_append_only_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_determinism_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_isolation_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_migration_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_rls_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_snapshot_idempotency_phase1f3.py",
+      "tests/integration/test_payroll_gl_normalization_supersession_phase1f3.py",
+      "tests/integration/test_payroll_gl_reconciliation_api_phase1f3_1.py",
+      "tests/integration/test_payroll_gl_reconciliation_append_only_phase1f3_1.py"
+    ]
+  },
+  {
+    "module": "Cash Flow (IAS 7)",
+    "test_files": 8,
+    "tests": 29,
+    "pass": true,
+    "files": [
+      "tests/integration/test_cash_flow_engine_api_phase2_6.py",
+      "tests/integration/test_cash_flow_engine_append_only_phase2_6.py",
+      "tests/integration/test_cash_flow_engine_determinism_phase2_6.py",
+      "tests/integration/test_cash_flow_engine_isolation_phase2_6.py",
+      "tests/integration/test_cash_flow_engine_migration_phase2_6.py",
+      "tests/integration/test_cash_flow_engine_rls_phase2_6.py",
+      "tests/integration/test_cash_flow_engine_supersession_phase2_6.py",
+      "tests/unit/test_cash_flow_engine_phase2_6.py"
+    ]
+  },
+  {
+    "module": "Equity Engine (SOCIE)",
+    "test_files": 8,
+    "tests": 26,
+    "pass": true,
+    "files": [
+      "tests/integration/test_equity_engine_api_phase2_7.py",
+      "tests/integration/test_equity_engine_append_only_phase2_7.py",
+      "tests/integration/test_equity_engine_determinism_phase2_7.py",
+      "tests/integration/test_equity_engine_isolation_phase2_7.py",
+      "tests/integration/test_equity_engine_migration_phase2_7.py",
+      "tests/integration/test_equity_engine_rls_phase2_7.py",
+      "tests/integration/test_equity_engine_supersession_phase2_7.py",
+      "tests/unit/test_equity_engine_phase2_7.py"
+    ]
+  },
+  {
+    "module": "60\\+ Financial Ratios",
+    "test_files": 8,
+    "tests": 32,
+    "pass": true,
+    "files": [
+      "tests/integration/test_ratio_variance_engine_api_phase1f4.py",
+      "tests/integration/test_ratio_variance_engine_append_only_phase1f4.py",
+      "tests/integration/test_ratio_variance_engine_determinism_phase1f4.py",
+      "tests/integration/test_ratio_variance_engine_isolation_phase1f4.py",
+      "tests/integration/test_ratio_variance_engine_migration_phase1f4.py",
+      "tests/integration/test_ratio_variance_engine_rls_phase1f4.py",
+      "tests/integration/test_ratio_variance_engine_supersession_phase1f4.py",
+      "tests/unit/test_ratio_variance_engine_phase1f4.py"
+    ]
+  },
+  {
+    "module": "GST Reconciliation",
+    "test_files": 2,
+    "tests": 9,
+    "pass": true,
+    "files": [
+      "tests/integration/test_gst_endpoints.py",
+      "tests/unit/test_gst_service.py"
+    ]
+  },
+  {
+    "module": "Bank Reconciliation",
+    "test_files": 2,
+    "tests": 10,
+    "pass": true,
+    "files": [
+      "tests/integration/test_bank_recon_endpoints.py",
+      "tests/unit/test_bank_recon_service.py"
+    ]
+  },
+  {
+    "module": "23 ERP Connectors",
+    "test_files": 34,
+    "tests": 123,
+    "pass": true,
+    "files": [
+      "tests/integration/erp_sync/test_erp_sync_append_only.py",
+      "tests/integration/erp_sync/test_erp_sync_no_upstream_mutation.py",
+      "tests/integration/erp_sync/test_erp_sync_publish_governance.py",
+      "tests/integration/erp_sync/test_erp_sync_rls.py",
+      "tests/unit/erp_sync/test_aa_framework_connector.py",
+      "tests/unit/erp_sync/test_busy_connector.py",
+      "tests/unit/erp_sync/test_darwinbox_connector.py",
+      "tests/unit/erp_sync/test_dynamics365_connector.py",
+      "tests/unit/erp_sync/test_erp_sync_26as_schemas.py",
+      "tests/unit/erp_sync/test_erp_sync_canonical_schemas.py"
+    ]
+  },
+  {
+    "module": "Closing Checklist",
+    "test_files": 1,
+    "tests": 25,
+    "pass": true,
+    "files": [
+      "tests/test_closing_checklist.py"
+    ]
+  },
+  {
+    "module": "Working Capital Dashboard",
+    "test_files": 3,
+    "tests": 29,
+    "pass": true,
+    "files": [
+      "tests/integration/test_working_capital_endpoints.py",
+      "tests/test_working_capital.py",
+      "tests/unit/test_working_capital_service.py"
+    ]
+  },
+  {
+    "module": "Expense Management",
+    "test_files": 1,
+    "tests": 25,
+    "pass": true,
+    "files": [
+      "tests/test_expense_management.py"
+    ]
+  },
+  {
+    "module": "Budgeting",
+    "test_files": 1,
+    "tests": 25,
+    "pass": true,
+    "files": [
+      "tests/test_budgeting.py"
+    ]
+  },
+  {
+    "module": "Forecasting",
+    "test_files": 1,
+    "tests": 26,
+    "pass": true,
+    "files": [
+      "tests/test_forecasting.py"
+    ]
+  },
+  {
+    "module": "Scenario Modelling",
+    "test_files": 1,
+    "tests": 25,
+    "pass": true,
+    "files": [
+      "tests/test_scenario_modelling.py"
+    ]
+  },
+  {
+    "module": "FDD",
+    "test_files": 1,
+    "tests": 25,
+    "pass": true,
+    "files": [
+      "tests/test_fdd.py"
+    ]
+  },
+  {
+    "module": "PPA",
+    "test_files": 1,
+    "tests": 20,
+    "pass": true,
+    "files": [
+      "tests/test_ppa.py"
+    ]
+  },
+  {
+    "module": "M&A Workspace",
+    "test_files": 1,
+    "tests": 25,
+    "pass": true,
+    "files": [
+      "tests/test_ma_workspace.py"
+    ]
+  },
+  {
+    "module": "Notification Engine",
+    "test_files": 1,
+    "tests": 22,
+    "pass": true,
+    "files": [
+      "tests/test_notifications.py"
+    ]
+  },
+  {
+    "module": "Global Search",
+    "test_files": 1,
+    "tests": 20,
+    "pass": true,
+    "files": [
+      "tests/test_search.py"
+    ]
+  },
+  {
+    "module": "Learning Engine",
+    "test_files": 1,
+    "tests": 20,
+    "pass": true,
+    "files": [
+      "tests/test_learning_engine.py"
+    ]
+  },
+  {
+    "module": "13-Week Cash Flow Forecast",
+    "test_files": 1,
+    "tests": 15,
+    "pass": true,
+    "files": [
+      "tests/test_cash_flow_forecast.py"
+    ]
+  },
+  {
+    "module": "Tax Provision IAS 12",
+    "test_files": 1,
+    "tests": 15,
+    "pass": true,
+    "files": [
+      "tests/test_tax_provision.py"
+    ]
+  },
+  {
+    "module": "Debt Covenant Compliance",
+    "test_files": 1,
+    "tests": 15,
+    "pass": true,
+    "files": [
+      "tests/test_debt_covenants.py"
+    ]
+  },
+  {
+    "module": "Transfer Pricing Form 3CEB",
+    "test_files": 1,
+    "tests": 12,
+    "pass": true,
+    "files": [
+      "tests/test_transfer_pricing.py"
+    ]
+  },
+  {
+    "module": "Director/CFO Digital Signoff",
+    "test_files": 1,
+    "tests": 12,
+    "pass": true,
+    "files": [
+      "tests/test_digital_signoff.py"
+    ]
+  },
+  {
+    "module": "Statutory Registers MCA",
+    "test_files": 1,
+    "tests": 12,
+    "pass": true,
+    "files": [
+      "tests/test_statutory.py"
+    ]
+  },
+  {
+    "module": "Multi-GAAP Reporting",
+    "test_files": 1,
+    "tests": 12,
+    "pass": true,
+    "files": [
+      "tests/test_multi_gaap.py"
+    ]
+  },
+  {
+    "module": "Auditor Portal PBC Tracker",
+    "test_files": 1,
+    "tests": 15,
+    "pass": true,
+    "files": [
+      "tests/test_auditor_portal.py"
+    ]
+  }
+]
