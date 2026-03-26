@@ -5,8 +5,9 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -14,6 +15,7 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_team,
 )
+from financeops.db.models.bank_recon import BankReconItem, BankStatement, BankTransaction
 from financeops.db.models.users import IamUser
 from financeops.modules.bank_reconciliation.parsers.factory import (
     detect_bank_from_content,
@@ -141,11 +143,13 @@ async def list_statements(
     period_year: int | None = None,
     period_month: int | None = None,
     entity_name: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
     stmts = await list_bank_statements(
         session,
         tenant_id=user.tenant_id,
@@ -153,23 +157,38 @@ async def list_statements(
         period_month=period_month,
         entity_name=entity_name,
         limit=limit,
-        offset=offset,
+        offset=effective_skip,
     )
+    count_stmt = select(func.count()).select_from(BankStatement).where(BankStatement.tenant_id == user.tenant_id)
+    if period_year is not None:
+        count_stmt = count_stmt.where(BankStatement.period_year == period_year)
+    if period_month is not None:
+        count_stmt = count_stmt.where(BankStatement.period_month == period_month)
+    if entity_name:
+        count_stmt = count_stmt.where(BankStatement.entity_name == entity_name)
+    total = int((await session.execute(count_stmt)).scalar_one())
+    serialized = [
+        {
+            "statement_id": str(s.id),
+            "bank_name": s.bank_name,
+            "entity_name": s.entity_name,
+            "period": f"{s.period_year}-{s.period_month:02d}",
+            "closing_balance": str(s.closing_balance),
+            "transaction_count": s.transaction_count,
+            "status": s.status,
+            "created_at": s.created_at.isoformat(),
+        }
+        for s in stmts
+    ]
     return {
-        "statements": [
-            {
-                "statement_id": str(s.id),
-                "bank_name": s.bank_name,
-                "entity_name": s.entity_name,
-                "period": f"{s.period_year}-{s.period_month:02d}",
-                "closing_balance": str(s.closing_balance),
-                "transaction_count": s.transaction_count,
-                "status": s.status,
-                "created_at": s.created_at.isoformat(),
-            }
-            for s in stmts
-        ],
-        "count": len(stmts),
+        "items": serialized,
+        "statements": serialized,
+        "total": total,
+        "skip": effective_skip,
+        "offset": effective_skip,
+        "limit": limit,
+        "has_more": (effective_skip + len(serialized)) < total,
+        "count": len(serialized),
     }
 
 
@@ -204,32 +223,63 @@ async def add_transaction(
 @router.get("/transactions/{statement_id}")
 async def list_transactions(
     statement_id: UUID,
-    limit: int = 200,
-    offset: int = 0,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
+    statement = (
+        await session.execute(
+            select(BankStatement).where(
+                BankStatement.id == statement_id,
+                BankStatement.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if statement is None:
+        raise HTTPException(status_code=404, detail="Bank statement not found")
     txns = await list_bank_transactions(
         session,
         tenant_id=user.tenant_id,
         statement_id=statement_id,
         limit=limit,
-        offset=offset,
+        offset=effective_skip,
     )
+    total = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(BankTransaction)
+                .where(
+                    BankTransaction.tenant_id == user.tenant_id,
+                    BankTransaction.statement_id == statement_id,
+                )
+            )
+        ).scalar_one()
+    )
+    serialized = [
+        {
+            "transaction_id": str(t.id),
+            "transaction_date": t.transaction_date.isoformat(),
+            "description": t.description,
+            "debit_amount": str(t.debit_amount),
+            "credit_amount": str(t.credit_amount),
+            "balance": str(t.balance),
+            "match_status": t.match_status,
+        }
+        for t in txns
+    ]
     return {
-        "transactions": [
-            {
-                "transaction_id": str(t.id),
-                "transaction_date": t.transaction_date.isoformat(),
-                "description": t.description,
-                "debit_amount": str(t.debit_amount),
-                "credit_amount": str(t.credit_amount),
-                "balance": str(t.balance),
-                "match_status": t.match_status,
-            }
-            for t in txns
-        ],
-        "count": len(txns),
+        "items": serialized,
+        "transactions": serialized,
+        "total": total,
+        "skip": effective_skip,
+        "offset": effective_skip,
+        "limit": limit,
+        "has_more": (effective_skip + len(serialized)) < total,
+        "count": len(serialized),
     }
 
 
@@ -265,30 +315,44 @@ async def run_bank_recon(
 async def list_recon_items(
     statement_id: UUID | None = None,
     item_status: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
     items = await list_bank_recon_items(
         session,
         tenant_id=user.tenant_id,
         statement_id=statement_id,
         status=item_status,
         limit=limit,
-        offset=offset,
+        offset=effective_skip,
     )
+    count_stmt = select(func.count()).select_from(BankReconItem).where(BankReconItem.tenant_id == user.tenant_id)
+    if statement_id is not None:
+        count_stmt = count_stmt.where(BankReconItem.statement_id == statement_id)
+    if item_status:
+        count_stmt = count_stmt.where(BankReconItem.status == item_status)
+    total = int((await session.execute(count_stmt)).scalar_one())
+    serialized = [
+        {
+            "item_id": str(i.id),
+            "item_type": i.item_type,
+            "amount": str(i.amount),
+            "status": i.status,
+            "entity_name": i.entity_name,
+            "period": f"{i.period_year}-{i.period_month:02d}",
+        }
+        for i in items
+    ]
     return {
-        "items": [
-            {
-                "item_id": str(i.id),
-                "item_type": i.item_type,
-                "amount": str(i.amount),
-                "status": i.status,
-                "entity_name": i.entity_name,
-                "period": f"{i.period_year}-{i.period_month:02d}",
-            }
-            for i in items
-        ],
-        "count": len(items),
+        "items": serialized,
+        "total": total,
+        "skip": effective_skip,
+        "offset": effective_skip,
+        "limit": limit,
+        "has_more": (effective_skip + len(serialized)) < total,
+        "count": len(serialized),
     }

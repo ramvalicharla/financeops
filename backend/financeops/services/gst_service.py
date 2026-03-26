@@ -187,9 +187,12 @@ async def list_gst_returns(
     period_month: int | None = None,
     entity_name: str | None = None,
     return_type: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> list[GstReturn]:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(GstReturn).where(GstReturn.tenant_id == tenant_id)
     if period_year is not None:
         stmt = stmt.where(GstReturn.period_year == period_year)
@@ -199,7 +202,7 @@ async def list_gst_returns(
         stmt = stmt.where(GstReturn.entity_name == entity_name)
     if return_type:
         stmt = stmt.where(GstReturn.return_type == return_type)
-    stmt = stmt.order_by(desc(GstReturn.created_at)).limit(limit).offset(offset)
+    stmt = stmt.order_by(desc(GstReturn.created_at)).limit(bounded_limit).offset(effective_skip)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
@@ -210,9 +213,12 @@ async def list_gst_recon_items(
     period_year: int | None = None,
     period_month: int | None = None,
     status: str | None = None,
+    skip: int = 0,
     limit: int = 100,
-    offset: int = 0,
+    offset: int | None = None,
 ) -> list[GstReconItem]:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(GstReconItem).where(GstReconItem.tenant_id == tenant_id)
     if period_year is not None:
         stmt = stmt.where(GstReconItem.period_year == period_year)
@@ -220,7 +226,7 @@ async def list_gst_recon_items(
         stmt = stmt.where(GstReconItem.period_month == period_month)
     if status:
         stmt = stmt.where(GstReconItem.status == status)
-    stmt = stmt.order_by(desc(GstReconItem.created_at)).limit(limit).offset(offset)
+    stmt = stmt.order_by(desc(GstReconItem.created_at)).limit(bounded_limit).offset(effective_skip)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 

@@ -3,9 +3,11 @@ from __future__ import annotations
 import logging
 from datetime import date
 from decimal import Decimal
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -13,6 +15,7 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_team,
 )
+from financeops.db.models.gst import GstReconItem, GstReturn
 from financeops.db.models.users import IamUser
 from financeops.services.gst_service import (
     create_gst_return,
@@ -91,12 +94,14 @@ async def list_returns(
     period_month: int | None = None,
     entity_name: str | None = None,
     return_type: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     """List GST returns."""
+    effective_skip = offset if offset is not None else skip
     returns = await list_gst_returns(
         session,
         tenant_id=user.tenant_id,
@@ -105,22 +110,74 @@ async def list_returns(
         entity_name=entity_name,
         return_type=return_type,
         limit=limit,
-        offset=offset,
+        offset=effective_skip,
     )
+    count_stmt = select(func.count()).select_from(GstReturn).where(GstReturn.tenant_id == user.tenant_id)
+    if period_year is not None:
+        count_stmt = count_stmt.where(GstReturn.period_year == period_year)
+    if period_month is not None:
+        count_stmt = count_stmt.where(GstReturn.period_month == period_month)
+    if entity_name:
+        count_stmt = count_stmt.where(GstReturn.entity_name == entity_name)
+    if return_type:
+        count_stmt = count_stmt.where(GstReturn.return_type == return_type)
+    total = int((await session.execute(count_stmt)).scalar_one())
+    serialized = [
+        {
+            "return_id": str(r.id),
+            "return_type": r.return_type,
+            "period": f"{r.period_year}-{r.period_month:02d}",
+            "entity_name": r.entity_name,
+            "gstin": r.gstin,
+            "total_tax": str(r.total_tax),
+            "status": r.status,
+        }
+        for r in returns
+    ]
     return {
-        "returns": [
-            {
-                "return_id": str(r.id),
-                "return_type": r.return_type,
-                "period": f"{r.period_year}-{r.period_month:02d}",
-                "entity_name": r.entity_name,
-                "gstin": r.gstin,
-                "total_tax": str(r.total_tax),
-                "status": r.status,
-            }
-            for r in returns
-        ],
-        "count": len(returns),
+        "items": serialized,
+        "returns": serialized,
+        "total": total,
+        "skip": effective_skip,
+        "offset": effective_skip,
+        "limit": limit,
+        "has_more": (effective_skip + len(serialized)) < total,
+        "count": len(serialized),
+    }
+
+
+@router.get("/returns/{return_id}")
+async def get_return(
+    return_id: UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    row = (
+        await session.execute(
+            select(GstReturn).where(
+                GstReturn.id == return_id,
+                GstReturn.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="GST return not found")
+    return {
+        "return_id": str(row.id),
+        "return_type": row.return_type,
+        "period": f"{row.period_year}-{row.period_month:02d}",
+        "entity_name": row.entity_name,
+        "gstin": row.gstin,
+        "taxable_value": str(row.taxable_value),
+        "igst_amount": str(row.igst_amount),
+        "cgst_amount": str(row.cgst_amount),
+        "sgst_amount": str(row.sgst_amount),
+        "cess_amount": str(row.cess_amount),
+        "total_tax": str(row.total_tax),
+        "status": row.status,
+        "filing_date": row.filing_date.isoformat() if row.filing_date else None,
+        "notes": row.notes,
+        "created_at": row.created_at.isoformat(),
     }
 
 
@@ -166,11 +223,13 @@ async def list_gst_recon_items_endpoint(
     period_year: int | None = None,
     period_month: int | None = None,
     item_status: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
     items = await list_gst_recon_items(
         session,
         tenant_id=user.tenant_id,
@@ -178,22 +237,36 @@ async def list_gst_recon_items_endpoint(
         period_month=period_month,
         status=item_status,
         limit=limit,
-        offset=offset,
+        offset=effective_skip,
     )
+    count_stmt = select(func.count()).select_from(GstReconItem).where(GstReconItem.tenant_id == user.tenant_id)
+    if period_year is not None:
+        count_stmt = count_stmt.where(GstReconItem.period_year == period_year)
+    if period_month is not None:
+        count_stmt = count_stmt.where(GstReconItem.period_month == period_month)
+    if item_status:
+        count_stmt = count_stmt.where(GstReconItem.status == item_status)
+    total = int((await session.execute(count_stmt)).scalar_one())
+    serialized = [
+        {
+            "item_id": str(i.id),
+            "field_name": i.field_name,
+            "return_type_a": i.return_type_a,
+            "return_type_b": i.return_type_b,
+            "value_a": str(i.value_a),
+            "value_b": str(i.value_b),
+            "difference": str(i.difference),
+            "status": i.status,
+            "period": f"{i.period_year}-{i.period_month:02d}",
+        }
+        for i in items
+    ]
     return {
-        "items": [
-            {
-                "item_id": str(i.id),
-                "field_name": i.field_name,
-                "return_type_a": i.return_type_a,
-                "return_type_b": i.return_type_b,
-                "value_a": str(i.value_a),
-                "value_b": str(i.value_b),
-                "difference": str(i.difference),
-                "status": i.status,
-                "period": f"{i.period_year}-{i.period_month:02d}",
-            }
-            for i in items
-        ],
-        "count": len(items),
+        "items": serialized,
+        "total": total,
+        "skip": effective_skip,
+        "offset": effective_skip,
+        "limit": limit,
+        "has_more": (effective_skip + len(serialized)) < total,
+        "count": len(serialized),
     }

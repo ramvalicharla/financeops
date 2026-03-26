@@ -7,7 +7,7 @@ import pytest
 
 activity = pytest.importorskip("temporalio.activity")
 Worker = pytest.importorskip("temporalio.worker").Worker
-get_temporal_client = pytest.importorskip("financeops.temporal.client").get_temporal_client
+WorkflowEnvironment = pytest.importorskip("temporalio.testing").WorkflowEnvironment
 
 from financeops.temporal.lease_workflows import (  # noqa: E402
     LeaseAccountingWorkflow,
@@ -69,43 +69,39 @@ async def _runtime_stub_finalize(payload) -> dict:  # type: ignore[no-untyped-de
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_lease_workflow_is_served_by_runtime_worker() -> None:
-    try:
-        client = await get_temporal_client()
-    except Exception as exc:
-        pytest.skip(f"Temporal service unavailable: {exc}")
-
     task_queue = f"financeops-lease-{uuid.uuid4()}"
     workflow_id = f"financeops-lease-{uuid.uuid4()}"
 
-    async with Worker(
-        client,
-        task_queue=task_queue,
-        workflows=[LeaseAccountingWorkflow],
-        activities=[
-            _runtime_stub_mark_running,
-            _runtime_stub_load,
-            _runtime_stub_timeline,
-            _runtime_stub_pv,
-            _runtime_stub_liability,
-            _runtime_stub_rou,
-            _runtime_stub_journal,
-            _runtime_stub_lineage,
-            _runtime_stub_finalize,
-        ],
-    ):
-        result = await client.execute_workflow(
-            LeaseAccountingWorkflow.run,
-            LeaseAccountingWorkflowInput(
-                run_id="00000000-0000-0000-0000-000000001371",
-                tenant_id="00000000-0000-0000-0000-000000001372",
-                correlation_id="corr-lease-runtime",
-                requested_by="00000000-0000-0000-0000-000000001373",
-                config_hash="cfg-lease-runtime",
-            ),
-            id=workflow_id,
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
             task_queue=task_queue,
-            run_timeout=timedelta(seconds=30),
-        )
+            workflows=[LeaseAccountingWorkflow],
+            activities=[
+                _runtime_stub_mark_running,
+                _runtime_stub_load,
+                _runtime_stub_timeline,
+                _runtime_stub_pv,
+                _runtime_stub_liability,
+                _runtime_stub_rou,
+                _runtime_stub_journal,
+                _runtime_stub_lineage,
+                _runtime_stub_finalize,
+            ],
+        ):
+            result = await env.client.execute_workflow(
+                LeaseAccountingWorkflow.run,
+                LeaseAccountingWorkflowInput(
+                    run_id="00000000-0000-0000-0000-000000001371",
+                    tenant_id="00000000-0000-0000-0000-000000001372",
+                    correlation_id="corr-lease-runtime",
+                    requested_by="00000000-0000-0000-0000-000000001373",
+                    config_hash="cfg-lease-runtime",
+                ),
+                id=workflow_id,
+                task_queue=task_queue,
+                run_timeout=timedelta(seconds=30),
+            )
 
     assert result["status"] == "completed"
     assert result["lineage_is_complete"] is True

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -130,7 +130,7 @@ async def get_specific_endpoint(
 ) -> dict:
     row = await get_specific_run(session, tenant_id=user.tenant_id, gaap_framework=gaap_framework, period=period)
     if row is None:
-        return {}
+        raise HTTPException(status_code=404, detail="GAAP run not found")
     return _serialize_run(row)
 
 

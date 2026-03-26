@@ -453,6 +453,26 @@ from financeops.modules.auditor_portal.models import (  # noqa: F401
     AuditorPortalAccess,
     AuditorRequest,
 )
+from financeops.modules.coa.models import (  # noqa: F401
+    CoaAccountGroup,
+    CoaAccountSubgroup,
+    CoaFsClassification,
+    CoaFsLineItem,
+    CoaFsSchedule,
+    CoaFsSubline,
+    CoaGaapMapping,
+    CoaIndustryTemplate,
+    CoaLedgerAccount,
+    ErpAccountMapping,
+    TenantCoaAccount,
+)
+from financeops.modules.org_setup.models import (  # noqa: F401
+    OrgEntity,
+    OrgEntityErpConfig,
+    OrgGroup,
+    OrgOwnership,
+    OrgSetupProgress,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken  # noqa: F401
 
@@ -546,6 +566,8 @@ async def test_tenant(async_session: AsyncSession) -> IamTenant:
         status=TenantStatus.active,
         chain_hash=chain_hash,
         previous_hash=GENESIS_HASH,
+        org_setup_complete=True,
+        org_setup_step=7,
     )
     async_session.add(tenant)
     await async_session.flush()

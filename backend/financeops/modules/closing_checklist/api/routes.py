@@ -215,11 +215,13 @@ def _can_update_task(user: IamUser, assigned_role: str | None) -> bool:
 
 @router.get("/history")
 async def list_history(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    effective_skip = offset if offset is not None else skip
     base_stmt = select(ChecklistRun).where(ChecklistRun.tenant_id == user.tenant_id)
     total = (await session.execute(select(func.count()).select_from(base_stmt.subquery()))).scalar_one()
     rows = (
@@ -227,7 +229,7 @@ async def list_history(
             base_stmt
             .order_by(ChecklistRun.period.desc(), ChecklistRun.created_at.desc())
             .limit(limit)
-            .offset(offset)
+            .offset(effective_skip)
         )
     ).scalars().all()
 
@@ -247,7 +249,7 @@ async def list_history(
             }
         )
 
-    return Paginated[dict](data=data, total=int(total), limit=limit, offset=offset)
+    return Paginated[dict](items=data, total=int(total), limit=limit, skip=effective_skip, has_more=(effective_skip + len(data)) < int(total))
 
 
 @router.get("/analytics")
@@ -306,11 +308,13 @@ async def create_template(
 
 @router.get("/templates")
 async def list_templates(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    effective_skip = offset if offset is not None else skip
     base_stmt = select(ChecklistTemplate).where(ChecklistTemplate.tenant_id == user.tenant_id)
     total = (await session.execute(select(func.count()).select_from(base_stmt.subquery()))).scalar_one()
     rows = (
@@ -318,11 +322,11 @@ async def list_templates(
             base_stmt
             .order_by(ChecklistTemplate.created_at.desc(), ChecklistTemplate.id.desc())
             .limit(limit)
-            .offset(offset)
+            .offset(effective_skip)
         )
     ).scalars().all()
     return Paginated[dict](
-        data=[
+        items=[
             {
                 "id": str(row.id),
                 "name": row.name,
@@ -333,7 +337,8 @@ async def list_templates(
         ],
         total=int(total),
         limit=limit,
-        offset=offset,
+        skip=effective_skip,
+        has_more=(effective_skip + len(rows)) < int(total),
     )
 
 

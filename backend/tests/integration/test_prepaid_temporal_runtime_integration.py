@@ -7,7 +7,7 @@ import pytest
 
 activity = pytest.importorskip("temporalio.activity")
 Worker = pytest.importorskip("temporalio.worker").Worker
-get_temporal_client = pytest.importorskip("financeops.temporal.client").get_temporal_client
+WorkflowEnvironment = pytest.importorskip("temporalio.testing").WorkflowEnvironment
 
 from financeops.temporal.prepaid_workflows import (  # noqa: E402
     PrepaidAmortizationWorkflow,
@@ -60,41 +60,37 @@ async def _runtime_stub_finalize(payload: PrepaidFinalizeInput) -> dict:
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_prepaid_workflow_is_served_by_runtime_worker() -> None:
-    try:
-        client = await get_temporal_client()
-    except Exception as exc:
-        pytest.skip(f"Temporal service unavailable: {exc}")
-
     task_queue = f"financeops-prepaid-{uuid.uuid4()}"
     workflow_id = f"financeops-prepaid-{uuid.uuid4()}"
 
-    async with Worker(
-        client,
-        task_queue=task_queue,
-        workflows=[PrepaidAmortizationWorkflow],
-        activities=[
-            _runtime_stub_mark_running,
-            _runtime_stub_load,
-            _runtime_stub_pattern,
-            _runtime_stub_schedule,
-            _runtime_stub_journal,
-            _runtime_stub_lineage,
-            _runtime_stub_finalize,
-        ],
-    ):
-        result = await client.execute_workflow(
-            PrepaidAmortizationWorkflow.run,
-            PrepaidAmortizationWorkflowInput(
-                run_id="00000000-0000-0000-0000-000000012901",
-                tenant_id="00000000-0000-0000-0000-000000012902",
-                correlation_id="corr-prepaid-runtime",
-                requested_by="00000000-0000-0000-0000-000000012903",
-                config_hash="cfg-prepaid-runtime",
-            ),
-            id=workflow_id,
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
             task_queue=task_queue,
-            run_timeout=timedelta(seconds=30),
-        )
+            workflows=[PrepaidAmortizationWorkflow],
+            activities=[
+                _runtime_stub_mark_running,
+                _runtime_stub_load,
+                _runtime_stub_pattern,
+                _runtime_stub_schedule,
+                _runtime_stub_journal,
+                _runtime_stub_lineage,
+                _runtime_stub_finalize,
+            ],
+        ):
+            result = await env.client.execute_workflow(
+                PrepaidAmortizationWorkflow.run,
+                PrepaidAmortizationWorkflowInput(
+                    run_id="00000000-0000-0000-0000-000000012901",
+                    tenant_id="00000000-0000-0000-0000-000000012902",
+                    correlation_id="corr-prepaid-runtime",
+                    requested_by="00000000-0000-0000-0000-000000012903",
+                    config_hash="cfg-prepaid-runtime",
+                ),
+                id=workflow_id,
+                task_queue=task_queue,
+                run_timeout=timedelta(seconds=30),
+            )
 
     assert result["status"] == "completed"
     assert result["lineage_is_complete"] is True

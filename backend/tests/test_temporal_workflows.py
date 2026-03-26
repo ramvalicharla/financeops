@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from uuid import uuid4
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,12 +15,10 @@ temporal_testing = pytest.importorskip("temporalio.testing")
 temporal_worker = pytest.importorskip("temporalio.worker")
 temporal_activity = pytest.importorskip("temporalio.activity")
 temporal_exceptions = pytest.importorskip("temporalio.exceptions")
-temporal_client = pytest.importorskip("temporalio.client")
 
 WorkflowEnvironment = temporal_testing.WorkflowEnvironment
 Worker = temporal_worker.Worker
 WorkflowAlreadyStartedError = temporal_exceptions.WorkflowAlreadyStartedError
-Client = temporal_client.Client
 activity = temporal_activity
 
 
@@ -162,23 +161,26 @@ async def test_month_end_close_workflow_id_is_idempotent() -> None:
 
 
 @pytest.mark.asyncio
-async def test_temporal_worker_connects() -> None:
+async def test_temporal_worker_connects(monkeypatch: pytest.MonkeyPatch) -> None:
     """Worker connects to Temporal and registers workflows."""
-    from financeops.config import settings
     from financeops.workers.temporal_worker import run_worker
 
-    try:
-        client = await Client.connect(
-            str(settings.TEMPORAL_ADDRESS),
-            namespace=settings.TEMPORAL_NAMESPACE,
-        )
-        await client.workflow_service.get_system_info({})
-    except Exception:
-        pytest.skip("Temporal not available in this env")
+    queue = f"test-month-end-close-worker-{uuid4()}"
 
-    task = asyncio.create_task(run_worker())
-    await asyncio.sleep(0.1)
-    assert task.done() is False
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    class _Settings:
+        TEMPORAL_ADDRESS = "local"
+        TEMPORAL_NAMESPACE = "default"
+        TEMPORAL_TASK_QUEUE = queue
+
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        connect_mock = AsyncMock(return_value=env.client)
+        monkeypatch.setattr("financeops.workers.temporal_worker.get_settings", lambda: _Settings())
+        monkeypatch.setattr("financeops.workers.temporal_worker.Client.connect", connect_mock)
+
+        task = asyncio.create_task(run_worker())
+        await asyncio.sleep(0.1)
+        assert connect_mock.await_count == 1
+        assert task.done() is False
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task

@@ -30,6 +30,8 @@ from financeops.modules.digital_signoff import models as digital_signoff_models 
 from financeops.modules.statutory import models as statutory_models  # noqa: F401
 from financeops.modules.multi_gaap import models as multi_gaap_models  # noqa: F401
 from financeops.modules.auditor_portal import models as auditor_portal_models  # noqa: F401
+from financeops.modules.coa import models as coa_models  # noqa: F401
+from financeops.modules.org_setup import models as org_setup_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

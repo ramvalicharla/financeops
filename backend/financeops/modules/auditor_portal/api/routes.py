@@ -9,7 +9,13 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.api.deps import (
+    get_async_session,
+    get_current_user,
+    require_finance_leader,
+    require_org_setup,
+)
+from financeops.db.models.tenants import IamTenant
 from financeops.config import limiter
 from financeops.db.models.users import IamUser
 from financeops.modules.auditor_portal.deps import get_auditor_access
@@ -90,6 +96,7 @@ async def grant_access_endpoint(
     body: GrantAccessRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
+    _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
     access, plain_token = await grant_auditor_access(
         session,
@@ -113,6 +120,7 @@ async def list_access_endpoint(
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
+    _tenant: IamTenant = Depends(require_org_setup),
 ) -> Paginated[dict]:
     payload = await list_access(session, tenant_id=user.tenant_id, limit=limit, offset=offset)
     return Paginated[dict](data=[_serialize_access(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
@@ -123,6 +131,7 @@ async def revoke_access_endpoint(
     access_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
+    _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
     row = await revoke_access(session, tenant_id=user.tenant_id, access_id=access_id)
     return _serialize_access(row)
@@ -133,6 +142,7 @@ async def pbc_tracker_endpoint(
     engagement_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
+    _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
     payload = await get_pbc_tracker(session, access_id=engagement_id, tenant_id=user.tenant_id)
     return {
@@ -154,6 +164,7 @@ async def respond_endpoint(
     body: RespondRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
+    _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
     del engagement_id
     row = await respond_to_request(

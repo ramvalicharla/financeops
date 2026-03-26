@@ -94,13 +94,29 @@ async def calendar_endpoint(
 async def filings_endpoint(
     status: str | None = Query(default=None),
     fiscal_year: int | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
-    payload = await list_filings(session, tenant_id=user.tenant_id, status=status, fiscal_year=fiscal_year, limit=limit, offset=offset)
-    return Paginated[dict](data=[_serialize_filing(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
+    effective_skip = offset if offset is not None else skip
+    payload = await list_filings(
+        session,
+        tenant_id=user.tenant_id,
+        status=status,
+        fiscal_year=fiscal_year,
+        limit=limit,
+        offset=effective_skip,
+    )
+    rows = [_serialize_filing(row) for row in payload["data"]]
+    return Paginated[dict](
+        items=rows,
+        total=payload["total"],
+        limit=payload["limit"],
+        skip=effective_skip,
+        has_more=(effective_skip + len(rows)) < int(payload["total"]),
+    )
 
 
 @router.post("/filings/{filing_id}/file")
@@ -117,13 +133,28 @@ async def mark_filed_endpoint(
 @router.get("/registers/{register_type}", response_model=Paginated[dict])
 async def register_endpoint(
     register_type: str,
-    limit: int = Query(default=20, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
-    payload = await get_register(session, tenant_id=user.tenant_id, register_type=register_type, limit=limit, offset=offset)
-    return Paginated[dict](data=[_serialize_register(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
+    effective_skip = offset if offset is not None else skip
+    payload = await get_register(
+        session,
+        tenant_id=user.tenant_id,
+        register_type=register_type,
+        limit=limit,
+        offset=effective_skip,
+    )
+    rows = [_serialize_register(row) for row in payload["data"]]
+    return Paginated[dict](
+        items=rows,
+        total=payload["total"],
+        limit=payload["limit"],
+        skip=effective_skip,
+        has_more=(effective_skip + len(rows)) < int(payload["total"]),
+    )
 
 
 @router.post("/registers/{register_type}")

@@ -3,12 +3,13 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.config import limiter
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.partner_program.models import PartnerCommission, PartnerProfile, ReferralTracking
@@ -34,6 +35,17 @@ class RegisterPartnerRequest(BaseModel):
 class TrackReferralRequest(BaseModel):
     partner_code: str
     referral_email: str | None = None
+
+
+def _require_partner_role(user: IamUser) -> IamUser:
+    allowed = {
+        "partner",
+        UserRole.finance_leader.value,
+        UserRole.super_admin.value,
+    }
+    if user.role.value not in allowed:
+        raise HTTPException(status_code=403, detail="partner role required")
+    return user
 
 
 def _require_platform_admin(user: IamUser) -> IamUser:
@@ -129,11 +141,17 @@ async def register_partner_endpoint(
     return _serialize_partner(row)
 
 
+@limiter.limit("60/minute")
 @router.get("/dashboard")
 async def dashboard_endpoint(
+    request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    del request
+    _require_partner_role(user)
+    response.headers["X-RateLimit-Limit"] = "60/minute"
     partner = await _partner_for_tenant(session, user.tenant_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="Partner not found")
@@ -152,13 +170,21 @@ async def dashboard_endpoint(
     }
 
 
+@limiter.limit("60/minute")
 @router.get("/referrals", response_model=Paginated[dict])
 async def referrals_endpoint(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    request: Request,
+    response: Response,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    del request
+    _require_partner_role(user)
+    response.headers["X-RateLimit-Limit"] = "60/minute"
+    effective_skip = offset if offset is not None else skip
     partner = await _partner_for_tenant(session, user.tenant_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="Partner not found")
@@ -168,24 +194,34 @@ async def referrals_endpoint(
         await session.execute(
             stmt.order_by(desc(ReferralTracking.clicked_at), desc(ReferralTracking.id))
             .limit(limit)
-            .offset(offset)
+            .offset(effective_skip)
         )
     ).scalars().all()
+    items = [_serialize_referral(row) for row in rows]
     return Paginated[dict](
-        data=[_serialize_referral(row) for row in rows],
+        items=items,
         total=total,
         limit=limit,
-        offset=offset,
+        skip=effective_skip,
+        has_more=(effective_skip + len(items)) < total,
     )
 
 
+@limiter.limit("60/minute")
 @router.get("/commissions", response_model=Paginated[dict])
 async def commissions_endpoint(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    request: Request,
+    response: Response,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    del request
+    _require_partner_role(user)
+    response.headers["X-RateLimit-Limit"] = "60/minute"
+    effective_skip = offset if offset is not None else skip
     partner = await _partner_for_tenant(session, user.tenant_id)
     if partner is None:
         raise HTTPException(status_code=404, detail="Partner not found")
@@ -195,14 +231,56 @@ async def commissions_endpoint(
         await session.execute(
             stmt.order_by(desc(PartnerCommission.created_at), desc(PartnerCommission.id))
             .limit(limit)
-            .offset(offset)
+            .offset(effective_skip)
         )
     ).scalars().all()
+    items = [_serialize_commission(row) for row in rows]
     return Paginated[dict](
-        data=[_serialize_commission(row) for row in rows],
+        items=items,
         total=total,
         limit=limit,
-        offset=offset,
+        skip=effective_skip,
+        has_more=(effective_skip + len(items)) < total,
+    )
+
+
+@limiter.limit("60/minute")
+@router.get("/payouts", response_model=Paginated[dict])
+async def payouts_endpoint(
+    request: Request,
+    response: Response,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> Paginated[dict]:
+    del request
+    _require_partner_role(user)
+    response.headers["X-RateLimit-Limit"] = "60/minute"
+    effective_skip = offset if offset is not None else skip
+    partner = await _partner_for_tenant(session, user.tenant_id)
+    if partner is None:
+        raise HTTPException(status_code=404, detail="Partner not found")
+    stmt = select(PartnerCommission).where(
+        PartnerCommission.partner_id == partner.id,
+        PartnerCommission.status == "paid",
+    )
+    total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
+    rows = (
+        await session.execute(
+            stmt.order_by(desc(PartnerCommission.created_at), desc(PartnerCommission.id))
+            .limit(limit)
+            .offset(effective_skip)
+        )
+    ).scalars().all()
+    items = [_serialize_commission(row) for row in rows]
+    return Paginated[dict](
+        items=items,
+        total=total,
+        limit=limit,
+        skip=effective_skip,
+        has_more=(effective_skip + len(items)) < total,
     )
 
 

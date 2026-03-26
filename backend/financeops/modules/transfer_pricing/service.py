@@ -218,9 +218,12 @@ async def list_transactions(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     fiscal_year: int | None = None,
-    limit: int = 20,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(ICTransaction).where(ICTransaction.tenant_id == tenant_id)
     if fiscal_year is not None:
         stmt = stmt.where(ICTransaction.fiscal_year == fiscal_year)
@@ -228,26 +231,33 @@ async def list_transactions(
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
         await session.execute(
-            stmt.order_by(desc(ICTransaction.created_at), desc(ICTransaction.id)).limit(limit).offset(offset)
+            stmt.order_by(desc(ICTransaction.created_at), desc(ICTransaction.id))
+            .limit(bounded_limit)
+            .offset(effective_skip)
         )
     ).scalars().all()
-    return {"data": rows, "total": total, "limit": limit, "offset": offset}
+    return {"data": rows, "total": total, "limit": bounded_limit, "offset": effective_skip}
 
 
 async def list_documents(
     session: AsyncSession,
     tenant_id: uuid.UUID,
-    limit: int = 20,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(TransferPricingDoc).where(TransferPricingDoc.tenant_id == tenant_id)
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
         await session.execute(
-            stmt.order_by(desc(TransferPricingDoc.created_at), desc(TransferPricingDoc.id)).limit(limit).offset(offset)
+            stmt.order_by(desc(TransferPricingDoc.created_at), desc(TransferPricingDoc.id))
+            .limit(bounded_limit)
+            .offset(effective_skip)
         )
     ).scalars().all()
-    return {"data": rows, "total": total, "limit": limit, "offset": offset}
+    return {"data": rows, "total": total, "limit": bounded_limit, "offset": effective_skip}
 
 
 __all__ = [

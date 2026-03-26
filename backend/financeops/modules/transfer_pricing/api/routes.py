@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -125,13 +125,28 @@ async def add_transaction_endpoint(
 @router.get("/transactions", response_model=Paginated[dict])
 async def list_transactions_endpoint(
     fiscal_year: int | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
-    payload = await list_transactions(session, tenant_id=user.tenant_id, fiscal_year=fiscal_year, limit=limit, offset=offset)
-    return Paginated[dict](data=[_serialize_txn(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
+    effective_skip = offset if offset is not None else skip
+    payload = await list_transactions(
+        session,
+        tenant_id=user.tenant_id,
+        fiscal_year=fiscal_year,
+        limit=limit,
+        offset=effective_skip,
+    )
+    rows = [_serialize_txn(row) for row in payload["data"]]
+    return Paginated[dict](
+        items=rows,
+        total=payload["total"],
+        limit=payload["limit"],
+        skip=effective_skip,
+        has_more=(effective_skip + len(rows)) < int(payload["total"]),
+    )
 
 
 @router.post("/generate-3ceb")
@@ -146,13 +161,22 @@ async def generate_3ceb_endpoint(
 
 @router.get("/documents", response_model=Paginated[dict])
 async def list_documents_endpoint(
-    limit: int = Query(default=20, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
-    payload = await list_documents(session, tenant_id=user.tenant_id, limit=limit, offset=offset)
-    return Paginated[dict](data=[_serialize_doc(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
+    effective_skip = offset if offset is not None else skip
+    payload = await list_documents(session, tenant_id=user.tenant_id, limit=limit, offset=effective_skip)
+    rows = [_serialize_doc(row) for row in payload["data"]]
+    return Paginated[dict](
+        items=rows,
+        total=payload["total"],
+        limit=payload["limit"],
+        skip=effective_skip,
+        has_more=(effective_skip + len(rows)) < int(payload["total"]),
+    )
 
 
 @router.get("/documents/{document_id}")
@@ -165,7 +189,9 @@ async def get_document_endpoint(
         await session.execute(
             select(TransferPricingDoc).where(TransferPricingDoc.id == document_id, TransferPricingDoc.tenant_id == user.tenant_id)
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Transfer pricing document not found")
     return _serialize_doc(row)
 
 

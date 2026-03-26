@@ -553,6 +553,63 @@ async def test_policy_endpoint_returns_defaults(async_client: AsyncClient, test_
     assert payload["meal_limit_per_day"] == "2000.00"
 
 
+@pytest.mark.asyncio
+async def test_expense_management_list_respects_limit(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: IamUser,
+    test_access_token: str,
+) -> None:
+    await _ensure_policy(async_session, test_user.tenant_id)
+    for idx in range(5):
+        await _submit_claim_for_user(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            user_id=test_user.id,
+            vendor_name=f"Limit Vendor {idx}",
+            category="other",
+            amount=Decimal("100.00"),
+            claim_date=date(2025, 3, 17),
+        )
+
+    response = await async_client.get(
+        "/api/v1/expenses?limit=2",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert len(payload["items"]) == 2
+    assert payload["has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_expense_management_list_respects_skip(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: IamUser,
+    test_access_token: str,
+) -> None:
+    await _ensure_policy(async_session, test_user.tenant_id)
+    for idx in range(5):
+        await _submit_claim_for_user(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            user_id=test_user.id,
+            vendor_name=f"Skip Vendor {idx}",
+            category="other",
+            amount=Decimal("100.00"),
+            claim_date=date(2025, 3, 17),
+        )
+
+    response = await async_client.get(
+        "/api/v1/expenses?skip=3&limit=10",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert len(payload["items"]) == 2
+
+
 # Analytics (3)
 @pytest.mark.asyncio
 async def test_analytics_spend_by_category(async_session: AsyncSession, test_user: IamUser) -> None:

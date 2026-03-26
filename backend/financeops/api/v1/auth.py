@@ -57,7 +57,7 @@ class RegisterRequest(BaseModel):
     tenant_type: TenantType
     country: str
     phone: str | None = None
-    terms_accepted: bool = True
+    terms_accepted: bool | None = None
 
 
 class LoginRequest(BaseModel):
@@ -177,8 +177,8 @@ async def register(
     """
     if not body.terms_accepted:
         raise HTTPException(
-            status_code=400,
-            detail="Terms of Service must be accepted",
+            status_code=422,
+            detail="Terms of service must be accepted to register.",
         )
 
     tenant = await create_tenant(
@@ -220,8 +220,8 @@ async def register(
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    user.terms_accepted_at = datetime.now(UTC)
-    user.terms_version_accepted = "2026-03"
+    user.terms_accepted_at = datetime.utcnow()
+    user.terms_version_accepted = settings.CURRENT_TERMS_VERSION
     frontend_base = str(getattr(settings, "FRONTEND_URL", "http://localhost:3000")).rstrip("/")
     subject, html = welcome_email(
         full_name=user.full_name,
@@ -461,8 +461,8 @@ async def accept_invite(
     user.is_active = True
     user.invite_token_hash = None
     user.invite_accepted_at = datetime.now(UTC)
-    user.terms_accepted_at = datetime.now(UTC)
-    user.terms_version_accepted = "2026-03"
+    user.terms_accepted_at = datetime.utcnow()
+    user.terms_version_accepted = settings.CURRENT_TERMS_VERSION
     await session.flush()
     return {"message": "Account activated. Please sign in."}
 
@@ -526,5 +526,7 @@ async def get_me(
             "country": tenant.country,
             "timezone": tenant.timezone,
             "status": tenant.status.value,
+            "org_setup_complete": tenant.org_setup_complete,
+            "org_setup_step": tenant.org_setup_step,
         },
     }

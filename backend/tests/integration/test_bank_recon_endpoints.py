@@ -136,6 +136,75 @@ async def test_list_bank_statements(
 
 
 @pytest.mark.asyncio
+async def test_bank_reconciliation_list_respects_limit(
+    async_client: AsyncClient,
+    test_access_token: str,
+) -> None:
+    headers = {"Authorization": f"Bearer {test_access_token}"}
+    for idx in range(5):
+        resp = await async_client.post(
+            "/api/v1/bank-recon/statements",
+            headers=headers,
+            json={
+                "bank_name": "HDFC Bank",
+                "account_number_masked": f"XXXX{1200 + idx}",
+                "currency": "INR",
+                "period_year": 2025,
+                "period_month": 6,
+                "entity_name": f"BankLimit_{idx}",
+                "opening_balance": "1000",
+                "closing_balance": "1500",
+                "file_name": f"limit_{idx}.pdf",
+                "file_hash": ("f" * 60) + f"{idx:04d}",
+            },
+        )
+        assert resp.status_code == 201
+
+    response = await async_client.get(
+        "/api/v1/bank-recon/statements?limit=2",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert len(payload["items"]) == 2
+    assert payload["has_more"] is True
+
+
+@pytest.mark.asyncio
+async def test_bank_reconciliation_list_respects_skip(
+    async_client: AsyncClient,
+    test_access_token: str,
+) -> None:
+    headers = {"Authorization": f"Bearer {test_access_token}"}
+    for idx in range(5):
+        resp = await async_client.post(
+            "/api/v1/bank-recon/statements",
+            headers=headers,
+            json={
+                "bank_name": "SBI",
+                "account_number_masked": f"XXXX{2200 + idx}",
+                "currency": "INR",
+                "period_year": 2025,
+                "period_month": 7,
+                "entity_name": f"BankSkip_{idx}",
+                "opening_balance": "1000",
+                "closing_balance": "1500",
+                "file_name": f"skip_{idx}.pdf",
+                "file_hash": ("e" * 60) + f"{idx:04d}",
+            },
+        )
+        assert resp.status_code == 201
+
+    response = await async_client.get(
+        "/api/v1/bank-recon/statements?skip=3&limit=10",
+        headers=headers,
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert len(payload["items"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_bank_recon_requires_auth(async_client: AsyncClient):
     r = await async_client.get("/api/v1/bank-recon/statements")
     assert r.status_code == 401

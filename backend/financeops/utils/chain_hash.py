@@ -109,10 +109,23 @@ async def get_previous_hash_locked(
         {"k": lock_int},
     )
 
+    table = model_class.__table__
+    tail = table.alias("tail")
+    child = table.alias("child")
     result = await session.execute(
-        sa.select(model_class.chain_hash)
-        .where(model_class.tenant_id == tenant_id)
-        .order_by(sa.desc(model_class.created_at))
+        sa.select(tail.c.chain_hash)
+        .where(
+            tail.c.tenant_id == tenant_id,
+            ~sa.exists(
+                sa.select(1)
+                .select_from(child)
+                .where(
+                    child.c.tenant_id == tenant_id,
+                    child.c.previous_hash == tail.c.chain_hash,
+                )
+            ),
+        )
+        .order_by(sa.desc(tail.c.created_at), sa.desc(tail.c.chain_hash))
         .limit(1)
     )
     row = result.scalar_one_or_none()

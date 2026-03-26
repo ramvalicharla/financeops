@@ -8,7 +8,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.prompts import AiPromptVersion
-from financeops.llm.pipeline import AGREEMENT_THRESHOLD, PipelineResult
+from financeops.llm.circuit_breaker import CircuitBreakerRegistry
+from financeops.llm.fallback import AIResult
+from financeops.llm.pipeline import (
+    AGREEMENT_THRESHOLD,
+    PipelineContext,
+    PipelineResult,
+    run_pipeline,
+)
 from financeops.services.fixed_assets.depreciation_methods.reducing_balance import (
     compute_monthly_rate,
 )
@@ -62,6 +69,70 @@ async def test_pipeline_agreement_score_is_decimal() -> None:
         credits_used=Decimal("0.100000"),
     )
     assert result.agreement_score > AGREEMENT_THRESHOLD
+
+
+@pytest.mark.asyncio
+async def test_agreement_score_boundary_exact(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_gateway_generate(**kwargs):  # type: ignore[no-untyped-def]
+        task_type = kwargs.get("task_type")
+        content = "same output"
+        if task_type == "validation":
+            content = "same output"
+        return AIResult(
+            content=content,
+            model_used="model-x",
+            provider="test",
+            was_fallback=False,
+            attempt_number=1,
+            duration_ms=1.0,
+            tokens_used=100,
+        )
+
+    monkeypatch.setattr("financeops.llm.gateway.gateway_generate", _fake_gateway_generate)
+    monkeypatch.setattr("financeops.llm.pipeline._compute_agreement", lambda *_: Decimal("0.8500"))
+    result = await run_pipeline(
+        PipelineContext(task_type="classification", tenant_id="tenant-1", user_id="user-1", input_data={"a": 1}),
+        CircuitBreakerRegistry(redis_client=None),
+    )
+    assert result.status == "COMPLETED"
+    assert result.agreement_score == Decimal("0.8500")
+
+
+@pytest.mark.asyncio
+async def test_agreement_score_below_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _fake_gateway_generate(**kwargs):  # type: ignore[no-untyped-def]
+        return AIResult(
+            content="output",
+            model_used="model-x",
+            provider="test",
+            was_fallback=False,
+            attempt_number=1,
+            duration_ms=1.0,
+            tokens_used=100,
+        )
+
+    monkeypatch.setattr("financeops.llm.gateway.gateway_generate", _fake_gateway_generate)
+    monkeypatch.setattr("financeops.llm.pipeline._compute_agreement", lambda *_: Decimal("0.8499"))
+    result = await run_pipeline(
+        PipelineContext(task_type="classification", tenant_id="tenant-1", user_id="user-1", input_data={"a": 1}),
+        CircuitBreakerRegistry(redis_client=None),
+    )
+    assert result.status == "PENDING_REVIEW"
+    assert result.agreement_score == Decimal("0.8499")
+
+
+@pytest.mark.asyncio
+async def test_agreement_score_is_decimal_not_float() -> None:
+    result = PipelineResult(
+        status="COMPLETED",
+        output_data={},
+        stage2_model="model-a",
+        stage3_model="model-b",
+        agreement_score=Decimal("0.8500"),
+        total_duration_ms=1.0,
+        credits_used=Decimal("0.100000"),
+    )
+    assert isinstance(result.agreement_score, Decimal)
 
 
 def test_no_float_in_financial_service_imports() -> None:

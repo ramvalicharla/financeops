@@ -101,23 +101,28 @@ async def create_set(
 
 @router.get("")
 async def list_sets(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    effective_skip = offset if offset is not None else skip
     stmt = select(ScenarioSet).where(ScenarioSet.tenant_id == user.tenant_id)
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (
         await session.execute(
-            stmt.order_by(ScenarioSet.created_at.desc(), ScenarioSet.id.desc()).limit(limit).offset(offset)
+            stmt.order_by(ScenarioSet.created_at.desc(), ScenarioSet.id.desc())
+            .limit(limit)
+            .offset(effective_skip)
         )
     ).scalars().all()
     return Paginated[dict](
-        data=[_serialize_set(row) for row in rows],
+        items=[_serialize_set(row) for row in rows],
         total=int(total),
         limit=limit,
-        offset=offset,
+        skip=effective_skip,
+        has_more=(effective_skip + len(rows)) < int(total),
     )
 
 
@@ -328,4 +333,3 @@ async def export_set(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="scenarios_{set_id}.xlsx"'},
     )
-

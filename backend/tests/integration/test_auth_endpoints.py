@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from financeops.db.models.users import IamUser
 
 
 @pytest.mark.asyncio
@@ -18,6 +22,7 @@ async def test_register_creates_tenant_and_user(async_client: AsyncClient):
             "tenant_name": "New Corp",
             "tenant_type": "direct",
             "country": "US",
+            "terms_accepted": True,
         },
     )
     assert response.status_code == 201
@@ -25,6 +30,50 @@ async def test_register_creates_tenant_and_user(async_client: AsyncClient):
     assert "user_id" in data
     assert "tenant_id" in data
     assert data["mfa_setup_required"] is True
+
+
+@pytest.mark.asyncio
+async def test_registration_stores_terms_accepted_at(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+) -> None:
+    response = await async_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "terms-user@example.com",
+            "password": "SecurePass123!",
+            "full_name": "Terms User",
+            "tenant_name": "Terms Corp",
+            "tenant_type": "direct",
+            "country": "US",
+            "terms_accepted": True,
+        },
+    )
+    assert response.status_code == 201
+    user_id = uuid.UUID(response.json()["data"]["user_id"])
+    user = (
+        await async_session.execute(
+            select(IamUser).where(IamUser.id == user_id)
+        )
+    ).scalar_one()
+    assert user.terms_accepted_at is not None
+    assert user.terms_version_accepted == "2026-03-01"
+
+
+@pytest.mark.asyncio
+async def test_registration_requires_terms_acceptance(async_client: AsyncClient) -> None:
+    response = await async_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "no-terms-user@example.com",
+            "password": "SecurePass123!",
+            "full_name": "No Terms User",
+            "tenant_name": "No Terms Corp",
+            "tenant_type": "direct",
+            "country": "US",
+        },
+    )
+    assert response.status_code == 422
 
 
 @pytest.mark.asyncio

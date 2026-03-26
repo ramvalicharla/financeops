@@ -141,9 +141,12 @@ async def get_register(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     register_type: str,
-    limit: int = 20,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(StatutoryRegisterEntry).where(
         StatutoryRegisterEntry.tenant_id == tenant_id,
         StatutoryRegisterEntry.register_type == register_type,
@@ -151,10 +154,12 @@ async def get_register(
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
         await session.execute(
-            stmt.order_by(desc(StatutoryRegisterEntry.entry_date), desc(StatutoryRegisterEntry.id)).limit(limit).offset(offset)
+            stmt.order_by(desc(StatutoryRegisterEntry.entry_date), desc(StatutoryRegisterEntry.id))
+            .limit(bounded_limit)
+            .offset(effective_skip)
         )
     ).scalars().all()
-    return {"data": rows, "total": total, "limit": limit, "offset": offset}
+    return {"data": rows, "total": total, "limit": bounded_limit, "offset": effective_skip}
 
 
 async def add_register_entry(
@@ -192,9 +197,12 @@ async def list_filings(
     tenant_id: uuid.UUID,
     status: str | None = None,
     fiscal_year: int | None = None,
-    limit: int = 20,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> dict:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(StatutoryFiling).where(StatutoryFiling.tenant_id == tenant_id)
     if status:
         stmt = stmt.where(StatutoryFiling.status == status)
@@ -204,10 +212,12 @@ async def list_filings(
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
         await session.execute(
-            stmt.order_by(StatutoryFiling.due_date, desc(StatutoryFiling.created_at)).limit(limit).offset(offset)
+            stmt.order_by(StatutoryFiling.due_date, desc(StatutoryFiling.created_at))
+            .limit(bounded_limit)
+            .offset(effective_skip)
         )
     ).scalars().all()
-    return {"data": rows, "total": total, "limit": limit, "offset": offset}
+    return {"data": rows, "total": total, "limit": bounded_limit, "offset": effective_skip}
 
 
 __all__ = [

@@ -26,6 +26,8 @@ async def _create_other_tenant_user_token(async_session: AsyncSession) -> str:
         country="US",
         timezone="UTC",
         status=TenantStatus.active,
+        org_setup_complete=True,
+        org_setup_step=7,
         chain_hash=compute_chain_hash(
             {
                 "display_name": "Other Tenant",

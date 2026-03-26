@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 import filelock
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from slowapi import _rate_limit_exceeded_handler
@@ -49,7 +49,7 @@ from financeops.modules.ma_workspace.api.routes import router as ma_router
 from financeops.modules.service_registry.api.routes import router as service_registry_router
 from financeops.modules.marketplace.api.routes import router as marketplace_router
 from financeops.modules.white_label.api.routes import router as white_label_router
-from financeops.modules.partner_program.api.routes import router as partner_router
+from financeops.modules.partner.api.routes import router as partner_router
 from financeops.modules.notifications.api.routes import router as notifications_router
 from financeops.modules.learning_engine.api.routes import router as learning_router
 from financeops.modules.search.api.routes import router as search_router
@@ -61,8 +61,12 @@ from financeops.modules.digital_signoff.api.routes import router as signoff_rout
 from financeops.modules.statutory.api.routes import router as statutory_router
 from financeops.modules.multi_gaap.api.routes import router as gaap_router
 from financeops.modules.auditor_portal.api.routes import router as audit_router
+from financeops.modules.coa.api.routes import router as coa_router
+from financeops.modules.coa.seeds.runner import run_coa_seeds
+from financeops.modules.org_setup.api.routes import router as org_setup_router
 from financeops.api.v1.ai_stream import router as ai_stream_router
 from financeops.api.v1.admin_ai_providers import router as admin_ai_providers_router
+from financeops.api.deps import require_org_setup
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     RequestLoggingMiddleware,
@@ -77,7 +81,7 @@ from financeops.shared_kernel.response import (
     RequestIDMiddleware,
 )
 from financeops.shared_kernel.idempotency import IdempotencyMiddleware
-from financeops.db.session import engine
+from financeops.db.session import AsyncSessionLocal, engine
 
 log = logging.getLogger(__name__)
 configure_logging(log_level=settings.LOG_LEVEL)
@@ -122,6 +126,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Running database migrations...")
     run_migrations_with_lock()
     log.info("Database migrations complete.")
+
+    # Fail fast when production payment dependencies are missing.
+    from financeops.modules.payment.infrastructure.razorpay import RazorpayClient
+
+    _ = RazorpayClient
+
+    try:
+        async with AsyncSessionLocal() as session:
+            await run_coa_seeds(session)
+            await session.commit()
+        log.info("CoA seed data initialized.")
+    except Exception as exc:
+        log.error("CoA seed initialization failed: %s", exc)
+        raise
 
     # Initialize Redis pool
     try:
@@ -235,43 +253,46 @@ def create_app() -> FastAPI:
     app.include_router(health_router, prefix="/health", tags=["Health"])
 
     # API v1
+    org_setup_dependency = [Depends(require_org_setup)]
     app.include_router(v1_router, prefix="/api/v1")
-    app.include_router(board_pack_router, prefix="/api/v1")
-    app.include_router(report_router, prefix="/api/v1")
-    app.include_router(scheduled_delivery_router, prefix="/api/v1")
-    app.include_router(anomaly_ui_router, prefix="/api/v1")
-    app.include_router(auto_trigger_router, prefix="/api/v1")
+    app.include_router(board_pack_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(report_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(scheduled_delivery_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(anomaly_ui_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(auto_trigger_router, prefix="/api/v1", dependencies=org_setup_dependency)
     app.include_router(onboarding_router, prefix="/api/v1")
-    app.include_router(secret_rotation_router, prefix="/api/v1")
-    app.include_router(compliance_router, prefix="/api/v1")
-    app.include_router(closing_checklist_router, prefix="/api/v1")
-    app.include_router(working_capital_router, prefix="/api/v1")
-    app.include_router(expense_router, prefix="/api/v1")
-    app.include_router(budgeting_router, prefix="/api/v1")
-    app.include_router(forecasting_router, prefix="/api/v1")
-    app.include_router(scenario_router, prefix="/api/v1")
-    app.include_router(backup_router, prefix="/api/v1")
-    app.include_router(platform_users_router, prefix="/api/v1")
-    app.include_router(fdd_router, prefix="/api/v1")
-    app.include_router(ppa_router, prefix="/api/v1")
-    app.include_router(ma_router, prefix="/api/v1")
-    app.include_router(service_registry_router, prefix="/api/v1")
-    app.include_router(marketplace_router, prefix="/api/v1")
+    app.include_router(secret_rotation_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(compliance_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(closing_checklist_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(working_capital_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(expense_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(budgeting_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(forecasting_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(scenario_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(backup_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(platform_users_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(fdd_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(ppa_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(ma_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(service_registry_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(marketplace_router, prefix="/api/v1", dependencies=org_setup_dependency)
     app.include_router(white_label_router, prefix="/api/v1")
     app.include_router(partner_router, prefix="/api/v1")
-    app.include_router(notifications_router, prefix="/api/v1")
-    app.include_router(learning_router, prefix="/api/v1")
-    app.include_router(search_router, prefix="/api/v1")
-    app.include_router(treasury_router, prefix="/api/v1")
-    app.include_router(tax_router, prefix="/api/v1")
-    app.include_router(covenants_router, prefix="/api/v1")
-    app.include_router(tp_router, prefix="/api/v1")
-    app.include_router(signoff_router, prefix="/api/v1")
-    app.include_router(statutory_router, prefix="/api/v1")
-    app.include_router(gaap_router, prefix="/api/v1")
+    app.include_router(notifications_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(learning_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(search_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(treasury_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(tax_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(covenants_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(tp_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(signoff_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(statutory_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(gaap_router, prefix="/api/v1", dependencies=org_setup_dependency)
     app.include_router(audit_router, prefix="/api/v1")
-    app.include_router(ai_stream_router, prefix="/api/v1")
-    app.include_router(admin_ai_providers_router, prefix="/api/v1")
+    app.include_router(coa_router, prefix="/api/v1", tags=["chart-of-accounts"])
+    app.include_router(org_setup_router, prefix="/api/v1", tags=["org-setup"])
+    app.include_router(ai_stream_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    app.include_router(admin_ai_providers_router, prefix="/api/v1", dependencies=org_setup_dependency)
 
     # OpenTelemetry instrumentation
     if settings.OTEL_EXPORTER_OTLP_ENDPOINT:

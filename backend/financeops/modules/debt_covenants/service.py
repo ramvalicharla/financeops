@@ -207,16 +207,19 @@ async def check_all_covenants(
 async def get_all_covenants(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    skip: int = 0,
     limit: int = 100,
-    offset: int = 0,
+    offset: int | None = None,
 ) -> list[CovenantDefinition]:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     result = await session.execute(
         select(CovenantDefinition)
         .where(CovenantDefinition.tenant_id == tenant_id)
         .where(CovenantDefinition.is_active.is_(True))
         .order_by(desc(CovenantDefinition.created_at), desc(CovenantDefinition.id))
-        .limit(limit)
-        .offset(offset)
+        .limit(bounded_limit)
+        .offset(effective_skip)
     )
     return result.scalars().all()
 

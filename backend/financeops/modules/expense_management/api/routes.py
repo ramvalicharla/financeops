@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
@@ -124,14 +124,16 @@ async def list_expenses(
     status_filter: str | None = Query(default=None, alias="status"),
     period: str | None = Query(default=None),
     submitted_by: uuid.UUID | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
     if submitted_by is not None and user.role not in {UserRole.finance_leader, UserRole.super_admin}:
         raise HTTPException(status_code=403, detail="Only finance leader can filter by submitted_by")
 
+    effective_skip = offset if offset is not None else skip
     stmt = select(ExpenseClaim).where(ExpenseClaim.tenant_id == user.tenant_id)
     if period:
         stmt = stmt.where(ExpenseClaim.period == period)
@@ -139,23 +141,31 @@ async def list_expenses(
         stmt = stmt.where(ExpenseClaim.submitted_by == submitted_by)
     elif user.role not in {UserRole.finance_leader, UserRole.super_admin}:
         stmt = stmt.where(ExpenseClaim.submitted_by == user.id)
+    if status_filter:
+        stmt = stmt.where(ExpenseClaim.status == status_filter)
 
+    total = (
+        await session.execute(select(func.count()).select_from(stmt.subquery()))
+    ).scalar_one()
     rows = (
         await session.execute(
             stmt.order_by(ExpenseClaim.created_at.desc(), ExpenseClaim.id.desc())
+            .offset(effective_skip)
+            .limit(limit)
         )
     ).scalars().all()
 
     serialized: list[dict] = []
     for row in rows:
-        payload = await _serialize_claim(session, row)
-        if status_filter and payload["status"] != status_filter:
-            continue
-        serialized.append(payload)
+        serialized.append(await _serialize_claim(session, row))
 
-    total = len(serialized)
-    paged = serialized[offset : offset + limit]
-    return Paginated[dict](data=paged, total=total, limit=limit, offset=offset)
+    return Paginated[dict](
+        items=serialized,
+        total=int(total),
+        skip=effective_skip,
+        limit=limit,
+        has_more=(effective_skip + len(serialized)) < int(total),
+    )
 
 
 @router.get("/analytics")

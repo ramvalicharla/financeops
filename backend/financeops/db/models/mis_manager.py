@@ -76,7 +76,9 @@ class MisUpload(FinancialBase):
     )
 
     template_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("mis_templates.id"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("mis_templates.id", ondelete="SET NULL"),
+        nullable=True,
     )
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)

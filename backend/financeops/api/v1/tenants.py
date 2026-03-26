@@ -77,6 +77,8 @@ async def get_my_tenant(
         "country": tenant.country,
         "timezone": tenant.timezone,
         "status": tenant.status.value,
+        "org_setup_complete": tenant.org_setup_complete,
+        "org_setup_step": tenant.org_setup_step,
         "created_at": tenant.created_at.isoformat(),
         "workspaces": [
             {
@@ -136,6 +138,19 @@ async def invite_user(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    tenant = await get_tenant(session, user.tenant_id)
+    if not tenant.org_setup_complete:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ORG_SETUP_REQUIRED",
+                "message": (
+                    "Organisation setup must be completed before inviting team members."
+                ),
+                "current_step": tenant.org_setup_step,
+            },
+        )
+
     invite_token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
 
@@ -163,7 +178,6 @@ async def invite_user(
             )
         )
 
-    tenant = await get_tenant(session, user.tenant_id)
     frontend_base = str(getattr(settings, "FRONTEND_URL", "http://localhost:3000")).rstrip("/")
     invite_url = f"{frontend_base}/accept-invite?token={invite_token}"
     subject, html = user_invited_email(

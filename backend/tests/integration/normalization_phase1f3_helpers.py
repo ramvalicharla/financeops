@@ -270,6 +270,8 @@ async def seed_identity_user(
         country="US",
         timezone="UTC",
         status=TenantStatus.active,
+        org_setup_complete=True,
+        org_setup_step=7,
         chain_hash=compute_chain_hash(
             {
                 "display_name": f"Tenant {str(tenant_id)[:8]}",

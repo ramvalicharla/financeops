@@ -95,29 +95,53 @@ async def verify_tenant_chain(
     and verify the chain integrity.
     """
     result = await session.execute(
-        select(AuditTrail)
-        .where(AuditTrail.tenant_id == tenant_id)
-        .order_by(AuditTrail.created_at)
+        select(AuditTrail).where(AuditTrail.tenant_id == tenant_id)
     )
-    records = result.scalars().all()
-    record_dicts = []
-    for r in records:
-        record_dicts.append(
-            {
-                "tenant_id": str(r.tenant_id),
-                "user_id": str(r.user_id) if r.user_id else None,
-                "action": r.action,
-                "resource_type": r.resource_type,
-                "resource_id": r.resource_id,
-                "resource_name": r.resource_name,
-                "old_value_hash": r.old_value_hash,
-                "new_value_hash": r.new_value_hash,
-                "ip_address": r.ip_address,
-                "chain_hash": r.chain_hash,
-                "previous_hash": r.previous_hash,
-            }
-        )
-    return verify_chain(record_dicts)
+    rows = result.scalars().all()
+    if not rows:
+        return ChainVerificationResult(is_valid=True, total_records=0, first_broken_at=None)
+
+    by_previous_hash: dict[str, list[dict[str, str | None]]] = {}
+    for row in rows:
+        row_dict = {
+            "tenant_id": str(row.tenant_id),
+            "user_id": str(row.user_id) if row.user_id else None,
+            "action": row.action,
+            "resource_type": row.resource_type,
+            "resource_id": row.resource_id,
+            "resource_name": row.resource_name,
+            "old_value_hash": row.old_value_hash,
+            "new_value_hash": row.new_value_hash,
+            "ip_address": row.ip_address,
+            "chain_hash": row.chain_hash,
+            "previous_hash": row.previous_hash,
+        }
+        by_previous_hash.setdefault(row.previous_hash, []).append(row_dict)
+
+    ordered: list[dict[str, str | None]] = []
+    current_previous_hash = GENESIS_HASH
+    visited_hashes: set[str] = set()
+    while len(ordered) < len(rows):
+        next_nodes = by_previous_hash.get(current_previous_hash, [])
+        if len(next_nodes) != 1:
+            return ChainVerificationResult(
+                is_valid=False,
+                total_records=len(rows),
+                first_broken_at=len(ordered),
+            )
+        node = next_nodes[0]
+        node_hash = str(node["chain_hash"])
+        if node_hash in visited_hashes:
+            return ChainVerificationResult(
+                is_valid=False,
+                total_records=len(rows),
+                first_broken_at=len(ordered),
+            )
+        visited_hashes.add(node_hash)
+        ordered.append(node)
+        current_previous_hash = node_hash
+
+    return verify_chain(ordered)
 
 
 async def get_audit_trail(

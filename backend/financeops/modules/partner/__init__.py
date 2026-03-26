@@ -1,0 +1,2 @@
+"""Partner API compatibility module."""
+

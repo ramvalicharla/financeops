@@ -121,6 +121,8 @@ async def _create_tenant_user_token(
         country="US",
         timezone="UTC",
         status=TenantStatus.active,
+        org_setup_complete=True,
+        org_setup_step=7,
         chain_hash=compute_chain_hash(
             {
                 "display_name": f"{email_prefix} Tenant",

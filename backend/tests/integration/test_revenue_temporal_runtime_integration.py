@@ -7,7 +7,7 @@ import pytest
 
 activity = pytest.importorskip("temporalio.activity")
 Worker = pytest.importorskip("temporalio.worker").Worker
-get_temporal_client = pytest.importorskip("financeops.temporal.client").get_temporal_client
+WorkflowEnvironment = pytest.importorskip("temporalio.testing").WorkflowEnvironment
 
 from financeops.temporal.revenue_workflows import (  # noqa: E402
     RevenueRecognitionWorkflow,
@@ -59,41 +59,37 @@ async def _runtime_stub_finalize(payload) -> dict:  # type: ignore[no-untyped-de
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_revenue_workflow_is_served_by_runtime_worker() -> None:
-    try:
-        client = await get_temporal_client()
-    except Exception as exc:
-        pytest.skip(f"Temporal service unavailable: {exc}")
-
     task_queue = f"financeops-revenue-{uuid.uuid4()}"
     workflow_id = f"financeops-revenue-{uuid.uuid4()}"
 
-    async with Worker(
-        client,
-        task_queue=task_queue,
-        workflows=[RevenueRecognitionWorkflow],
-        activities=[
-            _runtime_stub_mark_running,
-            _runtime_stub_load,
-            _runtime_stub_allocate,
-            _runtime_stub_schedule,
-            _runtime_stub_journal,
-            _runtime_stub_lineage,
-            _runtime_stub_finalize,
-        ],
-    ):
-        result = await client.execute_workflow(
-            RevenueRecognitionWorkflow.run,
-            RevenueRecognitionWorkflowInput(
-                run_id="00000000-0000-0000-0000-000000000971",
-                tenant_id="00000000-0000-0000-0000-000000000972",
-                correlation_id="corr-revenue-runtime",
-                requested_by="00000000-0000-0000-0000-000000000973",
-                config_hash="cfg-runtime",
-            ),
-            id=workflow_id,
+    async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with Worker(
+            env.client,
             task_queue=task_queue,
-            run_timeout=timedelta(seconds=30),
-        )
+            workflows=[RevenueRecognitionWorkflow],
+            activities=[
+                _runtime_stub_mark_running,
+                _runtime_stub_load,
+                _runtime_stub_allocate,
+                _runtime_stub_schedule,
+                _runtime_stub_journal,
+                _runtime_stub_lineage,
+                _runtime_stub_finalize,
+            ],
+        ):
+            result = await env.client.execute_workflow(
+                RevenueRecognitionWorkflow.run,
+                RevenueRecognitionWorkflowInput(
+                    run_id="00000000-0000-0000-0000-000000000971",
+                    tenant_id="00000000-0000-0000-0000-000000000972",
+                    correlation_id="corr-revenue-runtime",
+                    requested_by="00000000-0000-0000-0000-000000000973",
+                    config_hash="cfg-runtime",
+                ),
+                id=workflow_id,
+                task_queue=task_queue,
+                run_timeout=timedelta(seconds=30),
+            )
 
     assert result["status"] == "completed"
     assert result["lineage_is_complete"] is True

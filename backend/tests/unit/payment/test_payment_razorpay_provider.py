@@ -126,3 +126,10 @@ async def test_razorpay_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.success is False
     assert result.error_code == "razorpay_error"
+
+
+def test_razorpay_client_initialises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(razorpay_module.razorpay, "Client", _FakeClient)
+    provider = RazorpayPaymentProvider(key_id="key", key_secret="secret")
+    assert provider._client is not None
+    assert hasattr(provider._client, "customer")

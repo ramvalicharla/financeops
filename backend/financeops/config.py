@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAY_WEBHOOK_SECRET: str = ""
 
     # Scheduled delivery transport
     SMTP_HOST: str = "localhost"
@@ -77,6 +78,7 @@ class Settings(BaseSettings):
     AUTH_LOGIN_RATE_LIMIT: str = "5/minute"
     AUTH_TOKEN_RATE_LIMIT: str = "5/minute"
     AUTH_MFA_RATE_LIMIT: str = "3/minute"
+    CURRENT_TERMS_VERSION: str = "2026-03-01"
 
     # Encryption
     FIELD_ENCRYPTION_KEY: str  # required - 32-byte base64 AES key

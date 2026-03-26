@@ -17,6 +17,7 @@ from financeops.core.exceptions import (
     AuthorizationError,
 )
 from financeops.core.security import decode_token
+from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
@@ -144,6 +145,38 @@ def get_current_tenant_id(
         return uuid.UUID(tenant_id_str)
     except ValueError as exc:
         raise AuthenticationError("Invalid tenant_id in token") from exc
+
+
+async def get_current_tenant(
+    user: IamUser = Depends(get_current_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> IamTenant:
+    tenant = (
+        await session.execute(select(IamTenant).where(IamTenant.id == user.tenant_id))
+    ).scalar_one_or_none()
+    if tenant is None:
+        raise AuthenticationError("Tenant not found")
+    return tenant
+
+
+async def require_org_setup(
+    current_tenant: IamTenant = Depends(get_current_tenant),
+) -> IamTenant:
+    if current_tenant.is_platform_tenant:
+        return current_tenant
+    if not current_tenant.org_setup_complete:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "ORG_SETUP_REQUIRED",
+                "message": (
+                    "Organisation setup must be completed before accessing this "
+                    "feature."
+                ),
+                "current_step": current_tenant.org_setup_step,
+            },
+        )
+    return current_tenant
 
 
 def require_finance_leader(

@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -162,11 +162,23 @@ async def run_check_endpoint(
 @router.get("/{covenant_id}/history", response_model=Paginated[dict])
 async def history_endpoint(
     covenant_id: uuid.UUID,
-    limit: int = Query(default=20, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    effective_skip = offset if offset is not None else skip
+    definition = (
+        await session.execute(
+            select(CovenantDefinition).where(
+                CovenantDefinition.id == covenant_id,
+                CovenantDefinition.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if definition is None:
+        raise HTTPException(status_code=404, detail="Covenant not found")
     total = int(
         (
             await session.execute(
@@ -182,10 +194,17 @@ async def history_endpoint(
             .where(CovenantBreachEvent.covenant_id == covenant_id, CovenantBreachEvent.tenant_id == user.tenant_id)
             .order_by(desc(CovenantBreachEvent.computed_at), desc(CovenantBreachEvent.id))
             .limit(limit)
-            .offset(offset)
+            .offset(effective_skip)
         )
     ).scalars().all()
-    return Paginated[dict](data=[_serialize_event(row) for row in rows], total=total, limit=limit, offset=offset)
+    items = [_serialize_event(row) for row in rows]
+    return Paginated[dict](
+        items=items,
+        total=total,
+        limit=limit,
+        skip=effective_skip,
+        has_more=(effective_skip + len(items)) < total,
+    )
 
 
 __all__ = ["router"]

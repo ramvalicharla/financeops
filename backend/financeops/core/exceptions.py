@@ -127,6 +127,7 @@ def _error_response(
     error_code: str,
     message: str,
     field: str | None = None,
+    details: Any = None,
 ) -> JSONResponse:
     request_id = getattr(request.state, "request_id", None)
     return JSONResponse(
@@ -135,6 +136,7 @@ def _error_response(
             code=error_code,
             message=message,
             field=field,
+            details=details,
             request_id=request_id,
         ).model_dump(mode="json"),
     )
@@ -177,6 +179,8 @@ async def http_exception_handler(
 ) -> JSONResponse:
     detail = exc.detail
     field: str | None = None
+    details: Any = None
+    error_code = f"http_{exc.status_code}"
     message: str
 
     if isinstance(detail, list):
@@ -185,15 +189,27 @@ async def http_exception_handler(
             loc = detail[0].get("loc")
             if isinstance(loc, list) and loc:
                 field = ".".join(str(item) for item in loc if item != "body")
+    elif isinstance(detail, dict):
+        message = str(detail.get("message", "Request failed"))
+        if isinstance(detail.get("code"), str):
+            error_code = detail["code"]
+        if isinstance(detail.get("field"), str):
+            field = detail["field"]
+        details = {
+            key: value
+            for key, value in detail.items()
+            if key not in {"code", "message", "field"}
+        } or None
     else:
         message = str(detail)
 
     return _error_response(
         request,
         exc.status_code,
-        f"http_{exc.status_code}",
+        error_code,
         message,
         field=field,
+        details=details,
     )
 
 

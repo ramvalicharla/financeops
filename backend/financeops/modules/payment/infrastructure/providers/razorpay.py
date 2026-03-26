@@ -5,38 +5,7 @@ import hmac
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
-try:
-    import razorpay  # type: ignore[import-not-found]
-except ModuleNotFoundError:
-    class _RazorpayShim:
-        class errors:
-            class BadRequestError(Exception):
-                pass
-
-        class Client:
-            def __init__(self, auth: tuple[str, str]):
-                self.auth = auth
-
-                class _Resource:
-                    @staticmethod
-                    def create(data: dict[str, Any]):
-                        raise ModuleNotFoundError("razorpay package is not installed")
-
-                    @staticmethod
-                    def edit(resource_id: str, data: dict[str, Any]):
-                        raise ModuleNotFoundError("razorpay package is not installed")
-
-                    @staticmethod
-                    def cancel(resource_id: str, data: dict[str, Any] | None = None):
-                        raise ModuleNotFoundError("razorpay package is not installed")
-
-                self.customer = _Resource()
-                self.subscription = _Resource()
-                self.invoice = _Resource()
-                self.order = _Resource()
-                self.payment = _Resource()
-
-    razorpay = _RazorpayShim()  # type: ignore[assignment]
+import razorpay
 
 from financeops.config import settings
 from financeops.modules.payment.domain.enums import BillingCycle

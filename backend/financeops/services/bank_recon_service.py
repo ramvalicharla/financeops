@@ -188,9 +188,12 @@ async def list_bank_statements(
     period_year: int | None = None,
     period_month: int | None = None,
     entity_name: str | None = None,
-    limit: int = 50,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> list[BankStatement]:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(BankStatement).where(BankStatement.tenant_id == tenant_id)
     if period_year is not None:
         stmt = stmt.where(BankStatement.period_year == period_year)
@@ -198,7 +201,7 @@ async def list_bank_statements(
         stmt = stmt.where(BankStatement.period_month == period_month)
     if entity_name:
         stmt = stmt.where(BankStatement.entity_name == entity_name)
-    stmt = stmt.order_by(desc(BankStatement.created_at)).limit(limit).offset(offset)
+    stmt = stmt.order_by(desc(BankStatement.created_at)).limit(bounded_limit).offset(effective_skip)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 
@@ -207,15 +210,18 @@ async def list_bank_transactions(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     statement_id: uuid.UUID,
-    limit: int = 200,
-    offset: int = 0,
+    skip: int = 0,
+    limit: int = 100,
+    offset: int | None = None,
 ) -> list[BankTransaction]:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     result = await session.execute(
         select(BankTransaction)
         .where(BankTransaction.tenant_id == tenant_id, BankTransaction.statement_id == statement_id)
         .order_by(BankTransaction.transaction_date)
-        .limit(limit)
-        .offset(offset)
+        .limit(bounded_limit)
+        .offset(effective_skip)
     )
     return list(result.scalars().all())
 
@@ -225,15 +231,18 @@ async def list_bank_recon_items(
     tenant_id: uuid.UUID,
     statement_id: uuid.UUID | None = None,
     status: str | None = None,
+    skip: int = 0,
     limit: int = 100,
-    offset: int = 0,
+    offset: int | None = None,
 ) -> list[BankReconItem]:
+    effective_skip = offset if offset is not None else skip
+    bounded_limit = max(1, min(limit, 1000))
     stmt = select(BankReconItem).where(BankReconItem.tenant_id == tenant_id)
     if statement_id:
         stmt = stmt.where(BankReconItem.statement_id == statement_id)
     if status:
         stmt = stmt.where(BankReconItem.status == status)
-    stmt = stmt.order_by(desc(BankReconItem.created_at)).limit(limit).offset(offset)
+    stmt = stmt.order_by(desc(BankReconItem.created_at)).limit(bounded_limit).offset(effective_skip)
     result = await session.execute(stmt)
     return list(result.scalars().all())
 

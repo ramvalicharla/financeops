@@ -31,6 +31,7 @@ class ErrorDetail(BaseModel):
     code: str
     message: str
     field: str | None = None
+    details: Any | None = None
 
 
 class ApiResponse(BaseModel, Generic[T]):
@@ -56,12 +57,13 @@ def err(
     code: str,
     message: str,
     field: str | None = None,
+    details: Any | None = None,
     request_id: str | None = None,
 ) -> ApiResponse[None]:
     return ApiResponse(
         success=False,
         data=None,
-        error=ErrorDetail(code=code, message=message, field=field),
+        error=ErrorDetail(code=code, message=message, field=field, details=details),
         meta=Meta(
             request_id=request_id or str(uuid.uuid4()),
             timestamp=datetime.now(timezone.utc),

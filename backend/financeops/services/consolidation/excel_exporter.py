@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from io import BytesIO
 from typing import Any, Iterable
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
@@ -11,6 +12,7 @@ from financeops.services.consolidation.fx_impact_calculator import quantize_outp
 from financeops.utils.determinism import sha256_hex_bytes
 
 _FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+_FIXED_WORKBOOK_TIMESTAMP = datetime(1980, 1, 1)
 
 _SHEET_CONSOLIDATED = "Consolidated_PnL"
 _SHEET_ENTITY = "Entity_Breakdown"
@@ -98,6 +100,8 @@ def build_consolidation_excel(
     ic_row_by_pair_id = {str(row["pair_id"]): idx for idx, row in enumerate(ic_data, start=2)}
 
     workbook = Workbook()
+    workbook.properties.created = _FIXED_WORKBOOK_TIMESTAMP
+    workbook.properties.modified = _FIXED_WORKBOOK_TIMESTAMP
 
     sheet_consolidated = workbook.active
     sheet_consolidated.title = _SHEET_CONSOLIDATED
