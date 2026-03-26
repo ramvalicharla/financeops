@@ -473,6 +473,21 @@ from financeops.modules.org_setup.models import (  # noqa: F401
     OrgOwnership,
     OrgSetupProgress,
 )
+from financeops.modules.fixed_assets.models import (  # noqa: F401
+    FaAsset,
+    FaAssetClass,
+    FaDepreciationRun,
+    FaImpairment,
+    FaRevaluation,
+)
+from financeops.modules.prepaid_expenses.models import (  # noqa: F401
+    PrepaidAmortisationEntry,
+    PrepaidSchedule,
+)
+from financeops.modules.invoice_classifier.models import (  # noqa: F401
+    ClassificationRule,
+    InvoiceClassification,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken  # noqa: F401
 

@@ -25,6 +25,7 @@ from financeops.modules.org_setup.models import (
     OrgOwnership,
     OrgSetupProgress,
 )
+from financeops.modules.fixed_assets.application.seeds import seed_standard_indian_asset_classes
 from financeops.platform.db.models.entities import CpEntity
 from financeops.platform.db.models.organisations import CpOrganisation
 from financeops.services.audit_writer import AuditWriter
@@ -474,6 +475,12 @@ class OrgSetupService:
             entity.industry_template_id = template_id
 
             await self._tenant_coa.initialise_tenant_coa(tenant_id, template_id)
+            if entity.cp_entity_id is not None:
+                await seed_standard_indian_asset_classes(
+                    self._session,
+                    tenant_id=tenant_id,
+                    entity_id=entity.cp_entity_id,
+                )
             account_count = int(
                 (
                     await self._session.execute(

@@ -64,6 +64,9 @@ from financeops.modules.auditor_portal.api.routes import router as audit_router
 from financeops.modules.coa.api.routes import router as coa_router
 from financeops.modules.coa.seeds.runner import run_coa_seeds
 from financeops.modules.org_setup.api.routes import router as org_setup_router
+from financeops.modules.fixed_assets.api.routes import router as fa_router
+from financeops.modules.prepaid_expenses.api.routes import router as prepaid_router
+from financeops.modules.invoice_classifier.api.routes import router as classifier_router
 from financeops.api.v1.ai_stream import router as ai_stream_router
 from financeops.api.v1.admin_ai_providers import router as admin_ai_providers_router
 from financeops.api.deps import require_org_setup
@@ -291,6 +294,9 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix="/api/v1")
     app.include_router(coa_router, prefix="/api/v1", tags=["chart-of-accounts"])
     app.include_router(org_setup_router, prefix="/api/v1", tags=["org-setup"])
+    app.include_router(fa_router, prefix="/api/v1", tags=["fixed-assets"], dependencies=org_setup_dependency)
+    app.include_router(prepaid_router, prefix="/api/v1", tags=["prepaid"], dependencies=org_setup_dependency)
+    app.include_router(classifier_router, prefix="/api/v1", tags=["invoice-classifier"], dependencies=org_setup_dependency)
     app.include_router(ai_stream_router, prefix="/api/v1", dependencies=org_setup_dependency)
     app.include_router(admin_ai_providers_router, prefix="/api/v1", dependencies=org_setup_dependency)
 
