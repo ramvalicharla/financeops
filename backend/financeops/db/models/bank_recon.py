@@ -19,6 +19,7 @@ class BankStatement(FinancialBase):
     __tablename__ = "bank_statements"
     __table_args__ = (
         Index("idx_bank_stmts_tenant_period", "tenant_id", "period_year", "period_month"),
+        Index("idx_bank_stmts_entity_id", "tenant_id", "entity_id"),
         Index("idx_bank_stmts_entity", "tenant_id", "entity_name"),
     )
 
@@ -27,7 +28,22 @@ class BankStatement(FinancialBase):
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id"),
+        nullable=False,
+    )
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_locations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cost_centre_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_cost_centres.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     opening_balance: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     closing_balance: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     transaction_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -45,11 +61,17 @@ class BankTransaction(FinancialBase):
     __tablename__ = "bank_transactions"
     __table_args__ = (
         Index("idx_bank_txns_statement", "tenant_id", "statement_id"),
+        Index("idx_bank_txns_entity_id", "tenant_id", "entity_id"),
         Index("idx_bank_txns_match", "tenant_id", "match_status"),
     )
 
     statement_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("bank_statements.id"), nullable=False
+    )
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id"),
+        nullable=False,
     )
     transaction_date: Mapped[date] = mapped_column(Date, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -69,6 +91,7 @@ class BankReconItem(FinancialBase):
     __tablename__ = "bank_recon_items"
     __table_args__ = (
         Index("idx_bank_recon_tenant_period", "tenant_id", "period_year", "period_month"),
+        Index("idx_bank_recon_entity_id", "tenant_id", "entity_id"),
         Index("idx_bank_recon_status", "tenant_id", "status"),
     )
 
@@ -77,6 +100,11 @@ class BankReconItem(FinancialBase):
     )
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id"),
+        nullable=False,
+    )
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
     # item_type: bank_only / gl_only / reconciled / timing_difference
     item_type: Mapped[str] = mapped_column(String(50), nullable=False)

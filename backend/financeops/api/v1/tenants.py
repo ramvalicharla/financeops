@@ -37,6 +37,7 @@ from financeops.utils.display_scale import (
     SCALE_FULL_LABELS,
     get_effective_scale,
 )
+from financeops.utils.gstin import extract_state_code, validate_gstin, validate_pan
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -45,6 +46,9 @@ router = APIRouter()
 class UpdateTenantRequest(BaseModel):
     display_name: str | None = None
     timezone: str | None = None
+    pan: str | None = None
+    gstin: str | None = None
+    state_code: str | None = None
 
 
 class InviteUserRequest(BaseModel):
@@ -76,6 +80,9 @@ async def get_my_tenant(
         "tenant_type": tenant.tenant_type.value,
         "country": tenant.country,
         "timezone": tenant.timezone,
+        "pan": tenant.pan,
+        "gstin": tenant.gstin,
+        "state_code": tenant.state_code,
         "status": tenant.status.value,
         "org_setup_complete": tenant.org_setup_complete,
         "org_setup_step": tenant.org_setup_step,
@@ -97,6 +104,17 @@ async def update_my_tenant(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    if body.pan is not None and body.pan.strip() and not validate_pan(body.pan):
+        raise HTTPException(status_code=422, detail="Invalid PAN")
+    gstin_value: str | None = None
+    state_code_value = body.state_code
+    if body.gstin is not None:
+        gstin_value = body.gstin.strip().upper()
+        if gstin_value and not validate_gstin(gstin_value):
+            raise HTTPException(status_code=422, detail="Invalid GSTIN")
+        if gstin_value:
+            state_code_value = extract_state_code(gstin_value)
+
     tenant = await get_tenant(session, user.tenant_id)
     await update_tenant_settings(
         session,
@@ -104,6 +122,9 @@ async def update_my_tenant(
         actor_user_id=user.id,
         display_name=body.display_name,
         timezone_str=body.timezone,
+        pan=(body.pan.strip().upper() if body.pan else None),
+        gstin=gstin_value,
+        state_code=state_code_value,
     )
     await session.flush()
     return {"tenant_id": str(tenant.id), "updated": True}

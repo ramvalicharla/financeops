@@ -33,6 +33,8 @@ class PrepaidSchedule(Base):
         ),
         Index("idx_prepaid_schedules_tenant_id", "tenant_id"),
         Index("idx_prepaid_schedules_entity_id", "entity_id"),
+        Index("idx_prepaid_schedules_location_id", "location_id"),
+        Index("idx_prepaid_schedules_cost_centre_id", "cost_centre_id"),
         Index("idx_prepaid_schedules_reference_number", "reference_number"),
         Index("idx_prepaid_schedules_status", "status"),
     )
@@ -52,6 +54,16 @@ class PrepaidSchedule(Base):
         UUID(as_uuid=True),
         ForeignKey("cp_entities.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_locations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cost_centre_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_cost_centres.id", ondelete="SET NULL"),
+        nullable=True,
     )
     reference_number: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(String(300), nullable=False)

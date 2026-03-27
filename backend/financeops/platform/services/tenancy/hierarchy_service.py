@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from financeops.platform.db.models.user_membership import (
     CpUserOrganisationAssignment,
 )
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from financeops.utils.gstin import extract_state_code, validate_gstin, validate_pan, validate_tan
 
 
 def _now() -> datetime:
@@ -104,6 +106,18 @@ async def create_entity(
     group_id: uuid.UUID | None,
     base_currency: str,
     country_code: str,
+    pan: str | None = None,
+    tan: str | None = None,
+    cin: str | None = None,
+    gstin: str | None = None,
+    lei: str | None = None,
+    fiscal_year_start: int | None = 4,
+    applicable_gaap: str | None = None,
+    tax_rate: Decimal | None = None,
+    state_code: str | None = None,
+    registered_address: str | None = None,
+    city: str | None = None,
+    pincode: str | None = None,
     actor_user_id: uuid.UUID,
     correlation_id: str,
 ) -> CpEntity:
@@ -129,6 +143,17 @@ async def create_entity(
         if parent_org != organisation_id:
             raise ValidationError("Group must belong to the same organisation")
 
+    if pan and not validate_pan(pan):
+        raise ValidationError("Invalid PAN")
+    if tan and not validate_tan(tan):
+        raise ValidationError("Invalid TAN")
+    if gstin:
+        gstin_value = str(gstin).upper()
+        if not validate_gstin(gstin_value):
+            raise ValidationError("Invalid GSTIN")
+        gstin = gstin_value
+        state_code = extract_state_code(gstin_value)
+
     return await AuditWriter.insert_financial_record(
         session,
         model_class=CpEntity,
@@ -141,6 +166,18 @@ async def create_entity(
             "group_id": group_id,
             "base_currency": base_currency.upper(),
             "country_code": country_code.upper(),
+            "pan": str(pan).upper() if pan else None,
+            "tan": str(tan).upper() if tan else None,
+            "cin": cin,
+            "gstin": gstin,
+            "lei": lei,
+            "fiscal_year_start": fiscal_year_start,
+            "applicable_gaap": str(applicable_gaap).upper() if applicable_gaap else None,
+            "tax_rate": tax_rate,
+            "state_code": state_code,
+            "registered_address": registered_address,
+            "city": city,
+            "pincode": pincode,
             "status": "active",
             "deactivated_at": None,
             "correlation_id": correlation_id,

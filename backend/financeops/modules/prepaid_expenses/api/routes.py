@@ -27,6 +27,8 @@ async def get_schedules(
     entity_id: uuid.UUID,
     status: str | None = Query(default=None),
     prepaid_type: str | None = Query(default=None),
+    location_id: uuid.UUID | None = Query(default=None),
+    cost_centre_id: uuid.UUID | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
     session: AsyncSession = Depends(get_async_session),
@@ -41,6 +43,8 @@ async def get_schedules(
         limit=limit,
         status=status,
         prepaid_type=prepaid_type,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
     )
     return Paginated[PrepaidScheduleResponse](
         items=[PrepaidScheduleResponse.model_validate(item, from_attributes=True) for item in payload["items"]],

@@ -108,8 +108,9 @@ class ChecklistRun(Base):
             "status IN ('open','in_progress','completed','locked')",
             name="ck_checklist_runs_status",
         ),
-        UniqueConstraint("tenant_id", "period", name="uq_checklist_runs_tenant_period"),
+        UniqueConstraint("tenant_id", "entity_id", "period", name="uq_checklist_runs_tenant_entity_period"),
         Index("idx_checklist_runs_tenant_period", "tenant_id", "period"),
+        Index("idx_checklist_runs_entity", "tenant_id", "entity_id"),
         {"extend_existing": True},
     )
 
@@ -120,6 +121,11 @@ class ChecklistRun(Base):
         server_default=text("gen_random_uuid()"),
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     template_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("checklist_templates.id", ondelete="RESTRICT"),
@@ -156,6 +162,7 @@ class ChecklistRunTask(Base):
             name="ck_checklist_run_tasks_status",
         ),
         Index("idx_checklist_run_tasks_run_status", "run_id", "status"),
+        Index("idx_checklist_run_tasks_entity", "tenant_id", "entity_id"),
         {"extend_existing": True},
     )
 
@@ -176,6 +183,11 @@ class ChecklistRunTask(Base):
         nullable=False,
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     task_name: Mapped[str] = mapped_column(String(300), nullable=False)
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

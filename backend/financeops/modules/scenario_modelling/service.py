@@ -16,6 +16,7 @@ from financeops.modules.scenario_modelling.models import (
     ScenarioResult,
     ScenarioSet,
 )
+from financeops.platform.db.models.entities import CpEntity
 
 
 def _q2(value: Decimal) -> Decimal:
@@ -50,32 +51,83 @@ def _shift_period(period: str, delta_months: int) -> str:
     return f"{out_year:04d}-{out_month:02d}"
 
 
-async def _load_scenario_set(session: AsyncSession, *, tenant_id: uuid.UUID, scenario_set_id: uuid.UUID) -> ScenarioSet:
-    row = (
-        await session.execute(
-            select(ScenarioSet).where(
-                ScenarioSet.id == scenario_set_id,
-                ScenarioSet.tenant_id == tenant_id,
-            )
-        )
-    ).scalar_one_or_none()
+async def _load_scenario_set(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    scenario_set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+) -> ScenarioSet:
+    stmt = select(ScenarioSet).where(
+        ScenarioSet.id == scenario_set_id,
+        ScenarioSet.tenant_id == tenant_id,
+    )
+    if entity_id is not None:
+        stmt = stmt.where(ScenarioSet.entity_id == entity_id)
+    row = (await session.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise NotFoundError("Scenario set not found")
     return row
 
 
-async def _load_definition(session: AsyncSession, *, tenant_id: uuid.UUID, definition_id: uuid.UUID) -> ScenarioDefinition:
-    row = (
-        await session.execute(
-            select(ScenarioDefinition).where(
-                ScenarioDefinition.id == definition_id,
-                ScenarioDefinition.tenant_id == tenant_id,
-            )
-        )
-    ).scalar_one_or_none()
+async def _load_definition(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    definition_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+) -> ScenarioDefinition:
+    stmt = select(ScenarioDefinition).where(
+        ScenarioDefinition.id == definition_id,
+        ScenarioDefinition.tenant_id == tenant_id,
+    )
+    if entity_id is not None:
+        stmt = stmt.where(ScenarioDefinition.entity_id == entity_id)
+    row = (await session.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise NotFoundError("Scenario definition not found")
     return row
+
+
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        exists = (
+            await session.execute(
+                select(CpEntity.id).where(
+                    CpEntity.id == entity_id,
+                    CpEntity.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise ValidationError("Entity not found")
+        return entity_id
+
+    default_entity_id = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if default_entity_id is None:
+        default_entity_id = (
+            await session.execute(
+                select(CpEntity.id)
+                .where(CpEntity.status == "active")
+                .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+            )
+        ).scalars().first()
+    if default_entity_id is None:
+        raise ValidationError("No active entity found for tenant")
+    return default_entity_id
 
 
 async def _base_assumptions(session: AsyncSession, scenario_set: ScenarioSet) -> dict[str, Decimal]:
@@ -112,13 +164,16 @@ async def create_scenario_set(
     horizon_months: int,
     created_by: uuid.UUID,
     base_forecast_run_id: uuid.UUID | None = None,
+    entity_id: uuid.UUID | None = None,
 ) -> ScenarioSet:
     """
     Create a scenario set with base/optimistic/pessimistic defaults.
     """
     _period_parts(base_period)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     scenario_set = ScenarioSet(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         name=name,
         base_period=base_period,
         horizon_months=horizon_months,
@@ -162,6 +217,7 @@ async def create_scenario_set(
             ScenarioDefinition(
                 scenario_set_id=scenario_set.id,
                 tenant_id=tenant_id,
+                entity_id=resolved_entity_id,
                 scenario_name=item["scenario_name"],
                 scenario_label=item["scenario_label"],
                 is_base_case=item["is_base_case"],
@@ -178,6 +234,7 @@ async def update_scenario_drivers(
     tenant_id: uuid.UUID,
     scenario_definition_id: uuid.UUID,
     driver_overrides: dict[str, str],
+    entity_id: uuid.UUID | None = None,
 ) -> ScenarioDefinition:
     """
     Update driver overrides after validating Decimal-string values.
@@ -186,6 +243,7 @@ async def update_scenario_drivers(
         session,
         tenant_id=tenant_id,
         definition_id=scenario_definition_id,
+        entity_id=entity_id,
     )
     validated: dict[str, str] = {}
     for key, value in driver_overrides.items():
@@ -204,6 +262,7 @@ async def compute_scenario(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     scenario_definition_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> ScenarioResult:
     """
     Compute one scenario and persist append-only result + line items.
@@ -212,11 +271,14 @@ async def compute_scenario(
         session,
         tenant_id=tenant_id,
         definition_id=scenario_definition_id,
+        entity_id=entity_id,
     )
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id or definition.entity_id)
     scenario_set = await _load_scenario_set(
         session,
         tenant_id=tenant_id,
         scenario_set_id=definition.scenario_set_id,
+        entity_id=resolved_entity_id,
     )
     assumptions = await _base_assumptions(session, scenario_set)
     for key, value in (definition.driver_overrides or {}).items():
@@ -230,6 +292,7 @@ async def compute_scenario(
         scenario_set_id=scenario_set.id,
         scenario_definition_id=definition.id,
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
     )
     session.add(result)
     await session.flush()
@@ -258,6 +321,7 @@ async def compute_scenario(
                     scenario_result_id=result.id,
                     scenario_set_id=scenario_set.id,
                     tenant_id=tenant_id,
+                    entity_id=resolved_entity_id,
                     period=period,
                     mis_line_item=line_item,
                     mis_category=category,
@@ -274,15 +338,18 @@ async def compute_all_scenarios(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     scenario_set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> list[ScenarioResult]:
     """
     Compute all scenarios in a set.
     """
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     definitions = (
         await session.execute(
             select(ScenarioDefinition)
             .where(
                 ScenarioDefinition.tenant_id == tenant_id,
+                ScenarioDefinition.entity_id == resolved_entity_id,
                 ScenarioDefinition.scenario_set_id == scenario_set_id,
             )
             .order_by(ScenarioDefinition.created_at.asc(), ScenarioDefinition.id.asc())
@@ -290,7 +357,14 @@ async def compute_all_scenarios(
     ).scalars().all()
     results: list[ScenarioResult] = []
     for definition in definitions:
-        results.append(await compute_scenario(session, tenant_id, definition.id))
+        results.append(
+            await compute_scenario(
+                session,
+                tenant_id,
+                definition.id,
+                entity_id=resolved_entity_id,
+            )
+        )
     return results
 
 
@@ -298,20 +372,24 @@ async def get_scenario_comparison(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     scenario_set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> dict:
     """
     Return side-by-side comparison for latest result of each scenario.
     """
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     scenario_set = await _load_scenario_set(
         session,
         tenant_id=tenant_id,
         scenario_set_id=scenario_set_id,
+        entity_id=resolved_entity_id,
     )
     definitions = (
         await session.execute(
             select(ScenarioDefinition)
             .where(
                 ScenarioDefinition.tenant_id == tenant_id,
+                ScenarioDefinition.entity_id == resolved_entity_id,
                 ScenarioDefinition.scenario_set_id == scenario_set_id,
             )
             .order_by(ScenarioDefinition.created_at.asc(), ScenarioDefinition.id.asc())
@@ -329,6 +407,7 @@ async def get_scenario_comparison(
                 select(ScenarioResult)
                 .where(
                     ScenarioResult.tenant_id == tenant_id,
+                    ScenarioResult.entity_id == resolved_entity_id,
                     ScenarioResult.scenario_definition_id == definition.id,
                 )
                 .order_by(desc(ScenarioResult.computed_at), desc(ScenarioResult.id))
@@ -341,6 +420,7 @@ async def get_scenario_comparison(
             await session.execute(
                 select(ScenarioLineItem).where(
                     ScenarioLineItem.tenant_id == tenant_id,
+                    ScenarioLineItem.entity_id == resolved_entity_id,
                     ScenarioLineItem.scenario_result_id == latest_result.id,
                 )
             )
@@ -415,4 +495,3 @@ __all__ = [
     "compute_all_scenarios",
     "get_scenario_comparison",
 ]
-

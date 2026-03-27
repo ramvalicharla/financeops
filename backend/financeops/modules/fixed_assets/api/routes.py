@@ -127,6 +127,8 @@ async def run_period_depreciation(
 async def get_assets(
     entity_id: uuid.UUID,
     status: str | None = Query(default=None),
+    location_id: uuid.UUID | None = Query(default=None),
+    cost_centre_id: uuid.UUID | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
     session: AsyncSession = Depends(get_async_session),
@@ -134,7 +136,15 @@ async def get_assets(
 ) -> Paginated[FaAssetResponse]:
     await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
     service = FixedAssetService(session)
-    payload = await service.get_assets(user.tenant_id, entity_id, skip, limit, status=status)
+    payload = await service.get_assets(
+        user.tenant_id,
+        entity_id,
+        skip,
+        limit,
+        status=status,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
+    )
     return Paginated[FaAssetResponse](
         items=[FaAssetResponse.model_validate(item, from_attributes=True) for item in payload["items"]],
         total=payload["total"],

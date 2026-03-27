@@ -92,6 +92,9 @@ class IamTenant(FinancialBase):
         server_default=text("0"),
         default=0,
     )
+    pan: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    state_code: Mapped[str | None] = mapped_column(String(5), nullable=True)
 
     # Relationships
     workspaces: Mapped[list["IamWorkspace"]] = relationship(

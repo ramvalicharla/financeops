@@ -17,6 +17,9 @@ from financeops.api.deps import (
 )
 from financeops.db.models.bank_recon import BankReconItem, BankStatement, BankTransaction
 from financeops.db.models.users import IamUser
+from financeops.platform.db.models.entities import CpEntity
+from financeops.platform.services.context_resolver import resolve_entity_id
+from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.modules.bank_reconciliation.parsers.factory import (
     detect_bank_from_content,
     get_parser,
@@ -41,7 +44,10 @@ class CreateStatementRequest(BaseModel):
     currency: str
     period_year: int
     period_month: int
-    entity_name: str
+    entity_id: UUID | None = None
+    entity_name: str | None = None
+    location_id: UUID | None = None
+    cost_centre_id: UUID | None = None
     opening_balance: Decimal
     closing_balance: Decimal
     file_name: str
@@ -51,6 +57,7 @@ class CreateStatementRequest(BaseModel):
 
 class AddTransactionRequest(BaseModel):
     statement_id: UUID
+    entity_id: UUID | None = None
     transaction_date: date
     description: str
     debit_amount: Decimal
@@ -62,6 +69,7 @@ class AddTransactionRequest(BaseModel):
 @router.post("/upload-statement")
 async def upload_bank_statement(
     bank_name: str,
+    entity_id: UUID,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -84,9 +92,23 @@ async def upload_bank_statement(
             detail="No transactions found in statement. Check bank format and file encoding.",
         )
 
+    await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
+    entity = (
+        await session.execute(
+            select(CpEntity).where(
+                CpEntity.id == entity_id,
+                CpEntity.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if entity is None:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
     stored = await store_bank_transactions(
         session,
         tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        entity_name=entity.entity_name,
         bank_name=bank_name,
         transactions=transactions,
         uploaded_by=user.id,
@@ -110,6 +132,18 @@ async def create_statement(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
+    resolved_entity_id = await resolve_entity_id(user.tenant_id, body.entity_id, session)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    entity = (
+        await session.execute(
+            select(CpEntity).where(
+                CpEntity.id == resolved_entity_id,
+                CpEntity.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if entity is None:
+        raise HTTPException(status_code=404, detail="Entity not found")
     stmt = await create_bank_statement(
         session,
         tenant_id=user.tenant_id,
@@ -118,18 +152,22 @@ async def create_statement(
         currency=body.currency,
         period_year=body.period_year,
         period_month=body.period_month,
-        entity_name=body.entity_name,
+        entity_id=resolved_entity_id,
+        entity_name=body.entity_name or entity.entity_name,
         opening_balance=body.opening_balance,
         closing_balance=body.closing_balance,
         file_name=body.file_name,
         file_hash=body.file_hash,
         uploaded_by=user.id,
         transaction_count=body.transaction_count,
+        location_id=body.location_id,
+        cost_centre_id=body.cost_centre_id,
     )
     await session.flush()
     return {
         "statement_id": str(stmt.id),
         "bank_name": stmt.bank_name,
+        "entity_id": str(stmt.entity_id),
         "entity_name": stmt.entity_name,
         "period": f"{stmt.period_year}-{stmt.period_month:02d}",
         "closing_balance": str(stmt.closing_balance),
@@ -142,6 +180,7 @@ async def create_statement(
 async def list_statements(
     period_year: int | None = None,
     period_month: int | None = None,
+    entity_id: UUID | None = None,
     entity_name: str | None = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
@@ -149,12 +188,15 @@ async def list_statements(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    if entity_id is not None:
+        await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
     effective_skip = offset if offset is not None else skip
     stmts = await list_bank_statements(
         session,
         tenant_id=user.tenant_id,
         period_year=period_year,
         period_month=period_month,
+        entity_id=entity_id,
         entity_name=entity_name,
         limit=limit,
         offset=effective_skip,
@@ -164,6 +206,8 @@ async def list_statements(
         count_stmt = count_stmt.where(BankStatement.period_year == period_year)
     if period_month is not None:
         count_stmt = count_stmt.where(BankStatement.period_month == period_month)
+    if entity_id is not None:
+        count_stmt = count_stmt.where(BankStatement.entity_id == entity_id)
     if entity_name:
         count_stmt = count_stmt.where(BankStatement.entity_name == entity_name)
     total = int((await session.execute(count_stmt)).scalar_one())
@@ -171,6 +215,7 @@ async def list_statements(
         {
             "statement_id": str(s.id),
             "bank_name": s.bank_name,
+            "entity_id": str(s.entity_id),
             "entity_name": s.entity_name,
             "period": f"{s.period_year}-{s.period_month:02d}",
             "closing_balance": str(s.closing_balance),
@@ -198,10 +243,24 @@ async def add_transaction(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
+    statement = (
+        await session.execute(
+            select(BankStatement).where(
+                BankStatement.id == body.statement_id,
+                BankStatement.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if statement is None:
+        raise HTTPException(status_code=404, detail="Bank statement not found")
+
+    resolved_entity_id = body.entity_id or statement.entity_id
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     txn = await add_bank_transaction(
         session,
         tenant_id=user.tenant_id,
         statement_id=body.statement_id,
+        entity_id=resolved_entity_id,
         transaction_date=body.transaction_date,
         description=body.description,
         debit_amount=body.debit_amount,
@@ -240,10 +299,12 @@ async def list_transactions(
     ).scalar_one_or_none()
     if statement is None:
         raise HTTPException(status_code=404, detail="Bank statement not found")
+    await assert_entity_access(session, user.tenant_id, statement.entity_id, user.id, user.role)
     txns = await list_bank_transactions(
         session,
         tenant_id=user.tenant_id,
         statement_id=statement_id,
+        entity_id=statement.entity_id,
         limit=limit,
         offset=effective_skip,
     )
@@ -255,6 +316,7 @@ async def list_transactions(
                 .where(
                     BankTransaction.tenant_id == user.tenant_id,
                     BankTransaction.statement_id == statement_id,
+                    BankTransaction.entity_id == statement.entity_id,
                 )
             )
         ).scalar_one()
@@ -289,6 +351,17 @@ async def run_bank_recon(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
+    statement = (
+        await session.execute(
+            select(BankStatement).where(
+                BankStatement.id == statement_id,
+                BankStatement.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if statement is None:
+        raise HTTPException(status_code=404, detail="Bank statement not found")
+    await assert_entity_access(session, user.tenant_id, statement.entity_id, user.id, user.role)
     items = await run_bank_reconciliation(
         session,
         tenant_id=user.tenant_id,
@@ -313,6 +386,7 @@ async def run_bank_recon(
 
 @router.get("/items")
 async def list_recon_items(
+    entity_id: UUID | None = None,
     statement_id: UUID | None = None,
     item_status: str | None = None,
     skip: int = Query(default=0, ge=0),
@@ -321,16 +395,21 @@ async def list_recon_items(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    if entity_id is not None:
+        await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
     effective_skip = offset if offset is not None else skip
     items = await list_bank_recon_items(
         session,
         tenant_id=user.tenant_id,
+        entity_id=entity_id,
         statement_id=statement_id,
         status=item_status,
         limit=limit,
         offset=effective_skip,
     )
     count_stmt = select(func.count()).select_from(BankReconItem).where(BankReconItem.tenant_id == user.tenant_id)
+    if entity_id is not None:
+        count_stmt = count_stmt.where(BankReconItem.entity_id == entity_id)
     if statement_id is not None:
         count_stmt = count_stmt.where(BankReconItem.statement_id == statement_id)
     if item_status:
@@ -342,6 +421,7 @@ async def list_recon_items(
             "item_type": i.item_type,
             "amount": str(i.amount),
             "status": i.status,
+            "entity_id": str(i.entity_id),
             "entity_name": i.entity_name,
             "period": f"{i.period_year}-{i.period_month:02d}",
         }

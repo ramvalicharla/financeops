@@ -86,6 +86,8 @@ class FaAsset(Base):
         UniqueConstraint("tenant_id", "entity_id", "asset_code", name="uq_fa_assets_tenant_entity_code"),
         Index("idx_fa_assets_tenant_id", "tenant_id"),
         Index("idx_fa_assets_entity_id", "entity_id"),
+        Index("idx_fa_assets_location_id", "location_id"),
+        Index("idx_fa_assets_cost_centre_id", "cost_centre_id"),
         Index("idx_fa_assets_asset_class_id", "asset_class_id"),
         Index("idx_fa_assets_status", "status"),
         Index("idx_fa_assets_asset_code", "asset_code"),
@@ -106,6 +108,16 @@ class FaAsset(Base):
         UUID(as_uuid=True),
         ForeignKey("cp_entities.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_locations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cost_centre_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_cost_centres.id", ondelete="SET NULL"),
+        nullable=True,
     )
     asset_class_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

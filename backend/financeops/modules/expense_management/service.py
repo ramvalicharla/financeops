@@ -12,6 +12,7 @@ from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.expense_management.models import ExpenseApproval, ExpenseClaim, ExpensePolicy
 from financeops.modules.expense_management.policy_engine import ExpensePolicyEngine
+from financeops.platform.db.models.entities import CpEntity
 
 
 class PolicyViolationError(ValidationError):
@@ -68,6 +69,39 @@ async def _load_claim(session: AsyncSession, tenant_id: uuid.UUID, claim_id: uui
     if row is None:
         raise NotFoundError("Expense claim not found")
     return row
+
+
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        exists = (
+            await session.execute(
+                select(CpEntity.id).where(
+                    CpEntity.id == entity_id,
+                    CpEntity.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise ValidationError("Entity not found")
+        return entity_id
+
+    default_entity_id = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if default_entity_id is None:
+        raise ValidationError("No active entity found for tenant")
+    return default_entity_id
 
 
 async def resolve_claim_status(
@@ -131,6 +165,9 @@ async def submit_claim(
     has_receipt: bool,
     receipt_url: str | None = None,
     justification: str | None = None,
+    location_id: uuid.UUID | None = None,
+    cost_centre_id: uuid.UUID | None = None,
+    entity_id: uuid.UUID | None = None,
 ) -> ExpenseClaim:
     """
     1. Load tenant expense_policy.
@@ -165,9 +202,13 @@ async def submit_claim(
 
     auto_approve = bool(check.passed and amount_decimal < Decimal(str(policy.auto_approve_below)))
     now = datetime.now(UTC)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
 
     claim = ExpenseClaim(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
         submitted_by=submitted_by,
         period=claim_date.strftime("%Y-%m"),
         claim_date=claim_date,
@@ -235,6 +276,7 @@ async def get_expense_analytics(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     period: str,
+    entity_id: uuid.UUID | None = None,
 ) -> dict:
     """
     Returns for the period:
@@ -245,10 +287,12 @@ async def get_expense_analytics(
     - itc_recovered: Decimal (sum of gst_amount where itc_eligible)
     All Decimal. Never float.
     """
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     claims = (
         await session.execute(
             select(ExpenseClaim).where(
                 ExpenseClaim.tenant_id == tenant_id,
+                ExpenseClaim.entity_id == resolved_entity_id,
                 ExpenseClaim.period == period,
             )
         )

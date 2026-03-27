@@ -13,7 +13,10 @@ from financeops.db.base import Base
 
 class ScenarioSet(Base):
     __tablename__ = "scenario_sets"
-    __table_args__ = ({"extend_existing": True},)
+    __table_args__ = (
+        Index("idx_scenario_sets_tenant_entity", "tenant_id", "entity_id"),
+        {"extend_existing": True},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -22,6 +25,11 @@ class ScenarioSet(Base):
         server_default=text("gen_random_uuid()"),
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     base_period: Mapped[str] = mapped_column(String(7), nullable=False)
     horizon_months: Mapped[int] = mapped_column(
@@ -50,6 +58,7 @@ class ScenarioDefinition(Base):
             "scenario_name IN ('base','optimistic','pessimistic','custom')",
             name="ck_scenario_definitions_name",
         ),
+        Index("idx_scenario_definitions_tenant_entity", "tenant_id", "entity_id"),
         {"extend_existing": True},
     )
 
@@ -65,6 +74,11 @@ class ScenarioDefinition(Base):
         nullable=False,
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     scenario_name: Mapped[str] = mapped_column(String(100), nullable=False)
     scenario_label: Mapped[str] = mapped_column(String(200), nullable=False)
     is_base_case: Mapped[bool] = mapped_column(
@@ -99,7 +113,10 @@ class ScenarioDefinition(Base):
 
 class ScenarioResult(Base):
     __tablename__ = "scenario_results"
-    __table_args__ = ({"extend_existing": True},)
+    __table_args__ = (
+        Index("idx_scenario_results_tenant_entity", "tenant_id", "entity_id"),
+        {"extend_existing": True},
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -118,6 +135,11 @@ class ScenarioResult(Base):
         nullable=False,
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     computed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -129,6 +151,7 @@ class ScenarioLineItem(Base):
     __tablename__ = "scenario_line_items"
     __table_args__ = (
         Index("idx_scenario_line_items_result_period_line", "scenario_result_id", "period", "mis_line_item"),
+        Index("idx_scenario_line_items_tenant_entity", "tenant_id", "entity_id"),
         {"extend_existing": True},
     )
 
@@ -149,6 +172,11 @@ class ScenarioLineItem(Base):
         nullable=False,
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     period: Mapped[str] = mapped_column(String(7), nullable=False)
     mis_line_item: Mapped[str] = mapped_column(String(300), nullable=False)
     mis_category: Mapped[str] = mapped_column(String(100), nullable=False)

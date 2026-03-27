@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text, event, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -15,11 +15,17 @@ class DirectorSignoff(Base):
     __table_args__ = (
         Index("idx_director_signoffs_tenant_doc_period", "tenant_id", "document_type", "period"),
         Index("idx_director_signoffs_tenant_signatory", "tenant_id", "signatory_user_id"),
+        Index("idx_director_signoffs_tenant_entity", "tenant_id", "entity_id"),
         {"extend_existing": True},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text("gen_random_uuid()"))
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
     document_type: Mapped[str] = mapped_column(String(50), nullable=False)
     document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     document_reference: Mapped[str] = mapped_column(String(300), nullable=False)
@@ -38,6 +44,27 @@ class DirectorSignoff(Base):
     signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revocation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+
+
+@event.listens_for(DirectorSignoff, "before_insert")
+def _default_entity_id_for_signoff(_, connection, target: DirectorSignoff) -> None:
+    if target.entity_id is not None:
+        return
+    row = connection.execute(
+        text(
+            """
+            SELECT id
+            FROM cp_entities
+            WHERE tenant_id = :tenant_id
+              AND status = 'active'
+            ORDER BY created_at ASC NULLS LAST, id ASC
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": target.tenant_id},
+    ).scalar_one_or_none()
+    if row is not None:
+        target.entity_id = row
 
 
 __all__ = ["DirectorSignoff"]

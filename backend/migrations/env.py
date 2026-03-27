@@ -35,6 +35,7 @@ from financeops.modules.org_setup import models as org_setup_models  # noqa: F40
 from financeops.modules.fixed_assets import models as fixed_assets_models  # noqa: F401
 from financeops.modules.prepaid_expenses import models as prepaid_expenses_models  # noqa: F401
 from financeops.modules.invoice_classifier import models as invoice_classifier_models  # noqa: F401
+from financeops.modules.locations import models as locations_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
@@ -99,6 +100,8 @@ def include_object(object_, name, type_, reflected, compare_to):
             "prepaid_amortisation_entries",
             "invoice_classifications",
             "classification_rules",
+            "cp_locations",
+            "cp_cost_centres",
         }
         return table_name in tracked_index_tables
     return True

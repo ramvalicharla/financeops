@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
 from financeops.modules.auditor_portal.models import AuditorPortalAccess, AuditorRequest
+from financeops.platform.db.models.entities import CpEntity
 
 _PBC_TEMPLATE = [
     ("financial_statements", "Trial Balance as at year end"),
@@ -32,6 +33,37 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    resolved = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if resolved is not None:
+        return resolved
+    fallback = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(CpEntity.status == "active")
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if fallback is None:
+        raise NotFoundError("No active entity found for auditor access")
+    return fallback
+
+
 async def grant_auditor_access(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -42,8 +74,10 @@ async def grant_auditor_access(
     valid_until: date,
     modules_accessible: list[str],
     created_by: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     access_level: str = "read_only",
 ) -> tuple[AuditorPortalAccess, str]:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     plain_token = f"{tenant_id}.{secrets.token_urlsafe(32)}"
     token_hash = _hash_token(plain_token)
     now = datetime.now(UTC)
@@ -52,6 +86,7 @@ async def grant_auditor_access(
         await session.execute(
             select(AuditorPortalAccess).where(
                 AuditorPortalAccess.tenant_id == tenant_id,
+                AuditorPortalAccess.entity_id == resolved_entity_id,
                 AuditorPortalAccess.auditor_email == auditor_email,
                 AuditorPortalAccess.engagement_name == engagement_name,
             )
@@ -61,6 +96,7 @@ async def grant_auditor_access(
     if row is None:
         row = AuditorPortalAccess(
             tenant_id=tenant_id,
+            entity_id=resolved_entity_id,
             auditor_email=auditor_email,
             auditor_firm=auditor_firm,
             engagement_name=engagement_name,
@@ -93,7 +129,22 @@ async def seed_pbc_checklist(
     session: AsyncSession,
     access_id: uuid.UUID,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> list[AuditorRequest]:
+    resolved_entity_id = entity_id
+    if resolved_entity_id is None:
+        access = (
+            await session.execute(
+                select(AuditorPortalAccess).where(
+                    AuditorPortalAccess.id == access_id,
+                    AuditorPortalAccess.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if access is None:
+            raise NotFoundError("Audit engagement not found")
+        resolved_entity_id = access.entity_id
+
     existing = (
         await session.execute(
             select(AuditorRequest)
@@ -106,7 +157,10 @@ async def seed_pbc_checklist(
         return (
             await session.execute(
                 select(AuditorRequest)
-                .where(AuditorRequest.access_id == access_id)
+                .where(
+                    AuditorRequest.access_id == access_id,
+                    AuditorRequest.entity_id == resolved_entity_id,
+                )
                 .order_by(desc(AuditorRequest.created_at), desc(AuditorRequest.id))
             )
         ).scalars().all()
@@ -117,6 +171,7 @@ async def seed_pbc_checklist(
         row = AuditorRequest(
             access_id=access_id,
             tenant_id=tenant_id,
+            entity_id=resolved_entity_id,
             request_number=f"PBC-{idx:03d}",
             category=category,
             description=description,
@@ -138,10 +193,16 @@ async def respond_to_request(
     response_notes: str | None,
     evidence_urls: list[str],
     provided_by: uuid.UUID | None,
+    entity_id: uuid.UUID | None = None,
 ) -> AuditorRequest:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     source = (
         await session.execute(
-            select(AuditorRequest).where(AuditorRequest.id == request_id, AuditorRequest.tenant_id == tenant_id)
+            select(AuditorRequest).where(
+                AuditorRequest.id == request_id,
+                AuditorRequest.tenant_id == tenant_id,
+                AuditorRequest.entity_id == resolved_entity_id,
+            )
         )
     ).scalar_one_or_none()
     if source is None:
@@ -152,6 +213,7 @@ async def respond_to_request(
     row = AuditorRequest(
         access_id=source.access_id,
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         request_number=source.request_number,
         category=source.category,
         description=source.description,
@@ -172,12 +234,31 @@ async def get_pbc_tracker(
     session: AsyncSession,
     access_id: uuid.UUID,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
+    resolved_entity_id = entity_id
+    if resolved_entity_id is None:
+        access_row = (
+            await session.execute(
+                select(AuditorPortalAccess).where(
+                    AuditorPortalAccess.id == access_id,
+                    AuditorPortalAccess.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if access_row is None:
+            raise NotFoundError("Audit engagement not found")
+        resolved_entity_id = access_row.entity_id
+
     access = (
         await session.execute(
-            select(AuditorPortalAccess).where(AuditorPortalAccess.id == access_id, AuditorPortalAccess.tenant_id == tenant_id)
+            select(AuditorPortalAccess).where(
+                AuditorPortalAccess.id == access_id,
+                AuditorPortalAccess.tenant_id == tenant_id,
+                AuditorPortalAccess.entity_id == resolved_entity_id,
+            )
         )
     ).scalar_one_or_none()
     if access is None:
@@ -189,6 +270,7 @@ async def get_pbc_tracker(
                 select(func.count(AuditorRequest.id))
                 .where(AuditorRequest.access_id == access_id)
                 .where(AuditorRequest.tenant_id == tenant_id)
+                .where(AuditorRequest.entity_id == resolved_entity_id)
             )
         ).scalar_one()
         or 0
@@ -196,7 +278,11 @@ async def get_pbc_tracker(
     rows = (
         await session.execute(
             select(AuditorRequest)
-            .where(AuditorRequest.access_id == access_id, AuditorRequest.tenant_id == tenant_id)
+            .where(
+                AuditorRequest.access_id == access_id,
+                AuditorRequest.tenant_id == tenant_id,
+                AuditorRequest.entity_id == resolved_entity_id,
+            )
             .order_by(desc(AuditorRequest.created_at), desc(AuditorRequest.id))
             .limit(limit)
             .offset(offset)
@@ -302,10 +388,15 @@ async def revoke_access(session: AsyncSession, tenant_id: uuid.UUID, access_id: 
 async def list_access(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
-    stmt = select(AuditorPortalAccess).where(AuditorPortalAccess.tenant_id == tenant_id)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
+    stmt = select(AuditorPortalAccess).where(
+        AuditorPortalAccess.tenant_id == tenant_id,
+        AuditorPortalAccess.entity_id == resolved_entity_id,
+    )
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
         await session.execute(
@@ -333,6 +424,7 @@ async def create_auditor_request(
     row = AuditorRequest(
         access_id=access.id,
         tenant_id=access.tenant_id,
+        entity_id=access.entity_id,
         request_number=f"PBC-{next_no:03d}",
         category=category,
         description=description,

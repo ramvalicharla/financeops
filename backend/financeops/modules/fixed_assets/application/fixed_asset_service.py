@@ -201,6 +201,8 @@ class FixedAssetService:
             it_act_block_number=data.get("it_act_block_number"),
             status=str(data.get("status", "ACTIVE")).upper(),
             gaap_overrides=data.get("gaap_overrides"),
+            location_id=data.get("location_id"),
+            cost_centre_id=data.get("cost_centre_id"),
             is_active=bool(data.get("is_active", True)),
         )
         self._session.add(row)
@@ -218,6 +220,8 @@ class FixedAssetService:
             "asset_name",
             "description",
             "location",
+            "location_id",
+            "cost_centre_id",
             "serial_number",
             "status",
             "gaap_overrides",
@@ -238,11 +242,17 @@ class FixedAssetService:
         skip: int,
         limit: int,
         status: str | None = None,
+        location_id: uuid.UUID | None = None,
+        cost_centre_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         effective_limit = self._limit(limit)
         stmt = select(FaAsset).where(FaAsset.tenant_id == tenant_id, FaAsset.entity_id == entity_id)
         if status:
             stmt = stmt.where(FaAsset.status == status)
+        if location_id is not None:
+            stmt = stmt.where(FaAsset.location_id == location_id)
+        if cost_centre_id is not None:
+            stmt = stmt.where(FaAsset.cost_centre_id == cost_centre_id)
 
         total = int((await self._session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
         rows = (

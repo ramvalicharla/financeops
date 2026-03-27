@@ -12,6 +12,7 @@ from financeops.modules.budgeting.models import BudgetLineItem
 from financeops.modules.cash_flow_forecast.models import CashFlowForecastAssumption
 from financeops.modules.debt_covenants.models import CovenantBreachEvent, CovenantDefinition
 from financeops.modules.notifications.service import send_notification
+from financeops.platform.db.models.entities import CpEntity
 
 _RATIO = Decimal("0.000001")
 _PCT = Decimal("0.0001")
@@ -29,10 +30,46 @@ def _safe_div(numerator: Decimal, denominator: Decimal) -> Decimal:
     return (numerator / denominator).quantize(_RATIO, rounding=ROUND_HALF_UP)
 
 
-async def _financial_snapshot(session: AsyncSession, tenant_id: uuid.UUID) -> dict[str, Decimal]:
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    row = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if row is None:
+        row = (
+            await session.execute(
+                select(CpEntity.id)
+                .where(CpEntity.status == "active")
+                .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+            )
+        ).scalars().first()
+    if row is None:
+        raise ValueError("No active entity available")
+    return row
+
+
+async def _financial_snapshot(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+) -> dict[str, Decimal]:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     annual = (
         await session.execute(
             select(func.coalesce(func.sum(BudgetLineItem.annual_total), 0)).where(BudgetLineItem.tenant_id == tenant_id)
+            .where(BudgetLineItem.entity_id == resolved_entity_id)
         )
     ).scalar_one()
     annual_total = Decimal(str(annual)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -51,7 +88,10 @@ async def _financial_snapshot(session: AsyncSession, tenant_id: uuid.UUID) -> di
     latest_cash = (
         await session.execute(
             select(CashFlowForecastAssumption.closing_balance)
-            .where(CashFlowForecastAssumption.tenant_id == tenant_id)
+            .where(
+                CashFlowForecastAssumption.tenant_id == tenant_id,
+                CashFlowForecastAssumption.entity_id == resolved_entity_id,
+            )
             .order_by(desc(CashFlowForecastAssumption.updated_at), desc(CashFlowForecastAssumption.id))
             .limit(1)
         )
@@ -79,9 +119,10 @@ async def compute_covenant_value(
     tenant_id: uuid.UUID,
     covenant_type: str,
     period: str,
+    entity_id: uuid.UUID | None = None,
 ) -> Decimal:
     del period
-    snap = await _financial_snapshot(session, tenant_id)
+    snap = await _financial_snapshot(session, tenant_id, entity_id)
 
     if covenant_type == "debt_to_ebitda":
         return _safe_div(snap["total_debt"], snap["ltm_ebitda"])
@@ -170,26 +211,36 @@ async def check_all_covenants(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     period: str,
+    entity_id: uuid.UUID | None = None,
 ) -> list[CovenantBreachEvent]:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     # unbounded-ok: active covenant definitions are tenant-scoped and operationally capped.
     # Full active set is required to compute period compliance in one run.
     defs = (
         await session.execute(
             select(CovenantDefinition)
             .where(CovenantDefinition.tenant_id == tenant_id, CovenantDefinition.is_active.is_(True))
+            .where(CovenantDefinition.entity_id == resolved_entity_id)
             .order_by(CovenantDefinition.created_at)
         )
     ).scalars().all()
 
     events: list[CovenantBreachEvent] = []
     for definition in defs:
-        actual = await compute_covenant_value(session, tenant_id, definition.covenant_type, period)
+        actual = await compute_covenant_value(
+            session,
+            tenant_id,
+            definition.covenant_type,
+            period,
+            entity_id=resolved_entity_id,
+        )
         threshold = _decimal(definition.threshold_value)
         breach_type = _classify_breach(actual, threshold, definition.threshold_direction, Decimal(str(definition.notification_threshold_pct)))
 
         event = CovenantBreachEvent(
             covenant_id=definition.id,
             tenant_id=tenant_id,
+            entity_id=resolved_entity_id,
             period=period,
             actual_value=actual,
             threshold_value=threshold,
@@ -207,15 +258,18 @@ async def check_all_covenants(
 async def get_all_covenants(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     skip: int = 0,
     limit: int = 100,
     offset: int | None = None,
 ) -> list[CovenantDefinition]:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     effective_skip = offset if offset is not None else skip
     bounded_limit = max(1, min(limit, 1000))
     result = await session.execute(
         select(CovenantDefinition)
         .where(CovenantDefinition.tenant_id == tenant_id)
+        .where(CovenantDefinition.entity_id == resolved_entity_id)
         .where(CovenantDefinition.is_active.is_(True))
         .order_by(desc(CovenantDefinition.created_at), desc(CovenantDefinition.id))
         .limit(bounded_limit)
@@ -252,8 +306,16 @@ def _trend(latest: CovenantBreachEvent | None, previous: CovenantBreachEvent | N
 async def get_covenant_dashboard(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> dict:
-    defs = await get_all_covenants(session, tenant_id=tenant_id, limit=100, offset=0)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
+    defs = await get_all_covenants(
+        session,
+        tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
+        limit=100,
+        offset=0,
+    )
 
     rows: list[dict] = []
     passing = 0
@@ -264,7 +326,10 @@ async def get_covenant_dashboard(
         latest_two = (
             await session.execute(
                 select(CovenantBreachEvent)
-                .where(CovenantBreachEvent.covenant_id == definition.id)
+                .where(
+                    CovenantBreachEvent.covenant_id == definition.id,
+                    CovenantBreachEvent.entity_id == resolved_entity_id,
+                )
                 .order_by(desc(CovenantBreachEvent.computed_at), desc(CovenantBreachEvent.id))
                 .limit(2)
             )

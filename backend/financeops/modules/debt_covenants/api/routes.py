@@ -13,12 +13,14 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser
 from financeops.modules.debt_covenants.models import CovenantBreachEvent, CovenantDefinition
 from financeops.modules.debt_covenants.service import check_all_covenants, get_covenant_dashboard
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/covenants", tags=["covenants"])
 
 
 class CovenantCreateRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
     facility_name: str
     lender_name: str
     covenant_type: str
@@ -40,6 +42,7 @@ class CovenantPatchRequest(BaseModel):
 
 
 class CheckRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
     period: str
 
 
@@ -47,9 +50,31 @@ def _decimal(value: Decimal) -> str:
     return format(Decimal(str(value)), "f")
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if entities:
+        return entities[0].id
+    raise HTTPException(
+        status_code=422,
+        detail="entity_id is required because no entity is configured for this user",
+    )
+
+
 def _serialize_definition(row: CovenantDefinition) -> dict:
     return {
         "id": str(row.id),
+        "entity_id": str(row.entity_id),
         "facility_name": row.facility_name,
         "lender_name": row.lender_name,
         "covenant_type": row.covenant_type,
@@ -70,6 +95,7 @@ def _serialize_event(row: CovenantBreachEvent) -> dict:
         "id": str(row.id),
         "covenant_id": str(row.covenant_id),
         "tenant_id": str(row.tenant_id),
+        "entity_id": str(row.entity_id),
         "period": row.period,
         "actual_value": _decimal(row.actual_value),
         "threshold_value": _decimal(row.threshold_value),
@@ -81,10 +107,12 @@ def _serialize_event(row: CovenantBreachEvent) -> dict:
 
 @router.get("/dashboard")
 async def covenant_dashboard_endpoint(
+    entity_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    payload = await get_covenant_dashboard(session, tenant_id=user.tenant_id)
+    await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
+    payload = await get_covenant_dashboard(session, tenant_id=user.tenant_id, entity_id=entity_id)
     return {
         "total_covenants": payload["total_covenants"],
         "passing": payload["passing"],
@@ -108,9 +136,12 @@ async def create_covenant_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     now = datetime.utcnow()
     row = CovenantDefinition(
         tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
         facility_name=body.facility_name,
         lender_name=body.lender_name,
         covenant_type=body.covenant_type,
@@ -140,7 +171,10 @@ async def patch_covenant_endpoint(
         await session.execute(
             select(CovenantDefinition).where(CovenantDefinition.id == covenant_id, CovenantDefinition.tenant_id == user.tenant_id)
         )
-    ).scalar_one()
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Covenant not found")
+    await assert_entity_access(session, user.tenant_id, row.entity_id, user.id, user.role)
     updates = body.model_dump(exclude_none=True)
     for key, value in updates.items():
         setattr(row, key, value)
@@ -155,7 +189,14 @@ async def run_check_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    rows = await check_all_covenants(session, tenant_id=user.tenant_id, period=body.period)
+    resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    rows = await check_all_covenants(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        period=body.period,
+    )
     return {"events": [_serialize_event(row) for row in rows], "count": len(rows)}
 
 
@@ -179,19 +220,28 @@ async def history_endpoint(
     ).scalar_one_or_none()
     if definition is None:
         raise HTTPException(status_code=404, detail="Covenant not found")
+    await assert_entity_access(session, user.tenant_id, definition.entity_id, user.id, user.role)
     total = int(
         (
             await session.execute(
                 select(func.count())
                 .select_from(CovenantBreachEvent)
-                .where(CovenantBreachEvent.covenant_id == covenant_id, CovenantBreachEvent.tenant_id == user.tenant_id)
+                .where(
+                    CovenantBreachEvent.covenant_id == covenant_id,
+                    CovenantBreachEvent.tenant_id == user.tenant_id,
+                    CovenantBreachEvent.entity_id == definition.entity_id,
+                )
             )
         ).scalar_one()
     )
     rows = (
         await session.execute(
             select(CovenantBreachEvent)
-            .where(CovenantBreachEvent.covenant_id == covenant_id, CovenantBreachEvent.tenant_id == user.tenant_id)
+            .where(
+                CovenantBreachEvent.covenant_id == covenant_id,
+                CovenantBreachEvent.tenant_id == user.tenant_id,
+                CovenantBreachEvent.entity_id == definition.entity_id,
+            )
             .order_by(desc(CovenantBreachEvent.computed_at), desc(CovenantBreachEvent.id))
             .limit(limit)
             .offset(effective_skip)

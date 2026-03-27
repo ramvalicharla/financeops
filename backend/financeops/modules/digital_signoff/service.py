@@ -13,6 +13,8 @@ from financeops.core.security import decrypt_field, verify_totp
 from financeops.db.models.users import IamUser
 from financeops.modules.digital_signoff.models import DirectorSignoff
 from financeops.modules.notifications.service import send_notification
+from financeops.platform.db.models.entities import CpEntity
+from financeops.platform.db.models.user_membership import CpUserEntityAssignment
 
 VALID_SIGNATORY_ROLES = {
     "Director",
@@ -54,7 +56,37 @@ async def initiate_signoff(
     document_content: bytes | str,
     declaration_text: str,
     document_id: uuid.UUID | None = None,
+    entity_id: uuid.UUID | None = None,
 ) -> DirectorSignoff:
+    resolved_entity_id = entity_id
+    if resolved_entity_id is None:
+        resolved_entity_id = (
+            await session.execute(
+                select(CpUserEntityAssignment.entity_id)
+                .where(
+                    CpUserEntityAssignment.tenant_id == tenant_id,
+                    CpUserEntityAssignment.user_id == signatory_user_id,
+                    CpUserEntityAssignment.is_active.is_(True),
+                )
+                .order_by(CpUserEntityAssignment.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if resolved_entity_id is None:
+            resolved_entity_id = (
+                await session.execute(
+                    select(CpEntity.id)
+                    .where(
+                        CpEntity.tenant_id == tenant_id,
+                        CpEntity.status == "active",
+                    )
+                    .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+        if resolved_entity_id is None:
+            raise ValidationError("entity_id is required when signatory has no assigned entity")
+
     user = (
         await session.execute(
             select(IamUser).where(IamUser.id == signatory_user_id, IamUser.tenant_id == tenant_id)
@@ -70,6 +102,7 @@ async def initiate_signoff(
 
     row = DirectorSignoff(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         document_type=document_type,
         document_id=document_id,
         document_reference=document_reference,
@@ -140,6 +173,7 @@ async def complete_signoff(
     signature_seed = f"{signatory_user_id}{pending.content_hash}{now.isoformat()}".encode("utf-8")
     signed_row = DirectorSignoff(
         tenant_id=tenant_id,
+        entity_id=pending.entity_id,
         document_type=pending.document_type,
         document_id=pending.document_id,
         document_reference=pending.document_reference,
@@ -187,12 +221,19 @@ async def generate_certificate(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     signoff_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> dict:
+    filters = [
+        DirectorSignoff.id == signoff_id,
+        DirectorSignoff.tenant_id == tenant_id,
+    ]
+    if entity_id is not None:
+        filters.append(DirectorSignoff.entity_id == entity_id)
+
     row = (
         await session.execute(
             select(DirectorSignoff).where(
-                DirectorSignoff.id == signoff_id,
-                DirectorSignoff.tenant_id == tenant_id,
+                *filters,
                 DirectorSignoff.status == "signed",
             )
         )
@@ -201,22 +242,24 @@ async def generate_certificate(
         pending = (
             await session.execute(
                 select(DirectorSignoff).where(
-                    DirectorSignoff.id == signoff_id,
-                    DirectorSignoff.tenant_id == tenant_id,
+                    *filters,
                 )
             )
         ).scalar_one_or_none()
         if pending is not None:
+            signed_filters = [
+                DirectorSignoff.tenant_id == tenant_id,
+                DirectorSignoff.status == "signed",
+                DirectorSignoff.document_reference == pending.document_reference,
+                DirectorSignoff.period == pending.period,
+                DirectorSignoff.signatory_user_id == pending.signatory_user_id,
+            ]
+            if entity_id is not None:
+                signed_filters.append(DirectorSignoff.entity_id == entity_id)
             row = (
                 await session.execute(
                     select(DirectorSignoff)
-                    .where(
-                        DirectorSignoff.tenant_id == tenant_id,
-                        DirectorSignoff.status == "signed",
-                        DirectorSignoff.document_reference == pending.document_reference,
-                        DirectorSignoff.period == pending.period,
-                        DirectorSignoff.signatory_user_id == pending.signatory_user_id,
-                    )
+                    .where(*signed_filters)
                     .order_by(desc(DirectorSignoff.created_at), desc(DirectorSignoff.id))
                     .limit(1)
                 )
@@ -242,13 +285,17 @@ async def generate_certificate(
 async def list_signoffs(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID,
     limit: int = 20,
     offset: int = 0,
 ) -> dict:
     rows = (
         await session.execute(
             select(DirectorSignoff)
-            .where(DirectorSignoff.tenant_id == tenant_id)
+            .where(
+                DirectorSignoff.tenant_id == tenant_id,
+                DirectorSignoff.entity_id == entity_id,
+            )
             .order_by(desc(DirectorSignoff.created_at), desc(DirectorSignoff.id))
             .limit(limit)
             .offset(offset)
@@ -259,7 +306,10 @@ async def list_signoffs(
             await session.execute(
                 select(func.count())
                 .select_from(DirectorSignoff)
-                .where(DirectorSignoff.tenant_id == tenant_id)
+                .where(
+                    DirectorSignoff.tenant_id == tenant_id,
+                    DirectorSignoff.entity_id == entity_id,
+                )
             )
         ).scalar_one()
     )

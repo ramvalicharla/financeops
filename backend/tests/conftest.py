@@ -488,6 +488,10 @@ from financeops.modules.invoice_classifier.models import (  # noqa: F401
     ClassificationRule,
     InvoiceClassification,
 )
+from financeops.modules.locations.models import (  # noqa: F401
+    CpCostCentre,
+    CpLocation,
+)
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken  # noqa: F401
 
@@ -531,6 +535,24 @@ async def engine():
     test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(
+            text(
+                """
+                DO $$
+                DECLARE enum_rec RECORD;
+                BEGIN
+                    FOR enum_rec IN
+                        SELECT t.typname
+                        FROM pg_type t
+                        JOIN pg_namespace n ON n.oid = t.typnamespace
+                        WHERE t.typtype = 'e' AND n.nspname = 'public'
+                    LOOP
+                        EXECUTE format('DROP TYPE IF EXISTS %I CASCADE', enum_rec.typname);
+                    END LOOP;
+                END $$;
+                """
+            )
+        )
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
         await conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
@@ -603,6 +625,49 @@ async def test_user(async_session: AsyncSession, test_tenant: IamTenant) -> IamU
     )
     async_session.add(user)
     await async_session.flush()
+
+    org_payload = {
+        "tenant_id": str(test_tenant.id),
+        "organisation_code": "ORG_DEFAULT",
+        "organisation_name": "Default Org",
+    }
+    org = CpOrganisation(
+        tenant_id=test_tenant.id,
+        organisation_code="ORG_DEFAULT",
+        organisation_name="Default Org",
+        parent_organisation_id=None,
+        supersedes_id=None,
+        is_active=True,
+        correlation_id="test-default-org",
+        chain_hash=compute_chain_hash(org_payload, GENESIS_HASH),
+        previous_hash=GENESIS_HASH,
+    )
+    async_session.add(org)
+    await async_session.flush()
+
+    entity_payload = {
+        "tenant_id": str(test_tenant.id),
+        "entity_code": "ENT_DEFAULT",
+        "entity_name": "Default Entity",
+        "organisation_id": str(org.id),
+    }
+    entity = CpEntity(
+        tenant_id=test_tenant.id,
+        organisation_id=org.id,
+        group_id=None,
+        entity_code="ENT_DEFAULT",
+        entity_name="Default Entity",
+        base_currency="INR",
+        country_code="IN",
+        status="active",
+        deactivated_at=None,
+        correlation_id="test-default-entity",
+        chain_hash=compute_chain_hash(entity_payload, GENESIS_HASH),
+        previous_hash=GENESIS_HASH,
+    )
+    async_session.add(entity)
+    await async_session.flush()
+
     return user
 
 

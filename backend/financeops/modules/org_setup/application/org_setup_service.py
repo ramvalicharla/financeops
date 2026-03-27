@@ -29,8 +29,10 @@ from financeops.modules.fixed_assets.application.seeds import seed_standard_indi
 from financeops.platform.db.models.entities import CpEntity
 from financeops.platform.db.models.organisations import CpOrganisation
 from financeops.services.audit_writer import AuditWriter
+from financeops.utils.gstin import extract_state_code, validate_gstin, validate_pan, validate_tan
 
 _CODE_SANITIZE = re.compile(r"[^A-Z0-9]+")
+_GSTIN_BASIC_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
 
 
 def _clean_code(prefix: str, source: str, fallback: str) -> str:
@@ -39,6 +41,15 @@ def _clean_code(prefix: str, source: str, fallback: str) -> str:
         cleaned = fallback
     value = f"{prefix}_{cleaned}"
     return value[:64]
+
+
+def _is_basic_gstin_format_valid(value: str) -> bool:
+    normalized = value.strip().upper()
+    if _GSTIN_BASIC_RE.fullmatch(normalized) is None:
+        return False
+    if extract_state_code(normalized) is None:
+        return False
+    return validate_pan(normalized[2:12])
 
 
 class OrgSetupService:
@@ -168,6 +179,18 @@ class OrgSetupService:
         base_currency: str,
         country_code: str,
         seed: str,
+        pan: str | None = None,
+        tan: str | None = None,
+        cin: str | None = None,
+        gstin: str | None = None,
+        lei: str | None = None,
+        fiscal_year_start: int | None = None,
+        applicable_gaap: str | None = None,
+        tax_rate: Decimal | None = None,
+        state_code: str | None = None,
+        registered_address: str | None = None,
+        city: str | None = None,
+        pincode: str | None = None,
     ) -> CpEntity:
         entity_code = _clean_code("ENT", legal_name, seed)
         existing = (
@@ -195,6 +218,18 @@ class OrgSetupService:
                 "group_id": None,
                 "base_currency": base_currency,
                 "country_code": country_code,
+                "pan": pan,
+                "tan": tan,
+                "cin": cin,
+                "gstin": gstin,
+                "lei": lei,
+                "fiscal_year_start": fiscal_year_start,
+                "applicable_gaap": applicable_gaap,
+                "tax_rate": tax_rate,
+                "state_code": state_code,
+                "registered_address": registered_address,
+                "city": city,
+                "pincode": pincode,
                 "status": "active",
                 "deactivated_at": None,
                 "correlation_id": f"org-setup-{seed}",
@@ -228,6 +263,21 @@ class OrgSetupService:
             if not legal_name:
                 raise ValidationError("legal_name is required")
 
+            pan = entity.get("pan")
+            if pan and not validate_pan(str(pan)):
+                raise ValidationError("Invalid PAN")
+            tan = entity.get("tan")
+            if tan and not validate_tan(str(tan)):
+                raise ValidationError("Invalid TAN")
+            gstin = entity.get("gstin")
+            normalized_gstin: str | None = None
+            if gstin:
+                normalized_gstin = str(gstin).strip().upper()
+                # Accept legacy onboarding payloads with valid structure even if checksum is absent/incorrect.
+                if not validate_gstin(normalized_gstin) and not _is_basic_gstin_format_valid(normalized_gstin):
+                    raise ValidationError("Invalid GSTIN")
+            inferred_state_code = extract_state_code(normalized_gstin) if normalized_gstin else entity.get("state_code")
+
             row = (
                 await self._session.execute(
                     select(OrgEntity).where(
@@ -242,16 +292,16 @@ class OrgSetupService:
                 "display_name": entity.get("display_name"),
                 "entity_type": str(entity["entity_type"]),
                 "country_code": str(entity["country_code"]).upper(),
-                "state_code": entity.get("state_code"),
+                "state_code": inferred_state_code,
                 "functional_currency": str(entity["functional_currency"]).upper(),
                 "reporting_currency": str(entity["reporting_currency"]).upper(),
                 "fiscal_year_start": int(entity["fiscal_year_start"]),
                 "applicable_gaap": str(entity["applicable_gaap"]).upper(),
                 "incorporation_number": entity.get("incorporation_number"),
-                "pan": entity.get("pan"),
-                "tan": entity.get("tan"),
+                "pan": str(pan).upper() if pan else None,
+                "tan": str(tan).upper() if tan else None,
                 "cin": entity.get("cin"),
-                "gstin": entity.get("gstin"),
+                "gstin": normalized_gstin,
                 "lei": entity.get("lei"),
                 "tax_jurisdiction": entity.get("tax_jurisdiction"),
                 "tax_rate": entity.get("tax_rate"),
@@ -295,11 +345,24 @@ class OrgSetupService:
                     base_currency=row.functional_currency,
                     country_code=row.country_code,
                     seed=row.id.hex[:8].upper(),
+                    pan=payload["pan"],
+                    tan=payload["tan"],
+                    cin=payload["cin"],
+                    gstin=payload["gstin"],
+                    lei=payload["lei"],
+                    fiscal_year_start=payload["fiscal_year_start"],
+                    applicable_gaap=payload["applicable_gaap"],
+                    tax_rate=payload["tax_rate"],
+                    state_code=payload["state_code"],
+                    registered_address=entity.get("registered_address"),
+                    city=entity.get("city"),
+                    pincode=entity.get("pincode"),
                 )
                 row.cp_entity_id = cp_entity.id
+            await self._session.flush()
+            await self._session.refresh(row)
             rows.append(row)
 
-        await self._session.flush()
         await self.save_step(
             tenant_id,
             2,
@@ -681,10 +744,44 @@ class OrgSetupService:
 
     async def update_entity(self, tenant_id: uuid.UUID, entity_id: uuid.UUID, payload: dict[str, Any]) -> OrgEntity:
         row = await self.get_entity(tenant_id, entity_id)
+        if "pan" in payload and payload["pan"] and not validate_pan(str(payload["pan"])):
+            raise ValidationError("Invalid PAN")
+        if "tan" in payload and payload["tan"] and not validate_tan(str(payload["tan"])):
+            raise ValidationError("Invalid TAN")
+        if "gstin" in payload and payload["gstin"]:
+            gstin = str(payload["gstin"]).upper()
+            if not validate_gstin(gstin):
+                raise ValidationError("Invalid GSTIN")
+            payload["gstin"] = gstin
+            payload["state_code"] = extract_state_code(gstin)
+
         for key, value in payload.items():
             if hasattr(row, key) and value is not None:
                 setattr(row, key, value)
+
+        if row.cp_entity_id is not None:
+            cp_entity = (
+                await self._session.execute(
+                    select(CpEntity).where(
+                        CpEntity.id == row.cp_entity_id,
+                        CpEntity.tenant_id == tenant_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if cp_entity is not None:
+                field_map = {
+                    "display_name": "entity_name",
+                    "functional_currency": "base_currency",
+                }
+                for key, value in payload.items():
+                    if value is None:
+                        continue
+                    target_attr = field_map.get(key, key)
+                    if hasattr(cp_entity, target_attr):
+                        setattr(cp_entity, target_attr, value)
+
         await self._session.flush()
+        await self._session.refresh(row)
         return row
 
     async def get_ownership_tree(self, tenant_id: uuid.UUID) -> dict[str, Any]:

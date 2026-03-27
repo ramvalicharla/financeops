@@ -90,11 +90,17 @@ async def update_tenant_settings(
     actor_user_id: uuid.UUID,
     display_name: str | None = None,
     timezone_str: str | None = None,
+    pan: str | None = None,
+    gstin: str | None = None,
+    state_code: str | None = None,
 ) -> IamTenant:
     """Update mutable tenant settings and persist via audited flush path."""
     old_state = {
         "display_name": tenant.display_name,
         "timezone": tenant.timezone,
+        "pan": tenant.pan,
+        "gstin": tenant.gstin,
+        "state_code": tenant.state_code,
     }
     changed = False
 
@@ -103,6 +109,15 @@ async def update_tenant_settings(
         changed = True
     if timezone_str is not None and timezone_str != tenant.timezone:
         tenant.timezone = timezone_str
+        changed = True
+    if pan is not None and pan != tenant.pan:
+        tenant.pan = pan
+        changed = True
+    if gstin is not None and gstin != tenant.gstin:
+        tenant.gstin = gstin
+        changed = True
+    if state_code is not None and state_code != tenant.state_code:
+        tenant.state_code = state_code
         changed = True
     if not changed:
         return tenant
@@ -120,6 +135,9 @@ async def update_tenant_settings(
             new_value={
                 "display_name": tenant.display_name,
                 "timezone": tenant.timezone,
+                "pan": tenant.pan,
+                "gstin": tenant.gstin,
+                "state_code": tenant.state_code,
             },
         ),
     )

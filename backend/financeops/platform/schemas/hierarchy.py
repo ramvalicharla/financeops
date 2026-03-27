@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -25,6 +26,18 @@ class EntityCreate(BaseModel):
     group_id: uuid.UUID | None = None
     base_currency: str = Field(min_length=3, max_length=3)
     country_code: str = Field(min_length=2, max_length=2)
+    pan: str | None = Field(default=None, max_length=20)
+    tan: str | None = Field(default=None, max_length=20)
+    cin: str | None = Field(default=None, max_length=30)
+    gstin: str | None = Field(default=None, max_length=20)
+    lei: str | None = Field(default=None, max_length=30)
+    fiscal_year_start: int | None = Field(default=None, ge=1, le=12)
+    applicable_gaap: str | None = Field(default=None, max_length=20)
+    tax_rate: Decimal | None = None
+    state_code: str | None = Field(default=None, max_length=5)
+    registered_address: str | None = None
+    city: str | None = Field(default=None, max_length=100)
+    pincode: str | None = Field(default=None, max_length=10)
 
     @field_validator("base_currency", "country_code")
     @classmethod

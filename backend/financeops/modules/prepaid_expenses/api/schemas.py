@@ -20,6 +20,8 @@ class PrepaidScheduleCreateRequest(BaseModel):
     amortisation_method: str = "SLM"
     coa_prepaid_account_id: uuid.UUID | None = None
     coa_expense_account_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
 
 
 class PrepaidScheduleUpdateRequest(BaseModel):
@@ -30,6 +32,8 @@ class PrepaidScheduleUpdateRequest(BaseModel):
     status: str | None = None
     coa_prepaid_account_id: uuid.UUID | None = None
     coa_expense_account_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
 
 
 class PrepaidScheduleResponse(BaseModel):
@@ -51,6 +55,8 @@ class PrepaidScheduleResponse(BaseModel):
     amortisation_method: str
     coa_prepaid_account_id: uuid.UUID | None = None
     coa_expense_account_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
     status: str
     created_at: datetime
     updated_at: datetime | None = None

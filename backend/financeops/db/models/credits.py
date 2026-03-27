@@ -74,13 +74,14 @@ class CreditTransaction(FinancialBase):
     task_type: Mapped[str] = mapped_column(String(128), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(precision=20, scale=6), nullable=False)
     direction: Mapped[CreditDirection] = mapped_column(
-        Enum(CreditDirection, name="credit_direction_enum"), nullable=False
+        Enum(CreditDirection, name="credit_direction_enum", native_enum=False),
+        nullable=False,
     )
     balance_before: Mapped[Decimal] = mapped_column(Numeric(precision=20, scale=6), nullable=False)
     balance_after: Mapped[Decimal] = mapped_column(Numeric(precision=20, scale=6), nullable=False)
     reservation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     status: Mapped[CreditTransactionStatus] = mapped_column(
-        Enum(CreditTransactionStatus, name="credit_tx_status_enum"),
+        Enum(CreditTransactionStatus, name="credit_tx_status_enum", native_enum=False),
         nullable=False,
         default=CreditTransactionStatus.confirmed,
     )
@@ -97,7 +98,7 @@ class CreditReservation(UUIDBase):
     amount: Mapped[Decimal] = mapped_column(Numeric(precision=20, scale=6), nullable=False)
     task_type: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[ReservationStatus] = mapped_column(
-        Enum(ReservationStatus, name="reservation_status_enum"),
+        Enum(ReservationStatus, name="reservation_status_enum", native_enum=False),
         nullable=False,
         default=ReservationStatus.pending,
     )

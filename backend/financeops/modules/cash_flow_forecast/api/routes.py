@@ -4,7 +4,7 @@ import uuid
 from decimal import Decimal
 from datetime import date
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,12 +19,16 @@ from financeops.modules.cash_flow_forecast.service import (
     seed_from_historical,
     update_week_assumptions,
 )
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/treasury", tags=["treasury"])
 
 
 class CreateForecastRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
     run_name: str
     base_date: date
     opening_cash_balance: Decimal
@@ -56,10 +60,34 @@ def _decimal(value: Decimal) -> str:
     return format(Decimal(str(value)), "f")
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if entities:
+        return entities[0].id
+    raise HTTPException(
+        status_code=422,
+        detail="entity_id is required because no entity is configured for this user",
+    )
+
+
 def _serialize_run(row: CashFlowForecastRun) -> dict:
     return {
         "id": str(row.id),
         "tenant_id": str(row.tenant_id),
+        "entity_id": str(row.entity_id),
+        "location_id": str(row.location_id) if row.location_id else None,
+        "cost_centre_id": str(row.cost_centre_id) if row.cost_centre_id else None,
         "run_name": row.run_name,
         "base_date": row.base_date.isoformat(),
         "weeks": row.weeks,
@@ -103,14 +131,19 @@ async def create_forecast_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     run = await create_forecast_run(
         session=session,
         tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
         run_name=body.run_name,
         base_date=body.base_date,
         opening_cash_balance=body.opening_cash_balance,
         currency=body.currency,
         created_by=user.id,
+        location_id=body.location_id,
+        cost_centre_id=body.cost_centre_id,
         weeks=body.weeks,
     )
     if body.seed_historical:
@@ -129,24 +162,33 @@ async def create_forecast_endpoint(
 
 @router.get("/forecasts", response_model=Paginated[dict])
 async def list_forecasts_endpoint(
+    entity_id: uuid.UUID | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     total = int(
         (
             await session.execute(
                 select(func.count())
                 .select_from(CashFlowForecastRun)
-                .where(CashFlowForecastRun.tenant_id == user.tenant_id)
+                .where(
+                    CashFlowForecastRun.tenant_id == user.tenant_id,
+                    CashFlowForecastRun.entity_id == resolved_entity_id,
+                )
             )
         ).scalar_one()
     )
     rows = (
         await session.execute(
             select(CashFlowForecastRun)
-            .where(CashFlowForecastRun.tenant_id == user.tenant_id)
+            .where(
+                CashFlowForecastRun.tenant_id == user.tenant_id,
+                CashFlowForecastRun.entity_id == resolved_entity_id,
+            )
             .order_by(desc(CashFlowForecastRun.created_at), desc(CashFlowForecastRun.id))
             .limit(limit)
             .offset(offset)
@@ -166,6 +208,17 @@ async def get_forecast_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    row = (
+        await session.execute(
+            select(CashFlowForecastRun).where(
+                CashFlowForecastRun.id == forecast_id,
+                CashFlowForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Forecast run not found")
+    await assert_entity_access(session, user.tenant_id, row.entity_id, user.id, user.role)
     summary = await get_forecast_summary(session, user.tenant_id, forecast_id)
     return {
         "run": _serialize_run(summary["run"]),
@@ -190,6 +243,17 @@ async def update_week_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    row = (
+        await session.execute(
+            select(CashFlowForecastRun).where(
+                CashFlowForecastRun.id == forecast_id,
+                CashFlowForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Forecast run not found")
+    await assert_entity_access(session, user.tenant_id, row.entity_id, user.id, user.role)
     row = await update_week_assumptions(
         session,
         tenant_id=user.tenant_id,
@@ -206,6 +270,17 @@ async def publish_forecast_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> PublishResponse:
+    existing = (
+        await session.execute(
+            select(CashFlowForecastRun).where(
+                CashFlowForecastRun.id == forecast_id,
+                CashFlowForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Forecast run not found")
+    await assert_entity_access(session, user.tenant_id, existing.entity_id, user.id, user.role)
     row = await publish_forecast(
         session,
         tenant_id=user.tenant_id,

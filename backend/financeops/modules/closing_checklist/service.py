@@ -17,6 +17,7 @@ from financeops.modules.closing_checklist.models import (
     ChecklistTemplate,
     ChecklistTemplateTask,
 )
+from financeops.platform.db.models.entities import CpEntity
 
 
 _DEFAULT_TEMPLATE_TASKS: list[dict[str, object]] = [
@@ -211,11 +212,53 @@ async def _recompute_run_status(session: AsyncSession, run: ChecklistRun) -> Non
         run.actual_close_date = None
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        exists = (
+            await session.execute(
+                select(CpEntity.id).where(
+                    CpEntity.id == entity_id,
+                    CpEntity.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise ValidationError("Entity not found")
+        return entity_id
+
+    default_entity_id = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if default_entity_id is None:
+        default_entity_id = (
+            await session.execute(
+                select(CpEntity.id)
+                .where(CpEntity.status == "active")
+                .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+            )
+        ).scalars().first()
+    if default_entity_id is None:
+        raise ValidationError("No active entity found for tenant")
+    return default_entity_id
+
+
 async def get_or_create_run(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     period: str,
     created_by: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> ChecklistRun:
     """
     Get existing run for tenant+period or create from default template.
@@ -224,10 +267,12 @@ async def get_or_create_run(
     Compute due_date for each task from period + days_relative.
     """
     _parse_period(period)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     existing = (
         await session.execute(
             select(ChecklistRun).where(
                 ChecklistRun.tenant_id == tenant_id,
+                ChecklistRun.entity_id == resolved_entity_id,
                 ChecklistRun.period == period,
             )
         )
@@ -254,6 +299,7 @@ async def get_or_create_run(
     target_date = period_end_date(period) + timedelta(days=4)
     run = ChecklistRun(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         template_id=template.id,
         period=period,
         status="open",
@@ -272,6 +318,7 @@ async def get_or_create_run(
             run_id=run.id,
             template_task_id=template_task.id,
             tenant_id=tenant_id,
+            entity_id=resolved_entity_id,
             task_name=template_task.task_name,
             assigned_role=template_task.assigned_role,
             due_date=due_date,
@@ -330,6 +377,7 @@ async def update_task_status(
     new_status: str,
     updated_by: uuid.UUID,
     notes: str | None = None,
+    entity_id: uuid.UUID | None = None,
 ) -> ChecklistRunTask:
     """
     Update a task's status.
@@ -355,6 +403,9 @@ async def update_task_status(
     ).scalar_one_or_none()
     if run is None:
         raise NotFoundError("Checklist run not found")
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id or run.entity_id)
+    if run.entity_id != resolved_entity_id:
+        raise NotFoundError("Checklist run not found")
 
     task = (
         await session.execute(
@@ -362,6 +413,7 @@ async def update_task_status(
                 ChecklistRunTask.id == task_id,
                 ChecklistRunTask.run_id == run_id,
                 ChecklistRunTask.tenant_id == tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
             )
         )
     ).scalar_one_or_none()
@@ -492,6 +544,7 @@ async def compute_progress(
 async def get_closing_analytics(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> dict:
     """
     Returns:
@@ -503,11 +556,13 @@ async def get_closing_analytics(
     - trend: 'improving' | 'stable' | 'worsening'
     All numeric values: Decimal not float.
     """
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     completed_runs = (
         await session.execute(
             select(ChecklistRun)
             .where(
                 ChecklistRun.tenant_id == tenant_id,
+                ChecklistRun.entity_id == resolved_entity_id,
                 ChecklistRun.status == "completed",
                 ChecklistRun.actual_close_date.is_not(None),
             )
@@ -547,6 +602,7 @@ async def get_closing_analytics(
             select(ChecklistRunTask.task_name, func.count(ChecklistRunTask.id).label("blocked_count"))
             .where(
                 ChecklistRunTask.tenant_id == tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
                 ChecklistRunTask.status == "blocked",
             )
             .group_by(ChecklistRunTask.task_name)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,12 +18,14 @@ from financeops.modules.digital_signoff.service import (
     list_signoffs,
     verify_signoff,
 )
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/signoff", tags=["signoff"])
 
 
 class InitiateRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
     document_type: str
     document_id: uuid.UUID | None = None
     document_reference: str
@@ -42,10 +44,32 @@ class VerifyRequest(BaseModel):
     content_hash: str
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if entities:
+        return entities[0].id
+    raise HTTPException(
+        status_code=422,
+        detail="entity_id is required because no entity is configured for this user",
+    )
+
+
 def _serialize(row: DirectorSignoff) -> dict:
     return {
         "id": str(row.id),
         "tenant_id": str(row.tenant_id),
+        "entity_id": str(row.entity_id),
         "document_type": row.document_type,
         "document_id": str(row.document_id) if row.document_id else None,
         "document_reference": row.document_reference,
@@ -72,9 +96,12 @@ async def initiate_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     row = await initiate_signoff(
         session,
         tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
         document_type=body.document_type,
         document_reference=body.document_reference,
         period=body.period,
@@ -97,6 +124,17 @@ async def complete_endpoint(
 ) -> dict:
     ip = request.client.host if request.client else ""
     user_agent = request.headers.get("user-agent", "")
+    current = (
+        await session.execute(
+            select(DirectorSignoff).where(
+                DirectorSignoff.id == signoff_id,
+                DirectorSignoff.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Signoff request not found")
+    await assert_entity_access(session, user.tenant_id, current.entity_id, user.id, user.role)
     row = await complete_signoff(
         session,
         tenant_id=user.tenant_id,
@@ -112,10 +150,18 @@ async def complete_endpoint(
 @router.get("/{signoff_id}/certificate")
 async def certificate_endpoint(
     signoff_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    payload = await generate_certificate(session, tenant_id=user.tenant_id, signoff_id=signoff_id)
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    payload = await generate_certificate(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        signoff_id=signoff_id,
+    )
     return {
         "certificate_number": payload["certificate_number"],
         "document_reference": payload["document_reference"],
@@ -132,12 +178,21 @@ async def certificate_endpoint(
 
 @router.get("", response_model=Paginated[dict])
 async def list_endpoint(
+    entity_id: uuid.UUID | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
-    payload = await list_signoffs(session, tenant_id=user.tenant_id, limit=limit, offset=offset)
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    payload = await list_signoffs(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        limit=limit,
+        offset=offset,
+    )
     return Paginated[dict](data=[_serialize(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
 
 
@@ -145,14 +200,18 @@ async def list_endpoint(
 async def verify_endpoint(
     signoff_id: uuid.UUID,
     body: VerifyRequest,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     match = (
         await session.execute(
             select(DirectorSignoff).where(
                 DirectorSignoff.id == signoff_id,
                 DirectorSignoff.tenant_id == user.tenant_id,
+                DirectorSignoff.entity_id == resolved_entity_id,
             )
         )
     ).scalar_one_or_none()

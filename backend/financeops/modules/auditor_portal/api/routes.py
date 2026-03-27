@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,12 +29,14 @@ from financeops.modules.auditor_portal.service import (
     revoke_access,
     seed_pbc_checklist,
 )
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/audit", tags=["audit_portal"])
 
 
 class GrantAccessRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
     auditor_email: str
     auditor_firm: str
     engagement_name: str
@@ -59,6 +61,7 @@ class AuditorCreateRequest(BaseModel):
 def _serialize_access(row: AuditorPortalAccess) -> dict:
     return {
         "id": str(row.id),
+        "entity_id": str(row.entity_id),
         "auditor_email": row.auditor_email,
         "auditor_firm": row.auditor_firm,
         "engagement_name": row.engagement_name,
@@ -78,6 +81,7 @@ def _serialize_request(row: AuditorRequest) -> dict:
     return {
         "id": str(row.id),
         "access_id": str(row.access_id),
+        "entity_id": str(row.entity_id),
         "request_number": row.request_number,
         "category": row.category,
         "description": row.description,
@@ -91,6 +95,24 @@ def _serialize_request(row: AuditorRequest) -> dict:
     }
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if entities:
+        return entities[0].id
+    raise HTTPException(status_code=422, detail="entity_id is required because no entity is configured for this user")
+
+
 @router.post("/access/grant")
 async def grant_access_endpoint(
     body: GrantAccessRequest,
@@ -98,6 +120,8 @@ async def grant_access_endpoint(
     user: IamUser = Depends(require_finance_leader),
     _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     access, plain_token = await grant_auditor_access(
         session,
         tenant_id=user.tenant_id,
@@ -108,21 +132,36 @@ async def grant_access_endpoint(
         valid_until=body.valid_until,
         modules_accessible=body.modules_accessible,
         created_by=user.id,
+        entity_id=resolved_entity_id,
         access_level=body.access_level,
     )
-    await seed_pbc_checklist(session, access_id=access.id, tenant_id=user.tenant_id)
+    await seed_pbc_checklist(
+        session,
+        access_id=access.id,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+    )
     return {"access": _serialize_access(access), "token": plain_token}
 
 
 @router.get("/access", response_model=Paginated[dict])
 async def list_access_endpoint(
+    entity_id: uuid.UUID | None = None,
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
     _tenant: IamTenant = Depends(require_org_setup),
 ) -> Paginated[dict]:
-    payload = await list_access(session, tenant_id=user.tenant_id, limit=limit, offset=offset)
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    payload = await list_access(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        limit=limit,
+        offset=offset,
+    )
     return Paginated[dict](data=[_serialize_access(row) for row in payload["data"]], total=payload["total"], limit=payload["limit"], offset=payload["offset"])
 
 
@@ -133,6 +172,17 @@ async def revoke_access_endpoint(
     user: IamUser = Depends(require_finance_leader),
     _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
+    current = (
+        await session.execute(
+            select(AuditorPortalAccess).where(
+                AuditorPortalAccess.id == access_id,
+                AuditorPortalAccess.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Access record not found")
+    await assert_entity_access(session, user.tenant_id, current.entity_id, user.id, user.role)
     row = await revoke_access(session, tenant_id=user.tenant_id, access_id=access_id)
     return _serialize_access(row)
 
@@ -144,7 +194,23 @@ async def pbc_tracker_endpoint(
     user: IamUser = Depends(require_finance_leader),
     _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
-    payload = await get_pbc_tracker(session, access_id=engagement_id, tenant_id=user.tenant_id)
+    access = (
+        await session.execute(
+            select(AuditorPortalAccess).where(
+                AuditorPortalAccess.id == engagement_id,
+                AuditorPortalAccess.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if access is None:
+        raise HTTPException(status_code=404, detail="Audit engagement not found")
+    await assert_entity_access(session, user.tenant_id, access.entity_id, user.id, user.role)
+    payload = await get_pbc_tracker(
+        session,
+        access_id=engagement_id,
+        tenant_id=user.tenant_id,
+        entity_id=access.entity_id,
+    )
     return {
         "engagement_name": payload["engagement_name"],
         "total_requests": payload["total_requests"],
@@ -166,10 +232,21 @@ async def respond_endpoint(
     user: IamUser = Depends(require_finance_leader),
     _tenant: IamTenant = Depends(require_org_setup),
 ) -> dict:
-    del engagement_id
+    access = (
+        await session.execute(
+            select(AuditorPortalAccess).where(
+                AuditorPortalAccess.id == engagement_id,
+                AuditorPortalAccess.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if access is None:
+        raise HTTPException(status_code=404, detail="Audit engagement not found")
+    await assert_entity_access(session, user.tenant_id, access.entity_id, user.id, user.role)
     row = await respond_to_request(
         session,
         tenant_id=user.tenant_id,
+        entity_id=access.entity_id,
         request_id=request_id,
         status=body.status,
         response_notes=body.response_notes,
@@ -190,7 +267,11 @@ async def auditor_list_requests_endpoint(
     rows = (
         await session.execute(
             select(AuditorRequest)
-            .where(AuditorRequest.access_id == access.id, AuditorRequest.tenant_id == access.tenant_id)
+            .where(
+                AuditorRequest.access_id == access.id,
+                AuditorRequest.tenant_id == access.tenant_id,
+                AuditorRequest.entity_id == access.entity_id,
+            )
             .order_by(AuditorRequest.request_number, AuditorRequest.created_at)
         )
     ).scalars().all()

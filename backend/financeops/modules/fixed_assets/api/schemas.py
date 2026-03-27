@@ -74,6 +74,8 @@ class FaAssetCreateRequest(BaseModel):
     it_act_block_number: int | None = None
     status: str = "ACTIVE"
     gaap_overrides: dict[str, object] | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
     is_active: bool = True
 
 
@@ -84,6 +86,8 @@ class FaAssetUpdateRequest(BaseModel):
     serial_number: str | None = None
     status: str | None = None
     gaap_overrides: dict[str, object] | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
     is_active: bool | None = None
 
 
@@ -110,6 +114,8 @@ class FaAssetResponse(BaseModel):
     disposal_date: date | None = None
     disposal_proceeds: Decimal | None = None
     gaap_overrides: dict[str, object] | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime | None = None

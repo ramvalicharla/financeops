@@ -10,9 +10,91 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.bank_recon import BankStatement, BankTransaction, BankReconItem
 from financeops.modules.bank_reconciliation.parsers.base import BankTransaction as ParsedBankTransaction
+from financeops.platform.db.models.entities import CpEntity
+from financeops.platform.db.models.organisations import CpOrganisation
+from financeops.utils.chain_hash import GENESIS_HASH
 from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
 log = logging.getLogger(__name__)
+
+
+async def _resolve_or_create_entity(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+    entity_name: str | None,
+) -> tuple[uuid.UUID, str]:
+    resolved_id = entity_id
+    resolved_name = entity_name
+
+    if resolved_id is not None:
+        row = (
+            await session.execute(
+                select(CpEntity.entity_name).where(
+                    CpEntity.tenant_id == tenant_id,
+                    CpEntity.id == resolved_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is not None and not resolved_name:
+            resolved_name = row
+        if row is not None and resolved_name:
+            return resolved_id, resolved_name
+
+    first_entity = (
+        await session.execute(
+            select(CpEntity.id, CpEntity.entity_name)
+            .where(CpEntity.tenant_id == tenant_id)
+            .order_by(CpEntity.created_at.asc())
+            .limit(1)
+        )
+    ).first()
+    if first_entity is not None:
+        return first_entity[0], resolved_name or first_entity[1]
+
+    org = (
+        await session.execute(
+            select(CpOrganisation)
+            .where(CpOrganisation.tenant_id == tenant_id)
+            .order_by(CpOrganisation.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if org is None:
+        org_code = f"AUTO_ORG_{str(tenant_id).replace('-', '')[:16].upper()}"
+        org = CpOrganisation(
+            tenant_id=tenant_id,
+            organisation_code=org_code,
+            organisation_name="Auto Organisation",
+            parent_organisation_id=None,
+            supersedes_id=None,
+            is_active=True,
+            correlation_id="bank-recon-auto",
+            chain_hash=compute_chain_hash({"organisation_code": org_code}, GENESIS_HASH),
+            previous_hash=GENESIS_HASH,
+        )
+        session.add(org)
+        await session.flush()
+
+    entity_code = f"AUTO_ENT_{str(tenant_id).replace('-', '')[:16].upper()}"
+    entity = CpEntity(
+        tenant_id=tenant_id,
+        entity_code=entity_code,
+        entity_name=resolved_name or "Auto Entity",
+        organisation_id=org.id,
+        group_id=None,
+        base_currency="INR",
+        country_code="IN",
+        status="active",
+        deactivated_at=None,
+        correlation_id="bank-recon-auto",
+        chain_hash=compute_chain_hash({"entity_code": entity_code}, GENESIS_HASH),
+        previous_hash=GENESIS_HASH,
+    )
+    session.add(entity)
+    await session.flush()
+    return entity.id, entity.entity_name
 
 
 async def create_bank_statement(
@@ -24,15 +106,25 @@ async def create_bank_statement(
     currency: str,
     period_year: int,
     period_month: int,
-    entity_name: str,
+    entity_id: uuid.UUID | None = None,
+    entity_name: str | None = None,
     opening_balance: Decimal,
     closing_balance: Decimal,
     file_name: str,
     file_hash: str,
     uploaded_by: uuid.UUID,
     transaction_count: int = 0,
+    location_id: uuid.UUID | None = None,
+    cost_centre_id: uuid.UUID | None = None,
 ) -> BankStatement:
     """Create a bank statement header record (INSERT ONLY)."""
+    resolved_entity_id, resolved_entity_name = await _resolve_or_create_entity(
+        session,
+        tenant_id=tenant_id,
+        entity_id=entity_id,
+        entity_name=entity_name,
+    )
+
     previous_hash = await get_previous_hash_locked(session, BankStatement, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
@@ -40,7 +132,8 @@ async def create_bank_statement(
         "account_number_masked": account_number_masked,
         "period_year": period_year,
         "period_month": period_month,
-        "entity_name": entity_name,
+        "entity_id": str(resolved_entity_id),
+        "entity_name": resolved_entity_name,
         "file_hash": file_hash,
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
@@ -52,7 +145,10 @@ async def create_bank_statement(
         currency=currency,
         period_year=period_year,
         period_month=period_month,
-        entity_name=entity_name,
+        entity_id=resolved_entity_id,
+        entity_name=resolved_entity_name,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
         opening_balance=opening_balance,
         closing_balance=closing_balance,
         transaction_count=transaction_count,
@@ -73,6 +169,7 @@ async def add_bank_transaction(
     *,
     tenant_id: uuid.UUID,
     statement_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     transaction_date: date,
     description: str,
     debit_amount: Decimal,
@@ -81,10 +178,24 @@ async def add_bank_transaction(
     reference: str | None = None,
 ) -> BankTransaction:
     """Add a single bank transaction row (INSERT ONLY)."""
+    resolved_entity_id = entity_id
+    if resolved_entity_id is None:
+        resolved_entity_id = (
+            await session.execute(
+                select(BankStatement.entity_id).where(
+                    BankStatement.tenant_id == tenant_id,
+                    BankStatement.id == statement_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if resolved_entity_id is None:
+            raise ValueError("entity_id is required when statement is missing")
+
     previous_hash = await get_previous_hash_locked(session, BankTransaction, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
         "statement_id": str(statement_id),
+        "entity_id": str(resolved_entity_id),
         "transaction_date": str(transaction_date),
         "debit_amount": str(debit_amount),
         "credit_amount": str(credit_amount),
@@ -94,6 +205,7 @@ async def add_bank_transaction(
     txn = BankTransaction(
         tenant_id=tenant_id,
         statement_id=statement_id,
+        entity_id=resolved_entity_id,
         transaction_date=transaction_date,
         description=description,
         debit_amount=debit_amount,
@@ -159,6 +271,7 @@ async def run_bank_reconciliation(
             statement_id=statement_id,
             period_year=stmt.period_year,
             period_month=stmt.period_month,
+            entity_id=stmt.entity_id,
             entity_name=stmt.entity_name,
             item_type="bank_only",
             bank_transaction_id=txn.id,
@@ -187,6 +300,7 @@ async def list_bank_statements(
     tenant_id: uuid.UUID,
     period_year: int | None = None,
     period_month: int | None = None,
+    entity_id: uuid.UUID | None = None,
     entity_name: str | None = None,
     skip: int = 0,
     limit: int = 100,
@@ -199,6 +313,8 @@ async def list_bank_statements(
         stmt = stmt.where(BankStatement.period_year == period_year)
     if period_month is not None:
         stmt = stmt.where(BankStatement.period_month == period_month)
+    if entity_id is not None:
+        stmt = stmt.where(BankStatement.entity_id == entity_id)
     if entity_name:
         stmt = stmt.where(BankStatement.entity_name == entity_name)
     stmt = stmt.order_by(desc(BankStatement.created_at)).limit(bounded_limit).offset(effective_skip)
@@ -210,6 +326,7 @@ async def list_bank_transactions(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     statement_id: uuid.UUID,
+    entity_id: uuid.UUID,
     skip: int = 0,
     limit: int = 100,
     offset: int | None = None,
@@ -218,7 +335,11 @@ async def list_bank_transactions(
     bounded_limit = max(1, min(limit, 1000))
     result = await session.execute(
         select(BankTransaction)
-        .where(BankTransaction.tenant_id == tenant_id, BankTransaction.statement_id == statement_id)
+        .where(
+            BankTransaction.tenant_id == tenant_id,
+            BankTransaction.statement_id == statement_id,
+            BankTransaction.entity_id == entity_id,
+        )
         .order_by(BankTransaction.transaction_date)
         .limit(bounded_limit)
         .offset(effective_skip)
@@ -229,6 +350,7 @@ async def list_bank_transactions(
 async def list_bank_recon_items(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     statement_id: uuid.UUID | None = None,
     status: str | None = None,
     skip: int = 0,
@@ -238,6 +360,8 @@ async def list_bank_recon_items(
     effective_skip = offset if offset is not None else skip
     bounded_limit = max(1, min(limit, 1000))
     stmt = select(BankReconItem).where(BankReconItem.tenant_id == tenant_id)
+    if entity_id is not None:
+        stmt = stmt.where(BankReconItem.entity_id == entity_id)
     if statement_id:
         stmt = stmt.where(BankReconItem.statement_id == statement_id)
     if status:
@@ -251,6 +375,8 @@ async def store_bank_transactions(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    entity_name: str,
     bank_name: str,
     transactions: list[ParsedBankTransaction],
     uploaded_by: uuid.UUID,
@@ -268,7 +394,8 @@ async def store_bank_transactions(
         currency="INR",
         period_year=last.year,
         period_month=last.month,
-        entity_name="default",
+        entity_id=entity_id,
+        entity_name=entity_name,
         opening_balance=transactions[0].balance or Decimal("0.00"),
         closing_balance=transactions[-1].balance or Decimal("0.00"),
         file_name=f"{bank_name}_{first.isoformat()}_{last.isoformat()}.csv",
@@ -292,6 +419,7 @@ async def store_bank_transactions(
             session,
             tenant_id=tenant_id,
             statement_id=statement.id,
+            entity_id=entity_id,
             transaction_date=txn.transaction_date,
             description=txn.description,
             debit_amount=txn.debit or Decimal("0.00"),

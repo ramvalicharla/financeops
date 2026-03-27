@@ -23,12 +23,16 @@ from financeops.modules.expense_management.service import (
     submit_claim,
 )
 from financeops.modules.notifications.service import send_notification
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
 
 
 class SubmitExpenseRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
+    location_id: uuid.UUID | None = None
+    cost_centre_id: uuid.UUID | None = None
     vendor_name: str
     description: str
     category: str
@@ -67,6 +71,9 @@ async def _serialize_claim(session: AsyncSession, claim: ExpenseClaim) -> dict:
     return {
         "id": str(claim.id),
         "tenant_id": str(claim.tenant_id),
+        "entity_id": str(claim.entity_id),
+        "location_id": str(claim.location_id) if claim.location_id else None,
+        "cost_centre_id": str(claim.cost_centre_id) if claim.cost_centre_id else None,
         "submitted_by": str(claim.submitted_by),
         "period": claim.period,
         "claim_date": claim.claim_date.isoformat(),
@@ -88,6 +95,28 @@ async def _serialize_claim(session: AsyncSession, claim: ExpenseClaim) -> dict:
     }
 
 
+async def _resolve_entity_for_user(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if not entities:
+        raise HTTPException(
+            status_code=422,
+            detail="entity_id is required because no entity is configured for this user",
+        )
+    return entities[0].id
+
+
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def submit_expense(
     body: SubmitExpenseRequest,
@@ -95,6 +124,7 @@ async def submit_expense(
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     amount = _decimal_or_422(body.amount, "amount")
+    resolved_entity_id = await _resolve_entity_for_user(session, user, body.entity_id)
     try:
         claim = await submit_claim(
             session,
@@ -109,6 +139,9 @@ async def submit_expense(
             has_receipt=body.has_receipt,
             receipt_url=body.receipt_url,
             justification=body.justification,
+            location_id=body.location_id,
+            cost_centre_id=body.cost_centre_id,
+            entity_id=resolved_entity_id,
         )
     except PolicyViolationError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
@@ -121,6 +154,9 @@ async def submit_expense(
 
 @router.get("")
 async def list_expenses(
+    entity_id: uuid.UUID | None = None,
+    location_id: uuid.UUID | None = Query(default=None),
+    cost_centre_id: uuid.UUID | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     period: str | None = Query(default=None),
     submitted_by: uuid.UUID | None = Query(default=None),
@@ -130,11 +166,16 @@ async def list_expenses(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    resolved_entity_id: uuid.UUID | None = None
+    if entity_id is not None:
+        resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     if submitted_by is not None and user.role not in {UserRole.finance_leader, UserRole.super_admin}:
         raise HTTPException(status_code=403, detail="Only finance leader can filter by submitted_by")
 
     effective_skip = offset if offset is not None else skip
     stmt = select(ExpenseClaim).where(ExpenseClaim.tenant_id == user.tenant_id)
+    if resolved_entity_id is not None:
+        stmt = stmt.where(ExpenseClaim.entity_id == resolved_entity_id)
     if period:
         stmt = stmt.where(ExpenseClaim.period == period)
     if submitted_by is not None:
@@ -143,6 +184,10 @@ async def list_expenses(
         stmt = stmt.where(ExpenseClaim.submitted_by == user.id)
     if status_filter:
         stmt = stmt.where(ExpenseClaim.status == status_filter)
+    if location_id is not None:
+        stmt = stmt.where(ExpenseClaim.location_id == location_id)
+    if cost_centre_id is not None:
+        stmt = stmt.where(ExpenseClaim.cost_centre_id == cost_centre_id)
 
     total = (
         await session.execute(select(func.count()).select_from(stmt.subquery()))
@@ -170,12 +215,14 @@ async def list_expenses(
 
 @router.get("/analytics")
 async def analytics(
+    entity_id: uuid.UUID | None = None,
     period: str | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     target_period = period or datetime.now(UTC).strftime("%Y-%m")
-    payload = await get_expense_analytics(session, user.tenant_id, target_period)
+    payload = await get_expense_analytics(session, user.tenant_id, target_period, resolved_entity_id)
     return {
         "total_spend": format(payload["total_spend"], "f"),
         "spend_by_category": {
@@ -257,6 +304,12 @@ async def get_expense_claim(
     ).scalar_one_or_none()
     if claim is None:
         raise HTTPException(status_code=404, detail="Expense claim not found")
+    try:
+        await assert_entity_access(session, user.tenant_id, claim.entity_id, user.id, user.role)
+    except HTTPException as exc:
+        if exc.status_code == 403:
+            raise HTTPException(status_code=404, detail="Expense claim not found") from exc
+        raise
     if user.role not in {UserRole.finance_leader, UserRole.super_admin} and claim.submitted_by != user.id:
         raise HTTPException(status_code=404, detail="Expense claim not found")
 
@@ -320,6 +373,7 @@ async def approve_expense_claim(
         )
     ).scalar_one_or_none()
     if claim is not None:
+        await assert_entity_access(session, user.tenant_id, claim.entity_id, user.id, user.role)
         try:
             action_value = str(body.action).strip().lower()
             notification_type = (

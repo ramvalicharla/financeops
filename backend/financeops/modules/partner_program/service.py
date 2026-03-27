@@ -57,6 +57,15 @@ def _generate_partner_code(company_name: str) -> str:
     return f"{prefix}-{suffix}"
 
 
+def _generate_referral_code(partner_code: str) -> str:
+    # Keep referral code deterministic length (<=20) and unique per click.
+    suffix = uuid.uuid4().hex[:8].upper()
+    prefix = re.sub(r"[^A-Z0-9]", "", partner_code.upper())[:12]
+    if not prefix:
+        prefix = "REF"
+    return f"{prefix}{suffix}"[:20]
+
+
 async def _unique_partner_code(session: AsyncSession, company_name: str) -> str:
     base_code = _generate_partner_code(company_name)
     candidate = base_code
@@ -134,7 +143,7 @@ async def track_referral_click(
         partner_id=partner.id,
         referred_tenant_id=None,
         tenant_id=partner.tenant_id,
-        referral_code=partner_code,
+        referral_code=_generate_referral_code(partner.partner_code),
         referral_email=referral_email,
         status="clicked",
         clicked_at=now,

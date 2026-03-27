@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
 from financeops.modules.statutory.models import StatutoryFiling, StatutoryRegisterEntry
+from financeops.platform.db.models.entities import CpEntity
 
 _STANDARD_FORMS = [
     ("MGT-7", "Annual Return"),
@@ -34,17 +35,55 @@ def _fy_dates(fiscal_year: int) -> list[tuple[str, str, date]]:
     ]
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    resolved = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if resolved is not None:
+        return resolved
+    fallback = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(CpEntity.status == "active")
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if fallback is None:
+        raise NotFoundError("No active entity available")
+    return fallback
+
+
 async def ensure_standard_filings(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
     fiscal_year: int,
 ) -> None:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     existing_count = int(
         (
             await session.execute(
                 select(func.count())
                 .select_from(StatutoryFiling)
-                .where(StatutoryFiling.tenant_id == tenant_id, StatutoryFiling.due_date >= date(fiscal_year, 1, 1), StatutoryFiling.due_date <= date(fiscal_year, 12, 31))
+                .where(
+                    StatutoryFiling.tenant_id == tenant_id,
+                    StatutoryFiling.entity_id == resolved_entity_id,
+                    StatutoryFiling.due_date >= date(fiscal_year, 1, 1),
+                    StatutoryFiling.due_date <= date(fiscal_year, 12, 31),
+                )
             )
         ).scalar_one()
     )
@@ -56,6 +95,7 @@ async def ensure_standard_filings(
         session.add(
             StatutoryFiling(
                 tenant_id=tenant_id,
+                entity_id=resolved_entity_id,
                 form_number=form_number,
                 form_description=form_description,
                 due_date=due_date,
@@ -71,13 +111,16 @@ async def get_compliance_calendar(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     fiscal_year: int,
+    entity_id: uuid.UUID | None = None,
 ) -> list[dict]:
-    await ensure_standard_filings(session, tenant_id, fiscal_year)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
+    await ensure_standard_filings(session, tenant_id, resolved_entity_id, fiscal_year)
     rows = (
         await session.execute(
             select(StatutoryFiling)
             .where(
                 StatutoryFiling.tenant_id == tenant_id,
+                StatutoryFiling.entity_id == resolved_entity_id,
                 StatutoryFiling.due_date >= date(fiscal_year, 1, 1),
                 StatutoryFiling.due_date <= date(fiscal_year, 12, 31),
             )
@@ -112,10 +155,16 @@ async def mark_as_filed(
     filing_id: uuid.UUID,
     filed_date: date,
     filing_reference: str,
+    entity_id: uuid.UUID | None = None,
 ) -> StatutoryFiling:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     current = (
         await session.execute(
-            select(StatutoryFiling).where(StatutoryFiling.id == filing_id, StatutoryFiling.tenant_id == tenant_id)
+            select(StatutoryFiling).where(
+                StatutoryFiling.id == filing_id,
+                StatutoryFiling.tenant_id == tenant_id,
+                StatutoryFiling.entity_id == resolved_entity_id,
+            )
         )
     ).scalar_one_or_none()
     if current is None:
@@ -123,6 +172,7 @@ async def mark_as_filed(
 
     row = StatutoryFiling(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         form_number=current.form_number,
         form_description=current.form_description,
         due_date=current.due_date,
@@ -141,14 +191,17 @@ async def get_register(
     session: AsyncSession,
     tenant_id: uuid.UUID,
     register_type: str,
+    entity_id: uuid.UUID | None = None,
     skip: int = 0,
     limit: int = 100,
     offset: int | None = None,
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     effective_skip = offset if offset is not None else skip
     bounded_limit = max(1, min(limit, 1000))
     stmt = select(StatutoryRegisterEntry).where(
         StatutoryRegisterEntry.tenant_id == tenant_id,
+        StatutoryRegisterEntry.entity_id == resolved_entity_id,
         StatutoryRegisterEntry.register_type == register_type,
     )
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
@@ -168,14 +221,17 @@ async def add_register_entry(
     register_type: str,
     entry_date: date,
     entry_description: str,
+    entity_id: uuid.UUID | None = None,
     folio_number: str | None = None,
     amount: Decimal | None = None,
     currency: str | None = None,
     reference_document: str | None = None,
 ) -> StatutoryRegisterEntry:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     now = datetime.now(UTC)
     row = StatutoryRegisterEntry(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         register_type=register_type,
         entry_date=entry_date,
         entry_description=entry_description,
@@ -195,15 +251,20 @@ async def add_register_entry(
 async def list_filings(
     session: AsyncSession,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     status: str | None = None,
     fiscal_year: int | None = None,
     skip: int = 0,
     limit: int = 100,
     offset: int | None = None,
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     effective_skip = offset if offset is not None else skip
     bounded_limit = max(1, min(limit, 1000))
-    stmt = select(StatutoryFiling).where(StatutoryFiling.tenant_id == tenant_id)
+    stmt = select(StatutoryFiling).where(
+        StatutoryFiling.tenant_id == tenant_id,
+        StatutoryFiling.entity_id == resolved_entity_id,
+    )
     if status:
         stmt = stmt.where(StatutoryFiling.status == status)
     if fiscal_year:

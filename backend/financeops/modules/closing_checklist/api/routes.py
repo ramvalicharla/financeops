@@ -26,6 +26,7 @@ from financeops.modules.closing_checklist.service import (
     update_task_status,
 )
 from financeops.modules.notifications.service import send_notification
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/close", tags=["closing-checklist"])
@@ -115,12 +116,14 @@ async def _load_run_by_period(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID,
     period: str,
 ) -> ChecklistRun | None:
     return (
         await session.execute(
             select(ChecklistRun).where(
                 ChecklistRun.tenant_id == tenant_id,
+                ChecklistRun.entity_id == entity_id,
                 ChecklistRun.period == period,
             )
         )
@@ -131,6 +134,7 @@ async def _load_tasks_with_templates(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    entity_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> tuple[list[ChecklistRunTask], dict[uuid.UUID, ChecklistTemplateTask]]:
     tasks = (
@@ -138,6 +142,7 @@ async def _load_tasks_with_templates(
             select(ChecklistRunTask)
             .where(
                 ChecklistRunTask.tenant_id == tenant_id,
+                ChecklistRunTask.entity_id == entity_id,
                 ChecklistRunTask.run_id == run_id,
             )
             .order_by(ChecklistRunTask.order_index.asc(), ChecklistRunTask.created_at.asc())
@@ -213,16 +218,43 @@ def _can_update_task(user: IamUser, assigned_role: str | None) -> bool:
     return user.role.value in allowed
 
 
+async def _resolve_entity_for_user(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if not entities:
+        raise HTTPException(
+            status_code=422,
+            detail="entity_id is required because no entity is configured for this user",
+        )
+    return entities[0].id
+
+
 @router.get("/history")
 async def list_history(
+    entity_id: uuid.UUID | None = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     effective_skip = offset if offset is not None else skip
-    base_stmt = select(ChecklistRun).where(ChecklistRun.tenant_id == user.tenant_id)
+    base_stmt = select(ChecklistRun).where(
+        ChecklistRun.tenant_id == user.tenant_id,
+        ChecklistRun.entity_id == resolved_entity_id,
+    )
     total = (await session.execute(select(func.count()).select_from(base_stmt.subquery()))).scalar_one()
     rows = (
         await session.execute(
@@ -254,10 +286,12 @@ async def list_history(
 
 @router.get("/analytics")
 async def get_analytics(
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    analytics = await get_closing_analytics(session, user.tenant_id)
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
+    analytics = await get_closing_analytics(session, user.tenant_id, resolved_entity_id)
     return {
         "avg_days_to_close": _to_str(analytics["avg_days_to_close"]),
         "fastest_close_period": analytics["fastest_close_period"],
@@ -345,21 +379,25 @@ async def list_templates(
 @router.get("/{period}")
 async def get_or_create_checklist(
     period: str,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     normalized_period = _ensure_period(period)
     run = await get_or_create_run(
         session,
         tenant_id=user.tenant_id,
         period=normalized_period,
         created_by=user.id,
+        entity_id=resolved_entity_id,
     )
     await session.flush()
 
     tasks, template_map = await _load_tasks_with_templates(
         session,
         tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
         run_id=run.id,
     )
     tasks_by_template = {task.template_task_id: task for task in tasks}
@@ -403,11 +441,34 @@ async def patch_task_status(
     period: str,
     task_id: uuid.UUID,
     body: TaskStatusPatchRequest,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     normalized_period = _ensure_period(period)
-    run = await _load_run_by_period(session, tenant_id=user.tenant_id, period=normalized_period)
+    resolved_entity_id: uuid.UUID
+    if entity_id is not None:
+        resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
+    else:
+        run_for_period = (
+            await session.execute(
+                select(ChecklistRun).where(
+                    ChecklistRun.tenant_id == user.tenant_id,
+                    ChecklistRun.period == normalized_period,
+                )
+            )
+        ).scalar_one_or_none()
+        if run_for_period is not None:
+            resolved_entity_id = run_for_period.entity_id
+        else:
+            resolved_entity_id = await _resolve_entity_for_user(session, user, None)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    run = await _load_run_by_period(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        period=normalized_period,
+    )
     if run is None:
         raise HTTPException(status_code=404, detail="Checklist run not found")
 
@@ -417,6 +478,7 @@ async def patch_task_status(
                 ChecklistRunTask.id == task_id,
                 ChecklistRunTask.run_id == run.id,
                 ChecklistRunTask.tenant_id == user.tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
             )
         )
     ).scalar_one_or_none()
@@ -435,6 +497,7 @@ async def patch_task_status(
             new_status=body.status,
             updated_by=user.id,
             notes=body.notes,
+            entity_id=resolved_entity_id,
         )
     except DependencyNotMetError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
@@ -444,7 +507,12 @@ async def patch_task_status(
         raise HTTPException(status_code=404, detail=exc.message) from exc
 
     await session.flush()
-    refreshed_run = await _load_run_by_period(session, tenant_id=user.tenant_id, period=normalized_period)
+    refreshed_run = await _load_run_by_period(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        period=normalized_period,
+    )
     return {
         "task": {
             "id": str(updated.id),
@@ -465,11 +533,18 @@ async def assign_task(
     period: str,
     task_id: uuid.UUID,
     body: TaskAssignRequest,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     normalized_period = _ensure_period(period)
-    run = await _load_run_by_period(session, tenant_id=user.tenant_id, period=normalized_period)
+    run = await _load_run_by_period(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
+        period=normalized_period,
+    )
     if run is None:
         raise HTTPException(status_code=404, detail="Checklist run not found")
 
@@ -479,6 +554,7 @@ async def assign_task(
                 ChecklistRunTask.id == task_id,
                 ChecklistRunTask.run_id == run.id,
                 ChecklistRunTask.tenant_id == user.tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
             )
         )
     ).scalar_one_or_none()

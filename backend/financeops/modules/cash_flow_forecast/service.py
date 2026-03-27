@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.modules.cash_flow_forecast.models import CashFlowForecastAssumption, CashFlowForecastRun
 from financeops.modules.expense_management.models import ExpenseClaim
+from financeops.platform.db.models.entities import CpEntity
 
 _MONEY_QUANT = Decimal("0.01")
 _WEEKLY_DIVISOR = Decimal("4.33")
@@ -39,6 +40,39 @@ async def _get_run(session: AsyncSession, tenant_id: uuid.UUID, forecast_run_id:
     if run is None:
         raise NotFoundError("Forecast run not found")
     return run
+
+
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        exists = (
+            await session.execute(
+                select(CpEntity.id).where(
+                    CpEntity.id == entity_id,
+                    CpEntity.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise ValidationError("Entity not found")
+        return entity_id
+
+    default_entity_id = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if default_entity_id is None:
+        raise ValidationError("No active entity found for tenant")
+    return default_entity_id
 
 
 async def _recompute_weeks(session: AsyncSession, run: CashFlowForecastRun) -> list[CashFlowForecastAssumption]:
@@ -80,6 +114,9 @@ async def create_forecast_run(
     opening_cash_balance: Decimal,
     currency: str,
     created_by: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+    location_id: uuid.UUID | None = None,
+    cost_centre_id: uuid.UUID | None = None,
     weeks: int = 13,
 ) -> CashFlowForecastRun:
     if not _is_monday(base_date):
@@ -87,8 +124,13 @@ async def create_forecast_run(
     if weeks <= 0:
         raise ValidationError("weeks must be positive")
 
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
+
     run = CashFlowForecastRun(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
         run_name=run_name,
         base_date=base_date,
         weeks=weeks,
@@ -107,6 +149,7 @@ async def create_forecast_run(
             CashFlowForecastAssumption(
                 forecast_run_id=run.id,
                 tenant_id=tenant_id,
+                entity_id=resolved_entity_id,
                 week_number=week_number,
                 week_start_date=start_date,
                 customer_collections=Decimal("0.00"),
@@ -143,6 +186,7 @@ async def update_week_assumptions(
             select(CashFlowForecastAssumption).where(
                 CashFlowForecastAssumption.forecast_run_id == run.id,
                 CashFlowForecastAssumption.tenant_id == tenant_id,
+                CashFlowForecastAssumption.entity_id == run.entity_id,
                 CashFlowForecastAssumption.week_number == week_number,
             )
         )
@@ -188,6 +232,7 @@ async def get_forecast_summary(
             .where(
                 CashFlowForecastAssumption.forecast_run_id == run.id,
                 CashFlowForecastAssumption.tenant_id == tenant_id,
+                CashFlowForecastAssumption.entity_id == run.entity_id,
             )
             .order_by(CashFlowForecastAssumption.week_number)
         )
@@ -247,6 +292,7 @@ async def seed_from_historical(
     claims = (
         await session.execute(
             select(ExpenseClaim).where(ExpenseClaim.tenant_id == tenant_id)
+            .where(ExpenseClaim.entity_id == run.entity_id)
         )
     ).scalars().all()
 
@@ -298,6 +344,7 @@ async def publish_forecast(
                 CashFlowForecastAssumption(
                     forecast_run_id=target_run_id,
                     tenant_id=tenant_id,
+                    entity_id=row.entity_id,
                     week_number=row.week_number,
                     week_start_date=row.week_start_date,
                     customer_collections=_d(row.customer_collections),
@@ -332,6 +379,9 @@ async def publish_forecast(
     if current_published is not None:
         superseded = CashFlowForecastRun(
             tenant_id=tenant_id,
+            entity_id=current_published.entity_id,
+            location_id=current_published.location_id,
+            cost_centre_id=current_published.cost_centre_id,
             run_name=current_published.run_name,
             base_date=current_published.base_date,
             weeks=current_published.weeks,
@@ -347,6 +397,9 @@ async def publish_forecast(
 
     published = CashFlowForecastRun(
         tenant_id=tenant_id,
+        entity_id=draft.entity_id,
+        location_id=draft.location_id,
+        cost_centre_id=draft.cost_centre_id,
         run_name=draft.run_name,
         base_date=draft.base_date,
         weeks=draft.weeks,

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.core.exceptions import NotFoundError
 from financeops.db.models.users import IamUser
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.modules.scenario_modelling.models import (
     ScenarioDefinition,
     ScenarioLineItem,
@@ -31,6 +32,7 @@ router = APIRouter(prefix="/scenarios", tags=["scenario-modelling"])
 
 
 class CreateScenarioSetRequest(BaseModel):
+    entity_id: uuid.UUID | None = None
     name: str
     base_period: str
     horizon_months: int = 12
@@ -42,10 +44,30 @@ class UpdateScenarioRequest(BaseModel):
     scenario_label: str | None = None
 
 
+async def _resolve_entity_for_user(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        await assert_entity_access(session, user.tenant_id, entity_id, user.id, user.role)
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if not entities:
+        raise HTTPException(status_code=422, detail="entity_id is required because no entity is configured for this user")
+    return entities[0].id
+
+
 def _serialize_set(row: ScenarioSet) -> dict:
     return {
         "id": str(row.id),
         "tenant_id": str(row.tenant_id),
+        "entity_id": str(row.entity_id),
         "name": row.name,
         "base_period": row.base_period,
         "horizon_months": row.horizon_months,
@@ -60,6 +82,7 @@ def _serialize_definition(row: ScenarioDefinition) -> dict:
         "id": str(row.id),
         "scenario_set_id": str(row.scenario_set_id),
         "tenant_id": str(row.tenant_id),
+        "entity_id": str(row.entity_id),
         "scenario_name": row.scenario_name,
         "scenario_label": row.scenario_label,
         "is_base_case": row.is_base_case,
@@ -76,6 +99,7 @@ async def create_set(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, body.entity_id)
     scenario_set = await create_scenario_set(
         session,
         tenant_id=user.tenant_id,
@@ -84,11 +108,13 @@ async def create_set(
         horizon_months=body.horizon_months,
         created_by=user.id,
         base_forecast_run_id=body.base_forecast_run_id,
+        entity_id=resolved_entity_id,
     )
     definitions = (
         await session.execute(
             select(ScenarioDefinition).where(
                 ScenarioDefinition.tenant_id == user.tenant_id,
+                ScenarioDefinition.entity_id == resolved_entity_id,
                 ScenarioDefinition.scenario_set_id == scenario_set.id,
             )
         )
@@ -101,14 +127,19 @@ async def create_set(
 
 @router.get("")
 async def list_sets(
+    entity_id: uuid.UUID | None = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     effective_skip = offset if offset is not None else skip
-    stmt = select(ScenarioSet).where(ScenarioSet.tenant_id == user.tenant_id)
+    stmt = select(ScenarioSet).where(
+        ScenarioSet.tenant_id == user.tenant_id,
+        ScenarioSet.entity_id == resolved_entity_id,
+    )
     total = (await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (
         await session.execute(
@@ -129,14 +160,22 @@ async def list_sets(
 @router.get("/{set_id}")
 async def get_set(
     set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    try:
+        resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
+    except HTTPException as exc:
+        if exc.status_code == 422:
+            raise HTTPException(status_code=404, detail="Scenario set not found") from exc
+        raise
     scenario_set = (
         await session.execute(
             select(ScenarioSet).where(
                 ScenarioSet.id == set_id,
                 ScenarioSet.tenant_id == user.tenant_id,
+                ScenarioSet.entity_id == resolved_entity_id,
             )
         )
     ).scalar_one_or_none()
@@ -146,6 +185,7 @@ async def get_set(
         await session.execute(
             select(ScenarioDefinition).where(
                 ScenarioDefinition.tenant_id == user.tenant_id,
+                ScenarioDefinition.entity_id == resolved_entity_id,
                 ScenarioDefinition.scenario_set_id == set_id,
             )
         )
@@ -157,6 +197,7 @@ async def get_set(
                 select(ScenarioResult)
                 .where(
                     ScenarioResult.tenant_id == user.tenant_id,
+                    ScenarioResult.entity_id == resolved_entity_id,
                     ScenarioResult.scenario_definition_id == definition.id,
                 )
                 .order_by(ScenarioResult.computed_at.desc(), ScenarioResult.id.desc())
@@ -184,15 +225,18 @@ async def patch_definition(
     set_id: uuid.UUID,
     definition_id: uuid.UUID,
     body: UpdateScenarioRequest,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     definition = (
         await session.execute(
             select(ScenarioDefinition).where(
                 ScenarioDefinition.id == definition_id,
                 ScenarioDefinition.scenario_set_id == set_id,
                 ScenarioDefinition.tenant_id == user.tenant_id,
+                ScenarioDefinition.entity_id == resolved_entity_id,
             )
         )
     ).scalar_one_or_none()
@@ -205,6 +249,7 @@ async def patch_definition(
             tenant_id=user.tenant_id,
             scenario_definition_id=definition_id,
             driver_overrides=body.driver_overrides,
+            entity_id=resolved_entity_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -218,14 +263,17 @@ async def patch_definition(
 @router.post("/{set_id}/compute")
 async def compute_set(
     set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     try:
         results = await compute_all_scenarios(
             session,
             tenant_id=user.tenant_id,
             scenario_set_id=set_id,
+            entity_id=resolved_entity_id,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -236,6 +284,7 @@ async def compute_set(
                 select(func.count()).select_from(ScenarioLineItem).where(
                     ScenarioLineItem.scenario_result_id == row.id,
                     ScenarioLineItem.tenant_id == user.tenant_id,
+                    ScenarioLineItem.entity_id == resolved_entity_id,
                 )
             )
         ).scalar_one()
@@ -253,14 +302,17 @@ async def compute_set(
 @router.get("/{set_id}/comparison")
 async def comparison(
     set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     try:
         payload = await get_scenario_comparison(
             session,
             tenant_id=user.tenant_id,
             scenario_set_id=set_id,
+            entity_id=resolved_entity_id,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -309,10 +361,11 @@ async def comparison(
 @router.get("/{set_id}/export")
 async def export_set(
     set_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Response:
-    payload = await comparison(set_id=set_id, session=session, user=user)
+    payload = await comparison(set_id=set_id, entity_id=entity_id, session=session, user=user)
 
     workbook = Workbook()
     # default sheet reused for first scenario

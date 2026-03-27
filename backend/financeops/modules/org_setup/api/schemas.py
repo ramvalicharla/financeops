@@ -95,6 +95,9 @@ class Step2EntityRequest(BaseModel):
     lei: str | None = Field(default=None, max_length=30)
     tax_jurisdiction: str | None = Field(default=None, max_length=100)
     tax_rate: Decimal | None = None
+    registered_address: str | None = None
+    city: str | None = Field(default=None, max_length=100)
+    pincode: str | None = Field(default=None, max_length=10)
 
 
 class Step2Request(BaseModel):
@@ -290,6 +293,9 @@ class UpdateOrgEntityRequest(BaseModel):
     lei: str | None = None
     tax_jurisdiction: str | None = None
     tax_rate: Decimal | None = None
+    registered_address: str | None = None
+    city: str | None = None
+    pincode: str | None = None
     is_active: bool | None = None
 
 

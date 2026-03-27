@@ -72,6 +72,8 @@ class PrepaidService:
             amortisation_method=str(data.get("amortisation_method", "SLM")).upper(),
             coa_prepaid_account_id=data.get("coa_prepaid_account_id"),
             coa_expense_account_id=data.get("coa_expense_account_id"),
+            location_id=data.get("location_id"),
+            cost_centre_id=data.get("cost_centre_id"),
             status=str(data.get("status", "ACTIVE")).upper(),
         )
         self._session.add(row)
@@ -115,6 +117,8 @@ class PrepaidService:
             "prepaid_type",
             "coa_prepaid_account_id",
             "coa_expense_account_id",
+            "location_id",
+            "cost_centre_id",
         }
         if not entries_exist:
             allowed |= financial_fields
@@ -134,6 +138,8 @@ class PrepaidService:
         limit: int,
         status: str | None = None,
         prepaid_type: str | None = None,
+        location_id: uuid.UUID | None = None,
+        cost_centre_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         effective_limit = self._limit(limit)
         stmt = select(PrepaidSchedule).where(
@@ -144,6 +150,10 @@ class PrepaidService:
             stmt = stmt.where(PrepaidSchedule.status == status)
         if prepaid_type:
             stmt = stmt.where(PrepaidSchedule.prepaid_type == prepaid_type)
+        if location_id is not None:
+            stmt = stmt.where(PrepaidSchedule.location_id == location_id)
+        if cost_centre_id is not None:
+            stmt = stmt.where(PrepaidSchedule.cost_centre_id == cost_centre_id)
 
         total = int((await self._session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
         rows = (

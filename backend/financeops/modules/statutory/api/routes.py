@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser
 from financeops.modules.statutory.models import StatutoryFiling, StatutoryRegisterEntry
 from financeops.modules.statutory.service import add_register_entry, get_compliance_calendar, get_register, list_filings, mark_as_filed
+from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/statutory", tags=["statutory"])
@@ -40,6 +41,7 @@ def _decimal(value: Decimal | None) -> str | None:
 def _serialize_filing(row: StatutoryFiling) -> dict:
     return {
         "id": str(row.id),
+        "entity_id": str(row.entity_id),
         "form_number": row.form_number,
         "form_description": row.form_description,
         "due_date": row.due_date.isoformat(),
@@ -55,6 +57,7 @@ def _serialize_filing(row: StatutoryFiling) -> dict:
 def _serialize_register(row: StatutoryRegisterEntry) -> dict:
     return {
         "id": str(row.id),
+        "entity_id": str(row.entity_id),
         "register_type": row.register_type,
         "entry_date": row.entry_date.isoformat(),
         "entry_description": row.entry_description,
@@ -68,13 +71,39 @@ def _serialize_register(row: StatutoryRegisterEntry) -> dict:
     }
 
 
+async def _resolve_entity_id(
+    session: AsyncSession,
+    user: IamUser,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    entities = await get_entities_for_user(
+        session=session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role,
+    )
+    if entities:
+        return entities[0].id
+    raise HTTPException(status_code=422, detail="entity_id is required because no entity is configured for this user")
+
+
 @router.get("/calendar")
 async def calendar_endpoint(
     fiscal_year: int,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> list[dict]:
-    rows = await get_compliance_calendar(session, tenant_id=user.tenant_id, fiscal_year=fiscal_year)
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    rows = await get_compliance_calendar(
+        session,
+        tenant_id=user.tenant_id,
+        fiscal_year=fiscal_year,
+        entity_id=resolved_entity_id,
+    )
     return [
         {
             "id": row["id"],
@@ -92,6 +121,7 @@ async def calendar_endpoint(
 
 @router.get("/filings", response_model=Paginated[dict])
 async def filings_endpoint(
+    entity_id: uuid.UUID | None = None,
     status: str | None = Query(default=None),
     fiscal_year: int | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
@@ -100,10 +130,13 @@ async def filings_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     effective_skip = offset if offset is not None else skip
     payload = await list_filings(
         session,
         tenant_id=user.tenant_id,
+        entity_id=resolved_entity_id,
         status=status,
         fiscal_year=fiscal_year,
         limit=limit,
@@ -123,27 +156,46 @@ async def filings_endpoint(
 async def mark_filed_endpoint(
     filing_id: uuid.UUID,
     body: MarkFiledRequest,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    row = await mark_as_filed(session, tenant_id=user.tenant_id, filing_id=filing_id, filed_date=body.filed_date, filing_reference=body.filing_reference)
+    try:
+        resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    except HTTPException as exc:
+        if exc.status_code == 422:
+            raise HTTPException(status_code=404, detail="Filing not found") from exc
+        raise
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    row = await mark_as_filed(
+        session,
+        tenant_id=user.tenant_id,
+        filing_id=filing_id,
+        filed_date=body.filed_date,
+        filing_reference=body.filing_reference,
+        entity_id=resolved_entity_id,
+    )
     return _serialize_filing(row)
 
 
 @router.get("/registers/{register_type}", response_model=Paginated[dict])
 async def register_endpoint(
     register_type: str,
+    entity_id: uuid.UUID | None = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int | None = Query(default=None, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     effective_skip = offset if offset is not None else skip
     payload = await get_register(
         session,
         tenant_id=user.tenant_id,
         register_type=register_type,
+        entity_id=resolved_entity_id,
         limit=limit,
         offset=effective_skip,
     )
@@ -161,15 +213,19 @@ async def register_endpoint(
 async def add_register_endpoint(
     register_type: str,
     body: AddRegisterEntryRequest,
+    entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
+    await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     row = await add_register_entry(
         session,
         tenant_id=user.tenant_id,
         register_type=register_type,
         entry_date=body.entry_date,
         entry_description=body.entry_description,
+        entity_id=resolved_entity_id,
         folio_number=body.folio_number,
         amount=body.amount,
         currency=body.currency,

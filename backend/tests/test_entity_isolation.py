@@ -778,3 +778,37 @@ async def test_entity_isolation_gst_returns_cross_tenant_denied(
         headers=_auth_headers(other_user),
     )
     assert denied.status_code in {403, 404}
+
+
+@pytest.mark.asyncio
+async def test_isolation_locations(
+    async_client,
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
+    entity_a = await _create_entity(async_client, test_user, code="E1001", name="Entity A")
+    entity_b = await _create_entity(async_client, test_user, code="E1002", name="Entity B")
+    scoped_user = await _create_scoped_finance_team_user(
+        async_client,
+        async_session,
+        test_user,
+        entity_id=entity_b,
+    )
+
+    created = await async_client.post(
+        "/api/v1/locations",
+        headers=_auth_headers(test_user),
+        json={
+            "entity_id": entity_a,
+            "location_name": "Entity A HQ",
+            "location_code": "EA-HQ",
+        },
+    )
+    assert created.status_code == 200
+    location_id = created.json()["data"]["id"]
+
+    denied = await async_client.get(
+        f"/api/v1/locations/{location_id}",
+        headers=_auth_headers(scoped_user),
+    )
+    assert denied.status_code == 403

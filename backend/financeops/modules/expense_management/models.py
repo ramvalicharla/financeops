@@ -48,11 +48,29 @@ class ExpenseClaim(Base):
         ),
         Index("idx_expense_claims_tenant_user_period", "tenant_id", "submitted_by", "period"),
         Index("idx_expense_claims_tenant_status", "tenant_id", "status"),
+        Index("idx_expense_claims_entity_id", "tenant_id", "entity_id"),
+        Index("idx_expense_claims_location_id", "location_id"),
+        Index("idx_expense_claims_cost_centre_id", "cost_centre_id"),
         {"extend_existing": True},
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, nullable=False, server_default=text("gen_random_uuid()"))
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    location_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_locations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    cost_centre_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_cost_centres.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     submitted_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("iam_users.id", ondelete="RESTRICT"), nullable=False)
     period: Mapped[str] = mapped_column(String(7), nullable=False)
     claim_date: Mapped[date] = mapped_column(Date, nullable=False)

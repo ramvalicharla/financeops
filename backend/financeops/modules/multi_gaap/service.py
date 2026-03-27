@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.modules.budgeting.models import BudgetLineItem
 from financeops.modules.multi_gaap.models import MultiGAAPConfig, MultiGAAPRun
+from financeops.platform.db.models.entities import CpEntity
 
 _MONEY = Decimal("0.01")
 _PCT = Decimal("0.0001")
@@ -27,9 +28,50 @@ def _percent_diff(value: Decimal, base: Decimal) -> Decimal:
     return ((value / base) * Decimal("100")).quantize(_PCT, rounding=ROUND_HALF_UP)
 
 
-async def get_or_create_config(session: AsyncSession, tenant_id: uuid.UUID) -> MultiGAAPConfig:
+async def _resolve_entity_id(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+) -> uuid.UUID:
+    if entity_id is not None:
+        return entity_id
+    resolved = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(
+                CpEntity.tenant_id == tenant_id,
+                CpEntity.status == "active",
+            )
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if resolved is not None:
+        return resolved
+    fallback = (
+        await session.execute(
+            select(CpEntity.id)
+            .where(CpEntity.status == "active")
+            .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        )
+    ).scalars().first()
+    if fallback is None:
+        raise ValueError("No active entity available")
+    return fallback
+
+
+async def get_or_create_config(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+) -> MultiGAAPConfig:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     row = (
-        await session.execute(select(MultiGAAPConfig).where(MultiGAAPConfig.tenant_id == tenant_id))
+        await session.execute(
+            select(MultiGAAPConfig).where(
+                MultiGAAPConfig.tenant_id == tenant_id,
+                MultiGAAPConfig.entity_id == resolved_entity_id,
+            )
+        )
     ).scalar_one_or_none()
     if row is not None:
         return row
@@ -37,6 +79,7 @@ async def get_or_create_config(session: AsyncSession, tenant_id: uuid.UUID) -> M
     now = datetime.now(UTC)
     row = MultiGAAPConfig(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         primary_gaap="INDAS",
         secondary_gaaps=[],
         revenue_recognition_policy={},
@@ -50,8 +93,13 @@ async def get_or_create_config(session: AsyncSession, tenant_id: uuid.UUID) -> M
     return row
 
 
-async def update_config(session: AsyncSession, tenant_id: uuid.UUID, updates: dict) -> MultiGAAPConfig:
-    row = await get_or_create_config(session, tenant_id)
+async def update_config(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    updates: dict,
+    entity_id: uuid.UUID | None = None,
+) -> MultiGAAPConfig:
+    row = await get_or_create_config(session, tenant_id, entity_id=entity_id)
     for key in {
         "primary_gaap",
         "secondary_gaaps",
@@ -66,11 +114,18 @@ async def update_config(session: AsyncSession, tenant_id: uuid.UUID, updates: di
     return row
 
 
-async def _base_financials(session: AsyncSession, tenant_id: uuid.UUID, period: str) -> dict[str, Decimal]:
+async def _base_financials(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+    period: str,
+) -> dict[str, Decimal]:
     del period
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     annual_total = (
         await session.execute(
             select(func.coalesce(func.sum(BudgetLineItem.annual_total), 0)).where(BudgetLineItem.tenant_id == tenant_id)
+            .where(BudgetLineItem.entity_id == resolved_entity_id)
         )
     ).scalar_one()
     revenue = _money(annual_total)
@@ -105,9 +160,11 @@ async def compute_gaap_view(
     period: str,
     gaap_framework: str,
     created_by: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
 ) -> MultiGAAPRun:
-    config = await get_or_create_config(session, tenant_id)
-    base = await _base_financials(session, tenant_id, period)
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
+    config = await get_or_create_config(session, tenant_id, entity_id=resolved_entity_id)
+    base = await _base_financials(session, tenant_id, resolved_entity_id, period)
 
     adjustments: list[dict] = []
     revenue = base["revenue"]
@@ -147,6 +204,7 @@ async def compute_gaap_view(
     table = MultiGAAPRun.__table__
     stmt = insert(table).values(
         tenant_id=tenant_id,
+        entity_id=resolved_entity_id,
         period=period,
         gaap_framework=framework,
         revenue=revenue,
@@ -161,7 +219,7 @@ async def compute_gaap_view(
         created_by=created_by,
         created_at=datetime.now(UTC),
     )
-    stmt = stmt.on_conflict_do_nothing(constraint="uq_multi_gaap_runs_tenant_period_framework")
+    stmt = stmt.on_conflict_do_nothing(constraint="uq_multi_gaap_runs_tenant_entity_period_framework")
     await session.execute(stmt)
     await session.flush()
 
@@ -169,6 +227,7 @@ async def compute_gaap_view(
         await session.execute(
             select(MultiGAAPRun).where(
                 MultiGAAPRun.tenant_id == tenant_id,
+                MultiGAAPRun.entity_id == resolved_entity_id,
                 MultiGAAPRun.period == period,
                 MultiGAAPRun.gaap_framework == framework,
             )
@@ -177,11 +236,21 @@ async def compute_gaap_view(
     return row
 
 
-async def get_gaap_comparison(session: AsyncSession, tenant_id: uuid.UUID, period: str) -> dict:
+async def get_gaap_comparison(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    period: str,
+    entity_id: uuid.UUID | None = None,
+) -> dict:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     rows = (
         await session.execute(
             select(MultiGAAPRun)
-            .where(MultiGAAPRun.tenant_id == tenant_id, MultiGAAPRun.period == period)
+            .where(
+                MultiGAAPRun.tenant_id == tenant_id,
+                MultiGAAPRun.entity_id == resolved_entity_id,
+                MultiGAAPRun.period == period,
+            )
             .order_by(MultiGAAPRun.gaap_framework)
         )
     ).scalars().all()
@@ -219,11 +288,19 @@ async def get_gaap_comparison(session: AsyncSession, tenant_id: uuid.UUID, perio
     }
 
 
-async def get_specific_run(session: AsyncSession, tenant_id: uuid.UUID, gaap_framework: str, period: str) -> MultiGAAPRun | None:
+async def get_specific_run(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    gaap_framework: str,
+    period: str,
+    entity_id: uuid.UUID | None = None,
+) -> MultiGAAPRun | None:
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     return (
         await session.execute(
             select(MultiGAAPRun).where(
                 MultiGAAPRun.tenant_id == tenant_id,
+                MultiGAAPRun.entity_id == resolved_entity_id,
                 MultiGAAPRun.gaap_framework == gaap_framework.upper(),
                 MultiGAAPRun.period == period,
             )
