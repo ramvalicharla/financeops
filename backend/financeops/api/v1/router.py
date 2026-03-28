@@ -181,6 +181,11 @@ router.include_router(
     dependencies=[finance_control_plane_guard, org_setup_guard],
 )
 router.include_router(
+    erp_push.webhook_router,
+    prefix="/erp-push",
+    tags=["ERP Webhooks"],
+)
+router.include_router(
     erp_push.router,
     prefix="/erp-push",
     tags=["ERP Push"],

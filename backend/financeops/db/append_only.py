@@ -169,6 +169,7 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "erp_push_runs",
     "erp_push_events",
     "erp_push_idempotency_keys",
+    "erp_webhook_events",
     "auditor_grants",
     "auditor_access_logs",
     "fx_rate_fetch_runs",

@@ -110,6 +110,7 @@ __all__ = [
     "ErpPushRun",
     "ErpPushEvent",
     "ErpPushIdempotencyKey",
+    "ErpWebhookEvent",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -240,6 +241,7 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
         "financeops.db.models.erp_push",
         "ErpPushIdempotencyKey",
     ),
+    "ErpWebhookEvent": ("financeops.db.models.erp_webhook", "ErpWebhookEvent"),
 }
 
 

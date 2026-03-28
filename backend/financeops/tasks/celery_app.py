@@ -59,6 +59,7 @@ celery_app.conf.update(
         "financeops.tasks.payment_tasks",
         "financeops.modules.scheduled_delivery.tasks",
         "financeops.modules.erp_push.application.push_task",
+        "financeops.modules.erp_push.application.webhook_task",
         "financeops.modules.auto_trigger.pipeline",
         "financeops.modules.search.tasks",
     ),
