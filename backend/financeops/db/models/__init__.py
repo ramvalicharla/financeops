@@ -111,6 +111,8 @@ __all__ = [
     "ErpPushEvent",
     "ErpPushIdempotencyKey",
     "ErpWebhookEvent",
+    "AccountingInboundEmailMessage",
+    "VendorPortalSubmission",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -242,6 +244,14 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
         "ErpPushIdempotencyKey",
     ),
     "ErpWebhookEvent": ("financeops.db.models.erp_webhook", "ErpWebhookEvent"),
+    "AccountingInboundEmailMessage": (
+        "financeops.db.models.accounting_ingestion",
+        "AccountingInboundEmailMessage",
+    ),
+    "VendorPortalSubmission": (
+        "financeops.db.models.accounting_ingestion",
+        "VendorPortalSubmission",
+    ),
 }
 
 

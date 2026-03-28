@@ -166,6 +166,8 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "erp_attachment_links",
     "accounting_duplicate_fingerprints",
     "accounting_tax_determination_logs",
+    "accounting_inbound_email_messages",
+    "vendor_portal_submissions",
     "erp_push_runs",
     "erp_push_events",
     "erp_push_idempotency_keys",
