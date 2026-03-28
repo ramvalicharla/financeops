@@ -13,6 +13,7 @@ from financeops.api.v1 import (
     cash_flow_engine,
     consolidation,
     erp_sync,
+    erp_push,
     equity_engine,
     financial_risk_engine,
     fixed_assets,
@@ -177,6 +178,12 @@ router.include_router(
     erp_sync.router,
     prefix="/erp-sync",
     tags=["ERP Sync Kernel"],
+    dependencies=[finance_control_plane_guard, org_setup_guard],
+)
+router.include_router(
+    erp_push.router,
+    prefix="/erp-push",
+    tags=["ERP Push"],
     dependencies=[finance_control_plane_guard, org_setup_guard],
 )
 router.include_router(

@@ -32,6 +32,7 @@ _OPTIONAL_FINANCIAL_POST_PREFIXES: tuple[str, ...] = (
     "/api/v1/anomaly-engine",
     "/api/v1/board-pack",
     "/api/v1/erp-sync",
+    "/api/v1/erp-push",
     "/api/v1/reconciliation",
     "/api/v1/recon",
     "/api/v1/bank-recon",

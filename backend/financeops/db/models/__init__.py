@@ -107,6 +107,9 @@ __all__ = [
     "AccountingGSTRule",
     "AccountingTDSRule",
     "AccountingTaxDeterminationLog",
+    "ErpPushRun",
+    "ErpPushEvent",
+    "ErpPushIdempotencyKey",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -230,6 +233,12 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AccountingTaxDeterminationLog": (
         "financeops.db.models.accounting_tax",
         "AccountingTaxDeterminationLog",
+    ),
+    "ErpPushRun": ("financeops.db.models.erp_push", "ErpPushRun"),
+    "ErpPushEvent": ("financeops.db.models.erp_push", "ErpPushEvent"),
+    "ErpPushIdempotencyKey": (
+        "financeops.db.models.erp_push",
+        "ErpPushIdempotencyKey",
     ),
 }
 
