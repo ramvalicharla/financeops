@@ -11,6 +11,9 @@ from financeops.modules.erp_sync.infrastructure.connectors.base import (
     ConnectorCapabilityNotSupported,
     ExtractionError,
 )
+from financeops.modules.erp_sync.infrastructure.connectors.http_backoff import (
+    with_backoff,
+)
 from financeops.modules.erp_sync.infrastructure.secret_store import SecretStore
 
 
@@ -217,9 +220,15 @@ class QuickbooksConnector(AbstractConnector):
         headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
         async with httpx.AsyncClient(timeout=45.0) as client:
             if method.upper() == "POST":
-                response = await client.post(url, params=params, json=body or {}, headers=headers)
+                response = await with_backoff(
+                    lambda: client.post(url, params=params, json=body or {}, headers=headers),
+                    context=f"QBO:{endpoint}",
+                )
             else:
-                response = await client.get(url, params=params, headers=headers)
+                response = await with_backoff(
+                    lambda: client.get(url, params=params, headers=headers),
+                    context=f"QBO:{endpoint}",
+                )
         if response.status_code >= 400:
             raise ExtractionError(f"QuickBooks API error {response.status_code} for {endpoint}")
         payload = response.json()
