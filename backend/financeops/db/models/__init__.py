@@ -99,6 +99,10 @@ __all__ = [
     "AccountingJVStateEvent",
     "AccountingJVApproval",
     "ApprovalSLATimer",
+    "AccountingVendor",
+    "AccountingAttachment",
+    "ErpAttachmentLink",
+    "AccountingDuplicateFingerprint",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -209,6 +213,13 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AccountingJVStateEvent": ("financeops.db.models.accounting_jv", "AccountingJVStateEvent"),
     "AccountingJVApproval": ("financeops.db.models.accounting_approvals", "AccountingJVApproval"),
     "ApprovalSLATimer": ("financeops.db.models.accounting_approvals", "ApprovalSLATimer"),
+    "AccountingVendor": ("financeops.db.models.accounting_vendor", "AccountingVendor"),
+    "AccountingAttachment": ("financeops.db.models.accounting_vendor", "AccountingAttachment"),
+    "ErpAttachmentLink": ("financeops.db.models.accounting_vendor", "ErpAttachmentLink"),
+    "AccountingDuplicateFingerprint": (
+        "financeops.db.models.accounting_vendor",
+        "AccountingDuplicateFingerprint",
+    ),
 }
 
 

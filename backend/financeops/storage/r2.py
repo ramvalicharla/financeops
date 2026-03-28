@@ -16,10 +16,61 @@ from datetime import datetime, timezone
 
 import boto3
 from botocore.exceptions import ClientError
+from sqlalchemy import create_engine, select
+from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.orm import Session, sessionmaker
 
 from financeops.config import settings
 
 log = logging.getLogger(__name__)
+_WORM_ENGINE: Engine | None = None
+_WORM_SESSION_FACTORY: sessionmaker[Session] | None = None
+
+
+def _sync_database_url() -> str:
+    url = make_url(str(settings.DATABASE_URL))
+    if url.drivername == "postgresql+asyncpg":
+        url = url.set(drivername="postgresql+psycopg")
+    elif url.drivername == "sqlite+aiosqlite":
+        url = url.set(drivername="sqlite+pysqlite")
+    elif "+async" in url.drivername:
+        url = url.set(drivername=url.drivername.replace("+async", "+"))
+    return str(url)
+
+
+def _get_worm_session_factory() -> sessionmaker[Session]:
+    global _WORM_ENGINE, _WORM_SESSION_FACTORY
+    if _WORM_SESSION_FACTORY is None:
+        _WORM_ENGINE = create_engine(
+            _sync_database_url(),
+            pool_pre_ping=True,
+        )
+        _WORM_SESSION_FACTORY = sessionmaker(
+            bind=_WORM_ENGINE,
+            autoflush=False,
+            expire_on_commit=False,
+        )
+    return _WORM_SESSION_FACTORY
+
+
+def _find_worm_locked_attachment(key: str) -> tuple[str, str | None] | None:
+    from financeops.db.models.accounting_vendor import AccountingAttachment
+
+    factory = _get_worm_session_factory()
+    with factory() as db:
+        row = (
+            db.execute(
+                select(AccountingAttachment.id, AccountingAttachment.jv_id).where(
+                    AccountingAttachment.r2_key == key,
+                    AccountingAttachment.worm_locked.is_(True),
+                )
+            )
+            .first()
+        )
+    if row is None:
+        return None
+    attachment_id, jv_id = row
+    return str(attachment_id), str(jv_id) if jv_id is not None else None
 
 
 class R2Storage:
@@ -84,17 +135,27 @@ class R2Storage:
     def delete_file(self, key: str, worm_check: bool | None = None) -> bool:
         """Delete object from R2. Returns True on success."""
         if worm_check is not False:
-            # WORM enforcement point.
-            # When accounting_layer is implemented,
-            # this method must check whether the file
-            # is linked to an approved JV before deletion.
-            # See: accounting_layer WORM enforcement
-            # (Phase 4 of unified implementation plan).
-            # For now: log every delete attempt.
-            # WORM-TODO: before accounting_layer Phase 4,
-            # inject approved_jv_link_check(key) here.
-            # See unified implementation plan Phase 4.
-            pass
+            try:
+                locked = _find_worm_locked_attachment(key)
+                if locked is not None:
+                    attachment_id, jv_id = locked
+                    log.error(
+                        "r2_delete_blocked_worm",
+                        extra={
+                            "key": key,
+                            "attachment_id": attachment_id,
+                            "jv_id": jv_id,
+                            "audit": True,
+                        },
+                    )
+                    return False
+            except Exception as worm_exc:
+                # Fail-safe: if lock verification fails, block deletion.
+                log.error(
+                    "r2_worm_check_failed_blocking_delete",
+                    extra={"key": key, "error": str(worm_exc)},
+                )
+                return False
         try:
             log.warning(
                 "r2_delete_called",
