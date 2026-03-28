@@ -22,6 +22,12 @@ class ConsolidationRun(FinancialBase):
 
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     parent_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     initiated_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     request_signature: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -182,6 +188,12 @@ class ConsolidationResult(FinancialBase):
         UUID(as_uuid=True),
         ForeignKey("consolidation_runs.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     consolidated_account_code: Mapped[str] = mapped_column(String(64), nullable=False)
     consolidated_amount_parent: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)

@@ -23,6 +23,12 @@ class MonthEndChecklist(FinancialBase):
 
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
     # status: open / in_progress / closed
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")

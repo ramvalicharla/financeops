@@ -113,6 +113,10 @@ __all__ = [
     "ErpWebhookEvent",
     "AccountingInboundEmailMessage",
     "VendorPortalSubmission",
+    "AccountingNotificationEvent",
+    "ApprovalReminderRun",
+    "AccountingAPAgeingSnapshot",
+    "AccountingAuditExportRun",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -251,6 +255,22 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "VendorPortalSubmission": (
         "financeops.db.models.accounting_ingestion",
         "VendorPortalSubmission",
+    ),
+    "AccountingNotificationEvent": (
+        "financeops.db.models.accounting_notifications",
+        "AccountingNotificationEvent",
+    ),
+    "ApprovalReminderRun": (
+        "financeops.db.models.accounting_notifications",
+        "ApprovalReminderRun",
+    ),
+    "AccountingAPAgeingSnapshot": (
+        "financeops.db.models.accounting_notifications",
+        "AccountingAPAgeingSnapshot",
+    ),
+    "AccountingAuditExportRun": (
+        "financeops.db.models.accounting_notifications",
+        "AccountingAuditExportRun",
     ),
 }
 

@@ -61,6 +61,7 @@ celery_app.conf.update(
         "financeops.modules.erp_push.application.push_task",
         "financeops.modules.erp_push.application.webhook_task",
         "financeops.modules.accounting_ingestion.application.ocr_task",
+        "financeops.modules.accounting_layer.application.beat_tasks",
         "financeops.modules.auto_trigger.pipeline",
         "financeops.modules.search.tasks",
     ),
@@ -92,6 +93,18 @@ celery_app.conf.update(
         "metrics-update-active-tenants-every-5m": {
             "task": "metrics.update_active_tenants",
             "schedule": 300.0,
+        },
+        "accounting-approval-reminders": {
+            "task": "accounting_layer.approval_reminder",
+            "schedule": 3600.0,
+        },
+        "accounting-sla-breach-check": {
+            "task": "accounting_layer.sla_breach_check",
+            "schedule": 1800.0,
+        },
+        "accounting-daily-digest": {
+            "task": "accounting_layer.daily_digest",
+            "schedule": 86400.0,
         },
     },
     # Result expiry

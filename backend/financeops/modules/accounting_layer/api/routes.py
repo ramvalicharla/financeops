@@ -34,6 +34,7 @@ from financeops.modules.accounting_layer.domain.schemas import (
     JVUpdateLines,
 )
 from financeops.shared_kernel.response import ok
+from financeops.modules.accounting_layer.api.reporting_routes import reporting_router
 
 router = APIRouter(prefix="/jv", tags=["Accounting JV"])
 
@@ -237,3 +238,6 @@ async def sla_metrics_endpoint(
     )
     payload = SLAMetricsResponse(**metrics).model_dump(mode="json")
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+router.include_router(reporting_router)

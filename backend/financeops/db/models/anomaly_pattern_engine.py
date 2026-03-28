@@ -364,6 +364,12 @@ class AnomalyRun(FinancialBase):
     )
 
     organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     reporting_period: Mapped[date] = mapped_column(Date, nullable=False)
     anomaly_definition_version_token: Mapped[str] = mapped_column(String(64), nullable=False)
     pattern_rule_version_token: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -432,6 +438,12 @@ class AnomalyResult(FinancialBase):
         UUID(as_uuid=True),
         ForeignKey("anomaly_runs.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     line_no: Mapped[int] = mapped_column(Integer, nullable=False)
     anomaly_code: Mapped[str] = mapped_column(String(128), nullable=False)

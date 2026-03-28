@@ -56,6 +56,11 @@ class MisTemplate(FinancialBase):
 
     # Phase 1F.1 canonical fields.
     organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     template_code: Mapped[str] = mapped_column(String(128), nullable=False)
     template_name: Mapped[str] = mapped_column(String(255), nullable=False)
     template_type: Mapped[str] = mapped_column(
@@ -281,6 +286,11 @@ class MisDataSnapshot(FinancialBase):
     organisation_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), nullable=False
     )
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     template_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("mis_templates.id", ondelete="RESTRICT"),
@@ -326,6 +336,11 @@ class MisNormalizedLine(FinancialBase):
         UUID(as_uuid=True),
         ForeignKey("mis_data_snapshots.id", ondelete="CASCADE"),
         nullable=False,
+    )
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
     )
     line_no: Mapped[int] = mapped_column(Integer, nullable=False)
     canonical_metric_code: Mapped[str] = mapped_column(String(64), nullable=False)
