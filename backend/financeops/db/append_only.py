@@ -165,6 +165,7 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "accounting_attachments",
     "erp_attachment_links",
     "accounting_duplicate_fingerprints",
+    "accounting_tax_determination_logs",
     "auditor_grants",
     "auditor_access_logs",
     "fx_rate_fetch_runs",

@@ -104,6 +104,9 @@ __all__ = [
     "ErpAttachmentLink",
     "AccountingDuplicateFingerprint",
     "ErpAccountExternalRef",
+    "AccountingGSTRule",
+    "AccountingTDSRule",
+    "AccountingTaxDeterminationLog",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -222,6 +225,12 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
         "AccountingDuplicateFingerprint",
     ),
     "ErpAccountExternalRef": ("financeops.db.models.erp_sync", "ErpAccountExternalRef"),
+    "AccountingGSTRule": ("financeops.db.models.accounting_tax", "AccountingGSTRule"),
+    "AccountingTDSRule": ("financeops.db.models.accounting_tax", "AccountingTDSRule"),
+    "AccountingTaxDeterminationLog": (
+        "financeops.db.models.accounting_tax",
+        "AccountingTaxDeterminationLog",
+    ),
 }
 
 
