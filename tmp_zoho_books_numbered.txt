@@ -1,0 +1,656 @@
+    1: from __future__ import annotations
+    2: 
+    3: import json
+    4: import os
+    5: from decimal import Decimal, InvalidOperation
+    6: from typing import Any
+    7: from urllib import error as urllib_error
+    8: from urllib import parse as urllib_parse
+    9: from urllib import request as urllib_request
+   10: from uuid import uuid4
+   11: 
+   12: from . import zoho_auth
+   13: from .base import ERPAdapter, ERPResponse
+   14: 
+   15: 
+   16: class _ZohoApiError(RuntimeError):
+   17:     def __init__(self, *, code: str, message: str, raw_response: dict[str, Any] | None = None) -> None:
+   18:         super().__init__(message)
+   19:         self.code = code
+   20:         self.message = message
+   21:         self.raw_response = raw_response or {}
+   22: 
+   23: 
+   24: def _region_from_config(connection_config: dict[str, Any], credentials: dict[str, Any] | None = None) -> str:
+   25:     explicit = str(os.getenv("ZOHO_REGION", "") or "").strip().lower()
+   26:     if explicit:
+   27:         return explicit
+   28:     cred_region = str((credentials or {}).get("region") or "").strip().lower()
+   29:     if cred_region:
+   30:         return cred_region
+   31:     configured = str(connection_config.get("region") or "com").strip().lower()
+   32:     return configured or "com"
+   33: 
+   34: 
+   35: def _api_base(connection_config: dict[str, Any], credentials: dict[str, Any] | None = None) -> str:
+   36:     api_domain = str((credentials or {}).get("api_domain") or "").strip()
+   37:     if api_domain:
+   38:         return api_domain.rstrip("/")
+   39:     explicit = str(connection_config.get("api_base_url") or "").strip()
+   40:     if explicit:
+   41:         return explicit.rstrip("/")
+   42:     region = _region_from_config(connection_config, credentials)
+   43:     if region.startswith("www.zohoapis."):
+   44:         return f"https://{region}".rstrip("/")
+   45:     if region.startswith("zohoapis."):
+   46:         return f"https://www.{region}".rstrip("/")
+   47:     return f"https://www.zohoapis.{region}"
+   48: 
+   49: 
+   50: def _token_from_credentials(credentials: dict[str, Any] | None) -> str:
+   51:     return str((credentials or {}).get("access_token") or "").strip()
+   52: 
+   53: 
+   54: def _org_id(connection_config: dict[str, Any], credentials: dict[str, Any] | None) -> str:
+   55:     from_credentials = str((credentials or {}).get("organization_id") or "").strip()
+   56:     if from_credentials:
+   57:         return from_credentials
+   58:     return str(connection_config.get("organization_id") or "").strip()
+   59: 
+   60: 
+   61: def _live_ready(connection_config: dict[str, Any], credentials: dict[str, Any] | None) -> bool:
+   62:     explicit = str(connection_config.get("use_live_api") or connection_config.get("live_mode") or "").strip().lower()
+   63:     if explicit in {"1", "true", "yes", "on"}:
+   64:         live_enabled = True
+   65:     elif explicit in {"0", "false", "no", "off"}:
+   66:         live_enabled = False
+   67:     else:
+   68:         env_client_id = str(os.getenv("ZOHO_CLIENT_ID", "") or "").strip()
+   69:         env_client_secret = str(os.getenv("ZOHO_CLIENT_SECRET", "") or "").strip()
+   70:         live_enabled = bool(env_client_id and env_client_secret)
+   71:     return live_enabled and bool(_token_from_credentials(credentials) and _org_id(connection_config, credentials))
+   72: 
+   73: 
+   74: def _extract_error_message(payload: dict[str, Any]) -> str:
+   75:     return str(payload.get("message") or payload.get("error_description") or payload.get("error") or "Zoho API error").strip()
+   76: 
+   77: 
+   78: def _error_code_from_http(status_code: int) -> str:
+   79:     if status_code in {401, 403}:
+   80:         return "ZOHO_AUTH_INVALID_TOKEN"
+   81:     if status_code == 429:
+   82:         return "ZOHO_RATE_LIMIT"
+   83:     if status_code >= 500:
+   84:         return "ZOHO_NETWORK"
+   85:     if status_code in {400, 404, 422}:
+   86:         return "ZOHO_PAYLOAD_INVALID"
+   87:     return f"ZOHO_HTTP_{status_code}"
+   88: 
+   89: 
+   90: def _request_json(
+   91:     *,
+   92:     method: str,
+   93:     connection_config: dict[str, Any],
+   94:     credentials: dict[str, Any],
+   95:     path: str,
+   96:     query: dict[str, str] | None = None,
+   97:     json_payload: dict[str, Any] | None = None,
+   98:     include_org_query: bool = True,
+   99: ) -> dict[str, Any]:
+  100:     token = _token_from_credentials(credentials)
+  101:     if not token:
+  102:         raise _ZohoApiError(code="ZOHO_AUTH_INVALID_TOKEN", message="access_token is required")
+  103:     url = f"{_api_base(connection_config, credentials)}/{path.lstrip('/')}"
+  104:     query_data = dict(query or {})
+  105:     if include_org_query:
+  106:         org_id = _org_id(connection_config, credentials)
+  107:         if not org_id:
+  108:             raise _ZohoApiError(code="ZOHO_ORG_REQUIRED", message="organization_id is required")
+  109:         query_data.setdefault("organization_id", org_id)
+  110:     url = f"{url}?{urllib_parse.urlencode(query_data)}" if query_data else url
+  111:     data = None
+  112:     if json_payload is not None:
+  113:         data = json.dumps(json_payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+  114:     request = urllib_request.Request(
+  115:         url=url,
+  116:         data=data,
+  117:         headers={
+  118:             "Accept": "application/json",
+  119:             "Authorization": f"Zoho-oauthtoken {token}",
+  120:             "Content-Type": "application/json;charset=UTF-8",
+  121:         },
+  122:         method=method.upper(),
+  123:     )
+  124: 
+  125:     try:
+  126:         with urllib_request.urlopen(request, timeout=30.0) as response:
+  127:             raw = response.read().decode("utf-8")
+  128:     except urllib_error.HTTPError as exc:
+  129:         raw = exc.read().decode("utf-8", errors="ignore")
+  130:         parsed = {}
+  131:         try:
+  132:             parsed = json.loads(raw) if raw else {}
+  133:         except json.JSONDecodeError:
+  134:             parsed = {}
+  135:         message = _extract_error_message(parsed) if isinstance(parsed, dict) else raw
+  136:         code = _error_code_from_http(int(exc.code or 0))
+  137:         raise _ZohoApiError(
+  138:             code=code,
+  139:             message=message or f"Zoho HTTP {exc.code}",
+  140:             raw_response={"http_status": int(exc.code or 0), "body": parsed if isinstance(parsed, dict) else raw},
+  141:         ) from exc
+  142:     except OSError as exc:
+  143:         raise _ZohoApiError(
+  144:             code="ZOHO_NETWORK",
+  145:             message=str(exc).strip() or "network error",
+  146:             raw_response={"error_type": type(exc).__name__},
+  147:         ) from exc
+  148: 
+  149:     try:
+  150:         parsed_response = json.loads(raw) if raw else {}
+  151:     except json.JSONDecodeError as exc:
+  152:         raise _ZohoApiError(code="ZOHO_RESPONSE_INVALID", message="Zoho response is invalid JSON") from exc
+  153:     if not isinstance(parsed_response, dict):
+  154:         raise _ZohoApiError(code="ZOHO_RESPONSE_INVALID", message="Zoho response is invalid")
+  155: 
+  156:     code_raw = parsed_response.get("code")
+  157:     try:
+  158:         status_code = int(code_raw)
+  159:     except (TypeError, ValueError):
+  160:         status_code = 0
+  161:     if status_code not in {0, 200}:
+  162:         code_text = str(code_raw).strip()
+  163:         mapped_code = "ZOHO_AUTH_INVALID_TOKEN" if code_text in {"57", "1001"} else "ZOHO_PAYLOAD_INVALID"
+  164:         raise _ZohoApiError(
+  165:             code=mapped_code,
+  166:             message=_extract_error_message(parsed_response),
+  167:             raw_response={"body": parsed_response},
+  168:         )
+  169:     return parsed_response
+  170: 
+  171: 
+  172: def _decimal_text(value: Any, *, field_name: str) -> str:
+  173:     raw = str(value or "0").strip()
+  174:     try:
+  175:         amount = Decimal(raw)
+  176:     except (InvalidOperation, ValueError) as exc:
+  177:         raise _ZohoApiError(code="ZOHO_PAYLOAD_INVALID", message=f"{field_name} is not a valid decimal") from exc
+  178:     if amount < Decimal("0"):
+  179:         raise _ZohoApiError(code="ZOHO_PAYLOAD_INVALID", message=f"{field_name} cannot be negative")
+  180:     return format(amount.quantize(Decimal("0.01")), "f")
+  181: 
+  182: 
+  183: class ZohoBooksAdapter(ERPAdapter):
+  184:     adapter_type = "ZOHO_BOOKS"
+  185: 
+  186:     def validate_connection(
+  187:         self,
+  188:         *,
+  189:         connection_config: dict[str, Any],
+  190:         credentials_ref: str,
+  191:         credentials: dict[str, Any] | None = None,
+  192:     ) -> ERPResponse:
+  193:         if not str(credentials_ref or "").strip():
+  194:             return self.normalize_response(
+  195:                 status="FAILED",
+  196:                 error_code="ZOHO_CREDENTIALS_MISSING",
+  197:                 error_message="encrypted credential reference is required",
+  198:                 raw_response={"adapter": self.adapter_type},
+  199:             )
+  200:         org_id = _org_id(connection_config, credentials)
+  201:         if not org_id:
+  202:             return self.normalize_response(
+  203:                 status="FAILED",
+  204:                 error_code="ZOHO_ORG_REQUIRED",
+  205:                 error_message="connection_config.organization_id is required",
+  206:                 raw_response={"adapter": self.adapter_type},
+  207:             )
+  208:         if not _live_ready(connection_config, credentials):
+  209:             return self.normalize_response(
+  210:                 status="SUCCESS",
+  211:                 raw_response={"adapter": self.adapter_type, "validated": True, "mode": "SIMULATED"},
+  212:             )
+  213:         try:
+  214:             response = _request_json(
+  215:                 method="GET",
+  216:                 connection_config=connection_config,
+  217:                 credentials=credentials or {},
+  218:                 path="/books/v3/organizations",
+  219:                 include_org_query=False,
+  220:             )
+  221:         except _ZohoApiError as exc:
+  222:             return self.normalize_response(
+  223:                 status="FAILED",
+  224:                 error_code=exc.code,
+  225:                 error_message=exc.message,
+  226:                 raw_response={"adapter": self.adapter_type, **exc.raw_response},
+  227:             )
+  228:         return self.normalize_response(
+  229:             status="SUCCESS",
+  230:             raw_response={"adapter": self.adapter_type, "validated": True, "mode": "LIVE", "response": response},
+  231:         )
+  232: 
+  233:     def get_capabilities(self) -> dict[str, Any]:
+  234:         return {
+  235:             "adapter": self.adapter_type,
+  236:             "supports_post": True,
+  237:             "supports_reverse": True,
+  238:             "supports_status": True,
+  239:             "supports_oauth": True,
+  240:             "supports_sync": ["COA", "DIMENSIONS", "TRIAL_BALANCE", "JOURNAL_STATUS"],
+  241:             "supports_polling": True,
+  242:             "live_supported": True,
+  243:             "zoho_region": str(os.getenv("ZOHO_REGION", "com") or "com").strip().lower(),
+  244:         }
+  245: 
+  246:     def get_oauth_authorize_url(
+  247:         self,
+  248:         *,
+  249:         connection_config: dict[str, Any],
+  250:         redirect_uri: str,
+  251:         state_token: str,
+  252:         pkce_verifier: str | None = None,
+  253:     ) -> str:
+  254:         return zoho_auth.build_authorize_url(
+  255:             connection_config=connection_config,
+  256:             redirect_uri=redirect_uri,
+  257:             state_token=state_token,
+  258:             pkce_verifier=pkce_verifier,
+  259:         )
+  260: 
+  261:     def exchange_oauth_code(
+  262:         self,
+  263:         *,
+  264:         connection_config: dict[str, Any],
+  265:         redirect_uri: str,
+  266:         code: str,
+  267:         pkce_verifier: str | None = None,
+  268:     ) -> dict[str, Any]:
+  269:         return zoho_auth.exchange_code_for_tokens(
+  270:             connection_config=connection_config,
+  271:             redirect_uri=redirect_uri,
+  272:             code=code,
+  273:             pkce_verifier=pkce_verifier,
+  274:         )
+  275: 
+  276:     def refresh_oauth_tokens(
+  277:         self,
+  278:         *,
+  279:         connection_config: dict[str, Any],
+  280:         token_payload: dict[str, Any],
+  281:     ) -> dict[str, Any]:
+  282:         return zoho_auth.refresh_tokens(
+  283:             connection_config=connection_config,
+  284:             token_payload=token_payload,
+  285:         )
+  286: 
+  287:     def get_organizations(
+  288:         self,
+  289:         *,
+  290:         connection_config: dict[str, Any] | None = None,
+  291:         credentials: dict[str, Any] | None = None,
+  292:     ) -> dict[str, Any]:
+  293:         config = dict(connection_config or {})
+  294:         creds = dict(credentials or {})
+  295:         token = _token_from_credentials(creds)
+  296:         if not token:
+  297:             return {
+  298:                 "status": "FAILED",
+  299:                 "organizations": [],
+  300:                 "error_code": "ZOHO_AUTH_INVALID_TOKEN",
+  301:                 "error_message": "access_token is required",
+  302:                 "raw_response": {"adapter": self.adapter_type},
+  303:             }
+  304: 
+  305:         # Non-live/dev mode fallback keeps callback deterministic in local tests.
+  306:         if not str(os.getenv("ZOHO_CLIENT_ID", "") or "").strip() or not str(os.getenv("ZOHO_CLIENT_SECRET", "") or "").strip():
+  307:             existing_org_id = _org_id(config, creds)
+  308:             organizations = []
+  309:             if existing_org_id:
+  310:                 organizations.append({"organization_id": existing_org_id, "name": ""})
+  311:             return {
+  312:                 "status": "SUCCESS" if organizations else "FAILED",
+  313:                 "organizations": organizations,
+  314:                 "error_code": None if organizations else "ZOHO_ORG_NOT_FOUND",
+  315:                 "error_message": None if organizations else "organization_id was not returned",
+  316:                 "raw_response": {"adapter": self.adapter_type, "mode": "SIMULATED"},
+  317:             }
+  318: 
+  319:         try:
+  320:             response = _request_json(
+  321:                 method="GET",
+  322:                 connection_config=config,
+  323:                 credentials=creds,
+  324:                 path="/books/v3/organizations",
+  325:                 include_org_query=False,
+  326:             )
+  327:         except _ZohoApiError as exc:
+  328:             return {
+  329:                 "status": "FAILED",
+  330:                 "organizations": [],
+  331:                 "error_code": exc.code,
+  332:                 "error_message": exc.message,
+  333:                 "raw_response": {"adapter": self.adapter_type, **exc.raw_response},
+  334:             }
+  335: 
+  336:         organizations: list[dict[str, str]] = []
+  337:         raw_organizations = response.get("organizations")
+  338:         if isinstance(raw_organizations, list):
+  339:             for raw_item in raw_organizations:
+  340:                 if not isinstance(raw_item, dict):
+  341:                     continue
+  342:                 org_id = str(raw_item.get("organization_id") or "").strip()
+  343:                 if not org_id:
+  344:                     continue
+  345:                 organizations.append(
+  346:                     {
+  347:                         "organization_id": org_id,
+  348:                         "name": str(raw_item.get("name") or "").strip(),
+  349:                     }
+  350:                 )
+  351:         organizations.sort(key=lambda item: str(item.get("organization_id") or ""))
+  352:         return {
+  353:             "status": "SUCCESS" if organizations else "FAILED",
+  354:             "organizations": organizations,
+  355:             "error_code": None if organizations else "ZOHO_ORG_NOT_FOUND",
+  356:             "error_message": None if organizations else "organization_id was not returned",
+  357:             "raw_response": {"adapter": self.adapter_type, "response": response, "mode": "LIVE"},
+  358:         }
+  359: 
+  360:     def post_journal(
+  361:         self,
+  362:         packet: dict[str, Any],
+  363:         *,
+  364:         connection_config: dict[str, Any] | None = None,
+  365:         credentials: dict[str, Any] | None = None,
+  366:     ) -> ERPResponse:
+  367:         mode = str((packet or {}).get("simulation_mode") or "").strip().lower()
+  368:         if mode == "timeout":
+  369:             return self.normalize_response(
+  370:                 status="PENDING",
+  371:                 raw_response={"adapter": self.adapter_type, "reason": "simulated_timeout"},
+  372:             )
+  373:         if mode == "hard_fail":
+  374:             return self.normalize_response(
+  375:                 status="FAILED",
+  376:                 error_code="ZOHO_PAYLOAD_INVALID",
+  377:                 error_message="simulated hard failure",
+  378:                 raw_response={"adapter": self.adapter_type, "reason": "hard_fail"},
+  379:             )
+  380:         if mode == "soft_fail":
+  381:             return self.normalize_response(
+  382:                 status="FAILED",
+  383:                 error_code="ZOHO_RATE_LIMIT",
+  384:                 error_message="simulated soft throttling",
+  385:                 raw_response={"adapter": self.adapter_type, "reason": "soft_fail"},
+  386:             )
+  387:         if mode == "auth_fail":
+  388:             return self.normalize_response(
+  389:                 status="FAILED",
+  390:                 error_code="ZOHO_AUTH_INVALID_TOKEN",
+  391:                 error_message="simulated auth failure",
+  392:                 raw_response={"adapter": self.adapter_type, "reason": "auth_fail"},
+  393:             )
+  394: 
+  395:         config = dict(connection_config or {})
+  396:         creds = dict(credentials or {})
+  397:         if not _live_ready(config, creds):
+  398:             return self.normalize_response(
+  399:                 status="SUCCESS",
+  400:                 external_id=f"zoho_{uuid4().hex}",
+  401:                 raw_response={"adapter": self.adapter_type, "posted": True, "mode": "SIMULATED"},
+  402:             )
+  403: 
+  404:         lines_payload: list[dict[str, Any]] = []
+  405:         for index, line in enumerate((packet or {}).get("journal_lines") or [], start=1):
+  406:             account_code = str((line or {}).get("account_code") or "").strip()
+  407:             if not account_code:
+  408:                 return self.normalize_response(
+  409:                     status="FAILED",
+  410:                     error_code="ZOHO_PAYLOAD_INVALID",
+  411:                     error_message="journal line account_code is required",
+  412:                     raw_response={"adapter": self.adapter_type},
+  413:                 )
+  414:             debit = _decimal_text((line or {}).get("debit"), field_name=f"journal_lines[{index}].debit")
+  415:             credit = _decimal_text((line or {}).get("credit"), field_name=f"journal_lines[{index}].credit")
+  416:             debit_amount = Decimal(debit)
+  417:             credit_amount = Decimal(credit)
+  418:             if debit_amount > 0 and credit_amount > 0:
+  419:                 return self.normalize_response(
+  420:                     status="FAILED",
+  421:                     error_code="ZOHO_PAYLOAD_INVALID",
+  422:                     error_message="journal line cannot have both debit and credit",
+  423:                     raw_response={"adapter": self.adapter_type},
+  424:                 )
+  425:             if debit_amount <= 0 and credit_amount <= 0:
+  426:                 continue
+  427:             lines_payload.append(
+  428:                 {
+  429:                     "account_id": account_code,
+  430:                     "debit_or_credit": "debit" if debit_amount > 0 else "credit",
+  431:                     "amount": debit if debit_amount > 0 else credit,
+  432:                     "description": str((line or {}).get("description") or ""),
+  433:                 }
+  434:             )
+  435:         if not lines_payload:
+  436:             return self.normalize_response(
+  437:                 status="FAILED",
+  438:                 error_code="ZOHO_PAYLOAD_INVALID",
+  439:                 error_message="journal_lines must include at least one posting line",
+  440:                 raw_response={"adapter": self.adapter_type},
+  441:             )
+  442: 
+  443:         header = (packet or {}).get("journal_header") or {}
+  444:         body = {
+  445:             "journal_date": str((header or {}).get("posting_date") or ""),
+  446:             "notes": str((header or {}).get("memo") or ""),
+  447:             "line_items": lines_payload,
+  448:         }
+  449:         try:
+  450:             response = _request_json(
+  451:                 method="POST",
+  452:                 connection_config=config,
+  453:                 credentials=creds,
+  454:                 path="/books/v3/journals",
+  455:                 json_payload=body,
+  456:             )
+  457:         except _ZohoApiError as exc:
+  458:             return self.normalize_response(
+  459:                 status="FAILED",
+  460:                 error_code=exc.code,
+  461:                 error_message=exc.message,
+  462:                 raw_response={"adapter": self.adapter_type, **exc.raw_response},
+  463:             )
+  464:         journal = response.get("journal")
+  465:         external_id = ""
+  466:         if isinstance(journal, dict):
+  467:             external_id = str(journal.get("journal_id") or journal.get("journal_number") or "").strip()
+  468:         if not external_id:
+  469:             return self.normalize_response(
+  470:                 status="FAILED",
+  471:                 error_code="ZOHO_RESPONSE_INVALID",
+  472:                 error_message="Zoho response did not include journal id",
+  473:                 raw_response={"adapter": self.adapter_type, "response": response},
+  474:             )
+  475:         return self.normalize_response(
+  476:             status="SUCCESS",
+  477:             external_id=external_id,
+  478:             raw_response={"adapter": self.adapter_type, "response": response, "mode": "LIVE"},
+  479:         )
+  480: 
+  481:     def reverse_journal(
+  482:         self,
+  483:         packet: dict[str, Any],
+  484:         *,
+  485:         connection_config: dict[str, Any] | None = None,
+  486:         credentials: dict[str, Any] | None = None,
+  487:     ) -> ERPResponse:
+  488:         _ = packet, connection_config, credentials
+  489:         return self.normalize_response(
+  490:             status="SUCCESS",
+  491:             external_id=f"zoho_rev_{uuid4().hex}",
+  492:             raw_response={"adapter": self.adapter_type, "reversed": True},
+  493:         )
+  494: 
+  495:     def get_journal_status(
+  496:         self,
+  497:         external_id: str,
+  498:         *,
+  499:         connection_config: dict[str, Any] | None = None,
+  500:         credentials: dict[str, Any] | None = None,
+  501:     ) -> ERPResponse:
+  502:         normalized_external_id = str(external_id or "").strip()
+  503:         if not normalized_external_id:
+  504:             return self.normalize_response(
+  505:                 status="FAILED",
+  506:                 error_code="ZOHO_EXTERNAL_ID_REQUIRED",
+  507:                 error_message="external_id is required",
+  508:                 raw_response={"adapter": self.adapter_type},
+  509:             )
+  510: 
+  511:         config = dict(connection_config or {})
+  512:         creds = dict(credentials or {})
+  513:         if not _live_ready(config, creds):
+  514:             return self.normalize_response(
+  515:                 status="SUCCESS",
+  516:                 external_id=normalized_external_id,
+  517:                 raw_response={"adapter": self.adapter_type, "status": "POSTED", "mode": "SIMULATED"},
+  518:             )
+  519:         try:
+  520:             response = _request_json(
+  521:                 method="GET",
+  522:                 connection_config=config,
+  523:                 credentials=creds,
+  524:                 path=f"/books/v3/journals/{normalized_external_id}",
+  525:             )
+  526:         except _ZohoApiError as exc:
+  527:             return self.normalize_response(
+  528:                 status="FAILED",
+  529:                 error_code=exc.code,
+  530:                 error_message=exc.message,
+  531:                 raw_response={"adapter": self.adapter_type, **exc.raw_response},
+  532:             )
+  533:         journal = response.get("journal") if isinstance(response.get("journal"), dict) else {}
+  534:         status_text = str(journal.get("status") or "POSTED").strip().upper()
+  535:         normalized_status = "PENDING" if status_text in {"DRAFT", "PENDING"} else "SUCCESS"
+  536:         return self.normalize_response(
+  537:             status=normalized_status,
+  538:             external_id=normalized_external_id,
+  539:             raw_response={"adapter": self.adapter_type, "status": status_text or "POSTED", "response": response, "mode": "LIVE"},
+  540:         )
+  541: 
+  542:     def sync_chart_of_accounts(
+  543:         self,
+  544:         *,
+  545:         connection_config: dict[str, Any],
+  546:         credentials: dict[str, Any],
+  547:     ) -> dict[str, Any]:
+  548:         if not _live_ready(connection_config, credentials):
+  549:             return {
+  550:                 "status": "SUCCESS",
+  551:                 "items": [
+  552:                     {"object_type": "ACCOUNT", "object_key": "1000", "payload": {"name": "Cash", "type": "ASSET"}},
+  553:                     {"object_type": "ACCOUNT", "object_key": "2000", "payload": {"name": "Accounts Payable", "type": "LIABILITY"}},
+  554:                 ],
+  555:                 "error_code": None,
+  556:                 "error_message": None,
+  557:                 "raw_response": {"adapter": self.adapter_type, "mode": "SIMULATED"},
+  558:             }
+  559:         try:
+  560:             response = _request_json(
+  561:                 method="GET",
+  562:                 connection_config=connection_config,
+  563:                 credentials=credentials,
+  564:                 path="/books/v3/chartofaccounts",
+  565:             )
+  566:         except _ZohoApiError as exc:
+  567:             return {
+  568:                 "status": "FAILED",
+  569:                 "items": [],
+  570:                 "error_code": exc.code,
+  571:                 "error_message": exc.message,
+  572:                 "raw_response": {"adapter": self.adapter_type, **exc.raw_response},
+  573:             }
+  574: 
+  575:         accounts = response.get("chartofaccounts")
+  576:         items: list[dict[str, Any]] = []
+  577:         if isinstance(accounts, list):
+  578:             for item in accounts:
+  579:                 if not isinstance(item, dict):
+  580:                     continue
+  581:                 object_key = str(item.get("account_id") or item.get("account_code") or item.get("account_name") or "").strip()
+  582:                 if not object_key:
+  583:                     continue
+  584:                 items.append(
+  585:                     {
+  586:                         "object_type": "ACCOUNT",
+  587:                         "object_key": object_key,
+  588:                         "payload": {
+  589:                             "account_id": str(item.get("account_id") or "").strip(),
+  590:                             "account_code": str(item.get("account_code") or "").strip(),
+  591:                             "account_name": str(item.get("account_name") or "").strip(),
+  592:                             "account_type": str(item.get("account_type") or "").strip(),
+  593:                             "status": str(item.get("status") or "").strip(),
+  594:                         },
+  595:                         "source_timestamp": str(item.get("last_modified_time") or "").strip() or None,
+  596:                     }
+  597:                 )
+  598:         items.sort(key=lambda i: str(i.get("object_key") or ""))
+  599:         return {
+  600:             "status": "SUCCESS",
+  601:             "items": items,
+  602:             "error_code": None,
+  603:             "error_message": None,
+  604:             "raw_response": {"adapter": self.adapter_type, "count": len(items), "mode": "LIVE"},
+  605:         }
+  606: 
+  607:     def sync_dimensions(
+  608:         self,
+  609:         *,
+  610:         connection_config: dict[str, Any],
+  611:         credentials: dict[str, Any],
+  612:     ) -> dict[str, Any]:
+  613:         _ = connection_config, credentials
+  614:         return {
+  615:             "status": "SUCCESS",
+  616:             "items": [
+  617:                 {"object_type": "DIMENSION", "object_key": "LOCATION:MUMBAI", "payload": {"type": "LOCATION", "value": "MUMBAI"}},
+  618:             ],
+  619:             "error_code": None,
+  620:             "error_message": None,
+  621:             "raw_response": {"adapter": self.adapter_type},
+  622:         }
+  623: 
+  624:     def sync_trial_balance(
+  625:         self,
+  626:         *,
+  627:         connection_config: dict[str, Any],
+  628:         credentials: dict[str, Any],
+  629:     ) -> dict[str, Any]:
+  630:         _ = connection_config, credentials
+  631:         return {
+  632:             "status": "SUCCESS",
+  633:             "items": [
+  634:                 {"object_type": "TRIAL_BALANCE", "object_key": "2025-03", "payload": {"period": "2025-03", "lines": []}},
+  635:             ],
+  636:             "error_code": None,
+  637:             "error_message": None,
+  638:             "raw_response": {"adapter": self.adapter_type},
+  639:         }
+  640: 
+  641:     def sync_journal_status(
+  642:         self,
+  643:         *,
+  644:         connection_config: dict[str, Any],
+  645:         credentials: dict[str, Any],
+  646:     ) -> dict[str, Any]:
+  647:         _ = connection_config, credentials
+  648:         return {
+  649:             "status": "SUCCESS",
+  650:             "items": [
+  651:                 {"object_type": "JOURNAL_STATUS", "object_key": "zoho_sync_stub", "payload": {"status": "POSTED"}},
+  652:             ],
+  653:             "error_code": None,
+  654:             "error_message": None,
+  655:             "raw_response": {"adapter": self.adapter_type},
+  656:         }

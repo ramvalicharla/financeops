@@ -1,3 +1,12 @@
+"""
+R2 Storage Client.
+
+SECURITY: delete_file() must only be called from
+admin-authorized routes or internal cleanup tasks.
+Never expose to tenant-level API without explicit
+role enforcement at the route layer.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -72,9 +81,29 @@ class R2Storage:
         response = self._client.get_object(Bucket=self._bucket, Key=key)
         return response["Body"].read()
 
-    def delete_file(self, key: str) -> bool:
+    def delete_file(self, key: str, worm_check: bool | None = None) -> bool:
         """Delete object from R2. Returns True on success."""
+        if worm_check is not False:
+            # WORM enforcement point.
+            # When accounting_layer is implemented,
+            # this method must check whether the file
+            # is linked to an approved JV before deletion.
+            # See: accounting_layer WORM enforcement
+            # (Phase 4 of unified implementation plan).
+            # For now: log every delete attempt.
+            # WORM-TODO: before accounting_layer Phase 4,
+            # inject approved_jv_link_check(key) here.
+            # See unified implementation plan Phase 4.
+            pass
         try:
+            log.warning(
+                "r2_delete_called",
+                extra={
+                    "key": key,
+                    "audit": True,
+                    "worm_note": "verify no approved JV link",
+                },
+            )
             self._client.delete_object(Bucket=self._bucket, Key=key)
             log.info("R2 delete: key=%s", key)
             return True

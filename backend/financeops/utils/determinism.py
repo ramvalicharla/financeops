@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-DETERMINISM_SCHEMA_VERSION = "workbench.phase2.determinism.v1"
+DETERMINISM_SCHEMA_VERSION = "financeops.phase2.determinism.v1"
 
 DEFAULT_POLICY_VERSION = "phase2-policy-placeholder"
 DEFAULT_RULEPACK_VERSION = "phase2-rulepack-placeholder"

@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Iterable
 
-from financeops.utils.workbench_compat import determinism
+from financeops.utils.erp_compat import determinism
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 
@@ -45,3 +45,5 @@ ENV CLAMAV_REQUIRED=True
 EXPOSE 8000
 
 CMD ["uvicorn", "financeops.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+FROM runtime AS production

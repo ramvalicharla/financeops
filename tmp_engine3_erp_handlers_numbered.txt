@@ -1,0 +1,506 @@
+    1: from __future__ import annotations
+    2: 
+    3: from typing import Any
+    4: 
+    5: from fastapi import Query, Request
+    6: 
+    7: from workbench.backend import app as backend_app
+    8: from workbench.backend import db as _db
+    9: from workbench.backend.api.schemas.engine3 import (
+   10:     Engine3ErpConnectionCreateRequest,
+   11:     Engine3ErpDryRunRequest,
+   12:     Engine3ErpMappingUpsertRequest,
+   13:     Engine3ErpPostFromJeRequest,
+   14: )
+   15: from workbench.backend.db.engine3 import erp_auth_service
+   16: from workbench.backend.db.engine3 import erp_health_service
+   17: from workbench.backend.db.engine3 import erp_posting_orchestrator
+   18: from workbench.backend.db.engine3 import erp_repository
+   19: from workbench.backend.jobs import engine3_erp_executor
+   20: 
+   21: 
+   22: def _raise_phase4_runtime_error(*, reason: str, details: dict[str, Any] | None = None) -> None:
+   23:     code_details = details or {}
+   24:     text = str(reason or "").strip()
+   25:     key = text.upper()
+   26:     if "ERP_POSTING_WORKFLOW_STATE_INVALID" in key:
+   27:         backend_app.raise_api_error(
+   28:             "ENGINE3_ERP_READY_TO_POST_REQUIRED",
+   29:             "Posting is allowed only when workflow_state is READY_TO_POST.",
+   30:             status_code=409,
+   31:             details=code_details,
+   32:         )
+   33:     if "ERP_POSTING_WORKFLOW_MISSING" in key:
+   34:         backend_app.raise_api_error(
+   35:             "ENGINE3_ERP_WORKFLOW_MISSING",
+   36:             "Governance workflow is required for ERP posting.",
+   37:             status_code=409,
+   38:             details=code_details,
+   39:         )
+   40:     if "ERP_POSTING_JE_STATUS_INVALID" in key:
+   41:         backend_app.raise_api_error(
+   42:             "ENGINE3_ERP_JE_STATUS_INVALID",
+   43:             "JE status must be APPROVED for ERP posting.",
+   44:             status_code=409,
+   45:             details=code_details,
+   46:         )
+   47:     if "ERP_NARRATIVE_BUNDLE_MISSING" in key:
+   48:         backend_app.raise_api_error(
+   49:             "ENGINE3_ERP_NARRATIVE_BUNDLE_MISSING",
+   50:             "Active narrative hash is required for posting.",
+   51:             status_code=409,
+   52:             details=code_details,
+   53:         )
+   54:     if "ERP_EVIDENCE_BUNDLE_MISSING" in key:
+   55:         backend_app.raise_api_error(
+   56:             "ENGINE3_ERP_EVIDENCE_BUNDLE_MISSING",
+   57:             "Active evidence hash is required for posting.",
+   58:             status_code=409,
+   59:             details=code_details,
+   60:         )
+   61:     if "ERP_EVIDENCE_INCOMPLETE" in key:
+   62:         backend_app.raise_api_error(
+   63:             "ENGINE3_ERP_EVIDENCE_INCOMPLETE",
+   64:             "Evidence completeness must be COMPLETE for posting.",
+   65:             status_code=409,
+   66:             details=code_details,
+   67:         )
+   68:     if "ERP_APPROVAL_HASH_MISMATCH" in key:
+   69:         backend_app.raise_api_error(
+   70:             "ENGINE3_ERP_APPROVAL_HASH_MISMATCH",
+   71:             "Approval hashes must match current active narrative/evidence bundles.",
+   72:             status_code=409,
+   73:             details=code_details,
+   74:         )
+   75:     if "ERP_APPROVAL_DECISION_REQUIRED" in key:
+   76:         backend_app.raise_api_error(
+   77:             "ENGINE3_ERP_APPROVAL_DECISION_REQUIRED",
+   78:             "Approved governance decision is required.",
+   79:             status_code=409,
+   80:             details=code_details,
+   81:         )
+   82:     if "ERP_MAPPING_MISSING" in key:
+   83:         backend_app.raise_api_error(
+   84:             "ENGINE3_ERP_MAPPING_MISSING",
+   85:             "Required ERP account/entity/dimension mapping is missing.",
+   86:             status_code=409,
+   87:             details=code_details,
+   88:         )
+   89:     if "ERP_POSTING_LOCK_ACTIVE" in key:
+   90:         backend_app.raise_api_error(
+   91:             "ENGINE3_ERP_POSTING_LOCK_ACTIVE",
+   92:             "Posting lock is active for this JE draft.",
+   93:             status_code=409,
+   94:             details=code_details,
+   95:         )
+   96:     if "ERP_CONNECTION_INACTIVE" in key:
+   97:         backend_app.raise_api_error(
+   98:             "ENGINE3_ERP_CONNECTION_INACTIVE",
+   99:             "ERP connection must be ACTIVE before posting.",
+  100:             status_code=409,
+  101:             details=code_details,
+  102:         )
+  103:     if "ERP_RETRY_NOT_ALLOWED" in key:
+  104:         backend_app.raise_api_error(
+  105:             "ENGINE3_ERP_RETRY_NOT_ALLOWED",
+  106:             "Retry is allowed only for FAILED_SOFT or PENDING runs.",
+  107:             status_code=409,
+  108:             details=code_details,
+  109:         )
+  110:     if "ERP_REVERSAL_ONLY_POSTED_ALLOWED" in key:
+  111:         backend_app.raise_api_error(
+  112:             "ENGINE3_ERP_REVERSAL_ONLY_POSTED_ALLOWED",
+  113:             "Reversal is allowed only for POSTED runs.",
+  114:             status_code=409,
+  115:             details=code_details,
+  116:         )
+  117:     if "ERP_REVERSAL_EXTERNAL_ID_REQUIRED" in key:
+  118:         backend_app.raise_api_error(
+  119:             "ENGINE3_ERP_REVERSAL_EXTERNAL_ID_REQUIRED",
+  120:             "Reversal requires an external ERP document id.",
+  121:             status_code=409,
+  122:             details=code_details,
+  123:         )
+  124:     if "ERP_ADAPTER_UNSUPPORTED" in key:
+  125:         backend_app.raise_api_error(
+  126:             "ENGINE3_ERP_ADAPTER_UNSUPPORTED",
+  127:             "Configured ERP adapter is not supported.",
+  128:             status_code=400,
+  129:             details=code_details,
+  130:         )
+  131:     if "ERP_CONNECTION_REQUIRED_FOR_PACKET_PREVIEW" in key:
+  132:         backend_app.raise_api_error(
+  133:             "ENGINE3_ERP_CONNECTION_REQUIRED_FOR_PACKET_PREVIEW",
+  134:             "connection_id is required when no posting history exists.",
+  135:             status_code=400,
+  136:             details=code_details,
+  137:         )
+  138:     backend_app.raise_api_error(
+  139:         "ENGINE3_ERP_OPERATION_FAILED",
+  140:         text or "ERP operation failed.",
+  141:         status_code=409,
+  142:         details=code_details,
+  143:     )
+  144: 
+  145: 
+  146: def _enqueue_erp_job(
+  147:     *,
+  148:     actor_id: str,
+  149:     tenant_id: str,
+  150:     workspace_id: str,
+  151:     job_type: str,
+  152:     payload: dict[str, Any],
+  153: ) -> dict[str, Any]:
+  154:     wrapped_payload = {"payload": payload, "context": {"tenant_id": tenant_id, "workspace_id": workspace_id}}
+  155:     created = backend_app.jobs_control_plane.create_job(
+  156:         job_type=job_type,
+  157:         payload=wrapped_payload,
+  158:         created_by=actor_id,
+  159:         workspace_id=workspace_id,
+  160:         tenant_id=tenant_id,
+  161:         project_id=workspace_id,
+  162:     )
+  163:     if not backend_app.lease_store.distributed_leasing_enabled():
+  164:         backend_app.jobs_control_plane.start_local_runner(
+  165:             job_id=str(created["job_id"]),
+  166:             payload=wrapped_payload,
+  167:         )
+  168:     return {"job_id": str(created["job_id"]), "status": str(created["status"])}
+  169: 
+  170: 
+  171: async def create_erp_connection(
+  172:     payload: Engine3ErpConnectionCreateRequest,
+  173:     request: Request,
+  174: ) -> dict[str, Any]:
+  175:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  176:     try:
+  177:         connection = erp_repository.create_connection(
+  178:             tenant_id=tenant_id,
+  179:             workspace_id=workspace_id,
+  180:             erp_type=payload.erp_type,
+  181:             connection_name=payload.connection_name,
+  182:             auth_type=payload.auth_type,
+  183:             encrypted_credentials_ref=payload.encrypted_credentials_ref,
+  184:             connection_config=payload.connection_config_json,
+  185:             status=payload.status,
+  186:         )
+  187:     except ValueError as exc:
+  188:         backend_app.raise_api_error("ENGINE3_ERP_INVALID_INPUT", str(exc), status_code=400)
+  189:     return {"connection": erp_auth_service.redact_connection_credentials(connection)}
+  190: 
+  191: 
+  192: async def validate_erp_connection(
+  193:     connection_id: str,
+  194:     request: Request,
+  195: ) -> dict[str, Any]:
+  196:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  197:     connection = erp_repository.get_connection(
+  198:         tenant_id=tenant_id,
+  199:         workspace_id=workspace_id,
+  200:         connection_id=connection_id,
+  201:     )
+  202:     if connection is None:
+  203:         backend_app.raise_api_error(
+  204:             "ENGINE3_ERP_CONNECTION_NOT_FOUND",
+  205:             "erp connection was not found.",
+  206:             status_code=404,
+  207:             details={"connection_id": str(connection_id).strip()},
+  208:         )
+  209:     try:
+  210:         response = erp_posting_orchestrator.validate_connection(connection=connection)
+  211:     except RuntimeError as exc:
+  212:         _raise_phase4_runtime_error(reason=str(exc), details={"connection_id": str(connection_id).strip()})
+  213:     next_status = "ACTIVE" if str(response.get("status") or "").upper() == "SUCCESS" else "ERROR"
+  214:     updated = erp_repository.set_connection_validation(
+  215:         tenant_id=tenant_id,
+  216:         workspace_id=workspace_id,
+  217:         connection_id=connection_id,
+  218:         status=next_status,
+  219:     )
+  220:     if next_status == "ACTIVE":
+  221:         erp_health_service.mark_connection_success(
+  222:             tenant_id=tenant_id,
+  223:             workspace_id=workspace_id,
+  224:             connection_id=connection_id,
+  225:         )
+  226:     else:
+  227:         erp_health_service.mark_connection_failure(
+  228:             tenant_id=tenant_id,
+  229:             workspace_id=workspace_id,
+  230:             connection_id=connection_id,
+  231:             error_code=str(response.get("error_code") or "ERP_CONNECTION_VALIDATE_FAILED"),
+  232:             error_message=str(response.get("error_message") or "connection validation failed"),
+  233:         )
+  234:     validation_mode = str((response.get("raw_response") or {}).get("mode") or "").strip() or None
+  235:     return {
+  236:         "connection": erp_auth_service.redact_connection_credentials(updated),
+  237:         "validation": response,
+  238:         "status": str(response.get("status") or "").strip() or None,
+  239:         "mode": validation_mode,
+  240:     }
+  241: 
+  242: 
+  243: async def list_erp_connections(request: Request) -> dict[str, Any]:
+  244:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  245:     rows = erp_repository.list_connections(tenant_id=tenant_id, workspace_id=workspace_id)
+  246:     return {"connections": [erp_auth_service.redact_connection_credentials(item) for item in rows]}
+  247: 
+  248: 
+  249: async def upsert_erp_mappings(
+  250:     connection_id: str,
+  251:     payload: Engine3ErpMappingUpsertRequest,
+  252:     request: Request,
+  253: ) -> dict[str, Any]:
+  254:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  255:     try:
+  256:         mappings = erp_repository.upsert_mappings(
+  257:             tenant_id=tenant_id,
+  258:             workspace_id=workspace_id,
+  259:             connection_id=connection_id,
+  260:             account_map=payload.account_map,
+  261:             dimension_map=payload.dimension_map,
+  262:             entity_map=payload.entity_map,
+  263:         )
+  264:     except LookupError:
+  265:         backend_app.raise_api_error(
+  266:             "ENGINE3_ERP_CONNECTION_NOT_FOUND",
+  267:             "erp connection was not found.",
+  268:             status_code=404,
+  269:             details={"connection_id": str(connection_id).strip()},
+  270:         )
+  271:     except ValueError as exc:
+  272:         backend_app.raise_api_error("ENGINE3_ERP_MAPPING_INVALID_INPUT", str(exc), status_code=400)
+  273:     return {"mappings": mappings}
+  274: 
+  275: 
+  276: async def get_erp_mappings(
+  277:     connection_id: str,
+  278:     request: Request,
+  279: ) -> dict[str, Any]:
+  280:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  281:     connection = erp_repository.get_connection(
+  282:         tenant_id=tenant_id,
+  283:         workspace_id=workspace_id,
+  284:         connection_id=connection_id,
+  285:     )
+  286:     if connection is None:
+  287:         backend_app.raise_api_error(
+  288:             "ENGINE3_ERP_CONNECTION_NOT_FOUND",
+  289:             "erp connection was not found.",
+  290:             status_code=404,
+  291:             details={"connection_id": str(connection_id).strip()},
+  292:         )
+  293:     mappings = erp_repository.get_mappings(
+  294:         tenant_id=tenant_id,
+  295:         workspace_id=workspace_id,
+  296:         connection_id=connection_id,
+  297:     )
+  298:     return {"mappings": mappings}
+  299: 
+  300: 
+  301: async def post_to_erp_from_je(
+  302:     connection_id: str,
+  303:     je_draft_id: str,
+  304:     request: Request,
+  305:     payload: Engine3ErpPostFromJeRequest | None = None,
+  306: ) -> dict[str, Any]:
+  307:     actor_id, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  308:     try:
+  309:         prepared = erp_posting_orchestrator.prepare_async_posting(
+  310:             tenant_id=tenant_id,
+  311:             workspace_id=workspace_id,
+  312:             connection_id=connection_id,
+  313:             je_draft_id=je_draft_id,
+  314:             simulation_mode=(payload.simulation_mode if payload else None),
+  315:         )
+  316:     except LookupError as exc:
+  317:         message = str(exc).lower()
+  318:         if "erp_connection_id" in message:
+  319:             backend_app.raise_api_error("ENGINE3_ERP_CONNECTION_NOT_FOUND", "erp connection was not found.", status_code=404)
+  320:         backend_app.raise_api_error("ENGINE3_JE_DRAFT_NOT_FOUND", "je draft was not found.", status_code=404)
+  321:     except RuntimeError as exc:
+  322:         _raise_phase4_runtime_error(
+  323:             reason=str(exc),
+  324:             details={"connection_id": str(connection_id).strip(), "je_draft_id": str(je_draft_id).strip()},
+  325:         )
+  326:     if bool(prepared.get("idempotent")):
+  327:         return {**prepared, "async_job": None}
+  328:     job = _enqueue_erp_job(
+  329:         actor_id=str(actor_id),
+  330:         tenant_id=tenant_id,
+  331:         workspace_id=workspace_id,
+  332:         job_type=engine3_erp_executor.JOB_TYPE_POST,
+  333:         payload={
+  334:             "tenant_id": tenant_id,
+  335:             "workspace_id": workspace_id,
+  336:             "posting_run_id": str(prepared["posting_run"]["id"]),
+  337:         },
+  338:     )
+  339:     return {**prepared, "async_job": job}
+  340: 
+  341: 
+  342: async def retry_erp_posting(
+  343:     posting_run_id: str,
+  344:     request: Request,
+  345: ) -> dict[str, Any]:
+  346:     actor_id, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  347:     try:
+  348:         run = erp_repository.get_posting_run(
+  349:             tenant_id=tenant_id,
+  350:             workspace_id=workspace_id,
+  351:             posting_run_id=posting_run_id,
+  352:         )
+  353:         if run is None:
+  354:             raise LookupError("posting_run_id was not found.")
+  355:         status = str(run.get("execution_status") or "").upper()
+  356:         if status not in {"FAILED_SOFT", "PENDING"}:
+  357:             raise RuntimeError("ERP_RETRY_NOT_ALLOWED")
+  358:         result = {"posting_run": run}
+  359:     except LookupError:
+  360:         backend_app.raise_api_error("ENGINE3_ERP_POSTING_RUN_NOT_FOUND", "posting run was not found.", status_code=404)
+  361:     except RuntimeError as exc:
+  362:         _raise_phase4_runtime_error(reason=str(exc), details={"posting_run_id": str(posting_run_id).strip()})
+  363:     job = _enqueue_erp_job(
+  364:         actor_id=str(actor_id),
+  365:         tenant_id=tenant_id,
+  366:         workspace_id=workspace_id,
+  367:         job_type=engine3_erp_executor.JOB_TYPE_RETRY,
+  368:         payload={"tenant_id": tenant_id, "workspace_id": workspace_id, "posting_run_id": posting_run_id},
+  369:     )
+  370:     return {**result, "async_job": job}
+  371: 
+  372: 
+  373: async def reverse_erp_posting(
+  374:     posting_run_id: str,
+  375:     request: Request,
+  376: ) -> dict[str, Any]:
+  377:     actor_id, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  378:     try:
+  379:         run = erp_repository.get_posting_run(
+  380:             tenant_id=tenant_id,
+  381:             workspace_id=workspace_id,
+  382:             posting_run_id=posting_run_id,
+  383:         )
+  384:         if run is None:
+  385:             raise LookupError("posting_run_id was not found.")
+  386:         if str(run.get("execution_status") or "").upper() != "POSTED":
+  387:             raise RuntimeError("ERP_REVERSAL_ONLY_POSTED_ALLOWED")
+  388:         result = {"posting_run": run}
+  389:     except LookupError:
+  390:         backend_app.raise_api_error("ENGINE3_ERP_POSTING_RUN_NOT_FOUND", "posting run was not found.", status_code=404)
+  391:     except RuntimeError as exc:
+  392:         _raise_phase4_runtime_error(reason=str(exc), details={"posting_run_id": str(posting_run_id).strip()})
+  393:     job = _enqueue_erp_job(
+  394:         actor_id=str(actor_id),
+  395:         tenant_id=tenant_id,
+  396:         workspace_id=workspace_id,
+  397:         job_type=engine3_erp_executor.JOB_TYPE_REVERSE,
+  398:         payload={"tenant_id": tenant_id, "workspace_id": workspace_id, "posting_run_id": posting_run_id},
+  399:     )
+  400:     return {**result, "async_job": job}
+  401: 
+  402: 
+  403: async def get_erp_posting_run(
+  404:     posting_run_id: str,
+  405:     request: Request,
+  406: ) -> dict[str, Any]:
+  407:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  408:     run = erp_repository.get_posting_run(
+  409:         tenant_id=tenant_id,
+  410:         workspace_id=workspace_id,
+  411:         posting_run_id=posting_run_id,
+  412:     )
+  413:     if run is None:
+  414:         backend_app.raise_api_error("ENGINE3_ERP_POSTING_RUN_NOT_FOUND", "posting run was not found.", status_code=404)
+  415:     events = erp_repository.list_posting_events(
+  416:         tenant_id=tenant_id,
+  417:         workspace_id=workspace_id,
+  418:         posting_run_id=posting_run_id,
+  419:     )
+  420:     return {"posting_run": run, "events": events}
+  421: 
+  422: 
+  423: async def poll_erp_posting(
+  424:     posting_run_id: str,
+  425:     request: Request,
+  426: ) -> dict[str, Any]:
+  427:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  428:     try:
+  429:         return erp_posting_orchestrator.poll_posting_status(
+  430:             tenant_id=tenant_id,
+  431:             workspace_id=workspace_id,
+  432:             posting_run_id=posting_run_id,
+  433:         )
+  434:     except LookupError:
+  435:         backend_app.raise_api_error("ENGINE3_ERP_POSTING_RUN_NOT_FOUND", "posting run was not found.", status_code=404)
+  436: 
+  437: 
+  438: async def get_je_posting_history(
+  439:     je_draft_id: str,
+  440:     request: Request,
+  441: ) -> dict[str, Any]:
+  442:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  443:     history = erp_posting_orchestrator.get_posting_history_with_events(
+  444:         tenant_id=tenant_id,
+  445:         workspace_id=workspace_id,
+  446:         je_draft_id=je_draft_id,
+  447:     )
+  448:     return {"history": history}
+  449: 
+  450: 
+  451: async def get_je_posting_packet(
+  452:     je_draft_id: str,
+  453:     request: Request,
+  454:     connection_id: str | None = Query(default=None, min_length=1),
+  455: ) -> dict[str, Any]:
+  456:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  457:     resolved_connection_id = str(connection_id or "").strip()
+  458:     if not resolved_connection_id:
+  459:         latest = erp_repository.get_latest_posting_run_for_je(
+  460:             tenant_id=tenant_id,
+  461:             workspace_id=workspace_id,
+  462:             je_draft_id=je_draft_id,
+  463:         )
+  464:         if latest is not None:
+  465:             snapshot = _db._normalize_engine3_json_object(latest.get("execution_snapshot") or {}, field_name="execution_snapshot")
+  466:             return {"packet": snapshot.get("packet") or {}, "packet_hash_sha256": snapshot.get("packet_hash_sha256")}
+  467:         _raise_phase4_runtime_error(
+  468:             reason="ERP_CONNECTION_REQUIRED_FOR_PACKET_PREVIEW",
+  469:             details={"je_draft_id": str(je_draft_id).strip()},
+  470:         )
+  471:     try:
+  472:         preview = erp_posting_orchestrator.build_posting_packet_preview(
+  473:             tenant_id=tenant_id,
+  474:             workspace_id=workspace_id,
+  475:             connection_id=resolved_connection_id,
+  476:             je_draft_id=je_draft_id,
+  477:         )
+  478:     except LookupError:
+  479:         backend_app.raise_api_error("ENGINE3_ERP_CONNECTION_NOT_FOUND", "erp connection was not found.", status_code=404)
+  480:     except RuntimeError as exc:
+  481:         _raise_phase4_runtime_error(reason=str(exc), details={"je_draft_id": str(je_draft_id).strip()})
+  482:     return preview
+  483: 
+  484: 
+  485: async def dry_run_erp_posting(
+  486:     payload: Engine3ErpDryRunRequest,
+  487:     request: Request,
+  488: ) -> dict[str, Any]:
+  489:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  490:     try:
+  491:         result = erp_posting_orchestrator.dry_run_posting(
+  492:             tenant_id=tenant_id,
+  493:             workspace_id=workspace_id,
+  494:             connection_id=payload.connection_id,
+  495:             je_draft_id=payload.je_draft_id,
+  496:         )
+  497:     except LookupError as exc:
+  498:         if "erp_connection_id" in str(exc).lower():
+  499:             backend_app.raise_api_error("ENGINE3_ERP_CONNECTION_NOT_FOUND", "erp connection was not found.", status_code=404)
+  500:         backend_app.raise_api_error("ENGINE3_JE_DRAFT_NOT_FOUND", "je draft was not found.", status_code=404)
+  501:     except RuntimeError as exc:
+  502:         _raise_phase4_runtime_error(
+  503:             reason=str(exc),
+  504:             details={"connection_id": payload.connection_id, "je_draft_id": payload.je_draft_id},
+  505:         )
+  506:     return result

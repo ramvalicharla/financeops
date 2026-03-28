@@ -1,0 +1,265 @@
+    1: from __future__ import annotations
+    2: 
+    3: import io
+    4: import json
+    5: from urllib import error as urllib_error
+    6: 
+    7: from workbench.backend.connectors.erp import ZohoBooksAdapter
+    8: from workbench.backend.connectors.erp import zoho_auth
+    9: from workbench.backend.connectors.erp import zoho_books
+   10: 
+   11: 
+   12: class _FakeHttpResponse:
+   13:     def __init__(self, payload: dict, status_code: int = 200) -> None:
+   14:         self._raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+   15:         self._status_code = status_code
+   16: 
+   17:     def read(self) -> bytes:
+   18:         return self._raw
+   19: 
+   20:     def getcode(self) -> int:
+   21:         return self._status_code
+   22: 
+   23:     def __enter__(self):
+   24:         return self
+   25: 
+   26:     def __exit__(self, exc_type, exc, tb) -> bool:
+   27:         return False
+   28: 
+   29: 
+   30: def test_phase4c_zoho_oauth_flow_and_refresh_mock(monkeypatch) -> None:
+   31:     monkeypatch.setenv("ZOHO_CLIENT_ID", "zoho-client")
+   32:     monkeypatch.setenv("ZOHO_CLIENT_SECRET", "zoho-secret")
+   33:     monkeypatch.setenv("ZOHO_REGION", "in")
+   34:     monkeypatch.setenv("ZOHO_REDIRECT_URI", "https://localhost/zoho/callback")
+   35: 
+   36:     calls: list[str] = []
+   37: 
+   38:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+   39:         _ = timeout
+   40:         body = (request.data or b"").decode("utf-8")
+   41:         calls.append(body)
+   42:         if "grant_type=authorization_code" in body:
+   43:             return _FakeHttpResponse(
+   44:                 {
+   45:                     "access_token": "zoho_live_access",
+   46:                     "refresh_token": "zoho_live_refresh",
+   47:                     "token_type": "Bearer",
+   48:                     "expires_in": 3600,
+   49:                     "api_domain": "https://www.zohoapis.in",
+   50:                 }
+   51:             )
+   52:         if "grant_type=refresh_token" in body:
+   53:             return _FakeHttpResponse(
+   54:                 {
+   55:                     "access_token": "zoho_live_access_refreshed",
+   56:                     "refresh_token": "zoho_live_refresh_refreshed",
+   57:                     "token_type": "Bearer",
+   58:                     "expires_in": 3600,
+   59:                     "api_domain": "https://www.zohoapis.in",
+   60:                 }
+   61:             )
+   62:         raise AssertionError(f"Unexpected token request body: {body}")
+   63: 
+   64:     monkeypatch.setattr(zoho_auth.urllib_request, "urlopen", _mock_urlopen)
+   65: 
+   66:     adapter = ZohoBooksAdapter()
+   67:     authorize_url = adapter.get_oauth_authorize_url(
+   68:         connection_config={"organization_id": "org-1"},
+   69:         redirect_uri="",
+   70:         state_token="state-zoho-1",
+   71:         pkce_verifier="zoho-pkce-verifier",
+   72:     )
+   73:     assert "accounts.zoho.in" in authorize_url
+   74:     assert "state=state-zoho-1" in authorize_url
+   75: 
+   76:     exchanged = adapter.exchange_oauth_code(
+   77:         connection_config={"organization_id": "org-1"},
+   78:         redirect_uri="https://localhost/zoho/callback",
+   79:         code="zoho-code-123",
+   80:         pkce_verifier="zoho-pkce-verifier",
+   81:     )
+   82:     assert exchanged["access_token"] == "zoho_live_access"
+   83:     assert exchanged["refresh_token"] == "zoho_live_refresh"
+   84:     assert exchanged["api_domain"] == "https://www.zohoapis.in"
+   85:     assert exchanged["region"] == "in"
+   86:     assert exchanged["expires_at_utc"]
+   87: 
+   88:     refreshed = adapter.refresh_oauth_tokens(
+   89:         connection_config={"organization_id": "org-1"},
+   90:         token_payload=exchanged,
+   91:     )
+   92:     assert refreshed["access_token"] == "zoho_live_access_refreshed"
+   93:     assert refreshed["refresh_token"] == "zoho_live_refresh_refreshed"
+   94:     assert any("grant_type=authorization_code" in call for call in calls)
+   95:     assert any("grant_type=refresh_token" in call for call in calls)
+   96: 
+   97: 
+   98: def test_phase4c_zoho_region_and_coa_sync_mapping(monkeypatch) -> None:
+   99:     monkeypatch.setenv("ZOHO_CLIENT_ID", "zoho-client")
+  100:     monkeypatch.setenv("ZOHO_CLIENT_SECRET", "zoho-secret")
+  101:     monkeypatch.setenv("ZOHO_REGION", "eu")
+  102: 
+  103:     captured_urls: list[str] = []
+  104: 
+  105:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  106:         _ = timeout
+  107:         captured_urls.append(str(request.full_url))
+  108:         if "/books/v3/organizations" in str(request.full_url):
+  109:             return _FakeHttpResponse({"code": 0, "organizations": [{"organization_id": "org-123"}]})
+  110:         if "/books/v3/chartofaccounts" in str(request.full_url):
+  111:             return _FakeHttpResponse(
+  112:                 {
+  113:                     "code": 0,
+  114:                     "chartofaccounts": [
+  115:                         {
+  116:                             "account_id": "2000",
+  117:                             "account_code": "2000",
+  118:                             "account_name": "Accounts Payable",
+  119:                             "account_type": "liability",
+  120:                             "status": "active",
+  121:                             "last_modified_time": "2026-03-20T01:02:03+0000",
+  122:                         },
+  123:                         {
+  124:                             "account_id": "1000",
+  125:                             "account_code": "1000",
+  126:                             "account_name": "Cash",
+  127:                             "account_type": "asset",
+  128:                             "status": "active",
+  129:                             "last_modified_time": "2026-03-20T01:02:04+0000",
+  130:                         },
+  131:                     ],
+  132:                 }
+  133:             )
+  134:         raise AssertionError(f"Unexpected Zoho URL: {request.full_url}")
+  135: 
+  136:     monkeypatch.setattr(zoho_books.urllib_request, "urlopen", _mock_urlopen)
+  137: 
+  138:     adapter = ZohoBooksAdapter()
+  139:     validated = adapter.validate_connection(
+  140:         connection_config={"organization_id": "org-123"},
+  141:         credentials_ref="secret://zoho/live",
+  142:         credentials={"access_token": "token-1", "organization_id": "org-123"},
+  143:     )
+  144:     assert validated["status"] == "SUCCESS"
+  145: 
+  146:     response = adapter.sync_chart_of_accounts(
+  147:         connection_config={"organization_id": "org-123"},
+  148:         credentials={"access_token": "token-1", "organization_id": "org-123"},
+  149:     )
+  150:     assert response["status"] == "SUCCESS"
+  151:     assert [item["object_key"] for item in response["items"]] == ["1000", "2000"]
+  152:     assert any("www.zohoapis.eu/books/v3/chartofaccounts" in url for url in captured_urls)
+  153:     assert any("organization_id=org-123" in url for url in captured_urls)
+  154: 
+  155: 
+  156: def test_phase4c_zoho_get_organizations_fetches_first_candidates(monkeypatch) -> None:
+  157:     monkeypatch.setenv("ZOHO_CLIENT_ID", "zoho-client")
+  158:     monkeypatch.setenv("ZOHO_CLIENT_SECRET", "zoho-secret")
+  159:     monkeypatch.setenv("ZOHO_REGION", "in")
+  160: 
+  161:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  162:         _ = timeout
+  163:         full_url = str(request.full_url)
+  164:         if "/books/v3/organizations" not in full_url:
+  165:             raise AssertionError(f"Unexpected Zoho request URL: {full_url}")
+  166:         return _FakeHttpResponse(
+  167:             {
+  168:                 "code": 0,
+  169:                 "organizations": [
+  170:                     {"organization_id": "7002", "name": "B Org"},
+  171:                     {"organization_id": "7001", "name": "A Org"},
+  172:                 ],
+  173:             }
+  174:         )
+  175: 
+  176:     monkeypatch.setattr(zoho_books.urllib_request, "urlopen", _mock_urlopen)
+  177:     adapter = ZohoBooksAdapter()
+  178:     response = adapter.get_organizations(
+  179:         connection_config={"region": "in"},
+  180:         credentials={"access_token": "token-1"},
+  181:     )
+  182:     assert response["status"] == "SUCCESS"
+  183:     assert [item["organization_id"] for item in response["organizations"]] == ["7001", "7002"]
+  184: 
+  185: 
+  186: def test_phase4c_zoho_post_journal_and_status_fetch(monkeypatch) -> None:
+  187:     monkeypatch.setenv("ZOHO_CLIENT_ID", "zoho-client")
+  188:     monkeypatch.setenv("ZOHO_CLIENT_SECRET", "zoho-secret")
+  189:     monkeypatch.setenv("ZOHO_REGION", "com")
+  190: 
+  191:     captured_post_payload: dict[str, object] = {}
+  192: 
+  193:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  194:         _ = timeout
+  195:         full_url = str(request.full_url)
+  196:         if "/books/v3/journals?" in full_url and request.method == "POST":
+  197:             body = (request.data or b"{}").decode("utf-8")
+  198:             captured_post_payload.update(json.loads(body))
+  199:             return _FakeHttpResponse({"code": 0, "journal": {"journal_id": "JRN-001", "status": "posted"}})
+  200:         if "/books/v3/journals/JRN-001?" in full_url and request.method == "GET":
+  201:             return _FakeHttpResponse({"code": 0, "journal": {"journal_id": "JRN-001", "status": "posted"}})
+  202:         raise AssertionError(f"Unexpected Zoho request: method={request.method} url={full_url}")
+  203: 
+  204:     monkeypatch.setattr(zoho_books.urllib_request, "urlopen", _mock_urlopen)
+  205: 
+  206:     adapter = ZohoBooksAdapter()
+  207:     post_response = adapter.post_journal(
+  208:         {
+  209:             "journal_header": {"posting_date": "2026-03-21", "memo": "Zoho Journal"},
+  210:             "journal_lines": [
+  211:                 {"account_code": "A100", "debit": "100.00", "credit": "0.00", "description": "debit"},
+  212:                 {"account_code": "L200", "debit": "0.00", "credit": "100.00", "description": "credit"},
+  213:             ],
+  214:         },
+  215:         connection_config={"organization_id": "org-9"},
+  216:         credentials={"access_token": "token-9", "organization_id": "org-9"},
+  217:     )
+  218:     assert post_response["status"] == "SUCCESS"
+  219:     assert post_response["external_id"] == "JRN-001"
+  220:     line_items = captured_post_payload["line_items"]
+  221:     assert isinstance(line_items, list)
+  222:     assert line_items[0]["debit_or_credit"] == "debit"
+  223:     assert line_items[1]["debit_or_credit"] == "credit"
+  224: 
+  225:     status_response = adapter.get_journal_status(
+  226:         "JRN-001",
+  227:         connection_config={"organization_id": "org-9"},
+  228:         credentials={"access_token": "token-9", "organization_id": "org-9"},
+  229:     )
+  230:     assert status_response["status"] == "SUCCESS"
+  231:     assert status_response["external_id"] == "JRN-001"
+  232: 
+  233: 
+  234: def test_phase4c_zoho_error_handling_rate_limit(monkeypatch) -> None:
+  235:     monkeypatch.setenv("ZOHO_CLIENT_ID", "zoho-client")
+  236:     monkeypatch.setenv("ZOHO_CLIENT_SECRET", "zoho-secret")
+  237:     monkeypatch.setenv("ZOHO_REGION", "com")
+  238: 
+  239:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  240:         _ = timeout, request
+  241:         payload = {"code": 44, "message": "Rate limit exceeded"}
+  242:         raise urllib_error.HTTPError(
+  243:             url="https://www.zohoapis.com/books/v3/journals",
+  244:             code=429,
+  245:             msg="Too Many Requests",
+  246:             hdrs=None,
+  247:             fp=io.BytesIO(json.dumps(payload).encode("utf-8")),
+  248:         )
+  249: 
+  250:     monkeypatch.setattr(zoho_books.urllib_request, "urlopen", _mock_urlopen)
+  251: 
+  252:     adapter = ZohoBooksAdapter()
+  253:     response = adapter.post_journal(
+  254:         {
+  255:             "journal_header": {"posting_date": "2026-03-21", "memo": "Zoho Journal"},
+  256:             "journal_lines": [
+  257:                 {"account_code": "A100", "debit": "100.00", "credit": "0.00", "description": "debit"},
+  258:                 {"account_code": "L200", "debit": "0.00", "credit": "100.00", "description": "credit"},
+  259:             ],
+  260:         },
+  261:         connection_config={"organization_id": "org-9"},
+  262:         credentials={"access_token": "token-9", "organization_id": "org-9"},
+  263:     )
+  264:     assert response["status"] == "FAILED"
+  265:     assert response["error_code"] == "ZOHO_RATE_LIMIT"

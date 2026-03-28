@@ -1,0 +1,641 @@
+    1: from __future__ import annotations
+    2: 
+    3: import json
+    4: import os
+    5: from decimal import Decimal, InvalidOperation
+    6: from typing import Any
+    7: from urllib import error as urllib_error
+    8: from urllib import parse as urllib_parse
+    9: from urllib import request as urllib_request
+   10: from uuid import uuid4
+   11: 
+   12: from . import quickbooks_auth
+   13: from .base import ERPAdapter, ERPResponse
+   14: 
+   15: _QBO_API_BASE_SANDBOX = "https://sandbox-quickbooks.api.intuit.com"
+   16: _QBO_API_BASE_PRODUCTION = "https://quickbooks.api.intuit.com"
+   17: 
+   18: 
+   19: class _QuickBooksApiError(RuntimeError):
+   20:     def __init__(self, *, code: str, message: str, raw_response: dict[str, Any] | None = None) -> None:
+   21:         super().__init__(message)
+   22:         self.code = code
+   23:         self.message = message
+   24:         self.raw_response = raw_response or {}
+   25: 
+   26: 
+   27: def _resolved_env(connection_config: dict[str, Any]) -> str:
+   28:     explicit = str(os.getenv("QBO_ENV", "") or "").strip().lower()
+   29:     if explicit in {"sandbox", "production"}:
+   30:         return explicit
+   31:     configured = str(connection_config.get("environment") or connection_config.get("env") or "sandbox").strip().lower()
+   32:     return configured if configured in {"sandbox", "production"} else "sandbox"
+   33: 
+   34: 
+   35: def _api_base(connection_config: dict[str, Any]) -> str:
+   36:     explicit = str(connection_config.get("api_base_url") or "").strip()
+   37:     if explicit:
+   38:         return explicit.rstrip("/")
+   39:     return _QBO_API_BASE_PRODUCTION if _resolved_env(connection_config) == "production" else _QBO_API_BASE_SANDBOX
+   40: 
+   41: 
+   42: def _minor_version(connection_config: dict[str, Any]) -> str:
+   43:     raw = str(connection_config.get("minor_version") or "75").strip()
+   44:     return raw or "75"
+   45: 
+   46: 
+   47: def _token_from_credentials(credentials: dict[str, Any] | None) -> str:
+   48:     return str((credentials or {}).get("access_token") or "").strip()
+   49: 
+   50: 
+   51: def _realm_id(connection_config: dict[str, Any], credentials: dict[str, Any] | None) -> str:
+   52:     from_credentials = str((credentials or {}).get("realm_id") or "").strip()
+   53:     if from_credentials:
+   54:         return from_credentials
+   55:     return str(connection_config.get("realm_id") or "").strip()
+   56: 
+   57: 
+   58: def _live_ready(connection_config: dict[str, Any], credentials: dict[str, Any] | None) -> bool:
+   59:     explicit = str(connection_config.get("use_live_api") or connection_config.get("live_mode") or "").strip().lower()
+   60:     if explicit in {"0", "false", "no", "off"}:
+   61:         live_enabled = False
+   62:     elif explicit in {"1", "true", "yes", "on"}:
+   63:         live_enabled = True
+   64:     else:
+   65:         env_client_id = str(os.getenv("QBO_CLIENT_ID", "") or "").strip()
+   66:         env_client_secret = str(os.getenv("QBO_CLIENT_SECRET", "") or "").strip()
+   67:         live_enabled = bool(env_client_id and env_client_secret)
+   68:     realm_id = _realm_id(connection_config, credentials)
+   69:     # QuickBooks realm ids are numeric; placeholder values should stay on simulated paths.
+   70:     realm_live_eligible = bool(realm_id and realm_id.isdigit())
+   71:     return live_enabled and bool(_token_from_credentials(credentials) and realm_live_eligible)
+   72: 
+   73: 
+   74: def _extract_error_message(payload: dict[str, Any]) -> str:
+   75:     fault = payload.get("Fault")
+   76:     if isinstance(fault, dict):
+   77:         errors = fault.get("Error")
+   78:         if isinstance(errors, list) and errors:
+   79:             first = errors[0]
+   80:             if isinstance(first, dict):
+   81:                 return str(first.get("Detail") or first.get("Message") or "QuickBooks API error").strip()
+   82:     return str(payload.get("message") or payload.get("error_description") or payload.get("error") or "QuickBooks API error").strip()
+   83: 
+   84: 
+   85: def _request_json(
+   86:     *,
+   87:     method: str,
+   88:     connection_config: dict[str, Any],
+   89:     credentials: dict[str, Any],
+   90:     path: str,
+   91:     query: dict[str, str] | None = None,
+   92:     json_payload: dict[str, Any] | None = None,
+   93:     text_payload: str | None = None,
+   94:     content_type: str = "application/json",
+   95: ) -> dict[str, Any]:
+   96:     base_url = _api_base(connection_config)
+   97:     token = _token_from_credentials(credentials)
+   98:     if not token:
+   99:         raise _QuickBooksApiError(code="QBO_AUTH_INVALID_TOKEN", message="access_token is required")
+  100:     url = f"{base_url}/{path.lstrip('/')}"
+  101:     query_data = dict(query or {})
+  102:     query_data.setdefault("minorversion", _minor_version(connection_config))
+  103:     url = f"{url}?{urllib_parse.urlencode(query_data)}" if query_data else url
+  104:     if json_payload is not None:
+  105:         data = json.dumps(json_payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+  106:     elif text_payload is not None:
+  107:         data = text_payload.encode("utf-8")
+  108:     else:
+  109:         data = None
+  110:     request = urllib_request.Request(
+  111:         url=url,
+  112:         data=data,
+  113:         headers={
+  114:             "Accept": "application/json",
+  115:             "Authorization": f"Bearer {token}",
+  116:             "Content-Type": content_type,
+  117:         },
+  118:         method=method.upper(),
+  119:     )
+  120:     try:
+  121:         with urllib_request.urlopen(request, timeout=30.0) as response:
+  122:             raw = response.read().decode("utf-8")
+  123:     except urllib_error.HTTPError as exc:
+  124:         raw = exc.read().decode("utf-8", errors="ignore")
+  125:         parsed = {}
+  126:         try:
+  127:             parsed = json.loads(raw) if raw else {}
+  128:         except json.JSONDecodeError:
+  129:             parsed = {}
+  130:         message = _extract_error_message(parsed) if isinstance(parsed, dict) else raw
+  131:         status = int(exc.code or 0)
+  132:         if status in {401, 403}:
+  133:             code = "QBO_AUTH_INVALID_TOKEN"
+  134:         elif status == 429:
+  135:             code = "QBO_RATE_LIMIT"
+  136:         elif status >= 500:
+  137:             code = "QBO_NETWORK"
+  138:         elif status in {400, 422}:
+  139:             code = "QBO_PAYLOAD_INVALID"
+  140:         elif status == 404:
+  141:             code = "QBO_NOT_FOUND"
+  142:         else:
+  143:             code = f"QBO_HTTP_{status}"
+  144:         raise _QuickBooksApiError(
+  145:             code=code,
+  146:             message=message or f"QuickBooks HTTP {status}",
+  147:             raw_response={"http_status": status, "body": parsed if isinstance(parsed, dict) else raw},
+  148:         ) from exc
+  149:     except OSError as exc:
+  150:         raise _QuickBooksApiError(
+  151:             code="QBO_NETWORK",
+  152:             message=str(exc).strip() or "network error",
+  153:             raw_response={"error_type": type(exc).__name__},
+  154:         ) from exc
+  155:     try:
+  156:         parsed_response = json.loads(raw) if raw else {}
+  157:     except json.JSONDecodeError:
+  158:         parsed_response = {}
+  159:     if not isinstance(parsed_response, dict):
+  160:         raise _QuickBooksApiError(code="QBO_RESPONSE_INVALID", message="QuickBooks response is invalid JSON", raw_response={"body": raw})
+  161:     return parsed_response
+  162: 
+  163: 
+  164: def _decimal_text(value: Any, *, field_name: str) -> str:
+  165:     raw = str(value or "0").strip()
+  166:     try:
+  167:         amount = Decimal(raw)
+  168:     except (InvalidOperation, ValueError) as exc:
+  169:         raise _QuickBooksApiError(code="QBO_PAYLOAD_INVALID", message=f"{field_name} is not a valid decimal") from exc
+  170:     if amount < Decimal("0"):
+  171:         raise _QuickBooksApiError(code="QBO_PAYLOAD_INVALID", message=f"{field_name} cannot be negative")
+  172:     return format(amount.quantize(Decimal("0.01")), "f")
+  173: 
+  174: 
+  175: class QuickBooksOnlineAdapter(ERPAdapter):
+  176:     adapter_type = "QUICKBOOKS_ONLINE"
+  177: 
+  178:     def get_accounts(
+  179:         self,
+  180:         *,
+  181:         connection_config: dict[str, Any],
+  182:         credentials: dict[str, Any],
+  183:     ) -> dict[str, Any]:
+  184:         realm_id = _realm_id(connection_config, credentials)
+  185:         if not realm_id:
+  186:             raise _QuickBooksApiError(
+  187:                 code="QBO_REALM_ID_REQUIRED",
+  188:                 message="connection_config.realm_id is required",
+  189:             )
+  190:         return _request_json(
+  191:             method="GET",
+  192:             connection_config=connection_config,
+  193:             credentials=credentials,
+  194:             path=f"/v3/company/{realm_id}/query",
+  195:             query={"query": "select * from Account"},
+  196:         )
+  197: 
+  198:     def get_company_info(
+  199:         self,
+  200:         *,
+  201:         connection_config: dict[str, Any],
+  202:         credentials: dict[str, Any] | None = None,
+  203:     ) -> dict[str, Any]:
+  204:         realm_id = _realm_id(connection_config, credentials)
+  205:         if not realm_id:
+  206:             raise _QuickBooksApiError(
+  207:                 code="QBO_REALM_ID_REQUIRED",
+  208:                 message="connection_config.realm_id is required",
+  209:             )
+  210:         if not _live_ready(connection_config, credentials):
+  211:             return {
+  212:                 "mode": "SIMULATED",
+  213:                 "realm_id": realm_id,
+  214:                 "company_name": str(connection_config.get("company_name") or "QuickBooks Sandbox").strip(),
+  215:                 "response": {"adapter": self.adapter_type, "validated": True, "mode": "SIMULATED"},
+  216:             }
+  217:         response = _request_json(
+  218:             method="GET",
+  219:             connection_config=connection_config,
+  220:             credentials=credentials or {},
+  221:             path=f"/v3/company/{realm_id}/companyinfo/{realm_id}",
+  222:         )
+  223:         company = response.get("CompanyInfo") if isinstance(response.get("CompanyInfo"), dict) else {}
+  224:         return {
+  225:             "mode": "LIVE",
+  226:             "realm_id": realm_id,
+  227:             "company_name": str(company.get("CompanyName") or company.get("LegalName") or "").strip() or None,
+  228:             "response": response,
+  229:         }
+  230: 
+  231:     def validate_connection(
+  232:         self,
+  233:         *,
+  234:         connection_config: dict[str, Any],
+  235:         credentials_ref: str,
+  236:         credentials: dict[str, Any] | None = None,
+  237:     ) -> ERPResponse:
+  238:         if not str(credentials_ref or "").strip():
+  239:             return self.normalize_response(
+  240:                 status="FAILED",
+  241:                 error_code="QBO_CREDENTIALS_MISSING",
+  242:                 error_message="encrypted credential reference is required",
+  243:                 raw_response={"adapter": self.adapter_type},
+  244:             )
+  245:         try:
+  246:             info = self.get_company_info(connection_config=connection_config, credentials=credentials)
+  247:         except _QuickBooksApiError as exc:
+  248:             return self.normalize_response(
+  249:                 status="FAILED",
+  250:                 error_code=exc.code,
+  251:                 error_message=exc.message,
+  252:                 raw_response={"adapter": self.adapter_type, **exc.raw_response},
+  253:             )
+  254:         return self.normalize_response(
+  255:             status="SUCCESS",
+  256:             raw_response={
+  257:                 "adapter": self.adapter_type,
+  258:                 "validated": True,
+  259:                 "mode": str(info.get("mode") or "SIMULATED"),
+  260:                 "realm_id": str(info.get("realm_id") or "").strip() or None,
+  261:                 "company_name": str(info.get("company_name") or "").strip() or None,
+  262:                 "response": info.get("response") or {},
+  263:             },
+  264:         )
+  265: 
+  266:     def get_capabilities(self) -> dict[str, Any]:
+  267:         return {
+  268:             "adapter": self.adapter_type,
+  269:             "supports_post": True,
+  270:             "supports_reverse": True,
+  271:             "supports_status": True,
+  272:             "supports_oauth": True,
+  273:             "supports_sync": ["COA", "DIMENSIONS", "TRIAL_BALANCE", "JOURNAL_STATUS"],
+  274:             "supports_polling": True,
+  275:             "live_supported": True,
+  276:             "qbo_env": str(os.getenv("QBO_ENV", "sandbox") or "sandbox").strip().lower(),
+  277:         }
+  278: 
+  279:     def get_oauth_authorize_url(
+  280:         self,
+  281:         *,
+  282:         connection_config: dict[str, Any],
+  283:         redirect_uri: str,
+  284:         state_token: str,
+  285:         pkce_verifier: str | None = None,
+  286:     ) -> str:
+  287:         return quickbooks_auth.build_authorize_url(
+  288:             connection_config=connection_config,
+  289:             redirect_uri=redirect_uri,
+  290:             state_token=state_token,
+  291:             pkce_verifier=pkce_verifier,
+  292:         )
+  293: 
+  294:     def exchange_oauth_code(
+  295:         self,
+  296:         *,
+  297:         connection_config: dict[str, Any],
+  298:         redirect_uri: str,
+  299:         code: str,
+  300:         pkce_verifier: str | None = None,
+  301:     ) -> dict[str, Any]:
+  302:         return quickbooks_auth.exchange_code_for_tokens(
+  303:             connection_config=connection_config,
+  304:             redirect_uri=redirect_uri,
+  305:             code=code,
+  306:             pkce_verifier=pkce_verifier,
+  307:         )
+  308: 
+  309:     def refresh_oauth_tokens(
+  310:         self,
+  311:         *,
+  312:         connection_config: dict[str, Any],
+  313:         token_payload: dict[str, Any],
+  314:     ) -> dict[str, Any]:
+  315:         return quickbooks_auth.refresh_tokens(
+  316:             connection_config=connection_config,
+  317:             token_payload=token_payload,
+  318:         )
+  319: 
+  320:     def post_journal(
+  321:         self,
+  322:         packet: dict[str, Any],
+  323:         *,
+  324:         connection_config: dict[str, Any] | None = None,
+  325:         credentials: dict[str, Any] | None = None,
+  326:     ) -> ERPResponse:
+  327:         mode = str((packet or {}).get("simulation_mode") or "").strip().lower()
+  328:         if mode == "timeout":
+  329:             return self.normalize_response(
+  330:                 status="PENDING",
+  331:                 raw_response={"adapter": self.adapter_type, "reason": "simulated_timeout"},
+  332:             )
+  333:         if mode == "hard_fail":
+  334:             return self.normalize_response(
+  335:                 status="FAILED",
+  336:                 error_code="QBO_PAYLOAD_INVALID",
+  337:                 error_message="simulated hard failure",
+  338:                 raw_response={"adapter": self.adapter_type, "reason": "hard_fail"},
+  339:             )
+  340:         if mode == "soft_fail":
+  341:             return self.normalize_response(
+  342:                 status="FAILED",
+  343:                 error_code="QBO_NETWORK",
+  344:                 error_message="simulated soft network failure",
+  345:                 raw_response={"adapter": self.adapter_type, "reason": "soft_fail"},
+  346:             )
+  347:         if mode == "auth_fail":
+  348:             return self.normalize_response(
+  349:                 status="FAILED",
+  350:                 error_code="QBO_AUTH_INVALID_TOKEN",
+  351:                 error_message="simulated auth failure",
+  352:                 raw_response={"adapter": self.adapter_type, "reason": "auth_fail"},
+  353:             )
+  354: 
+  355:         config = dict(connection_config or {})
+  356:         creds = dict(credentials or {})
+  357:         if not _live_ready(config, creds):
+  358:             return self.normalize_response(
+  359:                 status="SUCCESS",
+  360:                 external_id=f"qbo_{uuid4().hex}",
+  361:                 raw_response={"adapter": self.adapter_type, "posted": True, "mode": "SIMULATED"},
+  362:             )
+  363:         realm_id = _realm_id(config, creds)
+  364:         lines_payload: list[dict[str, Any]] = []
+  365:         for index, line in enumerate((packet or {}).get("journal_lines") or [], start=1):
+  366:             account_code = str((line or {}).get("account_code") or "").strip()
+  367:             if not account_code:
+  368:                 return self.normalize_response(
+  369:                     status="FAILED",
+  370:                     error_code="QBO_PAYLOAD_INVALID",
+  371:                     error_message="journal line account_code is required",
+  372:                     raw_response={"adapter": self.adapter_type},
+  373:                 )
+  374:             debit = _decimal_text((line or {}).get("debit"), field_name=f"journal_lines[{index}].debit")
+  375:             credit = _decimal_text((line or {}).get("credit"), field_name=f"journal_lines[{index}].credit")
+  376:             debit_amount = Decimal(debit)
+  377:             credit_amount = Decimal(credit)
+  378:             if debit_amount > 0 and credit_amount > 0:
+  379:                 return self.normalize_response(
+  380:                     status="FAILED",
+  381:                     error_code="QBO_PAYLOAD_INVALID",
+  382:                     error_message="journal line cannot have both debit and credit",
+  383:                     raw_response={"adapter": self.adapter_type},
+  384:                 )
+  385:             if debit_amount <= 0 and credit_amount <= 0:
+  386:                 continue
+  387:             posting_type = "Debit" if debit_amount > 0 else "Credit"
+  388:             amount_value = debit if debit_amount > 0 else credit
+  389:             line_payload = {
+  390:                 "Id": str(index),
+  391:                 "Amount": amount_value,
+  392:                 "DetailType": "JournalEntryLineDetail",
+  393:                 "Description": str((line or {}).get("description") or ""),
+  394:                 "JournalEntryLineDetail": {
+  395:                     "PostingType": posting_type,
+  396:                     "AccountRef": {"value": account_code, "name": account_code},
+  397:                 },
+  398:             }
+  399:             dimensions = (line or {}).get("dimensions") or {}
+  400:             if isinstance(dimensions, dict):
+  401:                 class_id = str(dimensions.get("class_id") or "").strip()
+  402:                 department_id = str(dimensions.get("department_id") or "").strip()
+  403:                 if class_id:
+  404:                     line_payload["JournalEntryLineDetail"]["ClassRef"] = {"value": class_id}
+  405:                 if department_id:
+  406:                     line_payload["JournalEntryLineDetail"]["DepartmentRef"] = {"value": department_id}
+  407:             lines_payload.append(line_payload)
+  408:         if not lines_payload:
+  409:             return self.normalize_response(
+  410:                 status="FAILED",
+  411:                 error_code="QBO_PAYLOAD_INVALID",
+  412:                 error_message="journal_lines must include at least one posting line",
+  413:                 raw_response={"adapter": self.adapter_type},
+  414:             )
+  415: 
+  416:         header = (packet or {}).get("journal_header") or {}
+  417:         body = {
+  418:             "TxnDate": str((header or {}).get("posting_date") or ""),
+  419:             "PrivateNote": str((header or {}).get("memo") or ""),
+  420:             "Line": lines_payload,
+  421:         }
+  422:         try:
+  423:             response = _request_json(
+  424:                 method="POST",
+  425:                 connection_config=config,
+  426:                 credentials=creds,
+  427:                 path=f"/v3/company/{realm_id}/journalentry",
+  428:                 json_payload=body,
+  429:             )
+  430:         except _QuickBooksApiError as exc:
+  431:             return self.normalize_response(
+  432:                 status="FAILED",
+  433:                 error_code=exc.code,
+  434:                 error_message=exc.message,
+  435:                 raw_response={"adapter": self.adapter_type, **exc.raw_response},
+  436:             )
+  437:         journal_entry = response.get("JournalEntry")
+  438:         if not isinstance(journal_entry, dict):
+  439:             return self.normalize_response(
+  440:                 status="FAILED",
+  441:                 error_code="QBO_RESPONSE_INVALID",
+  442:                 error_message="QuickBooks response did not include JournalEntry",
+  443:                 raw_response={"adapter": self.adapter_type, "response": response},
+  444:             )
+  445:         external_id = str(journal_entry.get("Id") or "").strip()
+  446:         if not external_id:
+  447:             return self.normalize_response(
+  448:                 status="FAILED",
+  449:                 error_code="QBO_RESPONSE_INVALID",
+  450:                 error_message="QuickBooks JournalEntry Id missing",
+  451:                 raw_response={"adapter": self.adapter_type, "response": response},
+  452:             )
+  453:         return self.normalize_response(
+  454:             status="SUCCESS",
+  455:             external_id=external_id,
+  456:             raw_response={"adapter": self.adapter_type, "response": response, "mode": "LIVE"},
+  457:         )
+  458: 
+  459:     def reverse_journal(
+  460:         self,
+  461:         packet: dict[str, Any],
+  462:         *,
+  463:         connection_config: dict[str, Any] | None = None,
+  464:         credentials: dict[str, Any] | None = None,
+  465:     ) -> ERPResponse:
+  466:         _ = connection_config, credentials
+  467:         mode = str((packet or {}).get("simulation_mode") or "success").strip().lower()
+  468:         if mode == "hard_fail":
+  469:             return self.normalize_response(
+  470:                 status="FAILED",
+  471:                 error_code="QBO_REVERSAL_INVALID",
+  472:                 error_message="simulated reversal hard failure",
+  473:                 raw_response={"adapter": self.adapter_type},
+  474:             )
+  475:         return self.normalize_response(
+  476:             status="SUCCESS",
+  477:             external_id=f"qbo_rev_{uuid4().hex}",
+  478:             raw_response={"adapter": self.adapter_type, "reversed": True},
+  479:         )
+  480: 
+  481:     def get_journal_status(
+  482:         self,
+  483:         external_id: str,
+  484:         *,
+  485:         connection_config: dict[str, Any] | None = None,
+  486:         credentials: dict[str, Any] | None = None,
+  487:     ) -> ERPResponse:
+  488:         normalized_external_id = str(external_id or "").strip()
+  489:         if not normalized_external_id:
+  490:             return self.normalize_response(
+  491:                 status="FAILED",
+  492:                 error_code="QBO_EXTERNAL_ID_REQUIRED",
+  493:                 error_message="external_id is required",
+  494:                 raw_response={"adapter": self.adapter_type},
+  495:             )
+  496:         config = dict(connection_config or {})
+  497:         creds = dict(credentials or {})
+  498:         if not _live_ready(config, creds):
+  499:             return self.normalize_response(
+  500:                 status="SUCCESS",
+  501:                 external_id=normalized_external_id,
+  502:                 raw_response={"adapter": self.adapter_type, "status": "POSTED", "mode": "SIMULATED"},
+  503:             )
+  504:         realm_id = _realm_id(config, creds)
+  505:         try:
+  506:             response = _request_json(
+  507:                 method="GET",
+  508:                 connection_config=config,
+  509:                 credentials=creds,
+  510:                 path=f"/v3/company/{realm_id}/journalentry/{normalized_external_id}",
+  511:             )
+  512:         except _QuickBooksApiError as exc:
+  513:             return self.normalize_response(
+  514:                 status="FAILED",
+  515:                 error_code=exc.code,
+  516:                 error_message=exc.message,
+  517:                 raw_response={"adapter": self.adapter_type, **exc.raw_response},
+  518:             )
+  519:         return self.normalize_response(
+  520:             status="SUCCESS",
+  521:             external_id=normalized_external_id,
+  522:             raw_response={"adapter": self.adapter_type, "status": "POSTED", "response": response, "mode": "LIVE"},
+  523:         )
+  524: 
+  525:     def sync_chart_of_accounts(
+  526:         self,
+  527:         *,
+  528:         connection_config: dict[str, Any],
+  529:         credentials: dict[str, Any],
+  530:     ) -> dict[str, Any]:
+  531:         if not _live_ready(connection_config, credentials):
+  532:             return {
+  533:                 "status": "SUCCESS",
+  534:                 "items": [
+  535:                     {"object_type": "ACCOUNT", "object_key": "4000", "payload": {"name": "Revenue", "type": "INCOME"}},
+  536:                     {"object_type": "ACCOUNT", "object_key": "5000", "payload": {"name": "Expense", "type": "EXPENSE"}},
+  537:                 ],
+  538:                 "error_code": None,
+  539:                 "error_message": None,
+  540:                 "raw_response": {"adapter": self.adapter_type, "mode": "SIMULATED"},
+  541:             }
+  542:         try:
+  543:             response = self.get_accounts(
+  544:                 connection_config=connection_config,
+  545:                 credentials=credentials,
+  546:             )
+  547:         except _QuickBooksApiError as exc:
+  548:             return {
+  549:                 "status": "FAILED",
+  550:                 "items": [],
+  551:                 "error_code": exc.code,
+  552:                 "error_message": exc.message,
+  553:                 "raw_response": {"adapter": self.adapter_type, **exc.raw_response},
+  554:             }
+  555: 
+  556:         query_response = response.get("QueryResponse")
+  557:         accounts = query_response.get("Account") if isinstance(query_response, dict) else []
+  558:         items: list[dict[str, Any]] = []
+  559:         if isinstance(accounts, list):
+  560:             for account in accounts:
+  561:                 if not isinstance(account, dict):
+  562:                     continue
+  563:                 object_key = str(account.get("Id") or account.get("FullyQualifiedName") or account.get("Name") or "").strip()
+  564:                 if not object_key:
+  565:                     continue
+  566:                 metadata = account.get("MetaData") if isinstance(account.get("MetaData"), dict) else {}
+  567:                 items.append(
+  568:                     {
+  569:                         "object_type": "ACCOUNT",
+  570:                         "object_key": object_key,
+  571:                         "payload": {
+  572:                             "id": str(account.get("Id") or "").strip(),
+  573:                             "name": str(account.get("Name") or "").strip(),
+  574:                             "fully_qualified_name": str(account.get("FullyQualifiedName") or "").strip(),
+  575:                             "account_type": str(account.get("AccountType") or "").strip(),
+  576:                             "account_sub_type": str(account.get("AccountSubType") or "").strip(),
+  577:                             "classification": str(account.get("Classification") or "").strip(),
+  578:                             "active": bool(account.get("Active")) if "Active" in account else None,
+  579:                         },
+  580:                         "source_timestamp": str(metadata.get("LastUpdatedTime") or "").strip() or None,
+  581:                     }
+  582:                 )
+  583:         items.sort(key=lambda item: str(item.get("object_key") or ""))
+  584:         return {
+  585:             "status": "SUCCESS",
+  586:             "items": items,
+  587:             "error_code": None,
+  588:             "error_message": None,
+  589:             "raw_response": {"adapter": self.adapter_type, "count": len(items), "mode": "LIVE"},
+  590:         }
+  591: 
+  592:     def sync_dimensions(
+  593:         self,
+  594:         *,
+  595:         connection_config: dict[str, Any],
+  596:         credentials: dict[str, Any],
+  597:     ) -> dict[str, Any]:
+  598:         _ = connection_config, credentials
+  599:         return {
+  600:             "status": "SUCCESS",
+  601:             "items": [
+  602:                 {"object_type": "DIMENSION", "object_key": "DEPARTMENT:FINANCE", "payload": {"type": "DEPARTMENT", "value": "FINANCE"}},
+  603:             ],
+  604:             "error_code": None,
+  605:             "error_message": None,
+  606:             "raw_response": {"adapter": self.adapter_type},
+  607:         }
+  608: 
+  609:     def sync_trial_balance(
+  610:         self,
+  611:         *,
+  612:         connection_config: dict[str, Any],
+  613:         credentials: dict[str, Any],
+  614:     ) -> dict[str, Any]:
+  615:         _ = connection_config, credentials
+  616:         return {
+  617:             "status": "SUCCESS",
+  618:             "items": [
+  619:                 {"object_type": "TRIAL_BALANCE", "object_key": "2025-03", "payload": {"period": "2025-03", "lines": []}},
+  620:             ],
+  621:             "error_code": None,
+  622:             "error_message": None,
+  623:             "raw_response": {"adapter": self.adapter_type},
+  624:         }
+  625: 
+  626:     def sync_journal_status(
+  627:         self,
+  628:         *,
+  629:         connection_config: dict[str, Any],
+  630:         credentials: dict[str, Any],
+  631:     ) -> dict[str, Any]:
+  632:         _ = connection_config, credentials
+  633:         return {
+  634:             "status": "SUCCESS",
+  635:             "items": [
+  636:                 {"object_type": "JOURNAL_STATUS", "object_key": "qbo_sync_stub", "payload": {"status": "POSTED"}},
+  637:             ],
+  638:             "error_code": None,
+  639:             "error_message": None,
+  640:             "raw_response": {"adapter": self.adapter_type},
+  641:         }

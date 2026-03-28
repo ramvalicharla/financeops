@@ -1,0 +1,127 @@
+    1: from __future__ import annotations
+    2: 
+    3: from decimal import Decimal
+    4: from typing import Any
+    5: from uuid import uuid4
+    6: 
+    7: from workbench.backend import db as _db
+    8: from workbench.backend.db.engine3 import canonicalization
+    9: 
+   10: 
+   11: def _decimal_text(value: Any) -> str:
+   12:     amount = _db._normalize_engine3_je_amount(value, field_name="amount")
+   13:     return _db._engine3_decimal_to_fixed_2(Decimal(amount))
+   14: 
+   15: 
+   16: def _normalized_line(line: dict[str, Any], *, line_no: int) -> dict[str, Any]:
+   17:     dimensions = _db._normalize_engine3_json_object(line.get("dimensions") or {}, field_name="dimensions")
+   18:     return {
+   19:         "line_no": line_no,
+   20:         "account_code": _db._normalize_required_text(line.get("account_code"), field_name="account_code"),
+   21:         "debit": _decimal_text(line.get("debit")),
+   22:         "credit": _decimal_text(line.get("credit")),
+   23:         "description": str(line.get("memo") or ""),
+   24:         "dimensions": canonicalization.normalize_json_for_hash(dimensions),
+   25:     }
+   26: 
+   27: 
+   28: def _build_journal_header(je_payload: dict[str, Any]) -> dict[str, Any]:
+   29:     header = _db._normalize_engine3_json_object(je_payload.get("header") or {}, field_name="header")
+   30:     return {
+   31:         "posting_date": str(header.get("posting_date") or je_payload.get("journal_date") or ""),
+   32:         "document_date": str(header.get("document_date") or je_payload.get("journal_date") or ""),
+   33:         "currency": str(header.get("currency") or je_payload.get("currency") or ""),
+   34:         "entity": str(header.get("entity") or je_payload.get("entity") or ""),
+   35:         "memo": str(header.get("memo") or je_payload.get("memo") or ""),
+   36:         "reference": str(header.get("reference") or ""),
+   37:     }
+   38: 
+   39: 
+   40: def build_posting_packet(
+   41:     *,
+   42:     tenant_id: str,
+   43:     workspace_id: str,
+   44:     je_draft: dict[str, Any],
+   45:     workflow_state: str,
+   46:     approval_decision: dict[str, Any],
+   47:     narrative_hash_sha256: str,
+   48:     evidence_hash_sha256: str,
+   49:     provenance: dict[str, Any] | None,
+   50:     lineage_contract: dict[str, Any] | None,
+   51:     governance_export_ref: str | None,
+   52:     simulation_mode: str | None = None,
+   53: ) -> dict[str, Any]:
+   54:     normalized_tenant = _db._normalize_required_text(tenant_id, field_name="tenant_id")
+   55:     normalized_workspace = _db._normalize_required_text(workspace_id, field_name="workspace_id")
+   56:     normalized_workflow = _db._normalize_required_text(workflow_state, field_name="workflow_state").upper()
+   57:     if normalized_workflow != "READY_TO_POST":
+   58:         raise RuntimeError("ERP_POSTING_WORKFLOW_STATE_INVALID")
+   59: 
+   60:     draft_id = _db._normalize_required_text(je_draft.get("id"), field_name="je_draft_id")
+   61:     status = _db._normalize_required_text(je_draft.get("status"), field_name="je_draft_status").upper()
+   62:     if status != "APPROVED":
+   63:         raise RuntimeError("ERP_POSTING_JE_STATUS_INVALID")
+   64: 
+   65:     payload = _db._normalize_engine3_je_draft_json(je_draft.get("je_draft_json") or {})
+   66:     lines = payload.get("lines") or []
+   67:     if not lines:
+   68:         raise RuntimeError("ERP_POSTING_JE_LINES_MISSING")
+   69:     normalized_lines = [_normalized_line(line, line_no=index) for index, line in enumerate(lines, start=1)]
+   70:     journal_header = _build_journal_header(payload)
+   71: 
+   72:     approval_id = _db._normalize_required_text(
+   73:         approval_decision.get("id"),
+   74:         field_name="approval_decision_id",
+   75:     )
+   76:     approved_by = _db._normalize_required_text(approval_decision.get("decided_by"), field_name="approved_by")
+   77:     packet = {
+   78:         "packet_id": str(uuid4()),
+   79:         "tenant_id": normalized_tenant,
+   80:         "workspace_id": normalized_workspace,
+   81:         "je_draft_id": draft_id,
+   82:         "workflow_state": normalized_workflow,
+   83:         "header_status": status,
+   84:         "posting_intent": "NEW_JOURNAL",
+   85:         "approval_context": {
+   86:             "approved_by": approved_by,
+   87:             "approval_decision_id": approval_id,
+   88:             "narrative_hash": _db._normalize_engine1_hash(
+   89:                 narrative_hash_sha256,
+   90:                 field_name="narrative_hash_sha256",
+   91:             ),
+   92:             "evidence_hash": _db._normalize_engine1_hash(
+   93:                 evidence_hash_sha256,
+   94:                 field_name="evidence_hash_sha256",
+   95:             ),
+   96:         },
+   97:         "provenance": canonicalization.normalize_json_for_hash(
+   98:             _db._normalize_engine3_json_object(provenance or {}, field_name="provenance")
+   99:         ),
+  100:         "journal_header": canonicalization.normalize_json_for_hash(journal_header),
+  101:         "journal_lines": normalized_lines,
+  102:         "lineage_contract": canonicalization.normalize_json_for_hash(
+  103:             _db._normalize_engine3_json_object(lineage_contract or {}, field_name="lineage_contract")
+  104:         ),
+  105:         "governance_export_ref": str(governance_export_ref or ""),
+  106:         "simulation_mode": str(simulation_mode or "").strip() or None,
+  107:         "created_at": _db.utc_now_iso(),
+  108:     }
+  109:     packet["idempotency_key"] = compute_idempotency_key(packet)
+  110:     return packet
+  111: 
+  112: 
+  113: def compute_idempotency_key(packet: dict[str, Any]) -> str:
+  114:     canonical_packet = canonicalization.normalize_json_for_hash(packet)
+  115:     deterministic_subset = {
+  116:         "tenant_id": str(canonical_packet.get("tenant_id") or ""),
+  117:         "workspace_id": str(canonical_packet.get("workspace_id") or ""),
+  118:         "je_draft_id": str(canonical_packet.get("je_draft_id") or ""),
+  119:         "posting_intent": str(canonical_packet.get("posting_intent") or ""),
+  120:         "approval_context": canonical_packet.get("approval_context") or {},
+  121:         "journal_header": canonical_packet.get("journal_header") or {},
+  122:         "journal_lines": canonical_packet.get("journal_lines") or [],
+  123:         "lineage_contract": canonical_packet.get("lineage_contract") or {},
+  124:         "provenance": canonical_packet.get("provenance") or {},
+  125:     }
+  126:     return canonicalization.compute_sha256_for_canonical_payload(deterministic_subset)
+  127: 

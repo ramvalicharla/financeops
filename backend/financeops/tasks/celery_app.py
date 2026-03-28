@@ -49,9 +49,11 @@ celery_app.conf.update(
     task_default_exchange="normal_q",
     task_default_routing_key="normal",
     task_routes={
-        "financeops.tasks.*": {"queue": "default"},
-        "financeops.modules.search.tasks.*": {"queue": "search"},
-        "financeops.modules.*.tasks.*": {"queue": "finance"},
+        "payment.*": {"queue": "critical_q"},
+        "financeops.tasks.*": {"queue": "high_q"},
+        "financeops.modules.search.tasks.*": {"queue": "low_q"},
+        "financeops.modules.*.tasks.*": {"queue": "normal_q"},
+        "metrics.*": {"queue": "low_q"},
     },
     imports=(
         "financeops.tasks.payment_tasks",
@@ -102,13 +104,10 @@ def update_queue_depths() -> None:
     reserved = inspect.reserved() if inspect is not None else {}
     reserved = reserved or {}
     queue_names = [
-        "file_scan",
-        "parse",
-        "erp_sync",
-        "report_gen",
-        "email",
-        "ai_inference",
-        "notification",
+        "critical_q",
+        "high_q",
+        "normal_q",
+        "low_q",
     ]
     depth_total = sum(len(tasks) for tasks in reserved.values() if isinstance(tasks, list))
     for queue_name in queue_names:

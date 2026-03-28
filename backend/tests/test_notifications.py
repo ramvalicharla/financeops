@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select, text
@@ -352,18 +353,24 @@ async def test_expense_approval_triggers_notification(
     async_session: AsyncSession,
     test_user: IamUser,
 ) -> None:
-    claim = await submit_claim(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        submitted_by=test_user.id,
-        vendor_name="Vendor A",
-        description="Meal",
-        category="meals",
-        amount=Decimal("100.00"),
-        currency="INR",
-        claim_date=date.today(),
-        has_receipt=True,
-    )
+    class _FixedWeekdayDate(date):
+        @classmethod
+        def today(cls) -> _FixedWeekdayDate:
+            return cls(2025, 3, 17)
+
+    with patch(f"{__name__}.date", _FixedWeekdayDate):
+        claim = await submit_claim(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            submitted_by=test_user.id,
+            vendor_name="Vendor A",
+            description="Meal",
+            category="meals",
+            amount=Decimal("100.00"),
+            currency="INR",
+            claim_date=date.today(),
+            has_receipt=True,
+        )
     response = await async_client.post(
         f"/api/v1/expenses/{claim.id}/approve",
         headers=_auth_headers(test_user),

@@ -1,0 +1,282 @@
+    1: from __future__ import annotations
+    2: 
+    3: import io
+    4: import json
+    5: from urllib import error as urllib_error
+    6: 
+    7: from workbench.backend.connectors.erp import QuickBooksOnlineAdapter
+    8: from workbench.backend.connectors.erp import quickbooks_auth
+    9: from workbench.backend.connectors.erp import quickbooks_online
+   10: 
+   11: 
+   12: class _FakeHttpResponse:
+   13:     def __init__(self, payload: dict, status_code: int = 200) -> None:
+   14:         self._raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+   15:         self._status_code = status_code
+   16: 
+   17:     def read(self) -> bytes:
+   18:         return self._raw
+   19: 
+   20:     def getcode(self) -> int:
+   21:         return self._status_code
+   22: 
+   23:     def __enter__(self):
+   24:         return self
+   25: 
+   26:     def __exit__(self, exc_type, exc, tb) -> bool:
+   27:         return False
+   28: 
+   29: 
+   30: def test_phase4c_qbo_oauth_flow_and_refresh_mock(monkeypatch) -> None:
+   31:     monkeypatch.setenv("QBO_CLIENT_ID", "qbo-client")
+   32:     monkeypatch.setenv("QBO_CLIENT_SECRET", "qbo-secret")
+   33:     monkeypatch.setenv("QBO_ENV", "sandbox")
+   34:     monkeypatch.setenv("QBO_REDIRECT_URI", "https://localhost/qbo/callback")
+   35: 
+   36:     calls: list[str] = []
+   37: 
+   38:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+   39:         _ = timeout
+   40:         body = (request.data or b"").decode("utf-8")
+   41:         calls.append(body)
+   42:         if "grant_type=authorization_code" in body:
+   43:             return _FakeHttpResponse(
+   44:                 {
+   45:                     "access_token": "live_access_token",
+   46:                     "refresh_token": "live_refresh_token",
+   47:                     "token_type": "bearer",
+   48:                     "expires_in": 3600,
+   49:                     "x_refresh_token_expires_in": 86400,
+   50:                     "realmId": "987654321",
+   51:                 }
+   52:             )
+   53:         if "grant_type=refresh_token" in body:
+   54:             return _FakeHttpResponse(
+   55:                 {
+   56:                     "access_token": "live_access_token_refreshed",
+   57:                     "refresh_token": "live_refresh_token_refreshed",
+   58:                     "token_type": "bearer",
+   59:                     "expires_in": 3600,
+   60:                     "x_refresh_token_expires_in": 86400,
+   61:                     "realmId": "987654321",
+   62:                 }
+   63:             )
+   64:         raise AssertionError(f"Unexpected token request body: {body}")
+   65: 
+   66:     monkeypatch.setattr(quickbooks_auth.urllib_request, "urlopen", _mock_urlopen)
+   67: 
+   68:     adapter = QuickBooksOnlineAdapter()
+   69:     authorize_url = adapter.get_oauth_authorize_url(
+   70:         connection_config={"scope": "com.intuit.quickbooks.accounting", "realm_id": "987654321"},
+   71:         redirect_uri="",
+   72:         state_token="state-123",
+   73:         pkce_verifier="pkce-verifier-xyz",
+   74:     )
+   75:     assert "state=state-123" in authorize_url
+   76:     assert "client_id=qbo-client" in authorize_url
+   77: 
+   78:     exchanged = adapter.exchange_oauth_code(
+   79:         connection_config={"realm_id": "987654321"},
+   80:         redirect_uri="https://localhost/qbo/callback",
+   81:         code="oauth-code",
+   82:         pkce_verifier="pkce-verifier-xyz",
+   83:     )
+   84:     assert exchanged["access_token"] == "live_access_token"
+   85:     assert exchanged["refresh_token"] == "live_refresh_token"
+   86:     assert exchanged["realm_id"] == "987654321"
+   87:     assert exchanged["expires_at_utc"]
+   88: 
+   89:     refreshed = adapter.refresh_oauth_tokens(
+   90:         connection_config={"realm_id": "987654321"},
+   91:         token_payload=exchanged,
+   92:     )
+   93:     assert refreshed["access_token"] == "live_access_token_refreshed"
+   94:     assert refreshed["refresh_token"] == "live_refresh_token_refreshed"
+   95:     assert any("grant_type=authorization_code" in call for call in calls)
+   96:     assert any("grant_type=refresh_token" in call for call in calls)
+   97: 
+   98: 
+   99: def test_phase4c_qbo_sync_coa_live_mock(monkeypatch) -> None:
+  100:     monkeypatch.setenv("QBO_CLIENT_ID", "qbo-client")
+  101:     monkeypatch.setenv("QBO_CLIENT_SECRET", "qbo-secret")
+  102:     monkeypatch.setenv("QBO_ENV", "sandbox")
+  103: 
+  104:     captured_paths: list[str] = []
+  105: 
+  106:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  107:         _ = timeout
+  108:         captured_paths.append(str(request.full_url))
+  109:         return _FakeHttpResponse(
+  110:             {
+  111:                 "QueryResponse": {
+  112:                     "Account": [
+  113:                         {
+  114:                             "Id": "5000",
+  115:                             "Name": "Expense",
+  116:                             "FullyQualifiedName": "Expense",
+  117:                             "AccountType": "Expense",
+  118:                             "AccountSubType": "Supplies",
+  119:                             "Classification": "Expense",
+  120:                             "Active": True,
+  121:                             "MetaData": {"LastUpdatedTime": "2026-03-20T01:02:03-08:00"},
+  122:                         },
+  123:                         {
+  124:                             "Id": "4000",
+  125:                             "Name": "Revenue",
+  126:                             "FullyQualifiedName": "Revenue",
+  127:                             "AccountType": "Income",
+  128:                             "AccountSubType": "SalesOfProductIncome",
+  129:                             "Classification": "Revenue",
+  130:                             "Active": True,
+  131:                             "MetaData": {"LastUpdatedTime": "2026-03-20T01:02:04-08:00"},
+  132:                         },
+  133:                     ]
+  134:                 }
+  135:             }
+  136:         )
+  137: 
+  138:     monkeypatch.setattr(quickbooks_online.urllib_request, "urlopen", _mock_urlopen)
+  139: 
+  140:     adapter = QuickBooksOnlineAdapter()
+  141:     response = adapter.sync_chart_of_accounts(
+  142:         connection_config={"realm_id": "12345"},
+  143:         credentials={"access_token": "token-123", "realm_id": "12345"},
+  144:     )
+  145:     assert response["status"] == "SUCCESS"
+  146:     assert len(response["items"]) == 2
+  147:     assert [item["object_key"] for item in response["items"]] == ["4000", "5000"]
+  148:     assert any("/v3/company/12345/query" in path for path in captured_paths)
+  149: 
+  150: 
+  151: def test_phase4c_qbo_get_company_info_and_validate_live_mock(monkeypatch) -> None:
+  152:     monkeypatch.setenv("QBO_CLIENT_ID", "qbo-client")
+  153:     monkeypatch.setenv("QBO_CLIENT_SECRET", "qbo-secret")
+  154:     monkeypatch.setenv("QBO_ENV", "sandbox")
+  155: 
+  156:     captured_paths: list[str] = []
+  157: 
+  158:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  159:         _ = timeout
+  160:         captured_paths.append(str(request.full_url))
+  161:         return _FakeHttpResponse(
+  162:             {
+  163:                 "CompanyInfo": {
+  164:                     "Id": "12345",
+  165:                     "CompanyName": "FinanceOps Sandbox Inc",
+  166:                     "LegalName": "FinanceOps Legal Inc",
+  167:                 }
+  168:             }
+  169:         )
+  170: 
+  171:     monkeypatch.setattr(quickbooks_online.urllib_request, "urlopen", _mock_urlopen)
+  172: 
+  173:     adapter = QuickBooksOnlineAdapter()
+  174:     info = adapter.get_company_info(
+  175:         connection_config={"realm_id": "12345"},
+  176:         credentials={"access_token": "token-123", "realm_id": "12345"},
+  177:     )
+  178:     assert info["mode"] == "LIVE"
+  179:     assert info["realm_id"] == "12345"
+  180:     assert info["company_name"] == "FinanceOps Sandbox Inc"
+  181: 
+  182:     validation = adapter.validate_connection(
+  183:         connection_config={"realm_id": "12345"},
+  184:         credentials_ref="secret://qbo/connection",
+  185:         credentials={"access_token": "token-123", "realm_id": "12345"},
+  186:     )
+  187:     assert validation["status"] == "SUCCESS"
+  188:     assert validation["raw_response"]["mode"] == "LIVE"
+  189:     assert validation["raw_response"]["realm_id"] == "12345"
+  190:     assert any("/v3/company/12345/companyinfo/12345" in path for path in captured_paths)
+  191: 
+  192: 
+  193: def test_phase4c_qbo_post_journal_and_status_live_mock(monkeypatch) -> None:
+  194:     monkeypatch.setenv("QBO_CLIENT_ID", "qbo-client")
+  195:     monkeypatch.setenv("QBO_CLIENT_SECRET", "qbo-secret")
+  196:     monkeypatch.setenv("QBO_ENV", "sandbox")
+  197: 
+  198:     captured_post_payload: dict[str, object] = {}
+  199: 
+  200:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  201:         _ = timeout
+  202:         full_url = str(request.full_url)
+  203:         if "/journalentry?" in full_url and request.method == "POST":
+  204:             body = (request.data or b"{}").decode("utf-8")
+  205:             captured_post_payload.update(json.loads(body))
+  206:             return _FakeHttpResponse({"JournalEntry": {"Id": "9001", "SyncToken": "0"}})
+  207:         if "/journalentry/9001?" in full_url and request.method == "GET":
+  208:             return _FakeHttpResponse({"JournalEntry": {"Id": "9001", "SyncToken": "1"}})
+  209:         raise AssertionError(f"Unexpected QBO request: method={request.method} url={full_url}")
+  210: 
+  211:     monkeypatch.setattr(quickbooks_online.urllib_request, "urlopen", _mock_urlopen)
+  212: 
+  213:     adapter = QuickBooksOnlineAdapter()
+  214:     post_response = adapter.post_journal(
+  215:         {
+  216:             "journal_header": {"posting_date": "2026-03-21", "memo": "Phase4C Journal"},
+  217:             "journal_lines": [
+  218:                 {"account_code": "85", "debit": "100.00", "credit": "0.00", "description": "debit"},
+  219:                 {"account_code": "205", "debit": "0.00", "credit": "100.00", "description": "credit"},
+  220:             ],
+  221:         },
+  222:         connection_config={"realm_id": "12345"},
+  223:         credentials={"access_token": "token-xyz", "realm_id": "12345"},
+  224:     )
+  225:     assert post_response["status"] == "SUCCESS"
+  226:     assert post_response["external_id"] == "9001"
+  227:     assert captured_post_payload["TxnDate"] == "2026-03-21"
+  228:     assert isinstance(captured_post_payload.get("Line"), list)
+  229:     first_line = captured_post_payload["Line"][0]
+  230:     assert first_line["Amount"] == "100.00"
+  231: 
+  232:     status_response = adapter.get_journal_status(
+  233:         "9001",
+  234:         connection_config={"realm_id": "12345"},
+  235:         credentials={"access_token": "token-xyz", "realm_id": "12345"},
+  236:     )
+  237:     assert status_response["status"] == "SUCCESS"
+  238:     assert status_response["external_id"] == "9001"
+  239: 
+  240: 
+  241: def test_phase4c_qbo_error_mapping_rate_limit(monkeypatch) -> None:
+  242:     monkeypatch.setenv("QBO_CLIENT_ID", "qbo-client")
+  243:     monkeypatch.setenv("QBO_CLIENT_SECRET", "qbo-secret")
+  244:     monkeypatch.setenv("QBO_ENV", "sandbox")
+  245: 
+  246:     def _mock_urlopen(request, timeout=0):  # noqa: ANN001
+  247:         _ = timeout, request
+  248:         payload = {
+  249:             "Fault": {
+  250:                 "Error": [
+  251:                     {
+  252:                         "Message": "Too many requests",
+  253:                         "Detail": "Rate limit exceeded",
+  254:                         "code": "429",
+  255:                     }
+  256:                 ]
+  257:             }
+  258:         }
+  259:         raise urllib_error.HTTPError(
+  260:             url="https://sandbox-quickbooks.api.intuit.com/v3/company/12345/journalentry",
+  261:             code=429,
+  262:             msg="Too Many Requests",
+  263:             hdrs=None,
+  264:             fp=io.BytesIO(json.dumps(payload).encode("utf-8")),
+  265:         )
+  266: 
+  267:     monkeypatch.setattr(quickbooks_online.urllib_request, "urlopen", _mock_urlopen)
+  268: 
+  269:     adapter = QuickBooksOnlineAdapter()
+  270:     response = adapter.post_journal(
+  271:         {
+  272:             "journal_header": {"posting_date": "2026-03-21", "memo": "Phase4C Journal"},
+  273:             "journal_lines": [
+  274:                 {"account_code": "85", "debit": "100.00", "credit": "0.00", "description": "debit"},
+  275:                 {"account_code": "205", "debit": "0.00", "credit": "100.00", "description": "credit"},
+  276:             ],
+  277:         },
+  278:         connection_config={"realm_id": "12345"},
+  279:         credentials={"access_token": "token-xyz", "realm_id": "12345"},
+  280:     )
+  281:     assert response["status"] == "FAILED"
+  282:     assert response["error_code"] == "QBO_RATE_LIMIT"

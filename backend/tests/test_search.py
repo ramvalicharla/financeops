@@ -96,7 +96,7 @@ async def test_index_expense_creates_searchable_entry(async_session: AsyncSessio
         category="travel",
         amount=Decimal("100.00"),
         currency="INR",
-        claim_date=date.today(),
+        claim_date=date(2025, 3, 17),
         has_receipt=True,
     )
     await index_expense(async_session, claim)
@@ -334,7 +334,7 @@ async def test_reindex_tenant_indexes_all_types(async_session: AsyncSession, tes
         category="travel",
         amount=Decimal("50.00"),
         currency="INR",
-        claim_date=date.today(),
+        claim_date=date(2025, 3, 17),
         has_receipt=True,
     )
     counts = await reindex_tenant(async_session, test_user.tenant_id)
@@ -391,4 +391,3 @@ async def test_reindex_endpoint_queues_task(async_client, test_user) -> None:  #
     payload = response.json()["data"]
     assert payload["status"] == "queued"
     assert isinstance(payload["task_id"], str)
-

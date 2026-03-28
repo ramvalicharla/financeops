@@ -12,7 +12,7 @@ from financeops.utils import determinism
 @dataclass
 class _DbCompat:
     """
-    Compatibility shim for legacy workbench utility imports.
+    Compatibility shim for legacy ERP utility imports.
 
     FinanceOps does not ship a local sqlite job DB, so get_conn() is intentionally
     unavailable outside that environment.
@@ -26,11 +26,12 @@ class _DbCompat:
     @contextmanager
     def get_conn() -> Iterator[Any]:
         raise RuntimeError(
-            "workbench.backend database is not available in FinanceOps runtime. "
-            "Use FinanceOps repositories/services instead of quality_signals DB helpers."
+            "Local job database helpers are unavailable in FinanceOps runtime. "
+            "Use FinanceOps repositories/services instead of compatibility DB helpers."
         )
         yield  # pragma: no cover
 
 
 db = _DbCompat()
 
+__all__ = ["db", "determinism"]

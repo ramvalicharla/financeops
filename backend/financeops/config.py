@@ -4,7 +4,7 @@ import base64 as _base64
 import os
 from functools import lru_cache
 
-from pydantic import PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, RedisDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "FinanceOps"
     APP_ENV: str = "development"  # development / staging / production
     APP_ENVIRONMENT: str = "development"
+    CORS_ALLOWED_ORIGINS: list[str] = Field(
+        default=["http://localhost:3000"],
+        description="Comma-separated allowed origins. Set via CORS_ALLOWED_ORIGINS env var.",
+    )
     APP_RELEASE: str = "1.1.0"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
@@ -109,8 +113,9 @@ class Settings(BaseSettings):
             raise ValueError(
                 "FIELD_ENCRYPTION_KEY must be valid URL-safe base64. "
                 "Generate with: python -c \"import secrets, base64; "
-                "print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
-            ) from exc
+                "import sys; "
+                "sys.stdout.write(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
+                ) from exc
         if len(decoded) != 32:
             raise ValueError(
                 f"FIELD_ENCRYPTION_KEY must decode to exactly 32 bytes "
@@ -126,9 +131,30 @@ class Settings(BaseSettings):
             raise ValueError(
                 "JWT_SECRET must be at least 32 characters. "
                 "Generate with: python -c \"import secrets; "
-                "print(secrets.token_hex(32))\""
+                "import sys; "
+                "sys.stdout.write(secrets.token_hex(32))\""
             )
         return v
+
+    @field_validator("CORS_ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def parse_cors_allowed_origins(cls, v: object) -> list[str]:
+        if v is None:
+            return ["http://localhost:3000"]
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        if isinstance(v, list):
+            parsed = [str(origin).strip() for origin in v if str(origin).strip()]
+            return parsed or ["http://localhost:3000"]
+        raise ValueError("CORS_ALLOWED_ORIGINS must be a comma-separated string or list")
+
+    @model_validator(mode="after")
+    def validate_cors_wildcard_for_production(self) -> Settings:
+        if self.APP_ENV.lower() == "production" and "*" in self.CORS_ALLOWED_ORIGINS:
+            raise RuntimeError(
+                "CORS_ALLOWED_ORIGINS cannot include '*' when APP_ENV=production."
+            )
+        return self
 
 
 @lru_cache

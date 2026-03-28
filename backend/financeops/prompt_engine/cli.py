@@ -12,6 +12,11 @@ from financeops.prompt_engine.ledger_updater import PromptLedgerUpdater
 from financeops.prompt_engine.prompt_loader import PromptLoader
 
 
+def _emit_dry_run_line(message: str) -> None:
+    logging.info("%s", message)
+    sys.stdout.write(f"{message}\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="finos-engine", description="FINOS Prompt Execution Engine")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -133,10 +138,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
     if args.dry_run:
         catalog = PromptLoader(catalog_path).load()
         order = DependencyGraph(catalog.prompts).topological_order()
-        print("Execution Order:")
-        print()
+        _emit_dry_run_line("Execution Order:")
+        sys.stdout.write("\n")
         for idx, prompt in enumerate(order, start=1):
-            print(f"{idx}. {prompt.prompt_id} {prompt.subsystem}")
+            _emit_dry_run_line(f"{idx}. {prompt.prompt_id} {prompt.subsystem}")
         return 0
 
     try:

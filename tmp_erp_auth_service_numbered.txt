@@ -1,0 +1,701 @@
+    1: from __future__ import annotations
+    2: 
+    3: import json
+    4: import os
+    5: import sqlite3
+    6: import time
+    7: from datetime import datetime, timedelta, timezone
+    8: from typing import Any
+    9: from uuid import uuid4
+   10: 
+   11: from workbench.backend import db as _db
+   12: from workbench.backend.connectors.erp import QuickBooksOnlineAdapter, TallyPrimeXmlAdapter, ZohoBooksAdapter
+   13: from workbench.backend.db.engine3 import erp_health_service
+   14: from workbench.backend.db.engine3 import erp_repository
+   15: from workbench.backend.llm_cloud import secrets as encrypted_secrets
+   16: 
+   17: _ADAPTERS = {
+   18:     "QUICKBOOKS_ONLINE": QuickBooksOnlineAdapter(),
+   19:     "ZOHO_BOOKS": ZohoBooksAdapter(),
+   20:     "TALLY_PRIME_XML": TallyPrimeXmlAdapter(),
+   21:     "TALLY_PRIME": TallyPrimeXmlAdapter(),
+   22: }
+   23: _OAUTH_PROVIDERS = {"QUICKBOOKS_ONLINE", "ZOHO_BOOKS"}
+   24: _OAUTH_SESSION_STATUSES = {"INITIATED", "CONSUMED", "EXPIRED", "FAILED"}
+   25: 
+   26: 
+   27: def _is_sqlite_lock_error(exc: sqlite3.OperationalError) -> bool:
+   28:     return "locked" in str(exc).lower()
+   29: 
+   30: 
+   31: def _run_write_with_retry(fn):
+   32:     attempts = int(getattr(_db, "DB_RETRY_ATTEMPTS", 5) or 5)
+   33:     delay_seconds = float(getattr(_db, "DB_RETRY_DELAY_SECONDS", 0.2) or 0.2)
+   34:     for attempt in range(attempts):
+   35:         try:
+   36:             return fn()
+   37:         except sqlite3.OperationalError as exc:
+   38:             if not _is_sqlite_lock_error(exc) or attempt >= attempts - 1:
+   39:                 raise
+   40:             time.sleep(delay_seconds)
+   41: 
+   42: 
+   43: def _table_available(name: str) -> bool:
+   44:     return bool(_db.list_table_columns(name))
+   45: 
+   46: 
+   47: def _require_schema() -> None:
+   48:     required = ("e3_erp_secret_blobs", "e3_erp_oauth_sessions", "e3_erp_connection_health")
+   49:     for item in required:
+   50:         if not _table_available(item):
+   51:             raise RuntimeError("Engine3 Phase4B auth schema is not available.")
+   52: 
+   53: 
+   54: def _normalize_scope(*, tenant_id: str, workspace_id: str, connection_id: str) -> tuple[str, str, str]:
+   55:     return (
+   56:         _db._normalize_required_text(tenant_id, field_name="tenant_id"),
+   57:         _db._normalize_required_text(workspace_id, field_name="workspace_id"),
+   58:         _db._normalize_required_text(connection_id, field_name="connection_id"),
+   59:     )
+   60: 
+   61: 
+   62: def _normalize_provider(value: str) -> str:
+   63:     normalized = _db._normalize_required_text(value, field_name="provider_type").upper()
+   64:     if normalized not in _OAUTH_PROVIDERS:
+   65:         raise RuntimeError("ERP_OAUTH_NOT_SUPPORTED")
+   66:     return normalized
+   67: 
+   68: 
+   69: def _normalize_session_status(value: str) -> str:
+   70:     normalized = _db._normalize_required_text(value, field_name="session_status").upper()
+   71:     if normalized not in _OAUTH_SESSION_STATUSES:
+   72:         raise ValueError("session_status is invalid.")
+   73:     return normalized
+   74: 
+   75: 
+   76: def _parse_utc(value: str) -> datetime | None:
+   77:     text = str(value or "").strip()
+   78:     if not text:
+   79:         return None
+   80:     try:
+   81:         return datetime.fromisoformat(text.replace("Z", "+00:00"))
+   82:     except ValueError:
+   83:         return None
+   84: 
+   85: 
+   86: def _oauth_token_needs_refresh(token_payload: dict[str, Any]) -> bool:
+   87:     access_token = str(token_payload.get("access_token") or "").strip()
+   88:     refresh_token = str(token_payload.get("refresh_token") or "").strip()
+   89:     if not access_token:
+   90:         return bool(refresh_token)
+   91:     expires_at = _parse_utc(str(token_payload.get("expires_at_utc") or ""))
+   92:     if expires_at is None:
+   93:         return False
+   94:     return datetime.now(timezone.utc) + timedelta(seconds=60) >= expires_at
+   95: 
+   96: 
+   97: def _adapter_for(erp_type: str):
+   98:     adapter = _ADAPTERS.get(_db._normalize_required_text(erp_type, field_name="erp_type").upper())
+   99:     if adapter is None:
+  100:         raise RuntimeError("ERP_ADAPTER_UNSUPPORTED")
+  101:     return adapter
+  102: 
+  103: 
+  104: def _encrypt_secret_payload(payload: dict[str, Any]) -> tuple[bytes, str]:
+  105:     canonical = _db._canonical_json_text(_db._normalize_engine3_json_object(payload, field_name="secret_payload"))
+  106:     encrypted, kid = encrypted_secrets.encrypt_api_key(canonical)
+  107:     return encrypted, kid
+  108: 
+  109: 
+  110: def _decrypt_secret_payload(ciphertext: bytes, kid: str) -> dict[str, Any]:
+  111:     raw = encrypted_secrets.decrypt_api_key(ciphertext, kid)
+  112:     parsed = _db._engine3_parse_json_object_text(raw, field_name="secret_payload")
+  113:     return _db._normalize_engine3_json_object(parsed, field_name="secret_payload")
+  114: 
+  115: 
+  116: def set_connection_secret_payload(
+  117:     *,
+  118:     tenant_id: str,
+  119:     workspace_id: str,
+  120:     secret_ref: str,
+  121:     payload: dict[str, Any],
+  122:     conn: Any | None = None,
+  123: ) -> dict[str, Any]:
+  124:     _require_schema()
+  125:     tenant = _db._normalize_required_text(tenant_id, field_name="tenant_id")
+  126:     workspace = _db._normalize_required_text(workspace_id, field_name="workspace_id")
+  127:     ref = _db._normalize_required_text(secret_ref, field_name="secret_ref")
+  128:     encrypted, kid = _encrypt_secret_payload(payload)
+  129:     now = _db.utc_now_iso()
+  130:     def _upsert(db_conn: Any) -> None:
+  131:         existing = db_conn.execute(
+  132:             """
+  133:             SELECT secret_ref
+  134:             FROM e3_erp_secret_blobs
+  135:             WHERE tenant_id = ?
+  136:               AND workspace_id = ?
+  137:               AND secret_ref = ?
+  138:             LIMIT 1
+  139:             """,
+  140:             (tenant, workspace, ref),
+  141:         ).fetchone()
+  142:         if existing:
+  143:             db_conn.execute(
+  144:                 """
+  145:                 UPDATE e3_erp_secret_blobs
+  146:                 SET secret_ciphertext = ?,
+  147:                     secret_kid = ?,
+  148:                     updated_at = ?
+  149:                 WHERE tenant_id = ?
+  150:                   AND workspace_id = ?
+  151:                   AND secret_ref = ?
+  152:                 """,
+  153:                 (encrypted, kid, now, tenant, workspace, ref),
+  154:             )
+  155:             return
+  156:         db_conn.execute(
+  157:             """
+  158:             INSERT INTO e3_erp_secret_blobs (
+  159:                 secret_ref, tenant_id, workspace_id, secret_ciphertext, secret_kid, created_at, updated_at
+  160:             ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  161:             """,
+  162:             (ref, tenant, workspace, encrypted, kid, now, now),
+  163:         )
+  164: 
+  165:     if conn is not None:
+  166:         _upsert(conn)
+  167:     else:
+  168:         def _write_secret() -> None:
+  169:             with _db.get_conn() as write_conn:
+  170:                 _upsert(write_conn)
+  171: 
+  172:         _run_write_with_retry(_write_secret)
+  173:     return {"secret_ref": ref, "updated_at": now}
+  174: 
+  175: 
+  176: def get_connection_secret_payload(
+  177:     *,
+  178:     tenant_id: str,
+  179:     workspace_id: str,
+  180:     secret_ref: str,
+  181: ) -> dict[str, Any] | None:
+  182:     if not _table_available("e3_erp_secret_blobs"):
+  183:         return None
+  184:     tenant = _db._normalize_required_text(tenant_id, field_name="tenant_id")
+  185:     workspace = _db._normalize_required_text(workspace_id, field_name="workspace_id")
+  186:     ref = _db._normalize_required_text(secret_ref, field_name="secret_ref")
+  187:     with _db.get_conn() as conn:
+  188:         row = conn.execute(
+  189:             """
+  190:             SELECT secret_ciphertext, secret_kid
+  191:             FROM e3_erp_secret_blobs
+  192:             WHERE tenant_id = ?
+  193:               AND workspace_id = ?
+  194:               AND secret_ref = ?
+  195:             LIMIT 1
+  196:             """,
+  197:             (tenant, workspace, ref),
+  198:         ).fetchone()
+  199:     if not row:
+  200:         return None
+  201:     return _decrypt_secret_payload(
+  202:         row["secret_ciphertext"],
+  203:         _db._normalize_required_text(row["secret_kid"], field_name="secret_kid"),
+  204:     )
+  205: 
+  206: 
+  207: def start_oauth_session(
+  208:     *,
+  209:     tenant_id: str,
+  210:     workspace_id: str,
+  211:     connection_id: str,
+  212:     redirect_uri: str,
+  213: ) -> dict[str, Any]:
+  214:     _require_schema()
+  215:     tenant, workspace, connection = _normalize_scope(
+  216:         tenant_id=tenant_id,
+  217:         workspace_id=workspace_id,
+  218:         connection_id=connection_id,
+  219:     )
+  220:     conn_row = erp_repository.get_connection(
+  221:         tenant_id=tenant,
+  222:         workspace_id=workspace,
+  223:         connection_id=connection,
+  224:     )
+  225:     if conn_row is None:
+  226:         raise LookupError("erp_connection_id was not found.")
+  227:     provider = _normalize_provider(str(conn_row.get("erp_type") or ""))
+  228:     if str(conn_row.get("auth_type") or "").upper() != "OAUTH2":
+  229:         raise RuntimeError("ERP_OAUTH_AUTH_TYPE_REQUIRED")
+  230: 
+  231:     adapter = _adapter_for(provider)
+  232:     now = datetime.now(timezone.utc)
+  233:     expires = now + timedelta(minutes=15)
+  234:     session_id = str(uuid4())
+  235:     state_token = str(uuid4())
+  236:     pkce_verifier = uuid4().hex + uuid4().hex
+  237:     normalized_redirect = _db._normalize_required_text(redirect_uri, field_name="redirect_uri")
+  238:     if provider == "QUICKBOOKS_ONLINE":
+  239:         expected_redirect = str(os.getenv("QBO_REDIRECT_URI", "")).strip()
+  240:         if not expected_redirect:
+  241:             raise RuntimeError("ERP_AUTH_QBO_REDIRECT_URI_REQUIRED")
+  242:         if normalized_redirect != expected_redirect:
+  243:             raise RuntimeError("ERP_AUTH_QBO_REDIRECT_URI_MISMATCH")
+  244:     with _db.get_conn() as conn:
+  245:         conn.execute(
+  246:             """
+  247:             INSERT INTO e3_erp_oauth_sessions (
+  248:                 id, tenant_id, workspace_id, erp_connection_id, provider_type, state_token,
+  249:                 pkce_verifier, redirect_uri, session_status, created_at, expires_at, consumed_at
+  250:             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'INITIATED', ?, ?, NULL)
+  251:             """,
+  252:             (
+  253:                 session_id,
+  254:                 tenant,
+  255:                 workspace,
+  256:                 connection,
+  257:                 provider,
+  258:                 state_token,
+  259:                 pkce_verifier,
+  260:                 normalized_redirect,
+  261:                 now.isoformat().replace("+00:00", "Z"),
+  262:                 expires.isoformat().replace("+00:00", "Z"),
+  263:             ),
+  264:         )
+  265:     authorize_url = adapter.get_oauth_authorize_url(
+  266:         connection_config=conn_row.get("connection_config") or {},
+  267:         redirect_uri=normalized_redirect,
+  268:         state_token=state_token,
+  269:         pkce_verifier=pkce_verifier,
+  270:     )
+  271:     return {
+  272:         "oauth_session_id": session_id,
+  273:         "state_token": state_token,
+  274:         "authorize_url": authorize_url,
+  275:         "expires_at": expires.isoformat().replace("+00:00", "Z"),
+  276:     }
+  277: 
+  278: 
+  279: def consume_oauth_callback(
+  280:     *,
+  281:     tenant_id: str,
+  282:     workspace_id: str,
+  283:     connection_id: str,
+  284:     state_token: str,
+  285:     code: str,
+  286:     realm_id: str | None = None,
+  287: ) -> dict[str, Any]:
+  288:     _require_schema()
+  289:     tenant, workspace, connection = _normalize_scope(
+  290:         tenant_id=tenant_id,
+  291:         workspace_id=workspace_id,
+  292:         connection_id=connection_id,
+  293:     )
+  294:     token = _db._normalize_required_text(state_token, field_name="state_token")
+  295:     normalized_code = _db._normalize_required_text(code, field_name="code")
+  296: 
+  297:     conn_row = erp_repository.get_connection(
+  298:         tenant_id=tenant,
+  299:         workspace_id=workspace,
+  300:         connection_id=connection,
+  301:     )
+  302:     if conn_row is None:
+  303:         raise LookupError("erp_connection_id was not found.")
+  304:     provider = _normalize_provider(str(conn_row.get("erp_type") or ""))
+  305:     adapter = _adapter_for(provider)
+  306:     discovered_org_id: str | None = None
+  307:     discovered_realm_id: str | None = str(realm_id or "").strip() or None
+  308: 
+  309:     with _db.get_conn() as conn:
+  310:         row = conn.execute(
+  311:             """
+  312:             SELECT *
+  313:             FROM e3_erp_oauth_sessions
+  314:             WHERE tenant_id = ?
+  315:               AND workspace_id = ?
+  316:               AND erp_connection_id = ?
+  317:               AND state_token = ?
+  318:             ORDER BY created_at DESC, id DESC
+  319:             LIMIT 1
+  320:             """,
+  321:             (tenant, workspace, connection, token),
+  322:         ).fetchone()
+  323:         if not row:
+  324:             raise RuntimeError("ERP_OAUTH_SESSION_NOT_FOUND")
+  325:         session = dict(row)
+  326:         status = _normalize_session_status(session.get("session_status"))
+  327:         if status != "INITIATED":
+  328:             raise RuntimeError("ERP_OAUTH_SESSION_REPLAY_BLOCKED")
+  329:         expires_at = str(session.get("expires_at") or "")
+  330:         if expires_at and datetime.fromisoformat(expires_at.replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+  331:             conn.execute(
+  332:                 "UPDATE e3_erp_oauth_sessions SET session_status = 'EXPIRED' WHERE id = ?",
+  333:                 (str(session["id"]),),
+  334:             )
+  335:             raise RuntimeError("ERP_OAUTH_SESSION_EXPIRED")
+  336: 
+  337:         try:
+  338:             token_payload = adapter.exchange_oauth_code(
+  339:                 connection_config=conn_row.get("connection_config") or {},
+  340:                 redirect_uri=str(session.get("redirect_uri") or ""),
+  341:                 code=normalized_code,
+  342:                 pkce_verifier=str(session.get("pkce_verifier") or "") or None,
+  343:             )
+  344:             if provider == "QUICKBOOKS_ONLINE":
+  345:                 token_payload = _db._normalize_engine3_json_object(
+  346:                     token_payload,
+  347:                     field_name="token_payload",
+  348:                 )
+  349:                 discovered_realm_id = discovered_realm_id or str(token_payload.get("realm_id") or "").strip() or None
+  350:                 if discovered_realm_id:
+  351:                     token_payload["realm_id"] = discovered_realm_id
+  352:             normalized_token_payload = _db._normalize_engine3_json_object(
+  353:                 token_payload,
+  354:                 field_name="token_payload",
+  355:             )
+  356:             set_connection_secret_payload(
+  357:                 tenant_id=tenant,
+  358:                 workspace_id=workspace,
+  359:                 secret_ref=str(conn_row.get("encrypted_credentials_ref") or ""),
+  360:                 payload={
+  361:                     "provider": provider,
+  362:                     "token_payload": normalized_token_payload,
+  363:                     "updated_at": _db.utc_now_iso(),
+  364:                 },
+  365:                 conn=conn,
+  366:             )
+  367: 
+  368:             if provider == "ZOHO_BOOKS":
+  369:                 organizations_response = adapter.get_organizations(
+  370:                     connection_config=conn_row.get("connection_config") or {},
+  371:                     credentials=normalized_token_payload,
+  372:                 )
+  373:                 if str(organizations_response.get("status") or "").upper() != "SUCCESS":
+  374:                     error_message = str(
+  375:                         organizations_response.get("error_message")
+  376:                         or organizations_response.get("error_code")
+  377:                         or "organization discovery failed"
+  378:                     ).strip()
+  379:                     raise RuntimeError(f"ERP_ZOHO_ORG_DISCOVERY_FAILED:{error_message}")
+  380:                 organizations = organizations_response.get("organizations")
+  381:                 first_organization = organizations[0] if isinstance(organizations, list) and organizations else {}
+  382:                 discovered_org_id = _db._normalize_required_text(
+  383:                     (first_organization or {}).get("organization_id"),
+  384:                     field_name="organization_id",
+  385:                 )
+  386:                 updated_connection_config = _db._normalize_engine3_json_object(
+  387:                     conn_row.get("connection_config") or {},
+  388:                     field_name="connection_config",
+  389:                 )
+  390:                 updated_connection_config["organization_id"] = discovered_org_id
+  391:                 conn.execute(
+  392:                     """
+  393:                     UPDATE e3_erp_connections
+  394:                     SET connection_config_json = ?
+  395:                     WHERE tenant_id = ?
+  396:                       AND workspace_id = ?
+  397:                       AND id = ?
+  398:                     """,
+  399:                     (
+  400:                         _db._canonical_json_text(updated_connection_config),
+  401:                         tenant,
+  402:                         workspace,
+  403:                         connection,
+  404:                     ),
+  405:                 )
+  406:             if provider == "QUICKBOOKS_ONLINE" and discovered_realm_id:
+  407:                 updated_connection_config = _db._normalize_engine3_json_object(
+  408:                     conn_row.get("connection_config") or {},
+  409:                     field_name="connection_config",
+  410:                 )
+  411:                 updated_connection_config["realm_id"] = discovered_realm_id
+  412:                 conn.execute(
+  413:                     """
+  414:                     UPDATE e3_erp_connections
+  415:                     SET connection_config_json = ?
+  416:                     WHERE tenant_id = ?
+  417:                       AND workspace_id = ?
+  418:                       AND id = ?
+  419:                     """,
+  420:                     (
+  421:                         _db._canonical_json_text(updated_connection_config),
+  422:                         tenant,
+  423:                         workspace,
+  424:                         connection,
+  425:                     ),
+  426:                 )
+  427:         except Exception as exc:  # noqa: BLE001
+  428:             conn.execute(
+  429:                 "UPDATE e3_erp_oauth_sessions SET session_status = 'FAILED' WHERE id = ?",
+  430:                 (str(session["id"]),),
+  431:             )
+  432:             raise
+  433:         conn.execute(
+  434:             """
+  435:             UPDATE e3_erp_oauth_sessions
+  436:             SET session_status = 'CONSUMED',
+  437:                 consumed_at = ?
+  438:             WHERE id = ?
+  439:             """,
+  440:             (_db.utc_now_iso(), str(session["id"])),
+  441:         )
+  442:     erp_repository.set_connection_validation(
+  443:         tenant_id=tenant,
+  444:         workspace_id=workspace,
+  445:         connection_id=connection,
+  446:         status="ACTIVE",
+  447:     )
+  448:     erp_health_service.mark_connection_success(
+  449:         tenant_id=tenant,
+  450:         workspace_id=workspace,
+  451:         connection_id=connection,
+  452:     )
+  453:     return {
+  454:         "connection_id": connection,
+  455:         "provider_type": provider,
+  456:         "status": "ACTIVE",
+  457:         "organization_id": discovered_org_id,
+  458:         "organization_stored": bool(discovered_org_id),
+  459:         "realm_id": discovered_realm_id,
+  460:         "realm_stored": bool(discovered_realm_id),
+  461:     }
+  462: 
+  463: 
+  464: def resolve_connection_scope_from_oauth_state(
+  465:     *,
+  466:     state_token: str,
+  467:     provider_type: str | None = None,
+  468: ) -> dict[str, Any]:
+  469:     _require_schema()
+  470:     token = _db._normalize_required_text(state_token, field_name="state_token")
+  471:     expected_provider = (
+  472:         _normalize_provider(provider_type) if str(provider_type or "").strip() else None
+  473:     )
+  474:     with _db.get_conn() as conn:
+  475:         row = conn.execute(
+  476:             """
+  477:             SELECT tenant_id, workspace_id, erp_connection_id, provider_type, session_status
+  478:             FROM e3_erp_oauth_sessions
+  479:             WHERE state_token = ?
+  480:             ORDER BY created_at DESC, id DESC
+  481:             LIMIT 1
+  482:             """,
+  483:             (token,),
+  484:         ).fetchone()
+  485:     if not row:
+  486:         raise RuntimeError("ERP_OAUTH_SESSION_NOT_FOUND")
+  487:     result = dict(row)
+  488:     provider = _normalize_provider(str(result.get("provider_type") or ""))
+  489:     if expected_provider and provider != expected_provider:
+  490:         raise RuntimeError("ERP_OAUTH_PROVIDER_MISMATCH")
+  491:     return {
+  492:         "tenant_id": _db._normalize_required_text(result.get("tenant_id"), field_name="tenant_id"),
+  493:         "workspace_id": _db._normalize_required_text(result.get("workspace_id"), field_name="workspace_id"),
+  494:         "connection_id": _db._normalize_required_text(
+  495:             result.get("erp_connection_id"),
+  496:             field_name="erp_connection_id",
+  497:         ),
+  498:         "provider_type": provider,
+  499:         "session_status": _normalize_session_status(str(result.get("session_status") or "")),
+  500:     }
+  501: 
+  502: 
+  503: def refresh_oauth_tokens(
+  504:     *,
+  505:     tenant_id: str,
+  506:     workspace_id: str,
+  507:     connection_id: str,
+  508: ) -> dict[str, Any]:
+  509:     _require_schema()
+  510:     tenant, workspace, connection = _normalize_scope(
+  511:         tenant_id=tenant_id,
+  512:         workspace_id=workspace_id,
+  513:         connection_id=connection_id,
+  514:     )
+  515:     conn_row = erp_repository.get_connection(
+  516:         tenant_id=tenant,
+  517:         workspace_id=workspace,
+  518:         connection_id=connection,
+  519:     )
+  520:     if conn_row is None:
+  521:         raise LookupError("erp_connection_id was not found.")
+  522:     provider = _normalize_provider(str(conn_row.get("erp_type") or ""))
+  523:     adapter = _adapter_for(provider)
+  524:     secret_ref = str(conn_row.get("encrypted_credentials_ref") or "")
+  525:     secret_payload = get_connection_secret_payload(
+  526:         tenant_id=tenant,
+  527:         workspace_id=workspace,
+  528:         secret_ref=secret_ref,
+  529:     )
+  530:     if not secret_payload:
+  531:         raise RuntimeError("ERP_OAUTH_TOKEN_MISSING")
+  532:     token_payload = _db._normalize_engine3_json_object(
+  533:         secret_payload.get("token_payload") or {},
+  534:         field_name="token_payload",
+  535:     )
+  536:     try:
+  537:         refreshed = adapter.refresh_oauth_tokens(
+  538:             connection_config=conn_row.get("connection_config") or {},
+  539:             token_payload=token_payload,
+  540:         )
+  541:     except Exception as exc:  # noqa: BLE001
+  542:         erp_health_service.mark_connection_failure(
+  543:             tenant_id=tenant,
+  544:             workspace_id=workspace,
+  545:             connection_id=connection,
+  546:             error_code="ERP_AUTH_REFRESH_FAILED",
+  547:             error_message=str(exc),
+  548:         )
+  549:         raise
+  550:     set_connection_secret_payload(
+  551:         tenant_id=tenant,
+  552:         workspace_id=workspace,
+  553:         secret_ref=secret_ref,
+  554:         payload={
+  555:             "provider": provider,
+  556:             "token_payload": _db._normalize_engine3_json_object(refreshed, field_name="token_payload"),
+  557:             "updated_at": _db.utc_now_iso(),
+  558:         },
+  559:     )
+  560:     erp_health_service.mark_connection_success(
+  561:         tenant_id=tenant,
+  562:         workspace_id=workspace,
+  563:         connection_id=connection,
+  564:     )
+  565:     return {"connection_id": connection, "provider_type": provider, "refreshed": True}
+  566: 
+  567: 
+  568: def disable_connection(
+  569:     *,
+  570:     tenant_id: str,
+  571:     workspace_id: str,
+  572:     connection_id: str,
+  573:     reason: str | None = None,
+  574: ) -> dict[str, Any]:
+  575:     tenant, workspace, connection = _normalize_scope(
+  576:         tenant_id=tenant_id,
+  577:         workspace_id=workspace_id,
+  578:         connection_id=connection_id,
+  579:     )
+  580:     updated = erp_repository.set_connection_validation(
+  581:         tenant_id=tenant,
+  582:         workspace_id=workspace,
+  583:         connection_id=connection,
+  584:         status="INACTIVE",
+  585:     )
+  586:     erp_health_service.mark_connection_disabled(
+  587:         tenant_id=tenant,
+  588:         workspace_id=workspace,
+  589:         connection_id=connection,
+  590:         reason=reason,
+  591:     )
+  592:     return {"connection": updated}
+  593: 
+  594: 
+  595: def get_connection_health(
+  596:     *,
+  597:     tenant_id: str,
+  598:     workspace_id: str,
+  599:     connection_id: str,
+  600: ) -> dict[str, Any]:
+  601:     health = erp_health_service.get_connection_health(
+  602:         tenant_id=tenant_id,
+  603:         workspace_id=workspace_id,
+  604:         connection_id=connection_id,
+  605:     )
+  606:     if health is None:
+  607:         return {
+  608:             "health_status": "DEGRADED",
+  609:             "last_success_at": None,
+  610:             "last_failure_at": None,
+  611:             "last_error_code": None,
+  612:             "last_error_message": None,
+  613:             "consecutive_auth_failures": 0,
+  614:             "consecutive_transport_failures": 0,
+  615:         }
+  616:     return health
+  617: 
+  618: 
+  619: def get_connection_capabilities(
+  620:     *,
+  621:     tenant_id: str,
+  622:     workspace_id: str,
+  623:     connection_id: str,
+  624: ) -> dict[str, Any]:
+  625:     connection = erp_repository.get_connection(
+  626:         tenant_id=tenant_id,
+  627:         workspace_id=workspace_id,
+  628:         connection_id=connection_id,
+  629:     )
+  630:     if connection is None:
+  631:         raise LookupError("erp_connection_id was not found.")
+  632:     adapter = _adapter_for(str(connection.get("erp_type") or ""))
+  633:     return {
+  634:         "connection_id": str(connection["id"]),
+  635:         "erp_type": str(connection["erp_type"]),
+  636:         "capabilities": _db._normalize_engine3_json_object(adapter.get_capabilities(), field_name="capabilities"),
+  637:     }
+  638: 
+  639: 
+  640: def get_connection_credentials_for_runtime(
+  641:     *,
+  642:     tenant_id: str,
+  643:     workspace_id: str,
+  644:     connection: dict[str, Any],
+  645:     auto_refresh: bool = True,
+  646: ) -> dict[str, Any]:
+  647:     secret_ref = _db._normalize_required_text(
+  648:         connection.get("encrypted_credentials_ref"),
+  649:         field_name="encrypted_credentials_ref",
+  650:     )
+  651:     payload = get_connection_secret_payload(
+  652:         tenant_id=tenant_id,
+  653:         workspace_id=workspace_id,
+  654:         secret_ref=secret_ref,
+  655:     )
+  656:     if payload is None:
+  657:         return {}
+  658:     token_payload = payload.get("token_payload")
+  659:     if isinstance(token_payload, dict):
+  660:         normalized = _db._normalize_engine3_json_object(token_payload, field_name="token_payload")
+  661:         if not auto_refresh:
+  662:             return normalized
+  663:         auth_type = str(connection.get("auth_type") or "").strip().upper()
+  664:         provider = str(connection.get("erp_type") or "").strip().upper()
+  665:         if auth_type == "OAUTH2" and provider in _OAUTH_PROVIDERS and _oauth_token_needs_refresh(normalized):
+  666:             refresh_oauth_tokens(
+  667:                 tenant_id=tenant_id,
+  668:                 workspace_id=workspace_id,
+  669:                 connection_id=str(connection.get("id") or ""),
+  670:             )
+  671:             refreshed_payload = get_connection_secret_payload(
+  672:                 tenant_id=tenant_id,
+  673:                 workspace_id=workspace_id,
+  674:                 secret_ref=secret_ref,
+  675:             ) or {}
+  676:             refreshed_token_payload = refreshed_payload.get("token_payload")
+  677:             if isinstance(refreshed_token_payload, dict):
+  678:                 return _db._normalize_engine3_json_object(refreshed_token_payload, field_name="token_payload")
+  679:         return normalized
+  680:     return _db._normalize_engine3_json_object(payload, field_name="credentials_payload")
+  681: 
+  682: 
+  683: def redact_connection_credentials(connection: dict[str, Any]) -> dict[str, Any]:
+  684:     payload = dict(connection)
+  685:     secret_ref = str(payload.get("encrypted_credentials_ref") or "")
+  686:     payload["encrypted_credentials_ref"] = f"{secret_ref[:8]}..." if secret_ref else None
+  687:     return payload
+  688: 
+  689: 
+  690: def dump_secret_payload_for_tests(
+  691:     *,
+  692:     tenant_id: str,
+  693:     workspace_id: str,
+  694:     secret_ref: str,
+  695: ) -> str:
+  696:     payload = get_connection_secret_payload(
+  697:         tenant_id=tenant_id,
+  698:         workspace_id=workspace_id,
+  699:         secret_ref=secret_ref,
+  700:     ) or {}
+  701:     return json.dumps(payload, sort_keys=True)

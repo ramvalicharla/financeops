@@ -1,3 +1,12 @@
+"""
+R2 Storage Client.
+
+SECURITY: delete_file() must only be called from
+admin-authorized routes or internal cleanup tasks.
+Never expose to tenant-level API without explicit
+role enforcement at the route layer.
+"""
+
 from __future__ import annotations
 
 import hashlib
@@ -75,6 +84,7 @@ class R2Storage:
     def delete_file(self, key: str) -> bool:
         """Delete object from R2. Returns True on success."""
         try:
+            log.warning("r2_delete_called", extra={"audit": True, "key": key})
             self._client.delete_object(Bucket=self._bucket, Key=key)
             log.info("R2 delete: key=%s", key)
             return True

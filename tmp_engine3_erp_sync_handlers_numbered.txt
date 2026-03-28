@@ -1,0 +1,194 @@
+    1: from __future__ import annotations
+    2: 
+    3: from typing import Any
+    4: 
+    5: from fastapi import Request
+    6: 
+    7: from workbench.backend import app as backend_app
+    8: from workbench.backend.api.schemas.engine3 import Engine3ErpSyncRequest
+    9: from workbench.backend.db.engine3 import erp_repository
+   10: from workbench.backend.db.engine3 import erp_sync_orchestrator
+   11: from workbench.backend.db.engine3 import erp_sync_repository
+   12: 
+   13: 
+   14: def _create_sync_job(
+   15:     *,
+   16:     actor_id: str,
+   17:     tenant_id: str,
+   18:     workspace_id: str,
+   19:     job_type: str,
+   20:     payload: dict[str, Any],
+   21: ) -> dict[str, Any]:
+   22:     wrapped_payload = {"payload": payload, "context": {"tenant_id": tenant_id, "workspace_id": workspace_id}}
+   23:     created = backend_app.jobs_control_plane.create_job(
+   24:         job_type=job_type,
+   25:         payload=wrapped_payload,
+   26:         created_by=actor_id,
+   27:         tenant_id=tenant_id,
+   28:         workspace_id=workspace_id,
+   29:         project_id=workspace_id,
+   30:     )
+   31:     if not backend_app.lease_store.distributed_leasing_enabled():
+   32:         backend_app.jobs_control_plane.start_local_runner(
+   33:             job_id=str(created["job_id"]),
+   34:             payload=wrapped_payload,
+   35:         )
+   36:     return {"job_id": str(created["job_id"]), "status": str(created["status"])}
+   37: 
+   38: 
+   39: def _enqueue_sync(
+   40:     *,
+   41:     request: Request,
+   42:     connection_id: str,
+   43:     sync_type: str,
+   44:     requested_by: str | None,
+   45: ) -> dict[str, Any]:
+   46:     actor_id, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+   47:     try:
+   48:         return erp_sync_orchestrator.enqueue_sync_run(
+   49:             tenant_id=tenant_id,
+   50:             workspace_id=workspace_id,
+   51:             connection_id=connection_id,
+   52:             sync_type=sync_type,
+   53:             requested_by=requested_by or actor_id,
+   54:             enqueue_job=lambda **kwargs: _create_sync_job(
+   55:                 actor_id=actor_id,
+   56:                 tenant_id=tenant_id,
+   57:                 workspace_id=workspace_id,
+   58:                 job_type=str(kwargs["job_type"]),
+   59:                 payload=_db_obj(kwargs.get("payload")),
+   60:             ),
+   61:         )
+   62:     except LookupError:
+   63:         backend_app.raise_api_error("ENGINE3_ERP_CONNECTION_NOT_FOUND", "erp connection was not found.", status_code=404)
+   64:     except ValueError as exc:
+   65:         backend_app.raise_api_error("ENGINE3_ERP_SYNC_INVALID_INPUT", str(exc), status_code=400)
+   66: 
+   67: 
+   68: def _db_obj(value: Any) -> dict[str, Any]:
+   69:     if isinstance(value, dict):
+   70:         return dict(value)
+   71:     return {}
+   72: 
+   73: 
+   74: async def sync_chart_of_accounts(
+   75:     connection_id: str,
+   76:     payload: Engine3ErpSyncRequest,
+   77:     request: Request,
+   78: ) -> dict[str, Any]:
+   79:     return _enqueue_sync(
+   80:         request=request,
+   81:         connection_id=connection_id,
+   82:         sync_type="COA",
+   83:         requested_by=payload.requested_by,
+   84:     )
+   85: 
+   86: 
+   87: async def sync_dimensions(
+   88:     connection_id: str,
+   89:     payload: Engine3ErpSyncRequest,
+   90:     request: Request,
+   91: ) -> dict[str, Any]:
+   92:     return _enqueue_sync(
+   93:         request=request,
+   94:         connection_id=connection_id,
+   95:         sync_type="DIMENSIONS",
+   96:         requested_by=payload.requested_by,
+   97:     )
+   98: 
+   99: 
+  100: async def sync_trial_balance(
+  101:     connection_id: str,
+  102:     payload: Engine3ErpSyncRequest,
+  103:     request: Request,
+  104: ) -> dict[str, Any]:
+  105:     return _enqueue_sync(
+  106:         request=request,
+  107:         connection_id=connection_id,
+  108:         sync_type="TRIAL_BALANCE",
+  109:         requested_by=payload.requested_by,
+  110:     )
+  111: 
+  112: 
+  113: async def sync_journal_status(
+  114:     connection_id: str,
+  115:     payload: Engine3ErpSyncRequest,
+  116:     request: Request,
+  117: ) -> dict[str, Any]:
+  118:     return _enqueue_sync(
+  119:         request=request,
+  120:         connection_id=connection_id,
+  121:         sync_type="JOURNAL_STATUS",
+  122:         requested_by=payload.requested_by,
+  123:     )
+  124: 
+  125: 
+  126: async def get_sync_run(
+  127:     sync_run_id: str,
+  128:     request: Request,
+  129: ) -> dict[str, Any]:
+  130:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  131:     run = erp_sync_repository.get_sync_run(
+  132:         tenant_id=tenant_id,
+  133:         workspace_id=workspace_id,
+  134:         sync_run_id=sync_run_id,
+  135:     )
+  136:     if run is None:
+  137:         backend_app.raise_api_error("ENGINE3_ERP_SYNC_RUN_NOT_FOUND", "sync run was not found.", status_code=404)
+  138:     return {"sync_run": run}
+  139: 
+  140: 
+  141: async def get_latest_chart_of_accounts_snapshot(
+  142:     connection_id: str,
+  143:     request: Request,
+  144: ) -> dict[str, Any]:
+  145:     _, tenant_id, workspace_id = backend_app._resolve_request_iam_scope(request)
+  146:     connection = erp_repository.get_connection(
+  147:         tenant_id=tenant_id,
+  148:         workspace_id=workspace_id,
+  149:         connection_id=connection_id,
+  150:     )
+  151:     if connection is None:
+  152:         backend_app.raise_api_error("ENGINE3_ERP_CONNECTION_NOT_FOUND", "erp connection was not found.", status_code=404)
+  153: 
+  154:     latest_completed = erp_sync_repository.get_latest_sync_run_for_connection(
+  155:         tenant_id=tenant_id,
+  156:         workspace_id=workspace_id,
+  157:         connection_id=connection_id,
+  158:         sync_type="COA",
+  159:         statuses={"COMPLETED"},
+  160:     )
+  161:     latest_any = latest_completed or erp_sync_repository.get_latest_sync_run_for_connection(
+  162:         tenant_id=tenant_id,
+  163:         workspace_id=workspace_id,
+  164:         connection_id=connection_id,
+  165:         sync_type="COA",
+  166:     )
+  167:     if latest_any is None:
+  168:         return {"sync_run": None, "accounts": []}
+  169: 
+  170:     accounts: list[dict[str, Any]] = []
+  171:     if str(latest_any.get("sync_status") or "").upper() == "COMPLETED":
+  172:         snapshots = erp_sync_repository.list_sync_snapshots_for_run(
+  173:             tenant_id=tenant_id,
+  174:             workspace_id=workspace_id,
+  175:             sync_run_id=str(latest_any["id"]),
+  176:             object_type="ACCOUNT",
+  177:             limit=5000,
+  178:         )
+  179:         for item in snapshots:
+  180:             payload = item.get("payload")
+  181:             if not isinstance(payload, dict):
+  182:                 payload = {}
+  183:             account_id = str(payload.get("account_id") or item.get("object_key") or "").strip()
+  184:             account_name = str(payload.get("account_name") or payload.get("name") or "").strip()
+  185:             account_type = str(payload.get("account_type") or payload.get("type") or "").strip()
+  186:             accounts.append(
+  187:                 {
+  188:                     "account_id": account_id or str(item.get("object_key") or ""),
+  189:                     "account_name": account_name or account_id or str(item.get("object_key") or ""),
+  190:                     "account_type": account_type or None,
+  191:                     "group": str(payload.get("group") or "").strip() or None,
+  192:                 }
+  193:             )
+  194:     return {"sync_run": latest_any, "accounts": accounts}

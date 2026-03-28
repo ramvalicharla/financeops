@@ -6,18 +6,27 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
+    # ================================================
+    # REQUIRED: Replace all CHANGE_ME values with real
+    # credentials before deploying to production.
+    # Never commit real values to version control.
+    # ================================================
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - SECRET_KEY=CHANGE_ME_APP_SECRET_KEY  # FastAPI/CSRF secret; set a strong random value.
+      - JWT_SECRET=CHANGE_ME_JWT_SIGNING_SECRET_MIN_32_CHARS  # JWT signing secret (32+ chars).
+      - FIELD_ENCRYPTION_KEY=CHANGE_ME_BASE64_AES256_KEY  # URL-safe base64 key decoding to 32 bytes.
+      - FRONTEND_URL=CHANGE_ME_FRONTEND_URL  # Public frontend URL, e.g. https://app.financeops.com.
+      - CORS_ALLOWED_ORIGINS=CHANGE_ME_CORS_ORIGINS  # Comma-separated origins, e.g. https://app.financeops.com.
+      - APP_ENV=production  # Runtime environment selector.
+      - APP_ENVIRONMENT=production  # Environment label for telemetry.
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - FRONTEND_URL=${FRONTEND_URL}
       - ENVIRONMENT=production
       - DEBUG=false
     depends_on:
@@ -41,11 +50,13 @@ services:
     command: >
       celery -A financeops.tasks.celery_app worker
       --loglevel=info --concurrency=4
-      -Q default,finance,search
+      -Q critical_q,high_q,normal_q,low_q
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
+      - FIELD_ENCRYPTION_KEY=CHANGE_ME_BASE64_AES256_KEY
+      - APP_ENV=production
+      - APP_ENVIRONMENT=production
       - ENVIRONMENT=production
     depends_on:
       - redis
@@ -63,6 +74,8 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
+      - APP_ENV=production
+      - APP_ENVIRONMENT=production
       - ENVIRONMENT=production
     depends_on:
       - redis
@@ -72,11 +85,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-CHANGE_ME_API_URL}
+        NEXT_PUBLIC_APP_ENVIRONMENT: production
+    ports:
+      - "3000:3000"
     environment:
-      - NEXTAUTH_URL=${NEXTAUTH_URL}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-CHANGE_ME_NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-CHANGE_ME_FRONTEND_URL}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-CHANGE_ME_API_URL}
     restart: unless-stopped
+    depends_on:
+      - backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000"]
       interval: 30s
