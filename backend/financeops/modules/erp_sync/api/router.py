@@ -8,6 +8,7 @@ from financeops.modules.erp_sync.api import (
     drift,
     health,
     mappings,
+    oauth,
     publish,
     sync_definitions,
     sync_runs,
@@ -17,6 +18,7 @@ router = APIRouter()
 router.include_router(connections.router)
 router.include_router(sync_definitions.router)
 router.include_router(sync_runs.router)
+router.include_router(oauth.router)
 router.include_router(datasets.router)
 router.include_router(mappings.router)
 router.include_router(publish.router)

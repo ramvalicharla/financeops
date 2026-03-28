@@ -164,7 +164,8 @@ async def test_erp_secret_ref_not_stored_plaintext(
     ).scalar_one()
     assert row.secret_ref is not None
     assert row.secret_ref != plain_api_key
-    assert decrypt_field(row.secret_ref) == plain_api_key
+    decrypted_payload = json.loads(decrypt_field(row.secret_ref))
+    assert decrypted_payload.get("api_key") == plain_api_key
 
 
 @pytest.mark.asyncio

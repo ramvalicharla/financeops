@@ -20,7 +20,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from financeops.db.base import FinancialBase
+from financeops.db.base import Base, FinancialBase
 
 
 _STATUS_CHECK = "status IN ('candidate','active','superseded','retired','rejected')"
@@ -48,8 +48,52 @@ class ExternalConnection(FinancialBase):
     consent_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     pinned_connector_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     connection_status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
-    secret_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    secret_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    encrypted_tokens: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_refreshed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    oauth_scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+
+class ErpOAuthSession(Base):
+    __tablename__ = "erp_oauth_sessions"
+    __table_args__ = (
+        UniqueConstraint("state_token", name="uq_erp_oauth_sessions_state_token"),
+        Index("idx_erp_oauth_sessions_connection_status", "connection_id", "status"),
+        Index("idx_erp_oauth_sessions_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    connection_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("external_connections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    state_token: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    code_verifier_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    scopes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="PENDING")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    initiated_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    encrypted_tokens: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
 
 
 class ExternalConnectionVersion(FinancialBase):

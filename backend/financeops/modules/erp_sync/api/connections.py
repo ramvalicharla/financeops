@@ -10,11 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.config import get_settings
 from financeops.core.exceptions import FeatureNotImplementedError
-from financeops.core.security import decrypt_field, encrypt_field
 from financeops.db.models.erp_sync import ExternalConnection, ExternalConnectionVersion
 from financeops.db.models.users import IamUser
 from financeops.modules.erp_sync.domain.enums import ConnectorType
 from financeops.modules.erp_sync.infrastructure.connectors.registry import get_connector
+from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
 from financeops.services.audit_writer import AuditWriter
 from financeops.shared_kernel.idempotency import require_erp_sync_idempotency_key
 from financeops.shared_kernel.response import ok
@@ -22,21 +22,56 @@ from financeops.shared_kernel.response import ok
 router = APIRouter()
 
 
-def _encrypt_secret_ref(value: Any) -> str | None:
-    text_value = str(value or "").strip()
-    if not text_value:
+async def _build_secret_ref(body: dict[str, Any]) -> str | None:
+    payload: dict[str, Any] = {
+        "client_id": body.get("client_id"),
+        "client_secret": body.get("client_secret"),
+        "realm_id": body.get("realm_id"),
+    }
+    legacy_secret = str(body.get("secret_ref") or "").strip()
+    if legacy_secret:
+        payload["api_key"] = legacy_secret
+
+    if not any(str(value or "").strip() for value in payload.values()):
         return None
-    return encrypt_field(text_value)
+
+    return await secret_store.put_secret(None, payload)
 
 
-def _decrypt_secret_ref(value: str | None) -> str | None:
-    text_value = str(value or "").strip()
-    if not text_value:
-        return None
-    try:
-        return decrypt_field(text_value)
-    except Exception:
-        return text_value
+async def _resolve_connection_secret_ref(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    connection_id: uuid.UUID,
+    base_secret_ref: str | None,
+) -> str | None:
+    latest_version = (
+        await session.execute(
+            select(ExternalConnectionVersion)
+            .where(
+                ExternalConnectionVersion.tenant_id == tenant_id,
+                ExternalConnectionVersion.connection_id == connection_id,
+            )
+            .order_by(
+                ExternalConnectionVersion.version_no.desc(),
+                ExternalConnectionVersion.created_at.desc(),
+                ExternalConnectionVersion.id.desc(),
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if latest_version is None:
+        return base_secret_ref
+
+    snapshot = dict(latest_version.config_snapshot_json or {})
+    secret_ref = str(
+        snapshot.get("oauth_secret_ref")
+        or snapshot.get("secret_ref")
+        or base_secret_ref
+        or ""
+    ).strip()
+    return secret_ref or None
 
 
 @router.post("/connections")
@@ -70,7 +105,7 @@ async def create_connection(
             "consent_reference": body.get("consent_reference"),
             "pinned_connector_version": body.get("pinned_connector_version"),
             "connection_status": str(body.get("connection_status", "draft")),
-            "secret_ref": _encrypt_secret_ref(body.get("secret_ref")),
+            "secret_ref": await _build_secret_ref(body),
             "created_by": user.id,
         },
     )
@@ -175,10 +210,18 @@ async def test_connection(
     connector = get_connector(ConnectorType(row.connector_type))
     credentials = dict((body or {}).get("credentials", {}) or {})
     if not credentials:
-        decrypted_secret = _decrypt_secret_ref(row.secret_ref)
-        if decrypted_secret:
-            credentials["api_key"] = decrypted_secret
-            credentials["secret_ref"] = decrypted_secret
+        resolved_secret_ref = await _resolve_connection_secret_ref(
+            session,
+            tenant_id=user.tenant_id,
+            connection_id=row.id,
+            base_secret_ref=row.secret_ref,
+        )
+        if resolved_secret_ref:
+            secret_payload = await secret_store.get_secret(resolved_secret_ref)
+            credentials.update(
+                {key: value for key, value in secret_payload.items() if value is not None}
+            )
+            credentials["secret_ref"] = resolved_secret_ref
     result = await connector.test_connection(credentials)
     return ok(
         {"connection_id": str(row.id), "ok": True, "result": result},

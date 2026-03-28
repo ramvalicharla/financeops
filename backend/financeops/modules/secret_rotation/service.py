@@ -25,6 +25,7 @@ Secret storage audit findings (pre-implementation):
 """
 
 import asyncio
+import json
 import secrets
 import smtplib
 import uuid
@@ -255,12 +256,24 @@ def _resolve_current_api_key(
     connection: ExternalConnection,
     latest_version: ExternalConnectionVersion | None,
 ) -> str:
+    def _extract_api_key(value: str) -> str:
+        text_value = str(value or "").strip()
+        if not text_value:
+            return ""
+        try:
+            payload = json.loads(text_value)
+        except (json.JSONDecodeError, TypeError):
+            return text_value
+        if not isinstance(payload, dict):
+            return text_value
+        return str(payload.get("api_key") or payload.get("secret_ref") or "").strip()
+
     if latest_version is not None:
         snapshot = dict(latest_version.config_snapshot_json or {})
         key_from_snapshot = str(snapshot.get("api_key") or snapshot.get("secret_ref") or "")
         if key_from_snapshot:
-            return _decrypt_maybe_ciphertext(key_from_snapshot)
-    return _decrypt_maybe_ciphertext(str(connection.secret_ref or ""))
+            return _extract_api_key(_decrypt_maybe_ciphertext(key_from_snapshot))
+    return _extract_api_key(_decrypt_maybe_ciphertext(str(connection.secret_ref or "")))
 
 
 async def rotate_erp_api_key(
