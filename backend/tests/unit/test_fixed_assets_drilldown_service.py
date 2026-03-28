@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.fixed_assets import (
@@ -13,6 +14,7 @@ from financeops.db.models.fixed_assets import (
     AssetJournalEntry,
     FarRun,
 )
+from financeops.platform.db.models import CpEntity
 from financeops.services.audit_writer import AuditWriter
 from financeops.services.fixed_assets.drilldown_service import (
     get_asset_drill,
@@ -25,7 +27,14 @@ from financeops.services.fixed_assets.drilldown_service import (
 async def test_fixed_assets_drilldown_returns_lineage_navigation(
     async_session: AsyncSession,
     test_tenant,
+    test_user,
 ) -> None:
+    del test_user
+    entity_id = await async_session.scalar(
+        select(CpEntity.id).where(CpEntity.tenant_id == test_tenant.id).limit(1)
+    )
+    assert entity_id is not None
+
     run = await AuditWriter.insert_financial_record(
         async_session,
         model_class=FarRun,
@@ -47,7 +56,7 @@ async def test_fixed_assets_drilldown_returns_lineage_navigation(
         values={
             "asset_code": "FAR-DRILL-001",
             "description": "drill asset",
-            "entity_id": "ENT-1",
+            "entity_id": entity_id,
             "asset_class": "equipment",
             "asset_currency": "USD",
             "reporting_currency": "USD",

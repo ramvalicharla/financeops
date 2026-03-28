@@ -60,6 +60,12 @@ class RevenueContract(FinancialBase):
     )
 
     contract_number: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     customer_id: Mapped[str] = mapped_column(String(128), nullable=False)
     contract_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     contract_start_date: Mapped[date] = mapped_column(Date, nullable=False)

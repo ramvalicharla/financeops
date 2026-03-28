@@ -103,6 +103,7 @@ __all__ = [
     "AccountingAttachment",
     "ErpAttachmentLink",
     "AccountingDuplicateFingerprint",
+    "ErpAccountExternalRef",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -220,6 +221,7 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
         "financeops.db.models.accounting_vendor",
         "AccountingDuplicateFingerprint",
     ),
+    "ErpAccountExternalRef": ("financeops.db.models.erp_sync", "ErpAccountExternalRef"),
 }
 
 

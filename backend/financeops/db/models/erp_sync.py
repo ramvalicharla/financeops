@@ -309,6 +309,64 @@ class ExternalMappingDefinition(FinancialBase):
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
 
+class ErpAccountExternalRef(Base):
+    __tablename__ = "erp_account_external_refs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "mapping_id",
+            "connector_type",
+            "external_account_id",
+            name="uq_erp_account_ref_per_connector",
+        ),
+        Index("ix_erp_account_external_refs_tenant", "tenant_id"),
+        Index("ix_erp_account_external_refs_mapping", "mapping_id"),
+        Index("ix_erp_account_external_refs_connector", "tenant_id", "connector_type"),
+        Index(
+            "ix_erp_account_external_refs_stale",
+            "tenant_id",
+            "is_stale",
+            postgresql_where=text("is_stale = true"),
+        ),
+        Index(
+            "ix_erp_account_external_refs_internal_code",
+            "tenant_id",
+            "connector_type",
+            "internal_account_code",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    mapping_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("external_mapping_definitions.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    connector_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_account_id: Mapped[str] = mapped_column(String(256), nullable=False)
+    external_account_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    external_account_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    internal_account_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    source_version_token: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    is_stale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    stale_detected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+    chain_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    previous_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
 class ExternalMappingVersion(FinancialBase):
     __tablename__ = "external_mapping_versions"
     __table_args__ = (

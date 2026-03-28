@@ -5,9 +5,11 @@ from decimal import Decimal
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.fixed_assets import Asset, FarRun
+from financeops.platform.db.models import CpEntity
 from financeops.schemas.fixed_assets import AssetImpairmentInput
 from financeops.services.audit_writer import AuditWriter
 from financeops.services.fixed_assets.depreciation_engine import GeneratedDepreciationRow
@@ -62,7 +64,17 @@ def _rows() -> list[GeneratedDepreciationRow]:
 
 
 @pytest.mark.asyncio
-async def test_apply_impairments_regenerates_forward_rows(async_session: AsyncSession, test_tenant) -> None:
+async def test_apply_impairments_regenerates_forward_rows(
+    async_session: AsyncSession,
+    test_tenant,
+    test_user,
+) -> None:
+    del test_user
+    entity_id = await async_session.scalar(
+        select(CpEntity.id).where(CpEntity.tenant_id == test_tenant.id).limit(1)
+    )
+    assert entity_id is not None
+
     run = await AuditWriter.insert_financial_record(
         async_session,
         model_class=FarRun,
@@ -84,7 +96,7 @@ async def test_apply_impairments_regenerates_forward_rows(async_session: AsyncSe
         values={
             "asset_code": "FAR-IMP-001",
             "description": "impairment asset",
-            "entity_id": "ENT-1",
+            "entity_id": entity_id,
             "asset_class": "equipment",
             "asset_currency": "USD",
             "reporting_currency": "USD",

@@ -55,20 +55,25 @@ class Asset(FinancialBase):
     )
 
     asset_code: Mapped[str] = mapped_column(String(128), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    asset_class: Mapped[str] = mapped_column(String(64), nullable=False)
-    asset_currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    reporting_currency: Mapped[str] = mapped_column(String(3), nullable=False)
-    capitalization_date: Mapped[date] = mapped_column(Date, nullable=False)
-    in_service_date: Mapped[date] = mapped_column(Date, nullable=False)
-    capitalized_amount_asset_currency: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    asset_class: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    asset_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    reporting_currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    capitalization_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    in_service_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    capitalized_amount_asset_currency: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     depreciation_method: Mapped[str] = mapped_column(String(32), nullable=False)
     useful_life_months: Mapped[int | None] = mapped_column(Integer, nullable=True)
     reducing_balance_rate_annual: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
-    residual_value_reporting_currency: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
-    rate_mode: Mapped[str] = mapped_column(String(32), nullable=False)
-    source_acquisition_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    residual_value_reporting_currency: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    rate_mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    source_acquisition_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     parent_reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     source_reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

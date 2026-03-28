@@ -60,6 +60,12 @@ class Prepaid(FinancialBase):
     )
 
     prepaid_code: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     prepaid_currency: Mapped[str] = mapped_column(String(3), nullable=False)
     reporting_currency: Mapped[str] = mapped_column(String(3), nullable=False)

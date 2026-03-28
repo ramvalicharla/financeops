@@ -26,7 +26,7 @@ def _asset(*, method: str, rate_mode: str, asset_currency: str, reporting_curren
         asset_id=_uuid("00000000-0000-0000-0000-00000000f301"),
         asset_code="FAR-DEP-1",
         description="depreciation asset",
-        entity_id="ENT-1",
+        entity_id="00000000-0000-0000-0000-00000000e005",
         asset_class="equipment",
         asset_currency=asset_currency,
         reporting_currency=reporting_currency,

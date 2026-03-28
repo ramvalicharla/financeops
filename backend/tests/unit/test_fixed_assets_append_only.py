@@ -7,7 +7,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +21,7 @@ from financeops.db.models.fixed_assets import (
     FarRun,
     FarRunEvent,
 )
+from financeops.platform.db.models import CpEntity
 from financeops.services.audit_writer import AuditWriter
 
 SeedFn = Callable[[AsyncSession, UUID], Awaitable[None]]
@@ -50,6 +51,12 @@ async def _seed_run(session: AsyncSession, tenant_id: UUID) -> FarRun:
 
 
 async def _seed_asset(session: AsyncSession, tenant_id: UUID) -> Asset:
+    entity_id = await session.scalar(
+        select(CpEntity.id).where(CpEntity.tenant_id == tenant_id).limit(1)
+    )
+    if entity_id is None:
+        raise RuntimeError("No cp_entity found for tenant while seeding fixed-asset test data.")
+
     return await AuditWriter.insert_financial_record(
         session,
         model_class=Asset,
@@ -58,7 +65,7 @@ async def _seed_asset(session: AsyncSession, tenant_id: UUID) -> Asset:
         values={
             "asset_code": f"FAR-{uuid.uuid4()}",
             "description": "append-only-asset",
-            "entity_id": "ENT-APP",
+            "entity_id": entity_id,
             "asset_class": "equipment",
             "asset_currency": "USD",
             "reporting_currency": "USD",
@@ -316,11 +323,13 @@ TABLE_CASES: tuple[tuple[str, SeedFn, str, str], ...] = (
 async def test_fixed_assets_append_only_blocks_update(
     async_session: AsyncSession,
     test_tenant,
+    test_user,
     table_name: str,
     seed_fn: SeedFn,
     update_sql: str,
     delete_sql: str,
 ) -> None:
+    del test_user
     del delete_sql
     await seed_fn(async_session, test_tenant.id)
     await _install_append_only_guard(async_session, table_name)
@@ -334,11 +343,13 @@ async def test_fixed_assets_append_only_blocks_update(
 async def test_fixed_assets_append_only_blocks_delete(
     async_session: AsyncSession,
     test_tenant,
+    test_user,
     table_name: str,
     seed_fn: SeedFn,
     update_sql: str,
     delete_sql: str,
 ) -> None:
+    del test_user
     del update_sql
     await seed_fn(async_session, test_tenant.id)
     await _install_append_only_guard(async_session, table_name)

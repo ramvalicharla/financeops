@@ -133,6 +133,12 @@ class CashFlowRun(FinancialBase):
     )
 
     organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     reporting_period: Mapped[date] = mapped_column(Date, nullable=False)
     statement_definition_version_token: Mapped[str] = mapped_column(String(64), nullable=False)
     line_mapping_version_token: Mapped[str] = mapped_column(String(64), nullable=False)

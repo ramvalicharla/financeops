@@ -6,16 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import pytest
 
 from financeops.db.models.fixed_assets import Asset
+from financeops.platform.db.models import CpEntity
 from financeops.schemas.fixed_assets import FixedAssetInput
 from financeops.services.fixed_assets.asset_registry import register_assets
 
 
-def _asset_input() -> FixedAssetInput:
+def _asset_input(entity_id: str) -> FixedAssetInput:
     return FixedAssetInput.model_validate(
         {
             "asset_code": "FAR-REG-001",
             "description": "Registry asset",
-            "entity_id": "ENT-1",
+            "entity_id": entity_id,
             "asset_class": "equipment",
             "asset_currency": "USD",
             "reporting_currency": "USD",
@@ -38,8 +39,14 @@ def _asset_input() -> FixedAssetInput:
 async def test_fixed_assets_registry_creates_and_reuses_records(
     async_session: AsyncSession,
     test_tenant,
+    test_user,
 ) -> None:
-    payload = [_asset_input()]
+    del test_user
+    entity_id = await async_session.scalar(
+        select(CpEntity.id).where(CpEntity.tenant_id == test_tenant.id).limit(1)
+    )
+    assert entity_id is not None
+    payload = [_asset_input(str(entity_id))]
 
     first = await register_assets(
         async_session,
