@@ -161,6 +161,7 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "gst_returns",
     "gst_recon_items",
     "monthend_checklists",
+    "accounting_jv_approvals",
     "auditor_grants",
     "auditor_access_logs",
     "fx_rate_fetch_runs",

@@ -9,6 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.users import IamUser, UserRole
+from financeops.modules.accounting_layer.application.approval_service import (
+    get_jv_approvals,
+    get_sla_metrics,
+    submit_approval,
+)
 from financeops.modules.accounting_layer.application.jv_service import (
     create_jv,
     get_jv,
@@ -18,9 +23,12 @@ from financeops.modules.accounting_layer.application.jv_service import (
     update_jv_lines,
 )
 from financeops.modules.accounting_layer.domain.schemas import (
+    ApprovalRequest,
+    ApprovalResponse,
     JVCreate,
     JVLineResponse,
     JVResponse,
+    SLAMetricsResponse,
     JVStateEventResponse,
     JVTransitionRequest,
     JVUpdateLines,
@@ -171,4 +179,61 @@ async def get_jv_history_endpoint(
 ) -> dict[str, Any]:
     events = await get_jv_state_history(session, jv_id=jv_id, tenant_id=user.tenant_id)
     payload = [JVStateEventResponse.model_validate(event).model_dump(mode="json") for event in events]
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.post("/{jv_id}/approve")
+async def approve_jv_endpoint(
+    request: Request,
+    jv_id: uuid.UUID,
+    body: ApprovalRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    approval = await submit_approval(
+        session,
+        jv_id=jv_id,
+        tenant_id=user.tenant_id,
+        acted_by=user.id,
+        actor_role=user.role.value,
+        decision=body.decision,
+        decision_reason=body.decision_reason,
+        expected_version=body.expected_version,
+        idempotency_key=body.idempotency_key,
+        delegated_from=body.delegated_from,
+    )
+    await session.flush()
+    payload = ApprovalResponse.model_validate(approval).model_dump(mode="json")
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/{jv_id}/approvals")
+async def get_jv_approvals_endpoint(
+    request: Request,
+    jv_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    approvals = await get_jv_approvals(session, jv_id=jv_id, tenant_id=user.tenant_id)
+    payload = [ApprovalResponse.model_validate(item).model_dump(mode="json") for item in approvals]
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/sla/metrics")
+async def sla_metrics_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+    entity_id: uuid.UUID | None = Query(default=None),
+    fiscal_year: int | None = Query(default=None),
+    fiscal_period: int | None = Query(default=None),
+) -> dict[str, Any]:
+    metrics = await get_sla_metrics(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        fiscal_year=fiscal_year,
+        fiscal_period=fiscal_period,
+    )
+    payload = SLAMetricsResponse(**metrics).model_dump(mode="json")
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -139,3 +140,61 @@ class JVResponse(BaseModel):
     lines: list[JVLineResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+class ApprovalRequest(BaseModel):
+    decision: str = Field(..., pattern="^(APPROVED|REJECTED)$")
+    decision_reason: str | None = None
+    expected_version: int = Field(..., ge=1)
+    idempotency_key: str | None = None
+    delegated_from: uuid.UUID | None = None
+
+    @field_validator("decision_reason", mode="after")
+    @classmethod
+    def reason_required_for_rejection(
+        cls,
+        value: str | None,
+        info: Any,
+    ) -> str | None:
+        _ = info
+        return value
+
+
+class ApprovalResponse(BaseModel):
+    id: uuid.UUID
+    jv_id: uuid.UUID
+    jv_version: int
+    acted_by: uuid.UUID
+    delegated_from: uuid.UUID | None
+    actor_role: str
+    decision: str
+    decision_reason: str | None
+    approval_level: int
+    amount_threshold: Decimal | None
+    acted_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SLATimerResponse(BaseModel):
+    id: uuid.UUID
+    jv_id: uuid.UUID
+    review_sla_hours: int
+    approval_sla_hours: int
+    review_breached: bool
+    approval_breached: bool
+    review_breached_at: datetime | None
+    approval_breached_at: datetime | None
+    nudge_24h_sent: bool
+    nudge_48h_sent: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SLAMetricsResponse(BaseModel):
+    total_jvs: int
+    approved: int
+    rejected: int
+    pending: int
+    avg_review_hours: float | None
+    avg_decision_hours: float | None

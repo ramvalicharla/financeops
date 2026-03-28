@@ -97,6 +97,8 @@ __all__ = [
     "AccountingJVAggregate",
     "AccountingJVLine",
     "AccountingJVStateEvent",
+    "AccountingJVApproval",
+    "ApprovalSLATimer",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -205,6 +207,8 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AccountingJVAggregate": ("financeops.db.models.accounting_jv", "AccountingJVAggregate"),
     "AccountingJVLine": ("financeops.db.models.accounting_jv", "AccountingJVLine"),
     "AccountingJVStateEvent": ("financeops.db.models.accounting_jv", "AccountingJVStateEvent"),
+    "AccountingJVApproval": ("financeops.db.models.accounting_approvals", "AccountingJVApproval"),
+    "ApprovalSLATimer": ("financeops.db.models.accounting_approvals", "ApprovalSLATimer"),
 }
 
 
