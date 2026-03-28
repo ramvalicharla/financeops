@@ -95,6 +95,13 @@ class ReconciliationLine(FinancialBase):
         Index("idx_recon_lines_line_key", "tenant_id", "session_id", "line_key"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("reconciliation_sessions.id", ondelete="CASCADE"),
@@ -136,6 +143,13 @@ class ReconciliationException(FinancialBase):
         Index("idx_recon_exception_by_session", "tenant_id", "session_id", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     session_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("reconciliation_sessions.id", ondelete="CASCADE"),

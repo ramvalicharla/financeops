@@ -21,6 +21,13 @@ class GlEntry(FinancialBase):
         Index("idx_gl_entries_account", "tenant_id", "account_code"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)  # 1-12
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -45,6 +52,13 @@ class TrialBalanceRow(FinancialBase):
         Index("idx_tb_rows_account", "tenant_id", "account_code"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -69,6 +83,13 @@ class ReconItem(FinancialBase):
         Index("idx_recon_items_status", "tenant_id", "status"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
     period_month: Mapped[int] = mapped_column(Integer, nullable=False)
     entity_name: Mapped[str] = mapped_column(String(255), nullable=False)

@@ -199,6 +199,13 @@ class ExternalRawSnapshot(FinancialBase):
         Index("idx_external_raw_snapshots_run", "tenant_id", "sync_run_id", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     sync_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("external_sync_runs.id", ondelete="RESTRICT"), nullable=False
     )
@@ -217,6 +224,13 @@ class ExternalNormalizedSnapshot(FinancialBase):
         Index("idx_external_normalized_snapshots_run", "tenant_id", "sync_run_id", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     sync_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("external_sync_runs.id", ondelete="RESTRICT"), nullable=False
     )
@@ -236,6 +250,13 @@ class ExternalMappingDefinition(FinancialBase):
         Index("idx_external_mapping_definitions_lookup", "tenant_id", "organisation_id", "mapping_status", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     mapping_code: Mapped[str] = mapped_column(String(128), nullable=False)
     mapping_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -252,6 +273,13 @@ class ExternalMappingVersion(FinancialBase):
         Index("idx_external_mapping_versions_lookup", "tenant_id", "mapping_definition_id", "version_no", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     mapping_definition_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("external_mapping_definitions.id", ondelete="RESTRICT"),
@@ -275,6 +303,13 @@ class ExternalSyncEvidenceLink(FinancialBase):
         Index("idx_external_sync_evidence_links_run", "tenant_id", "sync_run_id", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     sync_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("external_sync_runs.id", ondelete="RESTRICT"), nullable=False
     )
@@ -292,6 +327,13 @@ class ExternalSyncError(FinancialBase):
         Index("idx_external_sync_errors_run", "tenant_id", "sync_run_id", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     sync_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("external_sync_runs.id", ondelete="RESTRICT"), nullable=False
     )
@@ -310,6 +352,13 @@ class ExternalSyncPublishEvent(FinancialBase):
         Index("idx_external_sync_publish_events_lookup", "tenant_id", "sync_run_id", "created_at"),
     )
 
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("cp_entities.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+        comment="Entity scope for multi-entity tenants",
+    )
     sync_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("external_sync_runs.id", ondelete="RESTRICT"), nullable=False
     )
