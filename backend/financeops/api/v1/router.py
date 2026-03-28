@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends
 
 from financeops.api.v1 import (
+    accounting_layer,
     anomaly_pattern_engine,
     auth,
     auditor,
@@ -58,6 +59,12 @@ router.include_router(
 router.include_router(users.router, tags=["Users"], dependencies=[org_setup_guard])
 
 # Phase 1 - Core Finance Engine
+router.include_router(
+    accounting_layer.router,
+    prefix="/accounting",
+    tags=["Accounting Layer"],
+    dependencies=[finance_control_plane_guard, org_setup_guard],
+)
 router.include_router(
     mis_manager.router,
     prefix="/mis",

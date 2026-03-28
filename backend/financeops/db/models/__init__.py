@@ -94,6 +94,9 @@ __all__ = [
     "AuditorRequest",
     "MfaRecoveryCode",
     "PasswordResetToken",
+    "AccountingJVAggregate",
+    "AccountingJVLine",
+    "AccountingJVStateEvent",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -199,6 +202,9 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AuditorRequest": ("financeops.modules.auditor_portal.models", "AuditorRequest"),
     "MfaRecoveryCode": ("financeops.db.models.auth_tokens", "MfaRecoveryCode"),
     "PasswordResetToken": ("financeops.db.models.auth_tokens", "PasswordResetToken"),
+    "AccountingJVAggregate": ("financeops.db.models.accounting_jv", "AccountingJVAggregate"),
+    "AccountingJVLine": ("financeops.db.models.accounting_jv", "AccountingJVLine"),
+    "AccountingJVStateEvent": ("financeops.db.models.accounting_jv", "AccountingJVStateEvent"),
 }
 
 
