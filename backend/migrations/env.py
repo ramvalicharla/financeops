@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import asyncio
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from sqlalchemy import pool
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from financeops.db.base import Base
@@ -42,6 +44,7 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+_SSL_REQUIRED_MODES = {"require", "verify-ca", "verify-full"}
 
 
 def include_object(object_, name, type_, reflected, compare_to):
@@ -107,9 +110,25 @@ def include_object(object_, name, type_, reflected, compare_to):
     return True
 
 
-def get_url() -> str:
+def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
     from financeops.config import settings
-    return str(settings.DATABASE_URL)
+    raw_url = str(settings.DATABASE_URL)
+    url_obj = make_url(raw_url)
+    query = dict(url_obj.query)
+    sslmode = str(query.pop("sslmode", "")).lower()
+    host = (url_obj.host or "").lower()
+
+    connect_args: dict[str, Any] = {"timeout": 10}
+    if sslmode in _SSL_REQUIRED_MODES or host.endswith(".supabase.co"):
+        connect_args["ssl"] = True
+
+    normalized_url = str(url_obj.set(query=query))
+    return normalized_url, connect_args
+
+
+def get_url() -> str:
+    normalized_url, _ = get_url_and_connect_args()
+    return normalized_url
 
 
 def run_migrations_offline() -> None:
@@ -138,12 +157,14 @@ def do_run_migrations(connection):
 
 
 async def run_async_migrations() -> None:
+    url, connect_args = get_url_and_connect_args()
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = get_url()
+    configuration["sqlalchemy.url"] = url
     connectable = async_engine_from_config(
         configuration,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)

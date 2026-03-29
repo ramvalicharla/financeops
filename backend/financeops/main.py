@@ -18,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 from starlette_csrf import CSRFMiddleware
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import text
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -126,6 +127,16 @@ async def run_migrations_with_lock() -> None:
     await asyncio.to_thread(_run_migrations_with_lock_sync)
 
 
+async def _check_database_connectivity() -> tuple[bool, str | None]:
+    """Verify database connectivity before running migrations."""
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(text("SELECT 1"))
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
@@ -138,37 +149,53 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         release=settings.APP_RELEASE,
     )
 
-    try:
-        log.info("Running database migrations...")
-        await asyncio.wait_for(run_migrations_with_lock(), timeout=30)
-        log.info("Database migrations complete.")
-    except asyncio.TimeoutError:
-        message = "Database migrations timed out after 30 seconds; continuing startup."
-        startup_errors.append(message)
-        log.error(message)
-    except Exception as exc:
-        message = f"Database migrations failed: {exc}"
+    db_connected, db_connect_error = await _check_database_connectivity()
+    if not db_connected:
+        message = (
+            "Database connectivity check failed before migrations: "
+            f"{db_connect_error}"
+        )
         startup_errors.append(message)
         if settings.STARTUP_FAIL_FAST:
-            raise
-        log.exception(message)
+            raise RuntimeError(message)
+        log.error(message)
+    else:
+        try:
+            log.info("Running database migrations...")
+            await asyncio.wait_for(run_migrations_with_lock(), timeout=30)
+            log.info("Database migrations complete.")
+        except asyncio.TimeoutError:
+            message = "Database migrations timed out after 30 seconds; continuing startup."
+            startup_errors.append(message)
+            log.error(message)
+        except Exception as exc:
+            message = f"Database migrations failed: {exc}"
+            startup_errors.append(message)
+            if settings.STARTUP_FAIL_FAST:
+                raise
+            log.exception(message)
 
     # Fail fast when production payment dependencies are missing.
     from financeops.modules.payment.infrastructure.razorpay import RazorpayClient
 
     _ = RazorpayClient
 
-    try:
-        async with AsyncSessionLocal() as session:
-            await run_coa_seeds(session)
-            await session.commit()
-        log.info("CoA seed data initialized.")
-    except Exception as exc:
-        message = f"CoA seed initialization failed: {exc}"
+    if db_connected:
+        try:
+            async with AsyncSessionLocal() as session:
+                await run_coa_seeds(session)
+                await session.commit()
+            log.info("CoA seed data initialized.")
+        except Exception as exc:
+            message = f"CoA seed initialization failed: {exc}"
+            startup_errors.append(message)
+            if settings.STARTUP_FAIL_FAST:
+                raise
+            log.exception(message)
+    else:
+        message = "Skipping CoA seed initialization because database connectivity is unavailable."
         startup_errors.append(message)
-        if settings.STARTUP_FAIL_FAST:
-            raise
-        log.exception(message)
+        log.warning(message)
 
     # Initialize Redis pool
     try:

@@ -7,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -18,11 +19,38 @@ from financeops.db.rls import clear_tenant_context, set_tenant_context
 
 log = logging.getLogger(__name__)
 
+_SSL_REQUIRED_MODES = {"require", "verify-ca", "verify-full"}
+
+
+def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[str, Any]]:
+    """
+    Normalize SQLAlchemy URL for asyncpg and derive connect_args.
+
+    asyncpg does not support `sslmode=` in DSN query params.
+    Supabase requires TLS, so we map sslmode/host to connect_args['ssl'].
+    """
+    url_obj = make_url(raw_url)
+    query = dict(url_obj.query)
+    sslmode = str(query.pop("sslmode", "")).lower()
+    host = (url_obj.host or "").lower()
+
+    connect_args: dict[str, Any] = {"timeout": 10}
+    if sslmode in _SSL_REQUIRED_MODES or host.endswith(".supabase.co"):
+        connect_args["ssl"] = True
+
+    normalized_url = str(url_obj.set(query=query))
+    return normalized_url, connect_args
+
+
+_DATABASE_URL, _DATABASE_CONNECT_ARGS = _normalise_database_url_and_connect_args(
+    str(settings.DATABASE_URL)
+)
+
 engine = create_async_engine(
-    str(settings.DATABASE_URL),
+    _DATABASE_URL,
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    connect_args={"timeout": 10},
+    connect_args=_DATABASE_CONNECT_ARGS,
     pool_pre_ping=True,
     pool_recycle=3600,
     echo=settings.DEBUG,
