@@ -117,8 +117,14 @@ def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
     query = dict(url_obj.query)
     sslmode = str(query.pop("sslmode", "")).lower()
     host = (url_obj.host or "").lower()
+    if host.endswith(".supabase.co") and url_obj.port == 5432:
+        url_obj = url_obj.set(port=6543)
 
-    connect_args: dict[str, Any] = {"timeout": 10}
+    connect_args: dict[str, Any] = {
+        "timeout": 10,
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    }
     if sslmode in _SSL_REQUIRED_MODES or host.endswith(".supabase.co"):
         connect_args["ssl"] = True
 

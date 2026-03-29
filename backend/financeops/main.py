@@ -127,14 +127,14 @@ async def run_migrations_with_lock() -> None:
     await asyncio.to_thread(_run_migrations_with_lock_sync)
 
 
-async def _check_database_connectivity() -> tuple[bool, str | None]:
+async def _check_database_connectivity() -> None:
     """Verify database connectivity before running migrations."""
     try:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
-        return True, None
     except Exception as exc:
-        return False, str(exc)
+        log.error(f"DB connection failed: {exc}")
+        raise
 
 
 @asynccontextmanager
@@ -149,11 +149,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         release=settings.APP_RELEASE,
     )
 
-    db_connected, db_connect_error = await _check_database_connectivity()
-    if not db_connected:
+    db_connected = False
+    try:
+        await _check_database_connectivity()
+        db_connected = True
+    except Exception as exc:
         message = (
             "Database connectivity check failed before migrations: "
-            f"{db_connect_error}"
+            f"{exc}"
         )
         startup_errors.append(message)
         if settings.STARTUP_FAIL_FAST:

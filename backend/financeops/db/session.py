@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from financeops.config import settings
 from financeops.db.rls import clear_tenant_context, set_tenant_context
@@ -33,8 +34,14 @@ def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[st
     query = dict(url_obj.query)
     sslmode = str(query.pop("sslmode", "")).lower()
     host = (url_obj.host or "").lower()
+    if host.endswith(".supabase.co") and url_obj.port == 5432:
+        url_obj = url_obj.set(port=6543)
 
-    connect_args: dict[str, Any] = {"timeout": 10}
+    connect_args: dict[str, Any] = {
+        "timeout": 10,
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+    }
     if sslmode in _SSL_REQUIRED_MODES or host.endswith(".supabase.co"):
         connect_args["ssl"] = True
 
@@ -48,11 +55,8 @@ _DATABASE_URL, _DATABASE_CONNECT_ARGS = _normalise_database_url_and_connect_args
 
 engine = create_async_engine(
     _DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    poolclass=NullPool,
     connect_args=_DATABASE_CONNECT_ARGS,
-    pool_pre_ping=True,
-    pool_recycle=3600,
     echo=settings.DEBUG,
 )
 
