@@ -20,7 +20,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev
 RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
 print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
@@ -30,7 +30,7 @@ m=_u.find_spec('weasyprint'); \
 sys.exit(0 if m is None else 42)" \
     || python -c "import weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf(); print('WeasyPrint OK')"
 
-COPY . .
+COPY backend/ ./
 
 RUN groupadd -g 1000 financeops \
     && useradd -g financeops -u 1000 -d /app -s /sbin/nologin financeops \
