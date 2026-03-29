@@ -19,6 +19,7 @@ from starlette_csrf import CSRFMiddleware
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -118,6 +119,14 @@ def _run_migrations_with_lock_sync() -> None:
         ) from exc
 
 
+def _masked_database_url(raw_url: str) -> str:
+    """Render DATABASE_URL with password masked for safe logging."""
+    try:
+        return make_url(raw_url).render_as_string(hide_password=True)
+    except Exception:
+        return "<invalid DATABASE_URL>"
+
+
 async def run_migrations_with_lock() -> None:
     """
     Async wrapper for startup usage inside FastAPI lifespan.
@@ -141,6 +150,7 @@ async def _check_database_connectivity() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
     log.info("FinanceOps starting up (env=%s)", settings.APP_ENV)
+    log.info("DATABASE_URL in use: %s", _masked_database_url(str(settings.DATABASE_URL)))
     startup_errors: list[str] = []
     app.state.startup_errors = startup_errors
     configure_sentry(

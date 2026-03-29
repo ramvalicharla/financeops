@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from logging.config import fileConfig
 from typing import Any
+from uuid import uuid4
 
 from alembic import context
 from sqlalchemy import pool
@@ -124,11 +125,12 @@ def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
         "timeout": 10,
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
     }
     if sslmode in _SSL_REQUIRED_MODES or host.endswith(".supabase.co"):
         connect_args["ssl"] = True
 
-    normalized_url = str(url_obj.set(query=query))
+    normalized_url = url_obj.set(query=query).render_as_string(hide_password=False)
     return normalized_url, connect_args
 
 
