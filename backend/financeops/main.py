@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import re
 import logging
 import asyncio
@@ -9,15 +8,12 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-import filelock
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from starlette_csrf import CSRFMiddleware
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
@@ -64,7 +60,6 @@ from financeops.modules.statutory.api.routes import router as statutory_router
 from financeops.modules.multi_gaap.api.routes import router as gaap_router
 from financeops.modules.auditor_portal.api.routes import router as audit_router
 from financeops.modules.coa.api.routes import router as coa_router
-from financeops.modules.coa.seeds.runner import run_coa_seeds
 from financeops.modules.org_setup.api.routes import router as org_setup_router
 from financeops.modules.fixed_assets.api.routes import router as fa_router
 from financeops.modules.prepaid_expenses.api.routes import router as prepaid_router
@@ -87,7 +82,7 @@ from financeops.shared_kernel.response import (
     RequestIDMiddleware,
 )
 from financeops.shared_kernel.idempotency import IdempotencyMiddleware
-from financeops.db.session import AsyncSessionLocal, engine
+from financeops.db.session import engine
 
 log = logging.getLogger(__name__)
 configure_logging(log_level=settings.LOG_LEVEL)
@@ -97,28 +92,6 @@ try:
 except PackageNotFoundError:
     APP_VERSION = settings.APP_RELEASE
 
-def _run_migrations_with_lock_sync() -> None:
-    """
-    Run Alembic migrations at startup with an exclusive file lock.
-    Only one worker executes migrations while others wait.
-    """
-    lock_path = os.environ.get("MIGRATION_LOCK_PATH", "/tmp/financeops_migration.lock")
-    alembic_cfg = Config(os.path.join(os.path.dirname(__file__), "..", "alembic.ini"))
-    database_url = os.environ.get("DATABASE_URL", "")
-    is_test_database = "financeops_test" in database_url
-    try:
-        with filelock.FileLock(lock_path, timeout=60):
-            command.upgrade(alembic_cfg, "head")
-            # Keep legacy phase integration suites stable in isolated test DBs.
-            if is_test_database:
-                command.stamp(alembic_cfg, "0031_anomaly_ui_layer")
-    except filelock.Timeout as exc:
-        raise RuntimeError(
-            "Migration lock timeout after 60 seconds. "
-            "Check for a stuck migration process or a failed migration."
-        ) from exc
-
-
 def _masked_database_url(raw_url: str) -> str:
     """Render DATABASE_URL with password masked for safe logging."""
     try:
@@ -127,23 +100,39 @@ def _masked_database_url(raw_url: str) -> str:
         return "<invalid DATABASE_URL>"
 
 
-async def run_migrations_with_lock() -> None:
-    """
-    Async wrapper for startup usage inside FastAPI lifespan.
-    Runs blocking Alembic migration flow in a worker thread to avoid
-    nested event-loop issues from Alembic's asyncio.run usage.
-    """
-    await asyncio.to_thread(_run_migrations_with_lock_sync)
+def _exception_text(exc: Exception) -> str:
+    """Return a stable, non-empty exception text for logs."""
+    text_value = str(exc).strip()
+    return text_value or exc.__class__.__name__
 
 
 async def _check_database_connectivity() -> None:
-    """Verify database connectivity before running migrations."""
-    try:
+    """Verify database connectivity during application startup."""
+    async def _ping_database() -> None:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
+
+    try:
+        await asyncio.wait_for(_ping_database(), timeout=2.0)
     except Exception as exc:
-        log.error(f"DB connection failed: {exc}")
+        log.error("DB connection failed: %s", _exception_text(exc))
         raise
+
+
+async def _initialize_redis_pool() -> None:
+    """Initialize the shared Redis connection pool during startup."""
+    try:
+        import redis.asyncio as aioredis
+        from financeops.api import deps as api_deps
+
+        redis_client = aioredis.from_url(
+            str(settings.REDIS_URL), encoding="utf-8", decode_responses=True
+        )
+        await asyncio.wait_for(redis_client.ping(), timeout=2.0)
+        api_deps._redis_pool = redis_client
+        log.info("Redis connection established")
+    except Exception as exc:
+        log.warning("Redis connection failed: %s", _exception_text(exc))
 
 
 @asynccontextmanager
@@ -159,92 +148,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         release=settings.APP_RELEASE,
     )
 
-    db_connected = False
+    db_check_task = asyncio.create_task(_check_database_connectivity())
+    redis_init_task = asyncio.create_task(_initialize_redis_pool())
+
+    db_startup_error: str | None = None
     try:
-        await _check_database_connectivity()
-        db_connected = True
+        await db_check_task
     except Exception as exc:
+        error_text = _exception_text(exc)
         message = (
-            "Database connectivity check failed before migrations: "
-            f"{exc}"
+            "Database connectivity check failed during startup: "
+            f"{error_text}"
         )
         startup_errors.append(message)
-        if settings.STARTUP_FAIL_FAST:
-            raise RuntimeError(message)
+        db_startup_error = message
         log.error(message)
     else:
-        try:
-            log.info("Running database migrations...")
-            await asyncio.wait_for(run_migrations_with_lock(), timeout=30)
-            log.info("Database migrations complete.")
-        except asyncio.TimeoutError:
-            message = "Database migrations timed out after 30 seconds; continuing startup."
-            startup_errors.append(message)
-            log.error(message)
-        except Exception as exc:
-            message = f"Database migrations failed: {exc}"
-            startup_errors.append(message)
-            if settings.STARTUP_FAIL_FAST:
-                raise
-            log.exception(message)
+        log.info("Database connectivity check passed.")
 
-    # Fail fast when production payment dependencies are missing.
-    from financeops.modules.payment.infrastructure.razorpay import RazorpayClient
+    await redis_init_task
 
-    _ = RazorpayClient
-
-    if db_connected:
-        try:
-            async with AsyncSessionLocal() as session:
-                await run_coa_seeds(session)
-                await session.commit()
-            log.info("CoA seed data initialized.")
-        except Exception as exc:
-            message = f"CoA seed initialization failed: {exc}"
-            startup_errors.append(message)
-            if settings.STARTUP_FAIL_FAST:
-                raise
-            log.exception(message)
-    else:
-        message = "Skipping CoA seed initialization because database connectivity is unavailable."
-        startup_errors.append(message)
-        log.warning(message)
-
-    # Initialize Redis pool
-    try:
-        import redis.asyncio as aioredis
-        from financeops.api import deps as api_deps
-        redis_client = aioredis.from_url(
-            str(settings.REDIS_URL), encoding="utf-8", decode_responses=True
-        )
-        await redis_client.ping()
-        api_deps._redis_pool = redis_client
-        log.info("Redis connection established")
-    except Exception as exc:
-        log.warning("Redis connection failed: %s", exc)
-
-    temporal_worker_task: asyncio.Task | None = None
-    if settings.TEMPORAL_WORKER_IN_PROCESS:
-        try:
-            from financeops.workers.temporal_worker import run_worker
-
-            temporal_worker_task = asyncio.create_task(run_worker())
-            log.info("Temporal worker task started in-process")
-        except Exception as exc:
-            log.warning("Temporal worker start failed: %s", exc)
+    if db_startup_error and settings.STARTUP_FAIL_FAST:
+        raise RuntimeError(db_startup_error)
 
     yield
 
     # Shutdown
     log.info("FinanceOps shutting down")
-    if temporal_worker_task is not None:
-        temporal_worker_task.cancel()
-        try:
-            await temporal_worker_task
-        except asyncio.CancelledError:
-            pass
-        except Exception as exc:
-            log.warning("Temporal worker task shutdown failed: %s", exc)
     try:
         from financeops.api import deps as api_deps
         redis_pool = api_deps._redis_pool
