@@ -1,5 +1,27 @@
 ﻿# FinanceOps Deployment Runbook
 
+## Running Migrations (Railway Only)
+
+Database migrations are **not** executed by FastAPI startup.
+
+Run migrations only inside the deployment environment (Railway) where
+production networking and secrets are available.
+
+Do **not** run production migrations from a developer local machine.
+Local DNS/network access to Supabase or private infrastructure can fail and
+is not part of the production migration path.
+
+### Railway migration command
+```bash
+cd backend
+alembic upgrade head
+```
+
+### Railway helper script
+```bash
+bash scripts/run_migrations.sh
+```
+
 ## Pre-deployment checklist
 
 - [ ] All tests passing locally (pytest tests/ -x -q)
@@ -20,8 +42,8 @@ git checkout v1.x.x  # specific version tag
 
 ### 2. Run database migrations
 ```bash
-docker compose -f docker-compose.prod.yml exec backend \
-  alembic upgrade head
+cd backend
+alembic upgrade head
 ```
 
 ### 3. Deploy services
