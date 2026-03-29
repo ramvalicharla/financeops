@@ -22,7 +22,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev
-RUN uv pip install setuptools --python /opt/venv/bin/python
 RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
 print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
     && python -c "import importlib.util as _u; \
