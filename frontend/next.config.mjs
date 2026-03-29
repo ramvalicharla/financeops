@@ -23,6 +23,15 @@ const nextConfig = {
   },
 };
 
-export default withSentryConfig(nextConfig, {
+const sentryOptions = {
   silent: true,
-});
+  unstable_ignoreErrors: true,
+  disableClientWebpackPlugin: false,
+  disableServerWebpackPlugin: false,
+};
+
+const hasSentryDsn = Boolean(process.env.SENTRY_DSN?.trim());
+
+export default hasSentryDsn
+  ? withSentryConfig(nextConfig, sentryOptions)
+  : nextConfig;
