@@ -66,6 +66,7 @@ dependencies = [
     "pytz==2024.2",
     "babel==2.16.0",
     "filelock==3.19.1",
+    "setuptools==82.0.0",
 ]
 
 [project.optional-dependencies]
