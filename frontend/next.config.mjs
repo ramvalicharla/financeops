@@ -1,12 +1,7 @@
 import { withSentryConfig } from "@sentry/nextjs";
 
 /** @type {import('next').NextConfig} */
-const isVercel = process.env.VERCEL === "1";
-
 const nextConfig = {
-  // Keep standalone output for Docker/self-hosted builds, but let Vercel
-  // use its native Next.js packaging pipeline.
-  ...(isVercel ? {} : { output: "standalone" }),
   async headers() {
     return [
       {
