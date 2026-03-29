@@ -1,0 +1,16 @@
+# financeops-api service manifest (Railway reads one manifest per service).
+# For worker/beat, point each Railway service to:
+# - /railway.worker.toml
+# - /railway.beat.toml
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "backend/Dockerfile"
+watchPatterns = ["backend/**"]
+
+[deploy]
+startCommand = "uvicorn financeops.main:app --host 0.0.0.0 --port $PORT"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

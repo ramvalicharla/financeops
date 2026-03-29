@@ -16,34 +16,24 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-# Install venv to /opt/venv so it survives the host-dir volume mount on /app
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
-RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
-print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
-    && python -c "import importlib.util as _u; \
-import sys; \
-m=_u.find_spec('weasyprint'); \
-sys.exit(0 if m is None else 42)" \
-    || python -c "import weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf(); print('WeasyPrint OK')"
 
 COPY . .
 
 RUN groupadd -g 1000 financeops \
     && useradd -g financeops -u 1000 -d /app -s /sbin/nologin financeops \
-    && mkdir -p /app/.cache \
-    && chown -R financeops:financeops /app
+    && mkdir -p /app/.cache /tmp \
+    && chown -R financeops:financeops /app /tmp
 
 ENV HOME=/app
-
-USER financeops
 ENV CLAMAV_REQUIRED=True
 
-EXPOSE 8000
+USER financeops
 
-CMD ["sh", "-c", "uvicorn financeops.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["celery", "-A", "financeops.tasks.celery_app", "beat", "--loglevel=info", "--schedule=/tmp/celerybeat-schedule"]
 
 FROM runtime AS production
