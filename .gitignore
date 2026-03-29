@@ -96,3 +96,10 @@ volumes/
 .claude
 *.env.prod
 finos_backup_*/
+
+# Temp / scratch files
+tmp_*.txt
+/*.txt
+_audit_*.md
+_audit_*.tsv
+tmp_*.md

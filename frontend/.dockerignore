@@ -1,0 +1,15 @@
+node_modules
+.next
+.env
+.env.*
+*.env
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+tests/
+*.test.ts
+*.spec.ts
+*.test.tsx
+*.spec.tsx

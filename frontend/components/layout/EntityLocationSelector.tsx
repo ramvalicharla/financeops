@@ -1,0 +1,108 @@
+"use client"
+
+import { useEffect, useMemo } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { listLocations } from "@/lib/api/locations"
+import { useLocationStore } from "@/lib/store/location"
+import { useTenantStore } from "@/lib/store/tenant"
+
+export function EntityLocationSelector() {
+  const entityRoles = useTenantStore((state) => state.entity_roles)
+  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
+  const activeLocationId = useLocationStore((state) => state.active_location_id)
+  const setActiveLocation = useLocationStore((state) => state.setActiveLocation)
+
+  const locationsQuery = useQuery({
+    queryKey: ["entity-locations", activeEntityId],
+    queryFn: () =>
+      listLocations({
+        entity_id: activeEntityId ?? "",
+        is_active: true,
+        skip: 0,
+        limit: 200,
+      }),
+    enabled: Boolean(activeEntityId),
+  })
+
+  const locationItems = locationsQuery.data?.items ?? []
+  const entityCount = entityRoles.length
+
+  useEffect(() => {
+    if (!activeEntityId) {
+      setActiveLocation(null)
+      return
+    }
+    if (!locationItems.length) {
+      setActiveLocation(null)
+      return
+    }
+    const match = locationItems.find((item) => item.id === activeLocationId)
+    if (match) {
+      return
+    }
+    if (locationItems.length === 1) {
+      setActiveLocation(locationItems[0]?.id ?? null)
+      return
+    }
+    const primary = locationItems.find((item) => item.is_primary)
+    setActiveLocation(primary?.id ?? null)
+  }, [activeEntityId, activeLocationId, locationItems, setActiveLocation])
+
+  const shouldHide = useMemo(() => {
+    if (entityCount > 1) {
+      return false
+    }
+    if (entityCount === 1 && locationItems.length <= 1) {
+      return true
+    }
+    return false
+  }, [entityCount, locationItems.length])
+
+  if (!entityCount) {
+    return null
+  }
+  if (shouldHide) {
+    return null
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {entityCount > 1 ? (
+        <select
+          aria-label="Select active entity"
+          className="max-w-[220px] rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+          value={activeEntityId ?? ""}
+          onChange={(event) => {
+            const nextEntityId = event.target.value || null
+            setActiveEntity(nextEntityId)
+            setActiveLocation(null)
+          }}
+        >
+          <option value="">Select entity</option>
+          {entityRoles.map((role) => (
+            <option key={role.entity_id} value={role.entity_id}>
+              {role.entity_name}
+            </option>
+          ))}
+        </select>
+      ) : null}
+
+      {(entityCount > 1 || locationItems.length > 1) && activeEntityId ? (
+        <select
+          aria-label="Select active location"
+          className="max-w-[220px] rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+          value={activeLocationId ?? ""}
+          onChange={(event) => setActiveLocation(event.target.value || null)}
+        >
+          <option value="">All locations</option>
+          {locationItems.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.location_name}
+            </option>
+          ))}
+        </select>
+      ) : null}
+    </div>
+  )
+}

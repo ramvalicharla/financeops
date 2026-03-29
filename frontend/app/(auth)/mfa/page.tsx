@@ -1,0 +1,136 @@
+"use client"
+
+import Link from "next/link"
+import { Suspense, useEffect, useState } from "react"
+import { z } from "zod"
+import { useForm } from "react-hook-form"
+import { getSession, signIn } from "next-auth/react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
+import { useTenantStore } from "@/lib/store/tenant"
+
+const mfaSchema = z.object({
+  code: z
+    .string()
+    .length(6, "Enter the 6-digit verification code")
+    .regex(/^\d{6}$/, "Code must contain only digits"),
+})
+
+type MFAVerifyForm = z.infer<typeof mfaSchema>
+
+export default function MFAPage() {
+  return (
+    <Suspense fallback={null}>
+      <MFAPageContent />
+    </Suspense>
+  )
+}
+
+function MFAPageContent() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const setTenant = useTenantStore((state) => state.setTenant)
+  const [formError, setFormError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const challengeToken = searchParams?.get("challenge") ?? null
+
+  const { handleSubmit, setValue, watch } = useForm<MFAVerifyForm>({
+    defaultValues: { code: "" },
+  })
+
+  const code = watch("code")
+
+  const verify = handleSubmit(async (values) => {
+    setFormError(null)
+    const parsed = mfaSchema.safeParse(values)
+    if (!parsed.success) {
+      setFormError(parsed.error.issues[0]?.message ?? "Invalid verification code")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const signInResult = await signIn("credentials", {
+        redirect: false,
+        totp_code: parsed.data.code,
+        ...(challengeToken ? { mfa_challenge_token: challengeToken } : {}),
+      })
+
+      if (signInResult?.error) {
+        setFormError("Invalid verification code")
+        return
+      }
+
+      const session = await getSession()
+      const user = session?.user
+      if (user?.tenant_id && user.tenant_slug) {
+        setTenant({
+          tenant_id: user.tenant_id,
+          tenant_slug: user.tenant_slug,
+          org_setup_complete: user.org_setup_complete,
+          org_setup_step: user.org_setup_step,
+          entity_roles: user.entity_roles,
+          active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
+        })
+      }
+      router.push("/sync")
+    } finally {
+      setIsSubmitting(false)
+    }
+  })
+
+  useEffect(() => {
+    if (code.length === 6 && !isSubmitting) {
+      const timer = window.setTimeout(() => {
+        void verify()
+      }, 400)
+      return () => window.clearTimeout(timer)
+    }
+    return undefined
+  }, [code, isSubmitting, verify])
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+      <div className="mb-6 space-y-1">
+        <h2 className="text-xl font-semibold text-foreground">
+          Two-factor authentication
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Enter the 6-digit code from your authenticator app.
+        </p>
+      </div>
+
+      <form className="space-y-5" onSubmit={verify}>
+        <div className="space-y-2">
+          <InputOTP
+            maxLength={6}
+            value={code}
+            onChange={(value) => setValue("code", value)}
+          >
+            <InputOTPGroup>
+              <InputOTPSlot index={0} />
+              <InputOTPSlot index={1} />
+              <InputOTPSlot index={2} />
+              <InputOTPSlot index={3} />
+              <InputOTPSlot index={4} />
+              <InputOTPSlot index={5} />
+            </InputOTPGroup>
+          </InputOTP>
+        </div>
+
+        {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
+
+        <Button className="h-10 w-full" type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Verifying..." : "Verify"}
+        </Button>
+      </form>
+
+      <div className="mt-4 text-center text-sm">
+        <Link className="text-muted-foreground underline" href="/login">
+          Back to login
+        </Link>
+      </div>
+    </div>
+  )
+}

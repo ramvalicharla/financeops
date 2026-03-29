@@ -1,0 +1,758 @@
+[
+  {
+    "page": "app/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 5
+  },
+  {
+    "page": "app/(dashboard)/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 33
+  },
+  {
+    "page": "app/(dashboard)/advisory/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 116
+  },
+  {
+    "page": "app/(dashboard)/anomalies/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 371
+  },
+  {
+    "page": "app/(dashboard)/audit/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 16
+  },
+  {
+    "page": "app/(dashboard)/billing/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 151
+  },
+  {
+    "page": "app/(dashboard)/board-pack/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 824
+  },
+  {
+    "page": "app/(dashboard)/budget/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 121
+  },
+  {
+    "page": "app/(dashboard)/close/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 8
+  },
+  {
+    "page": "app/(dashboard)/consolidation/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 98
+  },
+  {
+    "page": "app/(dashboard)/covenants/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 20
+  },
+  {
+    "page": "app/(dashboard)/expenses/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": true,
+    "client": true,
+    "lines": 98
+  },
+  {
+    "page": "app/(dashboard)/forecast/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 87
+  },
+  {
+    "page": "app/(dashboard)/gaap/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 26
+  },
+  {
+    "page": "app/(dashboard)/marketplace/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 150
+  },
+  {
+    "page": "app/(dashboard)/mis/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 225
+  },
+  {
+    "page": "app/(dashboard)/notifications/page.tsx",
+    "loading": true,
+    "error": false,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 113
+  },
+  {
+    "page": "app/(dashboard)/onboarding/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 235
+  },
+  {
+    "page": "app/(dashboard)/partner/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 131
+  },
+  {
+    "page": "app/(dashboard)/reports/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 1035
+  },
+  {
+    "page": "app/(dashboard)/scenarios/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 90
+  },
+  {
+    "page": "app/(dashboard)/scheduled-delivery/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 702
+  },
+  {
+    "page": "app/(dashboard)/signoff/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 12
+  },
+  {
+    "page": "app/(dashboard)/statutory/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 12
+  },
+  {
+    "page": "app/(dashboard)/sync/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 413
+  },
+  {
+    "page": "app/(dashboard)/tax/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 8
+  },
+  {
+    "page": "app/(dashboard)/transfer-pricing/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 8
+  },
+  {
+    "page": "app/(dashboard)/treasury/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 16
+  },
+  {
+    "page": "app/(dashboard)/trust/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 70
+  },
+  {
+    "page": "app/(dashboard)/working-capital/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 126
+  },
+  {
+    "page": "app/(dashboard)/trust/gdpr/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 60
+  },
+  {
+    "page": "app/(dashboard)/trust/soc2/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 87
+  },
+  {
+    "page": "app/(dashboard)/trust/gdpr/breach/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 81
+  },
+  {
+    "page": "app/(dashboard)/trust/gdpr/consent/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 48
+  },
+  {
+    "page": "app/(dashboard)/treasury/[id]/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 29
+  },
+  {
+    "page": "app/(dashboard)/transfer-pricing/[id]/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 12
+  },
+  {
+    "page": "app/(dashboard)/tax/[id]/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 25
+  },
+  {
+    "page": "app/(dashboard)/sync/connect/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 15
+  },
+  {
+    "page": "app/(dashboard)/settings/privacy/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 33
+  },
+  {
+    "page": "app/(dashboard)/settings/white-label/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 68
+  },
+  {
+    "page": "app/(dashboard)/settings/privacy/consent/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 138
+  },
+  {
+    "page": "app/(dashboard)/settings/privacy/my-data/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 55
+  },
+  {
+    "page": "app/(dashboard)/scheduled-delivery/logs/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 206
+  },
+  {
+    "page": "app/(dashboard)/scenarios/[id]/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 135
+  },
+  {
+    "page": "app/(dashboard)/reports/[id]/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 292
+  },
+  {
+    "page": "app/(dashboard)/reconciliation/gl-tb/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 317
+  },
+  {
+    "page": "app/(dashboard)/reconciliation/payroll/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 291
+  },
+  {
+    "page": "app/(dashboard)/partner/earnings/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 61
+  },
+  {
+    "page": "app/(dashboard)/partner/referrals/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 68
+  },
+  {
+    "page": "app/(dashboard)/marketplace/contribute/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 218
+  },
+  {
+    "page": "app/(dashboard)/marketplace/my-templates/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 128
+  },
+  {
+    "page": "app/(dashboard)/marketplace/[id]/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 158
+  },
+  {
+    "page": "app/(dashboard)/forecast/[id]/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 146
+  },
+  {
+    "page": "app/(dashboard)/expenses/submit/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 44
+  },
+  {
+    "page": "app/(dashboard)/expenses/[id]/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 105
+  },
+  {
+    "page": "app/(dashboard)/close/[period]/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 13
+  },
+  {
+    "page": "app/(dashboard)/budget/[year]/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 168
+  },
+  {
+    "page": "app/(dashboard)/budget/[year]/edit/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 170
+  },
+  {
+    "page": "app/(dashboard)/board-pack/[id]/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 387
+  },
+  {
+    "page": "app/(dashboard)/audit/[engagement_id]/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 17
+  },
+  {
+    "page": "app/(dashboard)/anomalies/thresholds/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 246
+  },
+  {
+    "page": "app/(dashboard)/anomalies/[id]/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 330
+  },
+  {
+    "page": "app/(dashboard)/advisory/fdd/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 97
+  },
+  {
+    "page": "app/(dashboard)/advisory/ma/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 101
+  },
+  {
+    "page": "app/(dashboard)/advisory/ppa/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 91
+  },
+  {
+    "page": "app/(dashboard)/advisory/ppa/[id]/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 169
+  },
+  {
+    "page": "app/(dashboard)/advisory/ma/[id]/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 75
+  },
+  {
+    "page": "app/(dashboard)/advisory/ma/[id]/documents/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 57
+  },
+  {
+    "page": "app/(dashboard)/advisory/ma/[id]/valuation/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 56
+  },
+  {
+    "page": "app/(dashboard)/advisory/fdd/[id]/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 124
+  },
+  {
+    "page": "app/(dashboard)/advisory/fdd/[id]/report/page.tsx",
+    "loading": true,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 99
+  },
+  {
+    "page": "app/(auth)/login/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 249
+  },
+  {
+    "page": "app/(auth)/mfa/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 134
+  },
+  {
+    "page": "app/(admin)/admin/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 103
+  },
+  {
+    "page": "app/(admin)/admin/ai-quality/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 110
+  },
+  {
+    "page": "app/(admin)/admin/backup/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 71
+  },
+  {
+    "page": "app/(admin)/admin/compliance/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": false,
+    "lines": 19
+  },
+  {
+    "page": "app/(admin)/admin/marketplace/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 161
+  },
+  {
+    "page": "app/(admin)/admin/partners/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 108
+  },
+  {
+    "page": "app/(admin)/admin/services/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 104
+  },
+  {
+    "page": "app/(admin)/admin/white-label/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 112
+  },
+  {
+    "page": "app/(admin)/admin/white-label/[tenant_id]/page.tsx",
+    "loading": false,
+    "error": true,
+    "empty": true,
+    "aria": false,
+    "client": true,
+    "lines": 64
+  },
+  {
+    "page": "app/(admin)/admin/compliance/iso27001/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 128
+  },
+  {
+    "page": "app/(admin)/admin/compliance/soc2/page.tsx",
+    "loading": false,
+    "error": false,
+    "empty": false,
+    "aria": false,
+    "client": true,
+    "lines": 128
+  }
+]
