@@ -140,8 +140,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         log.info("Running database migrations...")
-        await run_migrations_with_lock()
+        await asyncio.wait_for(run_migrations_with_lock(), timeout=30)
         log.info("Database migrations complete.")
+    except asyncio.TimeoutError:
+        message = "Database migrations timed out after 30 seconds; continuing startup."
+        startup_errors.append(message)
+        log.error(message)
     except Exception as exc:
         message = f"Database migrations failed: {exc}"
         startup_errors.append(message)

@@ -22,6 +22,7 @@ engine = create_async_engine(
     str(settings.DATABASE_URL),
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    connect_args={"timeout": 10},
     pool_pre_ping=True,
     pool_recycle=3600,
     echo=settings.DEBUG,
