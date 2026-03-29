@@ -96,6 +96,7 @@ volumes/
 .claude
 *.env.prod
 finos_backup_*/
+workbench/
 
 # Temp / scratch files
 tmp_*.txt
