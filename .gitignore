@@ -95,6 +95,7 @@ dist/
 volumes/
 .claude
 *.env.prod
+railway.env.production
 finos_backup_*/
 workbench/
 
