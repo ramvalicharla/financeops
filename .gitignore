@@ -90,3 +90,9 @@ dist/
 # Build artifacts
 *.tar.gz
 *.zip
+
+# Project-local runtime data
+volumes/
+.claude
+*.env.prod
+finos_backup_*/

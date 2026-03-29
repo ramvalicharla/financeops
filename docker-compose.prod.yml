@@ -1,37 +1,28 @@
-﻿version: "3.9"
-
-services:
+﻿services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
       target: production
-    # ================================================
-    # REQUIRED: Replace all CHANGE_ME values with real
-    # credentials before deploying to production.
-    # Never commit real values to version control.
-    # ================================================
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - SECRET_KEY=CHANGE_ME_APP_SECRET_KEY  # FastAPI/CSRF secret; set a strong random value.
-      - JWT_SECRET=CHANGE_ME_JWT_SIGNING_SECRET_MIN_32_CHARS  # JWT signing secret (32+ chars).
-      - FIELD_ENCRYPTION_KEY=CHANGE_ME_BASE64_AES256_KEY  # URL-safe base64 key decoding to 32 bytes.
-      - FRONTEND_URL=CHANGE_ME_FRONTEND_URL  # Public frontend URL, e.g. https://app.financeops.com.
-      - CORS_ALLOWED_ORIGINS=CHANGE_ME_CORS_ORIGINS  # Comma-separated origins, e.g. https://app.financeops.com.
-      - APP_ENV=production  # Runtime environment selector.
-      - APP_ENVIRONMENT=production  # Environment label for telemetry.
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_ENVIRONMENT=${APP_ENVIRONMENT:-production}
       - SMTP_HOST=${SMTP_HOST}
       - SMTP_PORT=${SMTP_PORT}
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ENVIRONMENT=production
-      - DEBUG=false
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-false}
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -54,13 +45,15 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - FIELD_ENCRYPTION_KEY=CHANGE_ME_BASE64_AES256_KEY
-      - APP_ENV=production
-      - APP_ENVIRONMENT=production
-      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_ENVIRONMENT=${APP_ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
     depends_on:
-      - redis
-      - db
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   celery_beat:
@@ -74,11 +67,15 @@ services:
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
-      - APP_ENV=production
-      - APP_ENVIRONMENT=production
-      - ENVIRONMENT=production
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
+      - APP_ENV=${APP_ENV:-production}
+      - APP_ENVIRONMENT=${APP_ENVIRONMENT:-production}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -103,21 +100,6 @@ services:
       timeout: 10s
       retries: 3
 
-  db:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     command: >
@@ -136,5 +118,4 @@ services:
       retries: 3
 
 volumes:
-  postgres_data:
   redis_data:
