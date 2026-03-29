@@ -23,18 +23,20 @@ class Settings(BaseSettings):
     APP_RELEASE: str = "1.1.0"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
-    SECRET_KEY: str  # required - no default
+    SECRET_KEY: str = "dev-secret-key-change-me-before-production-use-123456"
 
     # Database
-    DATABASE_URL: PostgresDsn  # required
+    DATABASE_URL: PostgresDsn = Field(
+        default="postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
+    )
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
 
     # Redis
-    REDIS_URL: RedisDsn  # required
+    REDIS_URL: RedisDsn = Field(default="redis://localhost:6379/0")
 
     # JWT
-    JWT_SECRET: str  # required
+    JWT_SECRET: str = "dev-jwt-secret-change-me-before-production-use-123456"
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -85,7 +87,8 @@ class Settings(BaseSettings):
     CURRENT_TERMS_VERSION: str = "2026-03-01"
 
     # Encryption
-    FIELD_ENCRYPTION_KEY: str  # required - 32-byte base64 AES key
+    FIELD_ENCRYPTION_KEY: str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    STARTUP_FAIL_FAST: bool = False
 
     # Platform
     PLATFORM_TIMEZONE: str = "UTC"

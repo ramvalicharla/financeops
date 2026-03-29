@@ -2,6 +2,9 @@
 # For worker/beat, point each Railway service to:
 # - /railway.worker.toml
 # - /railway.beat.toml
+# Note: Railway config-as-code currently supports build/deploy settings only.
+# Environment variables should be set in the Railway Variables UI or imported
+# from /railway.env.production.
 
 [build]
 builder = "DOCKERFILE"

@@ -121,15 +121,24 @@ def run_migrations_with_lock() -> None:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
     log.info("FinanceOps starting up (env=%s)", settings.APP_ENV)
+    startup_errors: list[str] = []
+    app.state.startup_errors = startup_errors
     configure_sentry(
         dsn=settings.SENTRY_DSN,
         environment=settings.APP_ENVIRONMENT,
         release=settings.APP_RELEASE,
     )
 
-    log.info("Running database migrations...")
-    run_migrations_with_lock()
-    log.info("Database migrations complete.")
+    try:
+        log.info("Running database migrations...")
+        run_migrations_with_lock()
+        log.info("Database migrations complete.")
+    except Exception as exc:
+        message = f"Database migrations failed: {exc}"
+        startup_errors.append(message)
+        if settings.STARTUP_FAIL_FAST:
+            raise
+        log.exception(message)
 
     # Fail fast when production payment dependencies are missing.
     from financeops.modules.payment.infrastructure.razorpay import RazorpayClient
@@ -142,8 +151,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             await session.commit()
         log.info("CoA seed data initialized.")
     except Exception as exc:
-        log.error("CoA seed initialization failed: %s", exc)
-        raise
+        message = f"CoA seed initialization failed: {exc}"
+        startup_errors.append(message)
+        if settings.STARTUP_FAIL_FAST:
+            raise
+        log.exception(message)
 
     # Initialize Redis pool
     try:

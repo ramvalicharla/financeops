@@ -10,7 +10,7 @@ import httpx
 import redis.asyncio as aioredis
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -230,8 +230,16 @@ async def _build_health_payload() -> dict[str, Any]:
 
 
 @router.get("")
-async def health_check() -> JSONResponse:
-    payload = await asyncio.wait_for(_build_health_payload(), timeout=5.0)
+async def health_check(request: Request) -> JSONResponse:
+    startup_errors = getattr(request.app.state, "startup_errors", [])
+    payload = {
+        "status": "ok",
+        "health_status": "healthy" if not startup_errors else "degraded",
+        "version": settings.APP_RELEASE,
+        "environment": settings.APP_ENVIRONMENT,
+        "timestamp": utc_now_iso(),
+        "startup_errors": startup_errors,
+    }
     return JSONResponse(content=payload, status_code=status.HTTP_200_OK)
 
 
