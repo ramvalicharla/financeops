@@ -34,10 +34,7 @@ type BackendEnvelope<T> = {
   error: { code: string; message: string } | null
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-if (!API_BASE_URL) {
-  throw new Error("NEXT_PUBLIC_API_URL environment variable is required.")
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() ?? ""
 const BACKEND_LOGIN_TIMEOUT_MS = 3000
 
 const performCredentialsSignIn = async (
@@ -106,6 +103,11 @@ function LoginPageContent() {
 
     setIsSubmitting(true)
     try {
+      if (!API_BASE_URL) {
+        setFormError("Application configuration error: missing NEXT_PUBLIC_API_URL")
+        return
+      }
+
       let challengeTokenFromApi: string | null = null
       try {
         const controller = new AbortController()

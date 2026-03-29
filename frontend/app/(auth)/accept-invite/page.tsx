@@ -4,10 +4,7 @@ import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-if (!API_BASE_URL) {
-  throw new Error("NEXT_PUBLIC_API_URL environment variable is required.")
-}
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() ?? ""
 
 export default function AcceptInvitePage() {
   return (
@@ -44,6 +41,10 @@ function AcceptInvitePageContent() {
     }
     if (!termsAccepted) {
       setError("You must accept the Terms of Service")
+      return
+    }
+    if (!API_BASE_URL) {
+      setError("Application configuration error: missing NEXT_PUBLIC_API_URL")
       return
     }
 

@@ -17,9 +17,12 @@ export type UserRole =
   | "employee"
   | "read_only"
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
-if (!API_BASE_URL) {
-  throw new Error("NEXT_PUBLIC_API_URL environment variable is required.")
+const getApiBaseUrl = (): string => {
+  const base = process.env.NEXT_PUBLIC_API_URL?.trim()
+  if (!base) {
+    throw new Error("NEXT_PUBLIC_API_URL environment variable is required at runtime.")
+  }
+  return base.replace(/\/+$/, "")
 }
 
 interface BackendEnvelope<T> {
@@ -85,7 +88,7 @@ const fetchEnvelope = async <T>(
   path: string,
   init: RequestInit,
 ): Promise<BackendEnvelope<T>> => {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
