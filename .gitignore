@@ -103,3 +103,7 @@ tmp_*.txt
 _audit_*.md
 _audit_*.tsv
 tmp_*.md
+
+# Keep frontend source library tracked (overrides generic `lib/` ignore)
+!frontend/lib/
+!frontend/lib/**
