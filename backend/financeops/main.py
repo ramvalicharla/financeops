@@ -95,7 +95,7 @@ try:
 except PackageNotFoundError:
     APP_VERSION = settings.APP_RELEASE
 
-def run_migrations_with_lock() -> None:
+def _run_migrations_with_lock_sync() -> None:
     """
     Run Alembic migrations at startup with an exclusive file lock.
     Only one worker executes migrations while others wait.
@@ -117,6 +117,15 @@ def run_migrations_with_lock() -> None:
         ) from exc
 
 
+async def run_migrations_with_lock() -> None:
+    """
+    Async wrapper for startup usage inside FastAPI lifespan.
+    Runs blocking Alembic migration flow in a worker thread to avoid
+    nested event-loop issues from Alembic's asyncio.run usage.
+    """
+    await asyncio.to_thread(_run_migrations_with_lock_sync)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
@@ -131,7 +140,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         log.info("Running database migrations...")
-        run_migrations_with_lock()
+        await run_migrations_with_lock()
         log.info("Database migrations complete.")
     except Exception as exc:
         message = f"Database migrations failed: {exc}"
