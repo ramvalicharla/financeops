@@ -46,6 +46,7 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
     Yield an async DB session with RLS context set from request middleware.
     Rolls back on exception, closes on exit.
     """
+    log.info("DEPENDENCY HIT: get_async_session")
     path = request.url.path
     if path in _PUBLIC_AUTH_BYPASS_PATHS:
         log.info("Public route bypass auth: %s", path)
@@ -122,18 +123,16 @@ async def get_session_with_rls(
 
 
 async def get_current_user(
+    request: Request,
     token: Annotated[str, Depends(oauth2_scheme)],
     session: AsyncSession = Depends(get_async_session),
 ) -> IamUser:
     """Decode JWT, load user from DB, verify is_active. Raises 401 if invalid."""
+    log.info("DEPENDENCY HIT: get_current_user")
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise AuthenticationError("Invalid token type")
-    if payload.get("scope") == "mfa_setup_only":
-        raise HTTPException(
-            status_code=403,
-            detail="MFA setup required before accessing this resource. Complete MFA setup at /api/v1/auth/mfa/setup",
-        )
+    token_scope = payload.get("scope")
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise AuthenticationError("Token missing subject")
@@ -147,6 +146,17 @@ async def get_current_user(
         raise AuthenticationError("User not found")
     if not user.is_active:
         raise AuthenticationError("Account deactivated")
+
+    if request.url.path.startswith("/api/v1/org-setup"):
+        log.info("MFA bypass for onboarding: %s", request.url.path)
+        log.info("MFA BYPASS ACTIVE")
+        return user
+
+    if token_scope == "mfa_setup_only":
+        raise HTTPException(
+            status_code=403,
+            detail="MFA setup required before accessing this resource. Complete MFA setup at /api/v1/auth/mfa/setup",
+        )
     if user.force_mfa_setup and not user.mfa_enabled:
         raise HTTPException(
             status_code=403,
@@ -174,14 +184,20 @@ def get_current_tenant_id(
 
 
 async def get_current_tenant(
+    request: Request,
     user: IamUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session),
 ) -> IamTenant:
+    log.info("DEPENDENCY HIT: get_current_tenant")
+    log.info("PATH HIT: %s", request.url.path)
     tenant = (
         await session.execute(select(IamTenant).where(IamTenant.id == user.tenant_id))
     ).scalar_one_or_none()
     if tenant is None:
         raise AuthenticationError("Tenant not found")
+    if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
+        log.info("BYPASS ACTIVE")
+        return tenant
     return tenant
 
 
@@ -189,7 +205,10 @@ async def require_org_setup(
     request: Request,
     current_tenant: IamTenant = Depends(get_current_tenant),
 ) -> IamTenant:
+    log.info("DEPENDENCY HIT: require_org_setup")
+    log.info("PATH HIT: %s", request.url.path)
     if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
+        log.info("BYPASS ACTIVE")
         log.info("Bypassing onboarding check for: %s", request.url.path)
         return current_tenant
     if current_tenant.is_platform_tenant:

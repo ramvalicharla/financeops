@@ -1,0 +1,10 @@
+METHOD	PATH	HANDLER
+GET	/debug-network-full	debug_network_full
+GET	/health	health_check
+GET	/health/ai	health_ai
+GET	/health/deep	deep_health_check
+GET	/health/queues	health_queues
+GET	/health/temporal	health_temporal
+GET	/health/workers	health_workers
+MOUNT	/metrics	function
+GET	/openapi.json	openapi
