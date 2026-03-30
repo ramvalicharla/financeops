@@ -27,6 +27,13 @@ log = logging.getLogger(__name__)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 _redis_pool: aioredis.Redis | None = None
+_PUBLIC_AUTH_BYPASS_PATHS = {
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
+    "/api/v1/auth/refresh",
+}
 
 
 async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -34,6 +41,20 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
     Yield an async DB session with RLS context set from request middleware.
     Rolls back on exception, closes on exit.
     """
+    path = request.url.path
+    if path in _PUBLIC_AUTH_BYPASS_PATHS:
+        log.info("Public route bypass auth: %s", path)
+        async with AsyncSessionLocal() as session:
+            try:
+                yield session
+                await session.flush()
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+        return
+
     tenant_id = str(getattr(request.state, "tenant_id", "") or "")
     if not tenant_id:
         auth_header = request.headers.get("Authorization", "")
