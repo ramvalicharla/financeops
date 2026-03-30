@@ -114,7 +114,7 @@ async def _check_database_connectivity() -> None:
             await connection.execute(text("SELECT 1"))
 
     try:
-        await asyncio.wait_for(_ping_database(), timeout=2.0)
+        await asyncio.wait_for(_ping_database(), timeout=10.0)
     except Exception as exc:
         log.error("DB connection failed: %s", _exception_text(exc))
         raise

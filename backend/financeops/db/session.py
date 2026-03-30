@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
+import ssl
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -23,6 +24,19 @@ log = logging.getLogger(__name__)
 _SSL_REQUIRED_MODES = {"require", "verify-ca", "verify-full"}
 
 
+def _build_ssl_context() -> ssl.SSLContext:
+    """
+    Build TLS context for Supabase/asyncpg connections.
+
+    Hostname checks are disabled and certificate verification is relaxed
+    to tolerate Supabase pooler certificate chain behavior.
+    """
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    return ssl_context
+
+
 def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[str, Any]]:
     """
     Normalize SQLAlchemy URL for asyncpg and derive connect_args.
@@ -34,17 +48,28 @@ def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[st
     query = dict(url_obj.query)
     sslmode = str(query.pop("sslmode", "")).lower()
     host = (url_obj.host or "").lower()
-    if host.endswith(".supabase.co") and url_obj.port == 5432:
+    if (
+        url_obj.port == 5432
+        and (
+            host.endswith(".supabase.co")
+            or host.endswith(".supabase.com")
+            or host.endswith(".pooler.supabase.com")
+        )
+    ):
         url_obj = url_obj.set(port=6543)
 
     connect_args: dict[str, Any] = {
         "timeout": 10,
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
-        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
     }
-    if sslmode in _SSL_REQUIRED_MODES or host.endswith(".supabase.co"):
-        connect_args["ssl"] = True
+    if (
+        sslmode in _SSL_REQUIRED_MODES
+        or host.endswith(".supabase.co")
+        or host.endswith(".supabase.com")
+        or host.endswith(".pooler.supabase.com")
+    ):
+        connect_args["ssl"] = _build_ssl_context()
 
     normalized_url = url_obj.set(query=query).render_as_string(hide_password=False)
     return normalized_url, connect_args
