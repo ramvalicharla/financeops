@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+if [ -d /opt/venv/bin ]; then
+  export PATH="/opt/venv/bin:${PATH}"
+fi
+
 if [ -x /opt/venv/bin/python ]; then
   PYTHON_BIN="/opt/venv/bin/python"
 else
@@ -51,4 +55,8 @@ if [ "$(basename "$PWD")" = "backend" ]; then
   cd ..
   export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}backend"
 fi
-DEBUG="${DEBUG_VALUE}" exec "${PYTHON_BIN}" -m uvicorn financeops.main:app --host 0.0.0.0 --port ${PORT:-8080}
+echo "Starting FastAPI on port ${PORT:-10000}"
+exec uvicorn financeops.main:app \
+  --host 0.0.0.0 \
+  --port ${PORT:-10000} \
+  --workers 1

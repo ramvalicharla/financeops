@@ -48,7 +48,7 @@ ENV HOME=/app
 USER financeops
 ENV CLAMAV_REQUIRED=True
 
-EXPOSE 8000
+EXPOSE 10000
 
 CMD uvicorn financeops.main:app --host 0.0.0.0 --port ${PORT:-8000}
 
