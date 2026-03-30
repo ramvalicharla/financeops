@@ -19,10 +19,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
 
-COPY backend/ ./
+COPY . ./
 
 RUN groupadd -g 1000 financeops \
     && useradd -g financeops -u 1000 -d /app -s /sbin/nologin financeops \

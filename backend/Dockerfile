@@ -24,7 +24,7 @@ RUN echo "build-breaker-$(date)"
 RUN pip install --no-cache-dir psycopg2-binary==2.9.10
 RUN python -c "import psycopg2; print('psycopg2 preinstall OK')"
 
-COPY backend/pyproject.toml backend/uv.lock ./
+COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev
 RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
 print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
@@ -34,7 +34,7 @@ m=_u.find_spec('weasyprint'); \
 sys.exit(0 if m is None else 42)" \
     || python -c "import weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf(); print('WeasyPrint OK')"
 
-COPY backend/ ./
+COPY . ./
 COPY scripts/start.sh /app/scripts/start.sh
 RUN chmod +x /app/scripts/start.sh
 
