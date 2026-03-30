@@ -34,6 +34,11 @@ _PUBLIC_AUTH_BYPASS_PATHS = {
     "/api/v1/auth/reset-password",
     "/api/v1/auth/refresh",
 }
+_ONBOARDING_BYPASS_PREFIXES = (
+    "/api/v1/org-setup",
+    "/api/v1/platform/org",
+    "/api/v1/platform/entities",
+)
 
 
 async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -181,8 +186,12 @@ async def get_current_tenant(
 
 
 async def require_org_setup(
+    request: Request,
     current_tenant: IamTenant = Depends(get_current_tenant),
 ) -> IamTenant:
+    if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
+        log.info("Bypassing onboarding check for: %s", request.url.path)
+        return current_tenant
     if current_tenant.is_platform_tenant:
         return current_tenant
     if not current_tenant.org_setup_complete:
