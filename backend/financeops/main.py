@@ -67,6 +67,7 @@ from financeops.modules.invoice_classifier.api.routes import router as classifie
 from financeops.modules.locations.api.routes import router as locations_router
 from financeops.api.v1.ai_stream import router as ai_stream_router
 from financeops.api.v1.admin_ai_providers import router as admin_ai_providers_router
+from financeops.api.v1.debug_network import router as debug_network_router
 from financeops.api.deps import require_org_setup
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
@@ -246,6 +247,7 @@ def create_app() -> FastAPI:
     # Health endpoint (no prefix — accessible at root)
     from financeops.api.v1.health import router as health_router
     app.include_router(health_router, prefix="/health", tags=["Health"])
+    app.include_router(debug_network_router)
 
     # API v1
     org_setup_dependency = [Depends(require_org_setup)]
