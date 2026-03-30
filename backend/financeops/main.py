@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import os
 import logging
 import asyncio
 import sys
@@ -108,6 +109,30 @@ def _exception_text(exc: Exception) -> str:
     return text_value or exc.__class__.__name__
 
 
+def _resolve_cors_origins() -> list[str]:
+    """
+    Resolve CORS origins from env.
+
+    Priority:
+      1) CORS_ORIGINS (comma-separated)
+      2) CORS_ALLOWED_ORIGINS (legacy compatibility)
+      3) localhost fallback
+    """
+    raw_cors_origins = os.getenv("CORS_ORIGINS", "").strip()
+    if raw_cors_origins:
+        parsed = [origin.strip() for origin in raw_cors_origins.split(",") if origin.strip()]
+        if parsed:
+            return parsed
+
+    raw_legacy_origins = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+    if raw_legacy_origins:
+        parsed = [origin.strip() for origin in raw_legacy_origins.split(",") if origin.strip()]
+        if parsed:
+            return parsed
+
+    return ["http://localhost:3000"]
+
+
 async def _check_database_connectivity() -> None:
     """Verify database connectivity during application startup."""
     async def _ping_database() -> None:
@@ -206,6 +231,17 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # CORS (must be attached to the served app instance early)
+    resolved_origins = _resolve_cors_origins()
+    log.info("CORS middleware applied with origins: %s", resolved_origins)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolved_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     environment = str(getattr(settings, "ENVIRONMENT", settings.APP_ENV)).lower()
     app.add_middleware(
         CSRFMiddleware,
@@ -224,15 +260,6 @@ def create_app() -> FastAPI:
     # Rate limiting
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-    # CORS
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.CORS_ALLOWED_ORIGINS,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
 
     # Custom middlewares (order matters: last added = outermost)
     app.add_middleware(RequestLoggingMiddleware)
