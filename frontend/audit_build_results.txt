@@ -1,0 +1,122 @@
+
+> frontend@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · instrumentationHook
+
+   Creating an optimized production build ...
+[@sentry/nextjs] It appears you've configured a `sentry.server.config.ts` file. Please ensure to put this file's content into the `register()` function of a Next.js instrumentation file instead. To ensure correct functionality of the SDK, `Sentry.init` must be called inside of an instrumentation file. Learn more about setting up an instrumentation file in Next.js: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation. You can safely delete the `sentry.server.config.ts` file afterward.
+[@sentry/nextjs] It seems like you don't have a global error handler set up. It is recommended that you add a 'global-error.js' file with Sentry instrumentation so that React rendering errors are reported to Sentry. Read more: https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/#react-render-errors-in-app-router (you can suppress this warning by setting SENTRY_SUPPRESS_GLOBAL_ERROR_HANDLER_FILE_WARNING=1 as environment variable)
+[@sentry/nextjs] It appears you've configured a `sentry.edge.config.ts` file. Please ensure to put this file's content into the `register()` function of a Next.js instrumentation file instead. To ensure correct functionality of the SDK, `Sentry.init` must be called inside of an instrumentation file. Learn more about setting up an instrumentation file in Next.js: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation. You can safely delete the `sentry.edge.config.ts` file afterward.
+[@sentry/nextjs] DEPRECATION WARNING: It is recommended renaming your `sentry.client.config.ts` file, or moving its content to `instrumentation-client.ts`. When using Turbopack `sentry.client.config.ts` will no longer work. Read more about the `instrumentation-client.ts` file: https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation-client
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/66) ...
+   Generating static pages (16/66) 
+   Generating static pages (32/66) 
+   Generating static pages (49/66) 
+ ✓ Generating static pages (66/66)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    335 B           159 kB
+├ ○ /_not-found                          336 B           159 kB
+├ ƒ /admin                               4.04 kB         225 kB
+├ ƒ /admin/ai-quality                    6.23 kB         323 kB
+├ ƒ /admin/backup                        4.18 kB         223 kB
+├ ƒ /admin/compliance                    358 B           161 kB
+├ ƒ /admin/compliance/iso27001           1.53 kB         225 kB
+├ ƒ /admin/compliance/soc2               1.51 kB         225 kB
+├ ƒ /admin/marketplace                   3.42 kB         216 kB
+├ ƒ /admin/partners                      2.92 kB         213 kB
+├ ƒ /admin/services                      4.91 kB         223 kB
+├ ƒ /admin/white-label                   3.02 kB         215 kB
+├ ƒ /admin/white-label/[tenant_id]       1.18 kB         215 kB
+├ ƒ /advisory                            4.47 kB         217 kB
+├ ƒ /advisory/fdd                        3.34 kB         216 kB
+├ ƒ /advisory/fdd/[id]                   4.21 kB         225 kB
+├ ƒ /advisory/fdd/[id]/report            9.15 kB         337 kB
+├ ƒ /advisory/ma                         3.94 kB         225 kB
+├ ƒ /advisory/ma/[id]                    3.71 kB         216 kB
+├ ƒ /advisory/ma/[id]/documents          3.51 kB         216 kB
+├ ƒ /advisory/ma/[id]/valuation          4.23 kB         225 kB
+├ ƒ /advisory/ppa                        3 kB            215 kB
+├ ƒ /advisory/ppa/[id]                   7.07 kB         330 kB
+├ ƒ /anomalies                           2.75 kB         229 kB
+├ ƒ /anomalies/[id]                      2.71 kB         229 kB
+├ ƒ /anomalies/thresholds                2.26 kB         226 kB
+├ ƒ /api/auth/[...nextauth]              0 B                0 B
+├ ƒ /audit                               660 B           159 kB
+├ ƒ /audit/[engagement_id]               985 B           160 kB
+├ ƒ /billing                             7.82 kB         251 kB
+├ ƒ /board-pack                          4.89 kB         229 kB
+├ ƒ /board-pack/[id]                     3.34 kB         227 kB
+├ ƒ /budget                              4.02 kB         216 kB
+├ ƒ /budget/[year]                       9.96 kB         333 kB
+├ ƒ /budget/[year]/edit                  3.52 kB         213 kB
+├ ƒ /close                               489 B           228 kB
+├ ƒ /close/[period]                      490 B           228 kB
+├ ƒ /consolidation                       6.17 kB         233 kB
+├ ƒ /covenants                           791 B           159 kB
+├ ƒ /expenses                            4.64 kB         225 kB
+├ ƒ /expenses/[id]                       5.5 kB          224 kB
+├ ƒ /expenses/submit                     6.59 kB         225 kB
+├ ƒ /forecast                            3.66 kB         216 kB
+├ ƒ /forecast/[id]                       5.1 kB          337 kB
+├ ƒ /gaap                                1.05 kB         160 kB
+├ ○ /login                               4.64 kB         211 kB
+├ ƒ /marketplace                         3.83 kB         216 kB
+├ ƒ /marketplace/[id]                    3.98 kB         214 kB
+├ ƒ /marketplace/contribute              3.57 kB         213 kB
+├ ƒ /marketplace/my-templates            3.86 kB         216 kB
+├ ○ /mfa                                 8.3 kB          217 kB
+├ ƒ /mis                                 6.18 kB         246 kB
+├ ƒ /notifications                       6.69 kB         228 kB
+├ ƒ /onboarding                          9.53 kB         230 kB
+├ ƒ /partner                             3.47 kB         216 kB
+├ ƒ /partner/earnings                    3.2 kB          213 kB
+├ ƒ /partner/referrals                   3.11 kB         213 kB
+├ ƒ /reconciliation/gl-tb                3.4 kB          251 kB
+├ ƒ /reconciliation/payroll              2.98 kB         250 kB
+├ ƒ /reports                             5.66 kB         229 kB
+├ ƒ /reports/[id]                        2.86 kB         227 kB
+├ ƒ /scenarios                           3.7 kB          216 kB
+├ ƒ /scenarios/[id]                      7.12 kB         335 kB
+├ ƒ /scheduled-delivery                  5.26 kB         231 kB
+├ ƒ /scheduled-delivery/logs             6.09 kB         224 kB
+├ ƒ /settings/privacy                    358 B           161 kB
+├ ƒ /settings/privacy/consent            3.6 kB          213 kB
+├ ƒ /settings/privacy/my-data            3.13 kB         213 kB
+├ ƒ /settings/white-label                1.11 kB         215 kB
+├ ƒ /signoff                             1.03 kB         160 kB
+├ ƒ /statutory                           878 B           159 kB
+├ ƒ /sync                                7.59 kB         254 kB
+├ ƒ /sync/connect                        26.2 kB         265 kB
+├ ƒ /tax                                 336 B           159 kB
+├ ƒ /tax/[id]                            1.02 kB         160 kB
+├ ƒ /transfer-pricing                    335 B           159 kB
+├ ƒ /transfer-pricing/[id]               817 B           159 kB
+├ ƒ /treasury                            743 B           159 kB
+├ ƒ /treasury/[id]                       1.19 kB         160 kB
+├ ƒ /trust                               3.95 kB         225 kB
+├ ƒ /trust/gdpr                          3.3 kB          215 kB
+├ ƒ /trust/gdpr/breach                   3.7 kB          214 kB
+├ ƒ /trust/gdpr/consent                  3.2 kB          213 kB
+├ ƒ /trust/soc2                          1.28 kB         225 kB
+└ ƒ /working-capital                     9.42 kB         337 kB
++ First Load JS shared by all            159 kB
+  ├ chunks/493-661fbf51e4f68bf0.js       101 kB
+  ├ chunks/fd9d1056-6c6f82a834bff716.js  53.8 kB
+  └ other shared chunks (total)          3.66 kB
+
+
+ƒ Middleware                             46.7 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

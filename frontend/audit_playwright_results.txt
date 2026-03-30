@@ -1,0 +1,157 @@
+[1A[2K[2m[WebServer] [22m[@sentry/nextjs] It appears you've configured a `sentry.server.config.ts` file. Please ensure to put this file's content into the `register()` function of a Next.js instrumentation file instead. To ensure correct functionality of the SDK, `Sentry.init` must be called inside of an instrumentation file. Learn more about setting up an instrumentation file in Next.js: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation. You can safely delete the `sentry.server.config.ts` file afterward.
+
+[1A[2K[2m[WebServer] [22m[@sentry/nextjs] It appears you've configured a `sentry.edge.config.ts` file. Please ensure to put this file's content into the `register()` function of a Next.js instrumentation file instead. To ensure correct functionality of the SDK, `Sentry.init` must be called inside of an instrumentation file. Learn more about setting up an instrumentation file in Next.js: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation. You can safely delete the `sentry.edge.config.ts` file afterward.
+
+[1A[2K[2m[WebServer] [22m[@sentry/nextjs] DEPRECATION WARNING: It is recommended renaming your `sentry.client.config.ts` file, or moving its content to `instrumentation-client.ts`. When using Turbopack `sentry.client.config.ts` will no longer work. Read more about the `instrumentation-client.ts` file: https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation-client
+
+
+Running 72 tests using 1 worker
+
+[1A[2K[1/72] [chromium] › tests\e2e\anomalies.spec.ts:59:7 › Anomalies pages › Page loads and filter bar is visible
+[1A[2K[2/72] [chromium] › tests\e2e\anomalies.spec.ts:74:7 › Anomalies pages › Severity filter changes displayed alerts
+[1A[2K[3/72] [chromium] › tests\e2e\anomalies.spec.ts:94:7 › Anomalies pages › Resolve action calls PATCH and status badge updates
+[1A[2K[4/72] [chromium] › tests\e2e\auth.spec.ts:11:7 › Auth flow › Login happy path
+[1A[2K[5/72] [chromium] › tests\e2e\auth.spec.ts:33:7 › Auth flow › Login -> MFA flow
+[1A[2K[6/72] [chromium] › tests\e2e\auth.spec.ts:74:7 › Auth flow › Invalid credentials
+[1A[2K[7/72] [chromium] › tests\e2e\auth.spec.ts:98:7 › Auth flow › Unauthenticated redirect
+[1A[2K[8/72] [chromium] › tests\e2e\billing.spec.ts:80:7 › Billing page › Billing page loads
+[1A[2K[9/72] [chromium] › tests\e2e\billing.spec.ts:117:7 › Billing page › Suspended account banner
+[1A[2K[10/72] [chromium] › tests\e2e\billing.spec.ts:145:7 › Billing page › Grace period banner
+[1A[2K[11/72] [chromium] › tests\e2e\billing.spec.ts:171:7 › Billing page › Top-up credits
+[1A[2K[12/72] [chromium] › tests\e2e\billing.spec.ts:209:7 › Billing page › Cancel subscription confirmation
+[1A[2K[13/72] [chromium] › tests\e2e\billing.spec.ts:241:7 › Billing page › Error state
+[1A[2K[14/72] [chromium] › tests\e2e\board-pack.spec.ts:56:7 › Board pack pages › Board pack list page loads
+[1A[2K[15/72] [chromium] › tests\e2e\board-pack.spec.ts:74:7 › Board pack pages › Generate modal opens and validates period
+[1A[2K[16/72] [chromium] › tests\e2e\board-pack.spec.ts:98:7 › Board pack pages › Generate success creates run and switches to Runs tab
+[1A[2K[17/72] [chromium] › tests\e2e\board-pack.spec.ts:126:7 › Board pack pages › Run viewer shows sections and download buttons
+[1A[2K[18/72] [chromium] › tests\e2e\board-pack.spec.ts:193:7 › Board pack pages › Failed run shows error message
+[1A[2K[19/72] [chromium] › tests\e2e\closing_checklist.spec.ts:102:7 › Closing checklist › checklist page loads
+[1A[2K[20/72] [chromium] › tests\e2e\closing_checklist.spec.ts:113:7 › Closing checklist › task status update
+[1A[2K[21/72] [chromium] › tests\e2e\closing_checklist.spec.ts:142:7 › Closing checklist › overdue task shows red
+[1A[2K[22/72] [chromium] › tests\e2e\closing_checklist.spec.ts:151:7 › Closing checklist › period selector works
+[1A[2K[23/72] [chromium] › tests\e2e\closing_checklist.spec.ts:164:7 › Closing checklist › autocompleted task shows badge
+[1A[2K[24/72] [chromium] › tests\e2e\consolidation.spec.ts:85:7 › Consolidation page › Consolidation page loads
+[1A[2K[25/72] [chromium] › tests\e2e\consolidation.spec.ts:96:7 › Consolidation page › Run consolidation
+[1A[2K[26/72] [chromium] › tests\e2e\consolidation.spec.ts:108:7 › Consolidation page › Entity breakdown drill-down
+[1A[2K[27/72] [chromium] › tests\e2e\consolidation.spec.ts:121:7 › Consolidation page › Error state
+[1A[2K[28/72] [chromium] › tests\e2e\mfa_security.spec.ts:9:7 › MFA security › Credentials never written to sessionStorage during MFA flow
+[1A[2K[29/72] [chromium] › tests\e2e\mfa_security.spec.ts:44:7 › MFA security › Credentials are never written to localStorage during MFA challenge
+[1A[2K[30/72] [chromium] › tests\e2e\mfa_security.spec.ts:72:7 › MFA security › MFA challenge token is not persisted in web storage
+[1A[2K[31/72] [chromium] › tests\e2e\mis.spec.ts:69:7 › MIS dashboard › MIS dashboard loads
+[1A[2K[32/72] [chromium] › tests\e2e\mis.spec.ts:86:7 › MIS dashboard › Period change updates data
+[1A[2K[33/72] [chromium] › tests\e2e\mis.spec.ts:101:7 › MIS dashboard › Loading state
+[1A[2K[34/72] [chromium] › tests\e2e\mis.spec.ts:114:7 › MIS dashboard › Error state
+[1A[2K[35/72] [chromium] › tests\e2e\onboarding.spec.ts:145:7 › Onboarding wizard › test_onboarding_page_loads
+[1A[2K[36/72] [chromium] › tests\e2e\onboarding.spec.ts:151:7 › Onboarding wizard › test_industry_selection
+[1A[2K[37/72] [chromium] › tests\e2e\onboarding.spec.ts:162:7 › Onboarding wizard › test_step_navigation_forward
+[1A[2K[38/72] [chromium] › tests\e2e\onboarding.spec.ts:172:7 › Onboarding wizard › test_template_preview_shows_sections
+[1A[2K[39/72] [chromium] › tests\e2e\onboarding.spec.ts:184:7 › Onboarding wizard › test_apply_template_success
+[1A[2K  1) [chromium] › tests\e2e\onboarding.spec.ts:184:7 › Onboarding wizard › test_apply_template_success 
+
+    Error: [2mexpect([22m[31mlocator[39m[2m).[22mtoBeVisible[2m([22m[2m)[22m failed
+
+    Locator: getByText('Applying template')
+    Expected: visible
+    Error: strict mode violation: getByText('Applying template') resolved to 2 elements:
+        1) <h2 class="text-2xl font-semibold text-foreground">Applying template</h2> aka getByRole('heading', { name: 'Applying template' })
+        2) <div class="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-3 text-sm text-foreground">…</div> aka getByText('Applying template...')
+
+    Call log:
+    [2m  - Expect "toBeVisible" with timeout 5000ms[22m
+    [2m  - waiting for getByText('Applying template')[22m
+
+
+      189 |
+      190 |     await page.goto("/onboarding")
+    > 191 |     await expect(page.getByText("Applying template")).toBeVisible()
+          |                                                       ^
+      192 |     await expect(page.getByText("Board pack definition created")).toBeVisible()
+      193 |     await expect(page.getByRole("button", { name: "Continue" })).toBeEnabled()
+      194 |   })
+        at D:\finos\frontend\tests\e2e\onboarding.spec.ts:191:55
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\onboarding-Onboarding-wizard-test-apply-template-success-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\onboarding-Onboarding-wizard-test-apply-template-success-chromium\error-context.md
+
+
+[1A[2K[40/72] [chromium] › tests\e2e\onboarding.spec.ts:196:7 › Onboarding wizard › test_step4_erp_connect_links
+[1A[2K[41/72] [chromium] › tests\e2e\onboarding.spec.ts:218:7 › Onboarding wizard › test_step4_skip_advances_to_step5
+[1A[2K[42/72] [chromium] › tests\e2e\onboarding.spec.ts:229:7 › Onboarding wizard › test_step5_cta_links
+[1A[2K[43/72] [chromium] › tests\e2e\phase5-integration.spec.ts:119:7 › Phase 5 cross-feature integration › Full navigation across all Phase 5 pages
+[1A[2K[44/72] [chromium] › tests\e2e\phase5-integration.spec.ts:170:7 › Phase 5 cross-feature integration › Board pack COMPLETE run shows enabled download buttons
+[1A[2K[45/72] [chromium] › tests\e2e\phase5-integration.spec.ts:255:7 › Phase 5 cross-feature integration › Report FAILED run disables downloads and shows error
+[1A[2K[46/72] [chromium] › tests\e2e\phase5-integration.spec.ts:291:7 › Phase 5 cross-feature integration › Scheduled delivery trigger shows success state
+[1A[2K[47/72] [chromium] › tests\e2e\phase5-integration.spec.ts:323:7 › Phase 5 cross-feature integration › Anomaly snooze dialog requires date
+[1A[2K[48/72] [chromium] › tests\e2e\phase5-integration.spec.ts:339:7 › Phase 5 cross-feature integration › Sidebar shows all Phase 5 nav items
+[1A[2K[49/72] [chromium] › tests\e2e\reconciliation.spec.ts:54:7 › Reconciliation pages › GL/TB page loads
+[1A[2K[50/72] [chromium] › tests\e2e\reconciliation.spec.ts:75:7 › Reconciliation pages › GL/TB results load after filter selection
+[1A[2K[51/72] [chromium] › tests\e2e\reconciliation.spec.ts:108:7 › Reconciliation pages › Variance row drill-down
+[1A[2K[52/72] [chromium] › tests\e2e\reconciliation.spec.ts:152:7 › Reconciliation pages › Payroll recon loads
+[1A[2K[53/72] [chromium] › tests\e2e\reconciliation.spec.ts:188:7 › Reconciliation pages › Error state
+[1A[2K  2) [chromium] › tests\e2e\reconciliation.spec.ts:188:7 › Reconciliation pages › Error state ──────
+
+    [31mTest timeout of 30000ms exceeded.[39m
+
+    Error: locator.selectOption: Test timeout of 30000ms exceeded.
+    Call log:
+    [2m  - waiting for getByLabel('Sync Run')[22m
+    [2m    - locator resolved to <select id="gltb-run" class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm">…</select>[22m
+    [2m  - attempting select option action[22m
+    [2m    2 × waiting for element to be visible and enabled[22m
+    [2m      - did not find some options[22m
+    [2m    - retrying select option action[22m
+    [2m    - waiting 20ms[22m
+    [2m    2 × waiting for element to be visible and enabled[22m
+    [2m      - did not find some options[22m
+    [2m    - retrying select option action[22m
+    [2m      - waiting 100ms[22m
+    [2m    - waiting for element to be visible and enabled[22m
+    [2m    - did not find some options[22m
+    [2m  - retrying select option action[22m
+    [2m    - waiting 500ms[22m
+
+
+      200 |     await page.goto("/reconciliation/gl-tb")
+      201 |     await page.getByLabel("Entity").selectOption("entity-001")
+    > 202 |     await page.getByLabel("Sync Run").selectOption("run-1")
+          |                                       ^
+      203 |     await expect(page.getByText("Failed to load GL/TB reconciliation results.")).toBeVisible()
+      204 |     await expectNotCrashed(page)
+      205 |   })
+        at D:\finos\frontend\tests\e2e\reconciliation.spec.ts:202:39
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results\reconciliation-Reconciliation-pages-Error-state-chromium\test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results\reconciliation-Reconciliation-pages-Error-state-chromium\error-context.md
+
+
+[1A[2K[54/72] [chromium] › tests\e2e\reports.spec.ts:92:7 › Reports pages › Reports list page loads
+[1A[2K[55/72] [chromium] › tests\e2e\reports.spec.ts:112:7 › Reports pages › Create report sheet opens and validates metric selection
+[1A[2K[56/72] [chromium] › tests\e2e\reports.spec.ts:147:7 › Reports pages › Full report definition creation flow
+[1A[2K[57/72] [chromium] › tests\e2e\reports.spec.ts:189:7 › Reports pages › Run viewer shows result table and download buttons
+[1A[2K[58/72] [chromium] › tests\e2e\reports.spec.ts:232:7 › Reports pages › Failed run shows error message, downloads disabled
+[1A[2K[59/72] [chromium] › tests\e2e\scheduled-delivery.spec.ts:37:7 › Scheduled delivery pages › Page loads and New Schedule button is visible
+[1A[2K[60/72] [chromium] › tests\e2e\scheduled-delivery.spec.ts:53:7 › Scheduled delivery pages › Create schedule sheet validates empty recipients
+[1A[2K[61/72] [chromium] › tests\e2e\scheduled-delivery.spec.ts:74:7 › Scheduled delivery pages › Trigger Now posts trigger endpoint and shows success state
+[1A[2K[62/72] [chromium] › tests\e2e\security_headers.spec.ts:4:7 › Security headers › X-Content-Type-Options: nosniff on every response
+[1A[2K[63/72] [chromium] › tests\e2e\security_headers.spec.ts:10:7 › Security headers › X-Frame-Options: DENY prevents clickjacking
+[1A[2K[64/72] [chromium] › tests\e2e\security_headers.spec.ts:16:7 › Security headers › Referrer-Policy is set on every response
+[1A[2K[65/72] [chromium] › tests\e2e\security_headers.spec.ts:22:7 › Security headers › Content-Security-Policy header is present
+[1A[2K[66/72] [chromium] › tests\e2e\security_headers.spec.ts:30:7 › Security headers › Strict-Transport-Security header is set
+[1A[2K[67/72] [chromium] › tests\e2e\sync.spec.ts:47:7 › Sync page › Sync page loads with connections
+[1A[2K[68/72] [chromium] › tests\e2e\sync.spec.ts:62:7 › Sync page › View sync run history
+[1A[2K[69/72] [chromium] › tests\e2e\sync.spec.ts:86:7 › Sync page › Trigger sync
+[1A[2K[70/72] [chromium] › tests\e2e\sync.spec.ts:108:7 › Sync page › View validation report
+[1A[2K[71/72] [chromium] › tests\e2e\sync.spec.ts:134:7 › Sync page › Navigate to connect source
+[1A[2K[72/72] [chromium] › tests\e2e\sync.spec.ts:150:7 › Sync page › Error state
+[1A[2K  Slow test file: [chromium] › tests\e2e\reconciliation.spec.ts (6.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  2 failed
+    [chromium] › tests\e2e\onboarding.spec.ts:184:7 › Onboarding wizard › test_apply_template_success 
+    [chromium] › tests\e2e\reconciliation.spec.ts:188:7 › Reconciliation pages › Error state ───────
+  70 passed (10.7m)

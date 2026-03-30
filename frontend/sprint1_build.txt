@@ -1,0 +1,58 @@
+
+> frontend@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.35
+  - Environments: .env.local
+  - Experiments (use with caution):
+    · instrumentationHook
+
+   Creating an optimized production build ...
+[@sentry/nextjs] It appears you've configured a `sentry.server.config.ts` file. Please ensure to put this file's content into the `register()` function of a Next.js instrumentation file instead. To ensure correct functionality of the SDK, `Sentry.init` must be called inside of an instrumentation file. Learn more about setting up an instrumentation file in Next.js: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation. You can safely delete the `sentry.server.config.ts` file afterward.
+[@sentry/nextjs] It appears you've configured a `sentry.edge.config.ts` file. Please ensure to put this file's content into the `register()` function of a Next.js instrumentation file instead. To ensure correct functionality of the SDK, `Sentry.init` must be called inside of an instrumentation file. Learn more about setting up an instrumentation file in Next.js: https://nextjs.org/docs/app/building-your-application/optimizing/instrumentation. You can safely delete the `sentry.edge.config.ts` file afterward.
+[@sentry/nextjs] DEPRECATION WARNING: It is recommended renaming your `sentry.client.config.ts` file, or moving its content to `instrumentation-client.ts`. When using Turbopack `sentry.client.config.ts` will no longer work. Read more about the `instrumentation-client.ts` file: https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation-client
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/21) ...
+   Generating static pages (5/21) 
+   Generating static pages (10/21) 
+   Generating static pages (15/21) 
+ ✓ Generating static pages (21/21)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                              Size     First Load JS
+┌ ○ /                                    329 B           155 kB
+├ ○ /_not-found                          330 B           155 kB
+├ ƒ /anomalies                           2.75 kB         198 kB
+├ ƒ /anomalies/[id]                      2.71 kB         198 kB
+├ ƒ /anomalies/thresholds                2.26 kB         195 kB
+├ ƒ /api/auth/[...nextauth]              0 B                0 B
+├ ƒ /billing                             7.42 kB         220 kB
+├ ƒ /board-pack                          4.54 kB         198 kB
+├ ƒ /board-pack/[id]                     3 kB            196 kB
+├ ƒ /consolidation                       5.95 kB         203 kB
+├ ○ /login                               4.58 kB         206 kB
+├ ○ /mfa                                 8.29 kB         212 kB
+├ ƒ /mis                                 5.67 kB         216 kB
+├ ƒ /onboarding                          9.31 kB         200 kB
+├ ƒ /reconciliation/gl-tb                3.4 kB          220 kB
+├ ƒ /reconciliation/payroll              2.98 kB         220 kB
+├ ƒ /reports                             5.94 kB         199 kB
+├ ƒ /reports/[id]                        3.14 kB         196 kB
+├ ƒ /scheduled-delivery                  5.22 kB         201 kB
+├ ƒ /scheduled-delivery/logs             5.86 kB         194 kB
+├ ƒ /sync                                10.6 kB         224 kB
+└ ƒ /sync/connect                        26 kB           260 kB
++ First Load JS shared by all            154 kB
+  ├ chunks/725-1f5472fb83b30947.js       97.6 kB
+  ├ chunks/fd9d1056-060792baf4eacf2e.js  53.8 kB
+  └ other shared chunks (total)          2.94 kB
+
+
+ƒ Middleware                             46.3 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
