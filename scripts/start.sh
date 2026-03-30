@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
 set -e
 
-PYTHON_BIN="${PYTHON_BIN:-python}"
-if [ -x "${PYTHON_BIN}" ]; then
-  :
-elif ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-  if command -v python3 >/dev/null 2>&1; then
-    PYTHON_BIN="python3"
-  elif [ -x /opt/venv/bin/python ]; then
-    PYTHON_BIN="/opt/venv/bin/python"
-  else
-    echo "Python interpreter not found. Set PYTHON_BIN or ensure python is on PATH."
-    exit 1
+if [ -x /opt/venv/bin/python ]; then
+  PYTHON_BIN="/opt/venv/bin/python"
+else
+  PYTHON_BIN="${PYTHON_BIN:-python}"
+  if [ -x "${PYTHON_BIN}" ]; then
+    :
+  elif ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
+    if command -v python3 >/dev/null 2>&1; then
+      PYTHON_BIN="python3"
+    else
+      echo "Python interpreter not found. Set PYTHON_BIN or ensure python is on PATH."
+      exit 1
+    fi
   fi
 fi
 
@@ -21,10 +23,15 @@ case "${DEBUG_VALUE,,}" in
   *) DEBUG_VALUE="false" ;;
 esac
 
-ALEMBIC_CMD="alembic"
-if ! command -v "${ALEMBIC_CMD}" >/dev/null 2>&1; then
-  ALEMBIC_CMD=""
+ALEMBIC_CMD="/opt/venv/bin/alembic"
+if [ ! -x "${ALEMBIC_CMD}" ]; then
+  ALEMBIC_CMD="alembic"
+  if ! command -v "${ALEMBIC_CMD}" >/dev/null 2>&1; then
+    ALEMBIC_CMD=""
+  fi
 fi
+
+"${PYTHON_BIN}" -c "import psycopg2; print('psycopg2 OK')"
 
 echo "Running migrations..."
 if [ -d backend ] && [ -f backend/alembic.ini ]; then

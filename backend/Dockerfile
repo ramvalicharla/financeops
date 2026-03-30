@@ -22,6 +22,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev
+RUN pip install --no-cache-dir psycopg2-binary==2.9.10
 RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
 print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
     && python -c "import importlib.util as _u; \
