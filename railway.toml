@@ -12,7 +12,7 @@ dockerfilePath = "backend/Dockerfile"
 watchPatterns = ["backend/**"]
 
 [deploy]
-startCommand = '''python -c "import os,subprocess; subprocess.run(['uvicorn','financeops.main:app','--host','0.0.0.0','--port', os.environ.get('PORT','8000')], check=True)"'''
+startCommand = "bash scripts/start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"

@@ -17,6 +17,8 @@ cd backend
 alembic upgrade head
 ```
 
+Set `MIGRATION_DATABASE_URL` in Railway to the direct Supabase host (`db.<project>.supabase.co:5432`) so migrations bypass the pooler statement timeout path.
+
 ### Railway helper script
 ```bash
 bash scripts/run_migrations.sh

@@ -31,6 +31,8 @@ sys.exit(0 if m is None else 42)" \
     || python -c "import weasyprint; weasyprint.HTML(string='<p>ok</p>').write_pdf(); print('WeasyPrint OK')"
 
 COPY backend/ ./
+COPY scripts/start.sh /app/scripts/start.sh
+RUN chmod +x /app/scripts/start.sh
 
 RUN groupadd -g 1000 financeops \
     && useradd -g financeops -u 1000 -d /app -s /sbin/nologin financeops \

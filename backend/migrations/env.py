@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import ssl
 from logging.config import fileConfig
 from typing import Any
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -59,6 +60,31 @@ def _build_ssl_context() -> ssl.SSLContext:
     ssl_context.check_hostname = False
     ssl_context.verify_mode = ssl.CERT_NONE
     return ssl_context
+
+
+def _is_supabase_host(host: str) -> bool:
+    return (
+        host.endswith(".supabase.co")
+        or host.endswith(".supabase.com")
+        or host.endswith(".pooler.supabase.com")
+    )
+
+
+def _resolve_migration_url() -> tuple[str, str]:
+    """
+    Resolve migration DB URL with explicit override support.
+
+    Priority:
+      1) MIGRATION_DATABASE_URL (direct DB, recommended for Alembic)
+      2) DATABASE_URL (runtime URL fallback)
+    """
+    migration_url = os.getenv("MIGRATION_DATABASE_URL", "").strip()
+    if migration_url:
+        return migration_url, "MIGRATION_DATABASE_URL"
+
+    from financeops.config import settings
+
+    return str(settings.DATABASE_URL), "DATABASE_URL"
 
 
 def include_object(object_, name, type_, reflected, compare_to):
@@ -125,19 +151,17 @@ def include_object(object_, name, type_, reflected, compare_to):
 
 
 def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
-    from financeops.config import settings
-    raw_url = str(settings.DATABASE_URL)
+    raw_url, source = _resolve_migration_url()
     url_obj = make_url(raw_url)
     query = dict(url_obj.query)
     sslmode = str(query.pop("sslmode", "")).lower()
     host = (url_obj.host or "").lower()
-    if (
-        url_obj.port == 5432
-        and (
-            host.endswith(".supabase.co")
-            or host.endswith(".supabase.com")
-            or host.endswith(".pooler.supabase.com")
-        )
+
+    # Runtime fallback: normalize legacy pooler configs on 5432 to 6543.
+    # Keep explicit MIGRATION_DATABASE_URL untouched (direct DB can be 5432).
+    if source != "MIGRATION_DATABASE_URL" and url_obj.port == 5432 and (
+        host.endswith(".pooler.supabase.com")
+        or (_is_supabase_host(host) and not host.startswith("db."))
     ):
         url_obj = url_obj.set(port=6543)
 
@@ -147,10 +171,7 @@ def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
         "prepared_statement_cache_size": 0,
     }
     if (
-        sslmode in _SSL_REQUIRED_MODES
-        or host.endswith(".supabase.co")
-        or host.endswith(".supabase.com")
-        or host.endswith(".pooler.supabase.com")
+        sslmode in _SSL_REQUIRED_MODES or _is_supabase_host(host)
     ):
         connect_args["ssl"] = _build_ssl_context()
 
@@ -199,6 +220,8 @@ async def run_async_migrations() -> None:
         connect_args=connect_args,
     )
     async with connectable.connect() as connection:
+        # Avoid database-side statement timeout canceling long migration DDL.
+        await connection.execute(text("SET statement_timeout TO 0"))
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 
