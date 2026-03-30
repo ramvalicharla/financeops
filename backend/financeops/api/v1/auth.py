@@ -236,6 +236,7 @@ async def register(
         text_body="Welcome to FinanceOps. Your account is ready.",
     )
     await session.flush()
+    await session.commit()
     setup_token = generate_mfa_setup_token(user)
     return {
         "user_id": str(user.id),
