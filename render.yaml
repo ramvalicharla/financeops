@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: financeops-backend
+    runtime: docker
+    region: singapore
+    plan: starter
+    dockerfilePath: backend/Dockerfile
+    dockerCommand: bash scripts/start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: MIGRATION_DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FIELD_ENCRYPTION_KEY
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
