@@ -84,6 +84,7 @@ from financeops.shared_kernel.response import (
 )
 from financeops.shared_kernel.idempotency import IdempotencyMiddleware
 from financeops.db.session import engine
+from financeops.seed.coa import seed_coa_industry_templates
 
 log = logging.getLogger(__name__)
 configure_logging(log_level=settings.LOG_LEVEL)
@@ -166,6 +167,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.error(message)
     else:
         log.info("Database connectivity check passed.")
+        try:
+            await seed_coa_industry_templates()
+            log.info("CoA seed completed (startup)")
+        except Exception as exc:
+            log.error("CoA seed failed: %s", exc)
 
     await redis_init_task
 
