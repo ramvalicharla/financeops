@@ -31,7 +31,10 @@ if [ ! -x "${ALEMBIC_CMD}" ]; then
   fi
 fi
 
-"${PYTHON_BIN}" -c "import psycopg2; print('psycopg2 OK')"
+if ! "${PYTHON_BIN}" -c "import psycopg2; print('psycopg2 OK')"; then
+  echo "psycopg2 import failed"
+  exit 1
+fi
 
 echo "Running migrations..."
 if [ -d backend ] && [ -f backend/alembic.ini ]; then

@@ -17,12 +17,15 @@ RUN apt-get update && apt-get install -y \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 # Install venv to /opt/venv so it survives the host-dir volume mount on /app
+RUN python -m venv /opt/venv
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+RUN echo "build-breaker-$(date)"
+RUN pip install --no-cache-dir psycopg2-binary==2.9.10
+RUN python -c "import psycopg2; print('psycopg2 preinstall OK')"
 
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --locked --no-dev
-RUN pip install --no-cache-dir psycopg2-binary==2.9.10
 RUN python -c "import importlib.util as _u; m=_u.find_spec('weasyprint'); \
 print('WeasyPrint not installed; skipping smoke check' if m is None else 'WeasyPrint package detected')" \
     && python -c "import importlib.util as _u; \
