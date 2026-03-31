@@ -55,7 +55,12 @@ if [ "$(basename "$PWD")" = "backend" ]; then
   cd ..
   export PYTHONPATH="${PYTHONPATH:+${PYTHONPATH}:}backend"
 fi
-APP_PORT="${PORT:-8000}"
+if [ -z "$PORT" ]; then
+  echo "ERROR: PORT not set"
+  exit 1
+fi
+
+APP_PORT="$PORT"
 echo "Starting FastAPI on port ${APP_PORT}"
 exec uvicorn financeops.main:app \
   --host 0.0.0.0 \
