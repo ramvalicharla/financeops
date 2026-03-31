@@ -129,6 +129,9 @@ async def get_current_user(
 ) -> IamUser:
     """Decode JWT, load user from DB, verify is_active. Raises 401 if invalid."""
     log.info("DEPENDENCY HIT: get_current_user")
+    if request.method.upper() == "OPTIONS":
+        log.info("OPTIONS bypass at dependency: %s", request.url.path)
+        raise HTTPException(status_code=204, detail=None)
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise AuthenticationError("Invalid token type")
@@ -189,6 +192,9 @@ async def get_current_tenant(
     session: AsyncSession = Depends(get_async_session),
 ) -> IamTenant:
     log.info("DEPENDENCY HIT: get_current_tenant")
+    if request.method.upper() == "OPTIONS":
+        log.info("OPTIONS bypass at dependency: %s", request.url.path)
+        raise HTTPException(status_code=204, detail=None)
     log.info("PATH HIT: %s", request.url.path)
     tenant = (
         await session.execute(select(IamTenant).where(IamTenant.id == user.tenant_id))
@@ -206,6 +212,9 @@ async def require_org_setup(
     current_tenant: IamTenant = Depends(get_current_tenant),
 ) -> IamTenant:
     log.info("DEPENDENCY HIT: require_org_setup")
+    if request.method.upper() == "OPTIONS":
+        log.info("OPTIONS bypass at dependency: %s", request.url.path)
+        return current_tenant
     log.info("PATH HIT: %s", request.url.path)
     if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
         log.info("BYPASS ACTIVE")

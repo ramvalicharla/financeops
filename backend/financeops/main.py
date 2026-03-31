@@ -231,17 +231,6 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # CORS (must be attached to the served app instance early)
-    resolved_origins = _resolve_cors_origins()
-    log.info("CORS middleware applied with origins: %s", resolved_origins)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=resolved_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     environment = str(getattr(settings, "ENVIRONMENT", settings.APP_ENV)).lower()
     app.add_middleware(
         CSRFMiddleware,
@@ -269,6 +258,17 @@ def create_app() -> FastAPI:
     app.add_middleware(ApiResponseEnvelopeMiddleware)
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(LoggingMiddleware)
+
+    # CORS (registered last so it executes before custom middleware in Starlette)
+    resolved_origins = _resolve_cors_origins()
+    log.info("CORS middleware applied with origins: %s", resolved_origins)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=resolved_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # Exception handlers
     register_exception_handlers(app)
