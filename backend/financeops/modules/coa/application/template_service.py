@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
@@ -43,7 +43,11 @@ class CoaTemplateService:
             raise NotFoundError("Industry template not found")
         return row
 
-    async def get_full_hierarchy(self, template_id: uuid.UUID) -> dict[str, object]:
+    async def get_full_hierarchy(
+        self,
+        template_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> dict[str, object]:
         template = (
             await self._session.execute(
                 select(CoaIndustryTemplate).where(CoaIndustryTemplate.id == template_id)
@@ -103,6 +107,12 @@ class CoaTemplateService:
                 select(CoaLedgerAccount)
                 .where(CoaLedgerAccount.industry_template_id == template_id)
                 .where(CoaLedgerAccount.account_subgroup_id.in_(subgroup_ids))
+                .where(
+                    or_(
+                        CoaLedgerAccount.tenant_id.is_(None),
+                        CoaLedgerAccount.tenant_id == tenant_id,
+                    )
+                )
                 .where(CoaLedgerAccount.is_active.is_(True))
                 .order_by(CoaLedgerAccount.sort_order, CoaLedgerAccount.code)
             )
@@ -213,11 +223,21 @@ class CoaTemplateService:
             "classifications": hierarchy,
         }
 
-    async def get_ledger_accounts_for_template(self, template_id: uuid.UUID) -> list[CoaLedgerAccount]:
+    async def get_ledger_accounts_for_template(
+        self,
+        template_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> list[CoaLedgerAccount]:
         rows = (
             await self._session.execute(
                 select(CoaLedgerAccount)
                 .where(CoaLedgerAccount.industry_template_id == template_id)
+                .where(
+                    or_(
+                        CoaLedgerAccount.tenant_id.is_(None),
+                        CoaLedgerAccount.tenant_id == tenant_id,
+                    )
+                )
                 .where(CoaLedgerAccount.is_active.is_(True))
                 .order_by(CoaLedgerAccount.sort_order, CoaLedgerAccount.code)
             )

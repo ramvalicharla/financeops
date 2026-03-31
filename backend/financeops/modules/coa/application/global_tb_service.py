@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.tenants import IamTenant
@@ -189,7 +189,13 @@ class GlobalTrialBalanceService:
         ledger_ids = [account.ledger_account_id for account in tenant_accounts if account.ledger_account_id]
         ledgers = (
             await self._session.execute(
-                select(CoaLedgerAccount).where(CoaLedgerAccount.id.in_(ledger_ids))
+                select(CoaLedgerAccount).where(
+                    CoaLedgerAccount.id.in_(ledger_ids),
+                    or_(
+                        CoaLedgerAccount.tenant_id == tenant_id,
+                        CoaLedgerAccount.tenant_id.is_(None),
+                    ),
+                )
             )
         ).scalars().all()
         ledger_by_id = {ledger.id: ledger for ledger in ledgers}

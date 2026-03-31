@@ -182,7 +182,10 @@ async def test_get_all_templates_returns_11(async_session: AsyncSession) -> None
 async def test_get_hierarchy_returns_full_tree(async_session: AsyncSession) -> None:
     await _seed_coa(async_session)
     service = CoaTemplateService(async_session)
-    hierarchy = await service.get_full_hierarchy(await _software_template_id(async_session))
+    hierarchy = await service.get_full_hierarchy(
+        await _software_template_id(async_session),
+        uuid.uuid4(),
+    )
     assert hierarchy["classifications"]
 
 
@@ -190,7 +193,10 @@ async def test_get_hierarchy_returns_full_tree(async_session: AsyncSession) -> N
 async def test_hierarchy_has_seven_levels(async_session: AsyncSession) -> None:
     await _seed_coa(async_session)
     service = CoaTemplateService(async_session)
-    hierarchy = await service.get_full_hierarchy(await _software_template_id(async_session))
+    hierarchy = await service.get_full_hierarchy(
+        await _software_template_id(async_session),
+        uuid.uuid4(),
+    )
     classifications = hierarchy["classifications"]
     path_found = False
     for classification in classifications:

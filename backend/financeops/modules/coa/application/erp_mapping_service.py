@@ -45,6 +45,13 @@ class ErpMappingService:
                 .outerjoin(CoaLedgerAccount, CoaLedgerAccount.id == TenantCoaAccount.ledger_account_id)
                 .where(TenantCoaAccount.tenant_id == tenant_id)
                 .where(TenantCoaAccount.is_active.is_(True))
+                .where(
+                    or_(
+                        CoaLedgerAccount.id.is_(None),
+                        CoaLedgerAccount.tenant_id == tenant_id,
+                        CoaLedgerAccount.tenant_id.is_(None),
+                    )
+                )
             )
         ).all()
 

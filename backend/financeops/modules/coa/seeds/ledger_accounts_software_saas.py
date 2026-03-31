@@ -99,7 +99,7 @@ async def seed_software_saas_ledger_accounts(
         )
 
     stmt = insert(CoaLedgerAccount).values(payload)
-    stmt = stmt.on_conflict_do_nothing(constraint="uq_coa_ledger_accounts_template_code")
+    stmt = stmt.on_conflict_do_nothing()
     await session.execute(stmt)
 
     rows = (

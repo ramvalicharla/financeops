@@ -6,10 +6,10 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_org_setup
@@ -18,7 +18,12 @@ from financeops.db.models.users import IamUser
 from financeops.modules.coa.api.schemas import (
     CoaHierarchyResponse,
     CoaLedgerAccountResponse,
+    CoaApplyRequest,
+    CoaApplyResponse,
     CoaTemplateResponse,
+    CoaUploadBatchResponse,
+    CoaUploadResponse,
+    CoaValidateResponse,
     ErpAutoSuggestRequest,
     ErpBulkConfirmRequest,
     ErpConfirmRequest,
@@ -33,23 +38,37 @@ from financeops.modules.coa.api.schemas import (
     TrialBalanceClassifyMultiEntityRequest,
     TrialBalanceClassifyRequest,
 )
+from financeops.modules.coa.application.coa_upload_service import CoaUploadService
 from financeops.modules.coa.application.erp_mapping_service import ErpMappingService
 from financeops.modules.coa.application.global_tb_service import (
     ClassifiedTBLine,
     GlobalTBResult,
     GlobalTrialBalanceService,
 )
+from financeops.modules.coa.application.tenant_coa_resolver import TenantCoaResolver
 from financeops.modules.coa.application.template_service import CoaTemplateService
 from financeops.modules.coa.application.tenant_coa_service import TenantCoaService
 from financeops.modules.coa.models import (
+    CoaSourceType,
+    CoaUploadMode,
     CoaFsClassification,
     CoaFsSchedule,
     CoaLedgerAccount,
     ErpAccountMapping,
     TenantCoaAccount,
+    CoaUploadBatch,
 )
+from financeops.db.models.users import UserRole
 
 router = APIRouter(prefix="/coa", tags=["chart-of-accounts"])
+
+
+def _is_platform_admin(role: UserRole) -> bool:
+    return role in {
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }
 
 
 def _tenant_account_response(
@@ -153,10 +172,10 @@ async def list_templates(
 async def get_template_hierarchy(
     template_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    _: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(get_current_user),
 ) -> CoaHierarchyResponse:
     service = CoaTemplateService(session)
-    payload = await service.get_full_hierarchy(template_id)
+    payload = await service.get_full_hierarchy(template_id, user.tenant_id)
     return CoaHierarchyResponse(**payload)
 
 
@@ -164,11 +183,132 @@ async def get_template_hierarchy(
 async def get_template_accounts(
     template_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    _: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(get_current_user),
 ) -> list[CoaLedgerAccountResponse]:
     service = CoaTemplateService(session)
-    rows = await service.get_ledger_accounts_for_template(template_id)
+    rows = await service.get_ledger_accounts_for_template(template_id, user.tenant_id)
     return [CoaLedgerAccountResponse.model_validate(row, from_attributes=True) for row in rows]
+
+
+@router.get("/accounts", response_model=list[CoaLedgerAccountResponse])
+async def get_effective_accounts(
+    template_id: uuid.UUID | None = Query(default=None),
+    group_code: str | None = Query(default=None),
+    subgroup_code: str | None = Query(default=None),
+    include_inactive: bool = Query(default=False),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> list[CoaLedgerAccountResponse]:
+    resolver = TenantCoaResolver(session)
+    rows = await resolver.resolve_accounts(
+        tenant_id=user.tenant_id,
+        template_id=template_id,
+        group_code=group_code,
+        subgroup_code=subgroup_code,
+        include_inactive=include_inactive,
+    )
+    return [CoaLedgerAccountResponse.model_validate(row, from_attributes=True) for row in rows]
+
+
+@router.post("/upload", response_model=CoaUploadResponse)
+async def upload_coa(
+    file: UploadFile = File(...),
+    template_id: uuid.UUID = Form(...),
+    mode: str = Form(default="APPEND"),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> CoaUploadResponse:
+    try:
+        upload_mode = CoaUploadMode(mode.upper())
+    except ValueError as exc:
+        raise ValidationError("mode must be APPEND, REPLACE, or VALIDATE_ONLY") from exc
+
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise ValidationError("Uploaded file is empty")
+
+    platform_admin = _is_platform_admin(user.role)
+    source_type = (
+        CoaSourceType.ADMIN_TEMPLATE if platform_admin else CoaSourceType.TENANT_CUSTOM
+    )
+    tenant_id = None if platform_admin else user.tenant_id
+
+    service = CoaUploadService(session)
+    result = await service.upload(
+        actor_id=user.id,
+        tenant_id=tenant_id,
+        template_id=template_id,
+        source_type=source_type,
+        upload_mode=upload_mode,
+        file_name=file.filename or "coa_upload.csv",
+        file_bytes=file_bytes,
+    )
+    await session.commit()
+    return CoaUploadResponse(
+        batch_id=uuid.UUID(result["batch_id"]),
+        upload_status=str(result["upload_status"]),
+        total_rows=int(result["total_rows"]),
+        valid_rows=int(result["valid_rows"]),
+        invalid_rows=int(result["invalid_rows"]),
+        errors=list(result["errors"]),
+    )
+
+
+@router.post("/validate", response_model=CoaValidateResponse)
+async def validate_coa(
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_async_session),
+    _: IamUser = Depends(get_current_user),
+) -> CoaValidateResponse:
+    file_bytes = await file.read()
+    if not file_bytes:
+        raise ValidationError("Uploaded file is empty")
+
+    service = CoaUploadService(session)
+    result = await service.validate_only(
+        file_name=file.filename or "coa_upload.csv",
+        file_bytes=file_bytes,
+    )
+    return CoaValidateResponse(
+        total_rows=int(result["total_rows"]),
+        valid_rows=int(result["valid_rows"]),
+        invalid_rows=int(result["invalid_rows"]),
+        errors=list(result["errors"]),
+    )
+
+
+@router.post("/apply", response_model=CoaApplyResponse)
+async def apply_coa(
+    body: CoaApplyRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> CoaApplyResponse:
+    service = CoaUploadService(session)
+    result = await service.apply_batch(
+        batch_id=body.batch_id,
+        actor_tenant_id=user.tenant_id,
+        is_platform_admin=_is_platform_admin(user.role),
+    )
+    await session.commit()
+    return CoaApplyResponse(
+        batch_id=uuid.UUID(result["batch_id"]),
+        applied_rows=int(result["applied_rows"]),
+        template_id=uuid.UUID(result["template_id"]),
+        source_type=str(result["source_type"]),
+    )
+
+
+@router.get("/upload/batches", response_model=list[CoaUploadBatchResponse])
+async def list_coa_upload_batches(
+    limit: int = Query(default=50, ge=1, le=200),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> list[CoaUploadBatchResponse]:
+    stmt = select(CoaUploadBatch).order_by(CoaUploadBatch.created_at.desc()).limit(limit)
+    if not _is_platform_admin(user.role):
+        stmt = stmt.where(CoaUploadBatch.tenant_id == user.tenant_id)
+    rows = (await session.execute(stmt)).scalars().all()
+    return [CoaUploadBatchResponse.model_validate(row, from_attributes=True) for row in rows]
 
 
 @router.get("/fs-classifications")
@@ -243,7 +383,15 @@ async def get_tenant_accounts(
     accounts = await service.get_tenant_accounts(user.tenant_id)
     ledger_ids = [row.ledger_account_id for row in accounts if row.ledger_account_id]
     ledger_rows = (
-        await session.execute(select(CoaLedgerAccount).where(CoaLedgerAccount.id.in_(ledger_ids)))
+        await session.execute(
+            select(CoaLedgerAccount).where(
+                CoaLedgerAccount.id.in_(ledger_ids),
+                or_(
+                    CoaLedgerAccount.tenant_id == user.tenant_id,
+                    CoaLedgerAccount.tenant_id.is_(None),
+                ),
+            )
+        )
     ).scalars().all()
     ledger_by_id = {row.id: row for row in ledger_rows}
     return [_tenant_account_response(account, ledger_by_id.get(account.ledger_account_id)) for account in accounts]
@@ -286,7 +434,15 @@ async def update_tenant_account(
     ledger = None
     if account.ledger_account_id:
         ledger = (
-            await session.execute(select(CoaLedgerAccount).where(CoaLedgerAccount.id == account.ledger_account_id))
+            await session.execute(
+                select(CoaLedgerAccount).where(
+                    CoaLedgerAccount.id == account.ledger_account_id,
+                    or_(
+                        CoaLedgerAccount.tenant_id == user.tenant_id,
+                        CoaLedgerAccount.tenant_id.is_(None),
+                    ),
+                )
+            )
         ).scalar_one_or_none()
     return _tenant_account_response(account, ledger)
 
@@ -304,7 +460,15 @@ async def get_tenant_account_by_id(
     ledger = None
     if account.ledger_account_id:
         ledger = (
-            await session.execute(select(CoaLedgerAccount).where(CoaLedgerAccount.id == account.ledger_account_id))
+            await session.execute(
+                select(CoaLedgerAccount).where(
+                    CoaLedgerAccount.id == account.ledger_account_id,
+                    or_(
+                        CoaLedgerAccount.tenant_id == user.tenant_id,
+                        CoaLedgerAccount.tenant_id.is_(None),
+                    ),
+                )
+            )
         ).scalar_one_or_none()
     response = _tenant_account_response(account, ledger).model_dump()
     response["hierarchy_path"] = {

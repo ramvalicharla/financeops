@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -7,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -17,10 +19,29 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from financeops.db.base import Base
+
+
+class CoaSourceType(str, enum.Enum):
+    SYSTEM = "SYSTEM"
+    ADMIN_TEMPLATE = "ADMIN_TEMPLATE"
+    TENANT_CUSTOM = "TENANT_CUSTOM"
+
+
+class CoaUploadStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+
+
+class CoaUploadMode(str, enum.Enum):
+    APPEND = "APPEND"
+    REPLACE = "REPLACE"
+    VALIDATE_ONLY = "VALIDATE_ONLY"
 
 
 class CoaIndustryTemplate(Base):
@@ -242,9 +263,30 @@ class CoaAccountSubgroup(Base):
 class CoaLedgerAccount(Base):
     __tablename__ = "coa_ledger_accounts"
     __table_args__ = (
-        UniqueConstraint("industry_template_id", "code", name="uq_coa_ledger_accounts_template_code"),
+        UniqueConstraint("tenant_id", "code", name="uq_coa_ledger_accounts_tenant_code"),
+        Index(
+            "uq_coa_ledger_accounts_global_code_ver",
+            "industry_template_id",
+            "source_type",
+            "version",
+            "code",
+            unique=True,
+            postgresql_where=text("tenant_id IS NULL"),
+        ),
+        Index(
+            "uq_coa_ledger_accounts_tenant_code_ver",
+            "industry_template_id",
+            "tenant_id",
+            "source_type",
+            "version",
+            "code",
+            unique=True,
+            postgresql_where=text("tenant_id IS NOT NULL"),
+        ),
         Index("idx_coa_ledger_accounts_code", "code"),
         Index("idx_coa_ledger_accounts_industry_template_id", "industry_template_id"),
+        Index("idx_coa_ledger_accounts_tenant_id", "tenant_id"),
+        Index("idx_coa_ledger_accounts_source_type", "source_type"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -263,9 +305,31 @@ class CoaLedgerAccount(Base):
         ForeignKey("coa_industry_templates.id", ondelete="CASCADE"),
         nullable=False,
     )
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_tenants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     code: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_type: Mapped[CoaSourceType] = mapped_column(
+        Enum(CoaSourceType, name="coa_source_type_enum"),
+        nullable=False,
+        server_default=text("'SYSTEM'::coa_source_type_enum"),
+        default=CoaSourceType.SYSTEM,
+    )
+    version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+        default=1,
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     normal_balance: Mapped[str] = mapped_column(String(10), nullable=False)
     cash_flow_tag: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -451,7 +515,122 @@ class ErpAccountMapping(Base):
     tenant_coa_account: Mapped[TenantCoaAccount | None] = relationship(back_populates="erp_mappings", lazy="noload")
 
 
+class CoaUploadBatch(Base):
+    __tablename__ = "coa_upload_batches"
+    __table_args__ = (
+        Index("idx_coa_upload_batches_tenant_id", "tenant_id"),
+        Index("idx_coa_upload_batches_template_id", "template_id"),
+        Index("idx_coa_upload_batches_source_type", "source_type"),
+        Index("idx_coa_upload_batches_upload_status", "upload_status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        nullable=False,
+        server_default=text("gen_random_uuid()"),
+    )
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_tenants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coa_industry_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_type: Mapped[CoaSourceType] = mapped_column(
+        Enum(CoaSourceType, name="coa_source_type_enum"),
+        nullable=False,
+    )
+    upload_mode: Mapped[CoaUploadMode] = mapped_column(
+        Enum(CoaUploadMode, name="coa_upload_mode_enum"),
+        nullable=False,
+        server_default=text("'APPEND'::coa_upload_mode_enum"),
+        default=CoaUploadMode.APPEND,
+    )
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    upload_status: Mapped[CoaUploadStatus] = mapped_column(
+        Enum(CoaUploadStatus, name="coa_upload_status_enum"),
+        nullable=False,
+        server_default=text("'PENDING'::coa_upload_status_enum"),
+        default=CoaUploadStatus.PENDING,
+    )
+    error_log: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CoaUploadStagingRow(Base):
+    __tablename__ = "coa_upload_staging_rows"
+    __table_args__ = (
+        Index("idx_coa_upload_staging_rows_batch_id", "batch_id"),
+        Index("idx_coa_upload_staging_rows_is_valid", "is_valid"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        nullable=False,
+        server_default=text("gen_random_uuid()"),
+    )
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coa_upload_batches.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_tenants.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("coa_industry_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    row_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    group_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    group_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    subgroup_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    subgroup_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    ledger_code: Mapped[str] = mapped_column(String(50), nullable=False)
+    ledger_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    ledger_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    is_control_account: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        default=False,
+    )
+    validation_errors: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB, nullable=True)
+    is_valid: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=text("true"),
+        default=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 __all__ = [
+    "CoaSourceType",
+    "CoaUploadStatus",
+    "CoaUploadMode",
     "CoaIndustryTemplate",
     "CoaFsClassification",
     "CoaFsSchedule",
@@ -463,4 +642,6 @@ __all__ = [
     "CoaGaapMapping",
     "TenantCoaAccount",
     "ErpAccountMapping",
+    "CoaUploadBatch",
+    "CoaUploadStagingRow",
 ]

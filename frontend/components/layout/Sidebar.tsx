@@ -357,6 +357,21 @@ export function Sidebar({
             ) : null}
             {!isDirector ? (
               <Link
+                href="/settings/coa"
+                onClick={closeSidebar}
+                className={cn(
+                  "flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm transition",
+                  pathname === "/settings/coa" || pathname.startsWith("/settings/coa/")
+                    ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                    : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <Layers className="h-4 w-4" />
+                CoA Uploads
+              </Link>
+            ) : null}
+            {!isDirector ? (
+              <Link
                 href="/settings/erp-mapping"
                 onClick={closeSidebar}
                 className={cn(

@@ -63,6 +63,9 @@ export interface CoaLedgerAccount {
   id: string
   account_subgroup_id: string
   industry_template_id: string
+  source_type: string
+  tenant_id: string | null
+  version: number
   code: string
   name: string
   description: string | null
@@ -78,6 +81,51 @@ export interface CoaLedgerAccount {
   notes_reference: string | null
   is_active: boolean
   sort_order: number
+  created_by: string | null
+}
+
+export type CoaUploadMode = "APPEND" | "REPLACE" | "VALIDATE_ONLY"
+
+export interface CoaUploadError {
+  row_number: number
+  errors: string[]
+}
+
+export interface CoaUploadResult {
+  batch_id: string
+  upload_status: string
+  total_rows: number
+  valid_rows: number
+  invalid_rows: number
+  errors: CoaUploadError[]
+}
+
+export interface CoaValidationResult {
+  total_rows: number
+  valid_rows: number
+  invalid_rows: number
+  errors: CoaUploadError[]
+}
+
+export interface CoaApplyResult {
+  batch_id: string
+  applied_rows: number
+  template_id: string
+  source_type: string
+}
+
+export interface CoaUploadBatch {
+  id: string
+  tenant_id: string | null
+  template_id: string | null
+  source_type: string
+  upload_mode: CoaUploadMode
+  file_name: string
+  upload_status: string
+  error_log: Record<string, unknown> | null
+  created_by: string | null
+  created_at: string
+  processed_at: string | null
 }
 
 export interface TenantCoaAccount {
@@ -201,6 +249,63 @@ export const getTemplateAccounts = async (
 ): Promise<CoaLedgerAccount[]> => {
   const response = await apiClient.get<CoaLedgerAccount[]>(
     `/api/v1/coa/templates/${templateId}/accounts`,
+  )
+  return response.data
+}
+
+export const getEffectiveCoaAccounts = async (params: {
+  template_id?: string
+  group_code?: string
+  subgroup_code?: string
+  include_inactive?: boolean
+} = {}): Promise<CoaLedgerAccount[]> => {
+  const query = new URLSearchParams()
+  if (params.template_id) {
+    query.set("template_id", params.template_id)
+  }
+  if (params.group_code) {
+    query.set("group_code", params.group_code)
+  }
+  if (params.subgroup_code) {
+    query.set("subgroup_code", params.subgroup_code)
+  }
+  if (typeof params.include_inactive === "boolean") {
+    query.set("include_inactive", String(params.include_inactive))
+  }
+  const suffix = query.toString() ? `?${query.toString()}` : ""
+  const response = await apiClient.get<CoaLedgerAccount[]>(`/api/v1/coa/accounts${suffix}`)
+  return response.data
+}
+
+export const uploadCoaFile = async (payload: {
+  file: File
+  template_id: string
+  mode: CoaUploadMode
+}): Promise<CoaUploadResult> => {
+  const formData = new FormData()
+  formData.append("file", payload.file)
+  formData.append("template_id", payload.template_id)
+  formData.append("mode", payload.mode)
+
+  const response = await apiClient.post<CoaUploadResult>("/api/v1/coa/upload", formData)
+  return response.data
+}
+
+export const validateCoaFile = async (file: File): Promise<CoaValidationResult> => {
+  const formData = new FormData()
+  formData.append("file", file)
+  const response = await apiClient.post<CoaValidationResult>("/api/v1/coa/validate", formData)
+  return response.data
+}
+
+export const applyCoaBatch = async (batch_id: string): Promise<CoaApplyResult> => {
+  const response = await apiClient.post<CoaApplyResult>("/api/v1/coa/apply", { batch_id })
+  return response.data
+}
+
+export const listCoaUploadBatches = async (limit = 50): Promise<CoaUploadBatch[]> => {
+  const response = await apiClient.get<CoaUploadBatch[]>(
+    `/api/v1/coa/upload/batches?limit=${limit}`,
   )
   return response.data
 }

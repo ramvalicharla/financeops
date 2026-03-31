@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -21,6 +22,9 @@ class CoaLedgerAccountResponse(BaseModel):
     industry_template_id: uuid.UUID
     code: str
     name: str
+    source_type: str
+    tenant_id: uuid.UUID | None = None
+    version: int
     description: str | None = None
     normal_balance: str
     cash_flow_tag: str | None = None
@@ -34,6 +38,52 @@ class CoaLedgerAccountResponse(BaseModel):
     notes_reference: str | None = None
     is_active: bool
     sort_order: int
+    created_by: uuid.UUID | None = None
+
+
+class CoaUploadResponse(BaseModel):
+    batch_id: uuid.UUID
+    upload_status: str
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CoaValidateResponse(BaseModel):
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    errors: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CoaApplyRequest(BaseModel):
+    batch_id: uuid.UUID
+
+
+class CoaApplyResponse(BaseModel):
+    batch_id: uuid.UUID
+    applied_rows: int
+    template_id: uuid.UUID
+    source_type: str
+
+
+class CoaUploadModeRequest(BaseModel):
+    mode: Literal["APPEND", "REPLACE", "VALIDATE_ONLY"] = "APPEND"
+
+
+class CoaUploadBatchResponse(BaseModel):
+    id: uuid.UUID
+    tenant_id: uuid.UUID | None = None
+    template_id: uuid.UUID | None = None
+    source_type: str
+    upload_mode: str
+    file_name: str
+    upload_status: str
+    error_log: dict[str, Any] | None = None
+    created_by: uuid.UUID | None = None
+    created_at: datetime
+    processed_at: datetime | None = None
 
 
 class CoaHierarchyLedgerAccount(BaseModel):

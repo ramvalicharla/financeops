@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import literal, or_, select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,7 @@ from financeops.modules.coa.models import (
     CoaFsSchedule,
     CoaFsSubline,
     CoaLedgerAccount,
+    CoaSourceType,
     TenantCoaAccount,
 )
 
@@ -22,39 +23,101 @@ class TenantCoaService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
-    async def initialise_tenant_coa(self, tenant_id: uuid.UUID, template_id: uuid.UUID) -> None:
-        source = (
-            select(
-                literal(tenant_id),
-                CoaLedgerAccount.id,
-                CoaLedgerAccount.account_subgroup_id,
-                CoaLedgerAccount.code,
-                CoaLedgerAccount.name,
-                literal(False),
-                CoaLedgerAccount.is_active,
-                literal(None),
-                literal(None),
-                CoaLedgerAccount.sort_order,
+    @staticmethod
+    def _source_priority(source_type: CoaSourceType) -> int:
+        if source_type == CoaSourceType.TENANT_CUSTOM:
+            return 3
+        if source_type == CoaSourceType.ADMIN_TEMPLATE:
+            return 2
+        return 1
+
+    async def has_tenant_accounts(self, tenant_id: uuid.UUID) -> bool:
+        row = (
+            await self._session.execute(
+                select(TenantCoaAccount.id)
+                .where(TenantCoaAccount.tenant_id == tenant_id)
+                .limit(1)
             )
-            .where(CoaLedgerAccount.industry_template_id == template_id)
-            .where(CoaLedgerAccount.is_active.is_(True))
+        ).scalar_one_or_none()
+        return row is not None
+
+    async def _select_source_accounts(
+        self,
+        tenant_id: uuid.UUID,
+        template_id: uuid.UUID,
+    ) -> list[CoaLedgerAccount]:
+        rows = (
+            await self._session.execute(
+                select(CoaLedgerAccount)
+                .where(CoaLedgerAccount.industry_template_id == template_id)
+                .where(CoaLedgerAccount.is_active.is_(True))
+                .where(
+                    or_(
+                        (
+                            (CoaLedgerAccount.tenant_id == tenant_id)
+                            & (CoaLedgerAccount.source_type == CoaSourceType.TENANT_CUSTOM)
+                        ),
+                        (
+                            CoaLedgerAccount.tenant_id.is_(None)
+                            & (CoaLedgerAccount.source_type == CoaSourceType.ADMIN_TEMPLATE)
+                        ),
+                        (
+                            CoaLedgerAccount.tenant_id.is_(None)
+                            & (CoaLedgerAccount.source_type == CoaSourceType.SYSTEM)
+                        ),
+                    )
+                )
+                .order_by(CoaLedgerAccount.code.asc(), CoaLedgerAccount.version.desc())
+            )
+        ).scalars().all()
+
+        selected_by_code: dict[str, CoaLedgerAccount] = {}
+        for row in rows:
+            current = selected_by_code.get(row.code)
+            if current is None:
+                selected_by_code[row.code] = row
+                continue
+            current_priority = self._source_priority(current.source_type)
+            candidate_priority = self._source_priority(row.source_type)
+            if candidate_priority > current_priority:
+                selected_by_code[row.code] = row
+                continue
+            if candidate_priority == current_priority and row.version > current.version:
+                selected_by_code[row.code] = row
+                continue
+            if (
+                candidate_priority == current_priority
+                and row.version == current.version
+                and row.created_at > current.created_at
+            ):
+                selected_by_code[row.code] = row
+
+        return sorted(selected_by_code.values(), key=lambda item: (item.sort_order, item.code))
+
+    async def initialise_tenant_coa(self, tenant_id: uuid.UUID, template_id: uuid.UUID) -> None:
+        source_accounts = await self._select_source_accounts(tenant_id, template_id)
+        if not source_accounts:
+            raise ValidationError("CoA template has no ledger accounts")
+
+        payload = [
+            {
+                "tenant_id": tenant_id,
+                "ledger_account_id": row.id,
+                "parent_subgroup_id": row.account_subgroup_id,
+                "account_code": row.code,
+                "display_name": row.name,
+                "is_custom": False,
+                "is_active": row.is_active,
+                "default_cost_centre_id": None,
+                "default_location_id": None,
+                "sort_order": row.sort_order,
+            }
+            for row in source_accounts
+        ]
+        stmt = insert(TenantCoaAccount).values(payload)
+        stmt = stmt.on_conflict_do_nothing(
+            constraint="uq_tenant_coa_accounts_tenant_code"
         )
-        stmt = insert(TenantCoaAccount).from_select(
-            [
-                "tenant_id",
-                "ledger_account_id",
-                "parent_subgroup_id",
-                "account_code",
-                "display_name",
-                "is_custom",
-                "is_active",
-                "default_cost_centre_id",
-                "default_location_id",
-                "sort_order",
-            ],
-            source,
-        )
-        stmt = stmt.on_conflict_do_nothing(constraint="uq_tenant_coa_accounts_tenant_code")
         await self._session.execute(stmt)
 
     async def get_tenant_accounts(self, tenant_id: uuid.UUID) -> list[TenantCoaAccount]:
@@ -164,9 +227,13 @@ class TenantCoaService:
         if subgroup_id is None and account.ledger_account_id is not None:
             subgroup_id = (
                 await self._session.execute(
-                    select(CoaLedgerAccount.account_subgroup_id).where(
-                        CoaLedgerAccount.id == account.ledger_account_id
-                    )
+                select(CoaLedgerAccount.account_subgroup_id).where(
+                    CoaLedgerAccount.id == account.ledger_account_id,
+                    or_(
+                        CoaLedgerAccount.tenant_id == tenant_id,
+                        CoaLedgerAccount.tenant_id.is_(None),
+                    ),
+                )
                 )
             ).scalar_one_or_none()
 

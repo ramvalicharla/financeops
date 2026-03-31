@@ -1,0 +1,4 @@
+group_code,group_name,subgroup_code,subgroup_name,ledger_code,ledger_name,ledger_type,is_control_account
+REV,Revenue,REV_MAIN,Primary Revenue,REV_SUBSCRIPTION,Subscription Revenue,INCOME,false
+EXP,Operating Expenses,EXP_ADMIN,Administrative Expenses,EXP_OFFICE_RENT,Office Rent,EXPENSE,false
+AST,Current Assets,AST_CASH,Cash and Bank,AST_BANK_CURRENT,Bank Current Account,ASSET,true

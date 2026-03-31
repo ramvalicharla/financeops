@@ -539,6 +539,8 @@ class OrgSetupService:
         )
         summaries: list[dict[str, Any]] = []
         template_ids: set[uuid.UUID] = set()
+        if not await self._tenant_coa.has_tenant_accounts(tenant_id):
+            raise ValidationError("CoA must be uploaded or seeded before Step5")
         for item in entity_templates:
             entity_id = uuid.UUID(str(item["entity_id"]))
             template_id = uuid.UUID(str(item["template_id"]))
@@ -555,7 +557,6 @@ class OrgSetupService:
                 raise NotFoundError("Org entity not found")
             entity.industry_template_id = template_id
 
-            await self._tenant_coa.initialise_tenant_coa(tenant_id, template_id)
             if entity.cp_entity_id is not None:
                 await seed_standard_indian_asset_classes(
                     self._session,
