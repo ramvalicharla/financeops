@@ -98,6 +98,7 @@ class OrgSetupService:
         return progress
 
     async def submit_step1(self, tenant_id: uuid.UUID, data: dict[str, Any]) -> OrgGroup:
+        log.info("Step1 tenant_id=%s group_name=%s", tenant_id, data.get("group_name"))
         group = (
             await self._session.execute(
                 select(OrgGroup).where(OrgGroup.tenant_id == tenant_id)
@@ -248,6 +249,8 @@ class OrgSetupService:
         if not entities:
             raise ValidationError("At least one entity is required")
 
+        log.info("Step2 service tenant_id=%s group_id=%s", tenant_id, group_id)
+        log.info("Step2 entity_count=%s", len(entities))
         log.info("Step2 lookup group_id=%s tenant_id=%s", group_id, tenant_id)
         group = (
             await self._session.execute(
@@ -382,6 +385,11 @@ class OrgSetupService:
         tenant_id: uuid.UUID,
         relationships: list[dict[str, Any]],
     ) -> list[OrgOwnership]:
+        log.info(
+            "Step3 tenant_id=%s relationship_count=%s",
+            tenant_id,
+            len(relationships),
+        )
         rows: list[OrgOwnership] = []
         for relationship in relationships:
             parent_entity_id = uuid.UUID(str(relationship["parent_entity_id"]))
@@ -467,6 +475,7 @@ class OrgSetupService:
         tenant_id: uuid.UUID,
         configs: list[dict[str, Any]],
     ) -> list[OrgEntityErpConfig]:
+        log.info("Step4 tenant_id=%s config_count=%s", tenant_id, len(configs))
         rows: list[OrgEntityErpConfig] = []
         for config in configs:
             entity_id = uuid.UUID(str(config["org_entity_id"]))
@@ -523,6 +532,11 @@ class OrgSetupService:
         tenant_id: uuid.UUID,
         entity_templates: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
+        log.info(
+            "Step5 tenant_id=%s entity_template_count=%s",
+            tenant_id,
+            len(entity_templates),
+        )
         summaries: list[dict[str, Any]] = []
         template_ids: set[uuid.UUID] = set()
         for item in entity_templates:
@@ -605,6 +619,12 @@ class OrgSetupService:
         confirmed_mapping_ids: list[uuid.UUID],
         confirmed_by: uuid.UUID | None = None,
     ) -> int:
+        log.info(
+            "Step6 tenant_id=%s mapping_count=%s confirmed_by=%s",
+            tenant_id,
+            len(confirmed_mapping_ids),
+            confirmed_by,
+        )
         confirmer = await self._resolve_confirmer(tenant_id, confirmed_by)
         confirmed_count = await self._erp_mapping.bulk_confirm_mappings(
             tenant_id=tenant_id,

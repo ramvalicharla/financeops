@@ -7,9 +7,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, get_current_tenant
 from financeops.core.exceptions import ValidationError
-from financeops.db.models.users import IamUser
+from financeops.db.models.tenants import IamTenant
 from financeops.modules.coa.models import ErpAccountMapping
 from financeops.modules.org_setup.api.schemas import (
     OrgEntityResponse,
@@ -42,36 +42,38 @@ router = APIRouter(prefix="/org-setup", tags=["org-setup"])
 @router.get("/progress", response_model=OrgSetupProgressResponse)
 async def get_progress(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> OrgSetupProgressResponse:
     service = OrgSetupService(session)
-    progress = await service.get_or_create_progress(user.tenant_id)
+    progress = await service.get_or_create_progress(tenant.id)
     return OrgSetupProgressResponse.model_validate(progress, from_attributes=True)
 
 
 @router.post("/step1", response_model=Step1Response)
 async def submit_step1(
-    body: Step1Request,
+    payload: Step1Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> Step1Response:
     service = OrgSetupService(session)
-    group = await service.submit_step1(user.tenant_id, body.model_dump())
+    group = await service.submit_step1(tenant.id, payload.model_dump())
+    await session.commit()
     return Step1Response(group=OrgGroupResponse.model_validate(group, from_attributes=True))
 
 
 @router.post("/step2", response_model=Step2Response)
 async def submit_step2(
-    body: Step2Request,
+    payload: Step2Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> Step2Response:
     service = OrgSetupService(session)
     rows = await service.submit_step2(
-        user.tenant_id,
-        body.group_id,
-        [item.model_dump() for item in body.entities],
+        tenant.id,
+        payload.group_id,
+        [item.model_dump() for item in payload.entities],
     )
+    await session.commit()
     return Step2Response(
         entities=[OrgEntityResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -79,15 +81,16 @@ async def submit_step2(
 
 @router.post("/step3", response_model=Step3Response)
 async def submit_step3(
-    body: Step3Request,
+    payload: Step3Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> Step3Response:
     service = OrgSetupService(session)
     rows = await service.submit_step3(
-        user.tenant_id,
-        [item.model_dump() for item in body.relationships],
+        tenant.id,
+        [item.model_dump() for item in payload.relationships],
     )
+    await session.commit()
     return Step3Response(
         ownership=[OrgOwnershipResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -95,15 +98,16 @@ async def submit_step3(
 
 @router.post("/step4", response_model=Step4Response)
 async def submit_step4(
-    body: Step4Request,
+    payload: Step4Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> Step4Response:
     service = OrgSetupService(session)
     rows = await service.submit_step4(
-        user.tenant_id,
-        [item.model_dump() for item in body.configs],
+        tenant.id,
+        [item.model_dump() for item in payload.configs],
     )
+    await session.commit()
     return Step4Response(
         configs=[OrgEntityErpConfigResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -111,15 +115,16 @@ async def submit_step4(
 
 @router.post("/step5", response_model=Step5Response)
 async def submit_step5(
-    body: Step5Request,
+    payload: Step5Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> Step5Response:
     service = OrgSetupService(session)
     summaries = await service.submit_step5(
-        user.tenant_id,
-        [item.model_dump() for item in body.entity_templates],
+        tenant.id,
+        [item.model_dump() for item in payload.entity_templates],
     )
+    await session.commit()
     return Step5Response(
         initialised_count=len(summaries),
         entity_summaries=[
@@ -135,20 +140,20 @@ async def submit_step5(
 
 @router.post("/step6", response_model=Step6Response)
 async def submit_step6(
-    body: Step6Request,
+    payload: Step6Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> Step6Response:
-    mapping_ids = list(body.confirmed_mapping_ids)
-    if body.auto_confirm_above is not None:
+    mapping_ids = list(payload.confirmed_mapping_ids)
+    if payload.auto_confirm_above is not None:
         try:
-            threshold = Decimal(body.auto_confirm_above)
+            threshold = Decimal(payload.auto_confirm_above)
         except Exception as exc:  # noqa: BLE001
             raise ValidationError("auto_confirm_above must be a Decimal string") from exc
         rows = (
             await session.execute(
                 select(ErpAccountMapping.id).where(
-                    ErpAccountMapping.tenant_id == user.tenant_id,
+                    ErpAccountMapping.tenant_id == tenant.id,
                     ErpAccountMapping.id.in_(mapping_ids),
                     ErpAccountMapping.mapping_confidence.is_not(None),
                     ErpAccountMapping.mapping_confidence >= threshold,
@@ -159,17 +164,17 @@ async def submit_step6(
 
     service = OrgSetupService(session)
     confirmed_count = await service.submit_step6(
-        user.tenant_id,
+        tenant.id,
         mapping_ids,
-        confirmed_by=user.id,
     )
+    await session.commit()
 
     unmapped_count = int(
         (
             await session.execute(
                 select(func.count())
                 .select_from(ErpAccountMapping)
-                .where(ErpAccountMapping.tenant_id == user.tenant_id)
+                .where(ErpAccountMapping.tenant_id == tenant.id)
                 .where(
                     or_(
                         ErpAccountMapping.tenant_coa_account_id.is_(None),
@@ -190,10 +195,10 @@ async def submit_step6(
 @router.get("/summary", response_model=OrgSetupSummaryResponse)
 async def get_setup_summary(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> OrgSetupSummaryResponse:
     service = OrgSetupService(session)
-    payload = await service.get_setup_summary(user.tenant_id)
+    payload = await service.get_setup_summary(tenant.id)
     group = payload.get("group")
     return OrgSetupSummaryResponse(
         group=OrgGroupResponse.model_validate(group, from_attributes=True) if group is not None else None,
@@ -215,10 +220,10 @@ async def get_setup_summary(
 @router.get("/entities", response_model=list[OrgEntityResponse])
 async def list_entities(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> list[OrgEntityResponse]:
     service = OrgSetupService(session)
-    rows = await service.get_entities(user.tenant_id)
+    rows = await service.get_entities(tenant.id)
     return [OrgEntityResponse.model_validate(item, from_attributes=True) for item in rows]
 
 
@@ -226,20 +231,20 @@ async def list_entities(
 async def get_entity(
     entity_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> OrgEntityResponse:
     service = OrgSetupService(session)
-    row = await service.get_entity(user.tenant_id, entity_id)
+    row = await service.get_entity(tenant.id, entity_id)
     return OrgEntityResponse.model_validate(row, from_attributes=True)
 
 
 @router.get("/ownership-tree", response_model=OwnershipTreeResponse)
 async def get_ownership_tree(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> OwnershipTreeResponse:
     service = OrgSetupService(session)
-    payload = await service.get_ownership_tree(user.tenant_id)
+    payload = await service.get_ownership_tree(tenant.id)
     return OwnershipTreeResponse(**payload)
 
 
@@ -248,11 +253,11 @@ async def update_entity(
     entity_id: uuid.UUID,
     body: UpdateOrgEntityRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    tenant: IamTenant = Depends(get_current_tenant),
 ) -> OrgEntityResponse:
     service = OrgSetupService(session)
     row = await service.update_entity(
-        user.tenant_id,
+        tenant.id,
         entity_id,
         body.model_dump(exclude_unset=True),
     )
