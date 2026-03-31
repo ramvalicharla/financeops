@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import UTC, date, datetime
@@ -33,6 +34,7 @@ from financeops.utils.gstin import extract_state_code, validate_gstin, validate_
 
 _CODE_SANITIZE = re.compile(r"[^A-Z0-9]+")
 _GSTIN_BASIC_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
+log = logging.getLogger(__name__)
 
 
 def _clean_code(prefix: str, source: str, fallback: str) -> str:
@@ -245,6 +247,8 @@ class OrgSetupService:
     ) -> list[OrgEntity]:
         if not entities:
             raise ValidationError("At least one entity is required")
+
+        log.info("Step2 lookup group_id=%s tenant_id=%s", group_id, tenant_id)
         group = (
             await self._session.execute(
                 select(OrgGroup).where(

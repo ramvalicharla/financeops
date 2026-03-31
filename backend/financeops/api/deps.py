@@ -135,6 +135,13 @@ async def get_current_user(
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise AuthenticationError("Invalid token type")
+    tenant_id_str = payload.get("tenant_id")
+    if not tenant_id_str:
+        raise AuthenticationError("Token missing tenant_id")
+    try:
+        jwt_tenant_id = uuid.UUID(str(tenant_id_str))
+    except ValueError as exc:
+        raise AuthenticationError("Invalid tenant_id in token") from exc
     token_scope = payload.get("scope")
     user_id_str = payload.get("sub")
     if not user_id_str:
@@ -149,6 +156,14 @@ async def get_current_user(
         raise AuthenticationError("User not found")
     if not user.is_active:
         raise AuthenticationError("Account deactivated")
+    if user.tenant_id is None:
+        raise AuthenticationError("User missing tenant_id")
+    if user.tenant_id != jwt_tenant_id:
+        raise AuthenticationError("Token tenant mismatch")
+
+    # Keep tenant identity consistent across downstream dependencies/session context.
+    request.state.tenant_id = str(jwt_tenant_id)
+    setattr(user, "_jwt_tenant_id", jwt_tenant_id)
 
     if request.url.path.startswith("/api/v1/org-setup"):
         log.info("MFA bypass for onboarding: %s", request.url.path)
@@ -196,11 +211,19 @@ async def get_current_tenant(
         log.info("OPTIONS bypass at dependency: %s", request.url.path)
         raise HTTPException(status_code=204, detail=None)
     log.info("PATH HIT: %s", request.url.path)
+    jwt_tenant_id = getattr(user, "_jwt_tenant_id", None)
+    if jwt_tenant_id is None:
+        raise AuthenticationError("Missing JWT tenant context")
     tenant = (
-        await session.execute(select(IamTenant).where(IamTenant.id == user.tenant_id))
+        await session.execute(select(IamTenant).where(IamTenant.id == jwt_tenant_id))
     ).scalar_one_or_none()
     if tenant is None:
         raise AuthenticationError("Tenant not found")
+    log.info(
+        "Tenant resolution jwt_tenant_id=%s resolved_tenant_id=%s",
+        jwt_tenant_id,
+        tenant.id,
+    )
     if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
         log.info("BYPASS ACTIVE")
         return tenant
