@@ -20,7 +20,7 @@ from financeops.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
-    encrypt_field,
+    decrypt_field,
     hash_password,
     verify_password,
     verify_totp,
@@ -81,7 +81,7 @@ class MfaVerifyRequest(BaseModel):
 
 
 class MFAVerifySetupRequest(BaseModel):
-    secret: str
+    secret: str | None = None
     code: str
 
 
@@ -270,10 +270,16 @@ async def verify_mfa_setup(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user_or_setup_token),
 ) -> dict:
-    if not verify_totp(body.secret, body.code):
+    if not user.totp_secret_encrypted:
+        raise AuthenticationError("MFA not initialized for user")
+    if body.secret:
+        log.warning(
+            "Client supplied secret in /api/v1/auth/mfa/verify-setup payload; ignoring user_id=%s",
+            user.id,
+        )
+    secret = decrypt_field(user.totp_secret_encrypted)
+    if not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Invalid verification code")
-
-    user.totp_secret_encrypted = encrypt_field(body.secret)
     user.mfa_enabled = True
     user.force_mfa_setup = False
 

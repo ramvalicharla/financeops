@@ -115,6 +115,61 @@ async def test_verify_mfa_setup_invalid_code_rejected(async_client, async_sessio
 
 
 @pytest.mark.asyncio
+async def test_verify_mfa_setup_rejects_cross_user_totp(
+    async_client,
+    async_session: AsyncSession,
+    test_user: IamUser,
+    test_tenant,
+) -> None:
+    user_b = await create_user(
+        async_session,
+        tenant_id=test_tenant.id,
+        email=f"mfa-user-b-{datetime.now(UTC).timestamp()}@example.com",
+        password="TestPass123!",
+        full_name="User B",
+        role=UserRole.finance_team,
+    )
+
+    test_user.force_mfa_setup = True
+    test_user.mfa_enabled = False
+    user_b.force_mfa_setup = True
+    user_b.mfa_enabled = False
+    await async_session.flush()
+
+    login_a = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": test_user.email, "password": "TestPass123!"},
+    )
+    setup_token_a = login_a.json()["data"]["setup_token"]
+    setup_a = await async_client.post(
+        "/api/v1/auth/mfa/setup",
+        headers={"Authorization": f"Bearer {setup_token_a}"},
+    )
+    secret_a = setup_a.json()["data"]["secret"]
+    code_a = pyotp.TOTP(secret_a).now()
+
+    login_b = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": user_b.email, "password": "TestPass123!"},
+    )
+    setup_token_b = login_b.json()["data"]["setup_token"]
+    setup_b = await async_client.post(
+        "/api/v1/auth/mfa/setup",
+        headers={"Authorization": f"Bearer {setup_token_b}"},
+    )
+    assert setup_b.status_code == 200
+
+    verify_b = await async_client.post(
+        "/api/v1/auth/mfa/verify-setup",
+        headers={"Authorization": f"Bearer {setup_token_b}"},
+        json={"secret": secret_a, "code": code_a},
+    )
+    assert verify_b.status_code in {400, 401}
+    await async_session.refresh(user_b)
+    assert user_b.mfa_enabled is False
+
+
+@pytest.mark.asyncio
 async def test_recovery_codes_generated_on_mfa_setup(async_client, async_session: AsyncSession, test_user: IamUser) -> None:
     test_user.force_mfa_setup = True
     test_user.mfa_enabled = False
