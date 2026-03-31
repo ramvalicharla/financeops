@@ -8,6 +8,7 @@ import uuid
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
+from starlette_csrf import CSRFMiddleware as _BaseCSRFMiddleware
 
 from financeops.core.security import decode_token
 from financeops.core.exceptions import AuthenticationError
@@ -22,6 +23,17 @@ _RLS_SKIP_PREFIXES = (
     "/metrics",
     "/api/v1/auth/",
 )
+
+
+class FinanceOpsCSRFMiddleware(_BaseCSRFMiddleware):
+    """
+    Preserve upstream CSRF behavior while logging real API bypass paths.
+    """
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if any(pattern.match(request.url.path) for pattern in self.exempt_urls):
+            log.info("CSRF bypass for API route: %s", request.url.path)
+        return await super().dispatch(request, call_next)
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):

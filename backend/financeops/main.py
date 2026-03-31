@@ -14,7 +14,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from starlette_csrf import CSRFMiddleware
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 
@@ -72,6 +71,7 @@ from financeops.api.v1.debug_network import router as debug_network_router
 from financeops.api.deps import require_org_setup
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
+    FinanceOpsCSRFMiddleware,
     RequestLoggingMiddleware,
     RLSMiddleware,
 )
@@ -233,9 +233,10 @@ def create_app() -> FastAPI:
 
     environment = str(getattr(settings, "ENVIRONMENT", settings.APP_ENV)).lower()
     app.add_middleware(
-        CSRFMiddleware,
+        FinanceOpsCSRFMiddleware,
         secret=settings.SECRET_KEY,
         exempt_urls=[
+            re.compile(r"^/api(?:/.*)?$"),
             re.compile(r"^/api/v1/auth(?:/.*)?$"),
             re.compile(r"^/health(?:/.*)?$"),
             re.compile(r"^/metrics(?:/.*)?$"),
