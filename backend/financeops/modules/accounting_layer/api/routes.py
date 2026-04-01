@@ -9,10 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.users import IamUser, UserRole
+from financeops.modules.accounting_layer.api.reporting_routes import reporting_router
 from financeops.modules.accounting_layer.application.approval_service import (
     get_jv_approvals,
     get_sla_metrics,
     submit_approval,
+)
+from financeops.modules.accounting_layer.application.journal_service import (
+    create_posted_journal,
+    get_journal,
+    list_journals,
 )
 from financeops.modules.accounting_layer.application.jv_service import (
     create_jv,
@@ -25,18 +31,21 @@ from financeops.modules.accounting_layer.application.jv_service import (
 from financeops.modules.accounting_layer.domain.schemas import (
     ApprovalRequest,
     ApprovalResponse,
+    JournalCreate,
+    JournalResponse,
     JVCreate,
     JVLineResponse,
     JVResponse,
-    SLAMetricsResponse,
     JVStateEventResponse,
     JVTransitionRequest,
     JVUpdateLines,
+    SLAMetricsResponse,
 )
 from financeops.shared_kernel.response import ok
-from financeops.modules.accounting_layer.api.reporting_routes import reporting_router
 
-router = APIRouter(prefix="/jv", tags=["Accounting JV"])
+jv_router = APIRouter(prefix="/jv", tags=["Accounting JV"])
+journals_router = APIRouter(prefix="/journals", tags=["Accounting Journals"])
+router = APIRouter()
 
 
 def _is_admin(user: IamUser) -> bool:
@@ -45,6 +54,10 @@ def _is_admin(user: IamUser) -> bool:
 
 def _serialize_jv(jv: AccountingJVAggregate) -> dict[str, Any]:
     active_lines = [line for line in jv.lines if line.jv_version == jv.version]
+    if not active_lines and jv.lines:
+        latest_version = max(line.jv_version for line in jv.lines)
+        active_lines = [line for line in jv.lines if line.jv_version == latest_version]
+
     base_payload = JVResponse.model_validate(jv).model_dump(mode="json")
     base_payload["lines"] = [
         JVLineResponse.model_validate(line).model_dump(mode="json")
@@ -53,7 +66,7 @@ def _serialize_jv(jv: AccountingJVAggregate) -> dict[str, Any]:
     return base_payload
 
 
-@router.post("/")
+@jv_router.post("/")
 async def create_jv_endpoint(
     request: Request,
     body: JVCreate,
@@ -83,7 +96,7 @@ async def create_jv_endpoint(
     ).model_dump(mode="json")
 
 
-@router.get("/")
+@jv_router.get("/")
 async def list_jvs_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
@@ -109,7 +122,7 @@ async def list_jvs_endpoint(
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
-@router.get("/{jv_id}")
+@jv_router.get("/{jv_id}")
 async def get_jv_endpoint(
     request: Request,
     jv_id: uuid.UUID,
@@ -123,7 +136,7 @@ async def get_jv_endpoint(
     ).model_dump(mode="json")
 
 
-@router.put("/{jv_id}/lines")
+@jv_router.put("/{jv_id}/lines")
 async def update_jv_lines_endpoint(
     request: Request,
     jv_id: uuid.UUID,
@@ -145,7 +158,7 @@ async def update_jv_lines_endpoint(
     ).model_dump(mode="json")
 
 
-@router.post("/{jv_id}/transition")
+@jv_router.post("/{jv_id}/transition")
 async def transition_jv_endpoint(
     request: Request,
     jv_id: uuid.UUID,
@@ -171,7 +184,7 @@ async def transition_jv_endpoint(
     ).model_dump(mode="json")
 
 
-@router.get("/{jv_id}/history")
+@jv_router.get("/{jv_id}/history")
 async def get_jv_history_endpoint(
     request: Request,
     jv_id: uuid.UUID,
@@ -183,7 +196,7 @@ async def get_jv_history_endpoint(
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
-@router.post("/{jv_id}/approve")
+@jv_router.post("/{jv_id}/approve")
 async def approve_jv_endpoint(
     request: Request,
     jv_id: uuid.UUID,
@@ -208,7 +221,7 @@ async def approve_jv_endpoint(
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
-@router.get("/{jv_id}/approvals")
+@jv_router.get("/{jv_id}/approvals")
 async def get_jv_approvals_endpoint(
     request: Request,
     jv_id: uuid.UUID,
@@ -220,7 +233,7 @@ async def get_jv_approvals_endpoint(
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
-@router.get("/sla/metrics")
+@jv_router.get("/sla/metrics")
 async def sla_metrics_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
@@ -240,4 +253,66 @@ async def sla_metrics_endpoint(
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
-router.include_router(reporting_router)
+@journals_router.post("/")
+async def create_journal_endpoint(
+    request: Request,
+    body: JournalCreate,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    journal = await create_posted_journal(
+        session,
+        tenant_id=user.tenant_id,
+        created_by=user.id,
+        payload=body,
+    )
+    await session.flush()
+    return ok(
+        journal.model_dump(mode="json"),
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.get("/")
+async def list_journals_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+    org_entity_id: uuid.UUID | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> dict[str, Any]:
+    journals = await list_journals(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=org_entity_id,
+        limit=limit,
+        offset=offset,
+    )
+    return ok(
+        [item.model_dump(mode="json") for item in journals],
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.get("/{journal_id}")
+async def get_journal_endpoint(
+    request: Request,
+    journal_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    journal = await get_journal(
+        session,
+        tenant_id=user.tenant_id,
+        journal_id=journal_id,
+    )
+    return ok(
+        journal.model_dump(mode="json"),
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+jv_router.include_router(reporting_router)
+router.include_router(jv_router)
+router.include_router(journals_router)

@@ -142,6 +142,76 @@ class JVResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class JournalLineCreate(BaseModel):
+    account_code: str | None = Field(default=None, min_length=1, max_length=50)
+    tenant_coa_account_id: uuid.UUID | None = None
+    debit: Decimal = Field(default=Decimal("0"))
+    credit: Decimal = Field(default=Decimal("0"))
+    memo: str | None = None
+
+    @field_validator("debit", "credit", mode="before")
+    @classmethod
+    def _coerce_line_decimal(cls, value: object) -> Decimal:
+        if value is None:
+            return Decimal("0")
+        return Decimal(str(value))
+
+    @model_validator(mode="after")
+    def _validate_line_amounts(self) -> JournalLineCreate:
+        if self.debit < 0 or self.credit < 0:
+            raise ValueError("Debit and credit must be non-negative.")
+        if self.debit > 0 and self.credit > 0:
+            raise ValueError("A line cannot have both debit and credit.")
+        if self.debit == 0 and self.credit == 0:
+            raise ValueError("A line must have either debit or credit.")
+        if not self.account_code and not self.tenant_coa_account_id:
+            raise ValueError("Provide account_code or tenant_coa_account_id.")
+        return self
+
+
+class JournalCreate(BaseModel):
+    org_entity_id: uuid.UUID
+    journal_date: date
+    reference: str | None = Field(default=None, max_length=128)
+    narration: str | None = None
+    lines: list[JournalLineCreate] = Field(..., min_length=2)
+
+    @model_validator(mode="after")
+    def _validate_balanced(self) -> JournalCreate:
+        total_debit = sum(line.debit for line in self.lines)
+        total_credit = sum(line.credit for line in self.lines)
+        if total_debit != total_credit:
+            raise ValueError(
+                f"Journal is not balanced: debit={total_debit}, credit={total_credit}"
+            )
+        return self
+
+
+class JournalLineResponse(BaseModel):
+    line_number: int
+    tenant_coa_account_id: uuid.UUID | None
+    account_code: str
+    account_name: str | None
+    debit: Decimal
+    credit: Decimal
+    memo: str | None
+
+
+class JournalResponse(BaseModel):
+    id: uuid.UUID
+    org_entity_id: uuid.UUID
+    journal_number: str
+    journal_date: date
+    reference: str | None
+    narration: str | None
+    status: str
+    posted_at: datetime | None
+    total_debit: Decimal
+    total_credit: Decimal
+    currency: str
+    lines: list[JournalLineResponse]
+
+
 class ApprovalRequest(BaseModel):
     decision: str = Field(..., pattern="^(APPROVED|REJECTED)$")
     decision_reason: str | None = None
