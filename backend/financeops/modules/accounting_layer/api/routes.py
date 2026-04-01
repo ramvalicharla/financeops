@@ -29,6 +29,9 @@ from financeops.modules.accounting_layer.application.journal_service import (
     post_journal,
     reverse_journal,
 )
+from financeops.modules.accounting_layer.application.revaluation_service import (
+    run_fx_revaluation,
+)
 from financeops.modules.accounting_layer.application.trial_balance_service import (
     get_trial_balance,
 )
@@ -51,6 +54,8 @@ from financeops.modules.accounting_layer.domain.schemas import (
     JVCreate,
     JVLineResponse,
     PnLResponse,
+    RevaluationRunRequest,
+    RevaluationRunResponse,
     JVResponse,
     JVStateEventResponse,
     JVTransitionRequest,
@@ -480,6 +485,27 @@ async def get_cash_flow_endpoint(
         to_date=to_date,
     )
     result = CashFlowResponse.model_validate(payload).model_dump(mode="json")
+    return ok(
+        result,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@router.post("/revaluation/run")
+async def run_revaluation_endpoint(
+    request: Request,
+    body: RevaluationRunRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    payload = await run_fx_revaluation(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=body.org_entity_id,
+        as_of_date=body.as_of_date,
+        initiated_by=user.id,
+    )
+    result = RevaluationRunResponse.model_validate(payload).model_dump(mode="json")
     return ok(
         result,
         request_id=getattr(request.state, "request_id", None),

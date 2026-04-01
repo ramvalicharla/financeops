@@ -20,6 +20,37 @@ export interface OrgSetupSummaryForConsolidation {
   }>
 }
 
+export interface ConsolidationTranslationEntityResult {
+  org_entity_id: string
+  entity_name: string
+  functional_currency: string
+  presentation_currency: string
+  closing_rate: string
+  average_rate: string
+  translated_assets: string
+  translated_liabilities: string
+  translated_equity: string
+  translated_net_profit: string
+  cta_amount: string
+}
+
+export interface ConsolidationTranslationResponse {
+  run_id: string | null
+  org_group_id: string
+  group_name: string
+  presentation_currency: string
+  as_of_date: string
+  cta_account_code: string
+  entity_results: ConsolidationTranslationEntityResult[]
+  totals: {
+    translated_assets: string
+    translated_liabilities: string
+    translated_equity: string
+    translated_net_profit: string
+    total_cta: string
+  }
+}
+
 export const getOrgSetupSummaryForConsolidation =
   async (): Promise<OrgSetupSummaryForConsolidation> => {
     const response = await apiClient.get<OrgSetupSummaryForConsolidation>(
@@ -79,6 +110,22 @@ export const getConsolidationRunStatements = async (
 ): Promise<ConsolidationRunStatementsResponse> => {
   const response = await apiClient.get<ConsolidationRunStatementsResponse>(
     `/api/v1/consolidation/runs/${runId}/statements`,
+  )
+  return response.data
+}
+
+export const getConsolidationTranslation = async (params: {
+  orgGroupId: string
+  presentationCurrency: string
+  asOfDate: string
+}): Promise<ConsolidationTranslationResponse> => {
+  const query = new URLSearchParams({
+    org_group_id: params.orgGroupId,
+    presentation_currency: params.presentationCurrency,
+    as_of_date: params.asOfDate,
+  })
+  const response = await apiClient.get<ConsolidationTranslationResponse>(
+    `/api/v1/consolidation/translate?${query.toString()}`,
   )
   return response.data
 }

@@ -55,6 +55,14 @@ class ConsolidationGroupRunRequest(BaseModel):
     as_of_date: date
     from_date: date | None = None
     to_date: date | None = None
+    presentation_currency: str | None = None
+
+    @field_validator("presentation_currency", mode="before")
+    @classmethod
+    def _validate_presentation_currency(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        return normalize_currency_code(str(value))
 
     @model_validator(mode="after")
     def _validate_dates(self) -> "ConsolidationGroupRunRequest":
@@ -222,3 +230,28 @@ class ConsolidationGroupRunStatementsResponse(BaseModel):
     eliminations: list[dict[str, Any]]
     hierarchy: dict[str, Any] | None = None
     summary: dict[str, Any] | None = None
+
+
+class ConsolidationTranslationEntityRow(BaseModel):
+    org_entity_id: str
+    entity_name: str
+    functional_currency: str
+    presentation_currency: str
+    closing_rate: str
+    average_rate: str
+    translated_assets: str
+    translated_liabilities: str
+    translated_equity: str
+    translated_net_profit: str
+    cta_amount: str
+
+
+class ConsolidationTranslationResponse(BaseModel):
+    run_id: str | None
+    org_group_id: str
+    group_name: str
+    presentation_currency: str
+    as_of_date: str
+    cta_account_code: str
+    entity_results: list[ConsolidationTranslationEntityRow]
+    totals: dict[str, str]

@@ -234,3 +234,58 @@ class FxVarianceResponse(BaseModel):
     actual_difference: str
     fx_variance: str
     created_at: str
+
+
+class FxRateCreateRequest(BaseModel):
+    from_currency: str
+    to_currency: str
+    rate: Decimal
+    rate_type: str
+    effective_date: date
+    source: str = Field(default="manual", min_length=1, max_length=32)
+    is_global: bool = False
+
+    @field_validator("from_currency", "to_currency", mode="before")
+    @classmethod
+    def _validate_rate_currency(cls, value: Any) -> str:
+        return normalize_currency_code(str(value))
+
+    @field_validator("rate")
+    @classmethod
+    def _validate_rate_decimal(cls, value: Decimal) -> Decimal:
+        return normalize_rate_decimal(value)
+
+    @field_validator("rate_type", mode="before")
+    @classmethod
+    def _validate_rate_type(cls, value: Any) -> str:
+        normalized = str(value or "").strip().upper()
+        if normalized not in {"SPOT", "AVERAGE", "CLOSING"}:
+            raise ValueError("rate_type must be SPOT, AVERAGE, or CLOSING")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_rate_pair(self) -> "FxRateCreateRequest":
+        base, quote = normalize_currency_pair(self.from_currency, self.to_currency)
+        if base == quote:
+            raise ValueError("from_currency and to_currency must differ")
+        self.from_currency = base
+        self.to_currency = quote
+        return self
+
+
+class FxRateRecord(BaseModel):
+    id: str
+    tenant_id: str | None
+    from_currency: str
+    to_currency: str
+    rate: str
+    rate_type: str
+    effective_date: str
+    source: str
+    created_by: str | None
+    created_at: str
+
+
+class FxRateListResponse(BaseModel):
+    rates: list[FxRateRecord]
+    count: int

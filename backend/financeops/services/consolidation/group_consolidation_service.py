@@ -24,6 +24,7 @@ from financeops.modules.org_setup.models import OrgEntity, OrgGroup, OrgOwnershi
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 from financeops.services.consolidation.run_events import append_run_event, get_latest_run_event
 from financeops.services.consolidation.run_store import get_run_or_raise
+from financeops.services.fx.rate_master_service import get_required_latest_fx_rate
 
 _ZERO = Decimal("0")
 _HUNDRED = Decimal("100")
@@ -624,6 +625,7 @@ async def _compute_group_consolidation(
     as_of_date: date,
     from_date: date | None,
     to_date: date | None,
+    presentation_currency: str | None,
 ) -> dict[str, Any]:
     group, entities, ownership_by_child, ownership_factor = await _load_group_scope(
         session,
@@ -648,6 +650,8 @@ async def _compute_group_consolidation(
     }
     entity_raw_equity: dict[uuid.UUID, Decimal] = {item.org_entity_id: _ZERO for item in entities}
     account_entity_exposure: dict[str, dict[uuid.UUID, Decimal]] = {}
+    presentation_currency_code = (presentation_currency or group.reporting_currency).upper().strip()
+    rate_cache: dict[str, Decimal] = {}
 
     for row in gl_rows:
         entity = cp_to_org.get(row.cp_entity_id)
@@ -659,6 +663,22 @@ async def _compute_group_consolidation(
 
         weighted_debit = _quantize(row.debit_sum * factor)
         weighted_credit = _quantize(row.credit_sum * factor)
+        entity_currency = (entity.reporting_currency or presentation_currency_code).upper().strip()
+        if entity_currency != presentation_currency_code:
+            cached_rate = rate_cache.get(entity_currency)
+            if cached_rate is None:
+                rate_row = await get_required_latest_fx_rate(
+                    session,
+                    tenant_id=tenant_id,
+                    from_currency=entity_currency,
+                    to_currency=presentation_currency_code,
+                    rate_type="CLOSING",
+                    as_of_date=as_of_date,
+                )
+                cached_rate = _to_decimal(rate_row.rate)
+                rate_cache[entity_currency] = cached_rate
+            weighted_debit = _quantize(weighted_debit * cached_rate)
+            weighted_credit = _quantize(weighted_credit * cached_rate)
         weighted_balance = _quantize(weighted_debit - weighted_credit)
 
         entity_totals[entity.org_entity_id]["weighted_debit"] += weighted_debit
@@ -736,7 +756,7 @@ async def _compute_group_consolidation(
         "as_of_date": as_of_date.isoformat(),
         "from_date": from_date.isoformat() if from_date else None,
         "to_date": to_date.isoformat() if to_date else None,
-        "reporting_currency": group.reporting_currency,
+        "reporting_currency": presentation_currency_code,
         "entity_count": len(entities),
         "elimination_count": len(eliminations),
         "total_eliminations": _as_json_decimal(total_eliminations),
@@ -763,6 +783,7 @@ async def get_group_consolidation_summary(
     as_of_date: date,
     from_date: date | None,
     to_date: date | None,
+    presentation_currency: str | None,
 ) -> dict[str, Any]:
     payload = await _compute_group_consolidation(
         session,
@@ -771,6 +792,7 @@ async def get_group_consolidation_summary(
         as_of_date=as_of_date,
         from_date=from_date,
         to_date=to_date,
+        presentation_currency=presentation_currency,
     )
     return {
         "summary": payload["summary"],
@@ -789,6 +811,7 @@ async def run_group_consolidation(
     as_of_date: date,
     from_date: date | None,
     to_date: date | None,
+    presentation_currency: str | None,
     correlation_id: str | None,
 ) -> dict[str, str]:
     payload = await _compute_group_consolidation(
@@ -798,6 +821,7 @@ async def run_group_consolidation(
         as_of_date=as_of_date,
         from_date=from_date,
         to_date=to_date,
+        presentation_currency=presentation_currency,
     )
 
     run_signature_payload = {

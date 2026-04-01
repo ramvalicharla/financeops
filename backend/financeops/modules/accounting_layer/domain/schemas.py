@@ -14,7 +14,10 @@ class JVLineCreate(BaseModel):
     entry_type: str = Field(..., pattern="^(DEBIT|CREDIT)$")
     amount: Decimal = Field(..., gt=Decimal("0"))
     currency: str = Field(default="INR", min_length=3, max_length=3)
+    transaction_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
     fx_rate: Decimal | None = Field(default=None, gt=Decimal("0"))
+    base_amount: Decimal | None = None
     entity_id: uuid.UUID | None = None
     location_id: uuid.UUID | None = None
     cost_centre_id: uuid.UUID | None = None
@@ -40,8 +43,11 @@ class JVLineResponse(BaseModel):
     entry_type: str
     amount: Decimal
     currency: str
+    transaction_currency: str | None = None
+    functional_currency: str | None = None
     fx_rate: Decimal | None
     amount_inr: Decimal | None
+    base_amount: Decimal | None = None
     entity_id: uuid.UUID
     location_id: uuid.UUID | None
     cost_centre_id: uuid.UUID | None
@@ -148,12 +154,23 @@ class JournalLineCreate(BaseModel):
     debit: Decimal = Field(default=Decimal("0"))
     credit: Decimal = Field(default=Decimal("0"))
     memo: str | None = None
+    transaction_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    functional_currency: str | None = Field(default=None, min_length=3, max_length=3)
+    fx_rate: Decimal | None = Field(default=None, gt=Decimal("0"))
+    base_amount: Decimal | None = None
 
     @field_validator("debit", "credit", mode="before")
     @classmethod
     def _coerce_line_decimal(cls, value: object) -> Decimal:
         if value is None:
             return Decimal("0")
+        return Decimal(str(value))
+
+    @field_validator("fx_rate", "base_amount", mode="before")
+    @classmethod
+    def _coerce_optional_decimal(cls, value: object) -> Decimal | None:
+        if value is None:
+            return None
         return Decimal(str(value))
 
     @model_validator(mode="after")
@@ -195,6 +212,10 @@ class JournalLineResponse(BaseModel):
     debit: Decimal
     credit: Decimal
     memo: str | None
+    transaction_currency: str | None = None
+    functional_currency: str | None = None
+    fx_rate: Decimal | None = None
+    base_amount: Decimal | None = None
 
 
 class JournalResponse(BaseModel):
@@ -302,6 +323,22 @@ class CashFlowResponse(BaseModel):
     financing_cash_flow: Decimal
     net_cash_flow: Decimal
     breakdown: list[CashFlowBreakdownRow]
+
+
+class RevaluationRunRequest(BaseModel):
+    org_entity_id: uuid.UUID
+    as_of_date: date
+
+
+class RevaluationRunResponse(BaseModel):
+    run_id: str
+    entity_id: str
+    as_of_date: str
+    functional_currency: str
+    status: str
+    adjustment_jv_id: str | None
+    line_count: int
+    total_fx_difference: str
 
 
 class ApprovalRequest(BaseModel):

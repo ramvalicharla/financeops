@@ -160,8 +160,17 @@ class AccountingJVLine(FinancialBase):
     entry_type: Mapped[str] = mapped_column(String(6), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")
+    transaction_currency: Mapped[str | None] = mapped_column(
+        String(3),
+        nullable=True,
+    )
+    functional_currency: Mapped[str | None] = mapped_column(
+        String(3),
+        nullable=True,
+    )
     fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 8), nullable=True)
     amount_inr: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
+    base_amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
 
     entity_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

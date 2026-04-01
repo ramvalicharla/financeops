@@ -6,6 +6,10 @@ export interface JournalLineInput {
   debit: string
   credit: string
   memo?: string
+  transaction_currency?: string
+  functional_currency?: string
+  fx_rate?: string
+  base_amount?: string
 }
 
 export interface CreateJournalPayload {
@@ -24,6 +28,10 @@ export interface JournalLine {
   debit: string
   credit: string
   memo: string | null
+  transaction_currency: string | null
+  functional_currency: string | null
+  fx_rate: string | null
+  base_amount: string | null
 }
 
 export interface JournalRecord {

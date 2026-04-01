@@ -117,6 +117,11 @@ __all__ = [
     "ApprovalReminderRun",
     "AccountingAPAgeingSnapshot",
     "AccountingAuditExportRun",
+    "FxRate",
+    "AccountingFxRevaluationRun",
+    "AccountingFxRevaluationLine",
+    "ConsolidationTranslationRun",
+    "ConsolidationTranslationEntityResult",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -271,6 +276,23 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AccountingAuditExportRun": (
         "financeops.db.models.accounting_notifications",
         "AccountingAuditExportRun",
+    ),
+    "FxRate": ("financeops.db.models.fx_ias21", "FxRate"),
+    "AccountingFxRevaluationRun": (
+        "financeops.db.models.fx_ias21",
+        "AccountingFxRevaluationRun",
+    ),
+    "AccountingFxRevaluationLine": (
+        "financeops.db.models.fx_ias21",
+        "AccountingFxRevaluationLine",
+    ),
+    "ConsolidationTranslationRun": (
+        "financeops.db.models.fx_ias21",
+        "ConsolidationTranslationRun",
+    ),
+    "ConsolidationTranslationEntityResult": (
+        "financeops.db.models.fx_ias21",
+        "ConsolidationTranslationEntityResult",
     ),
 }
 

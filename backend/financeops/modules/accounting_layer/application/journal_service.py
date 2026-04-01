@@ -29,6 +29,7 @@ from financeops.modules.accounting_layer.domain.schemas import (
 )
 from financeops.modules.coa.models import TenantCoaAccount
 from financeops.platform.db.models.entities import CpEntity
+from financeops.services.fx.rate_master_service import get_required_latest_fx_rate
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,10 @@ class _PreparedJournalLine:
     account_name: str
     entry_type: str
     amount: Decimal
+    transaction_currency: str
+    functional_currency: str
+    fx_rate: Decimal | None
+    base_amount: Decimal
     memo: str | None
 
 
@@ -79,13 +84,31 @@ async def create_journal_draft(
         db,
         tenant_id=tenant_id,
         payload=payload,
+        entity=entity,
     )
+    base_total_debit = sum(
+        line.base_amount for line in prepared_lines if line.entry_type == EntryType.DEBIT
+    )
+    base_total_credit = sum(
+        line.base_amount for line in prepared_lines if line.entry_type == EntryType.CREDIT
+    )
+    if base_total_debit != base_total_credit:
+        raise ValidationError(
+            f"Functional-currency imbalance detected: debit={base_total_debit}, credit={base_total_credit}."
+        )
+
     jv_lines = [
         {
             "account_code": line.account_code,
             "account_name": line.account_name,
             "entry_type": line.entry_type,
             "amount": line.amount,
+            "currency": line.transaction_currency,
+            "transaction_currency": line.transaction_currency,
+            "functional_currency": line.functional_currency,
+            "fx_rate": line.fx_rate,
+            "base_amount": line.base_amount,
+            "amount_inr": line.base_amount if line.functional_currency == "INR" else None,
             "entity_id": entity.id,
             "narration": line.memo,
         }
@@ -247,6 +270,12 @@ async def reverse_journal(
                 "account_name": line.account_name,
                 "entry_type": reverse_entry_type,
                 "amount": line.amount,
+                "currency": line.transaction_currency or line.currency,
+                "transaction_currency": line.transaction_currency or line.currency,
+                "functional_currency": line.functional_currency or entity.base_currency,
+                "fx_rate": line.fx_rate,
+                "base_amount": line.base_amount or line.amount,
+                "amount_inr": line.amount_inr,
                 "entity_id": original.entity_id,
                 "narration": f"Reversal of {original.jv_number}",
             }
@@ -331,6 +360,7 @@ async def _prepare_lines(
     *,
     tenant_id: uuid.UUID,
     payload: JournalCreate,
+    entity: CpEntity,
 ) -> list[_PreparedJournalLine]:
     prepared: list[_PreparedJournalLine] = []
     for index, line in enumerate(payload.lines, start=1):
@@ -343,6 +373,28 @@ async def _prepare_lines(
         )
         entry_type = EntryType.DEBIT if line.debit > 0 else EntryType.CREDIT
         amount = line.debit if line.debit > 0 else line.credit
+        functional_currency = (line.functional_currency or entity.base_currency).upper()
+        transaction_currency = (line.transaction_currency or functional_currency).upper()
+        resolved_fx_rate: Decimal | None = None
+        base_amount = amount
+
+        if transaction_currency != functional_currency:
+            if line.fx_rate is not None:
+                resolved_fx_rate = line.fx_rate
+            else:
+                spot_rate = await get_required_latest_fx_rate(
+                    db,
+                    tenant_id=tenant_id,
+                    from_currency=transaction_currency,
+                    to_currency=functional_currency,
+                    rate_type="SPOT",
+                    as_of_date=payload.journal_date,
+                )
+                resolved_fx_rate = Decimal(str(spot_rate.rate))
+            base_amount = (amount * resolved_fx_rate).quantize(Decimal("0.0001"))
+        elif line.base_amount is not None:
+            base_amount = line.base_amount.quantize(Decimal("0.0001"))
+
         prepared.append(
             _PreparedJournalLine(
                 line_number=index,
@@ -351,6 +403,10 @@ async def _prepare_lines(
                 account_name=account.display_name,
                 entry_type=entry_type,
                 amount=amount,
+                transaction_currency=transaction_currency,
+                functional_currency=functional_currency,
+                fx_rate=resolved_fx_rate,
+                base_amount=base_amount,
                 memo=line.memo,
             )
         )
@@ -455,8 +511,16 @@ async def _assert_balanced_active_lines(jv: AccountingJVAggregate) -> None:
     lines = _active_journal_lines(jv)
     if len(lines) < 2:
         raise ValidationError("Journal must have at least two lines.")
-    total_debit = sum(line.amount for line in lines if line.entry_type == EntryType.DEBIT)
-    total_credit = sum(line.amount for line in lines if line.entry_type == EntryType.CREDIT)
+    total_debit = sum(
+        (line.base_amount if line.base_amount is not None else line.amount)
+        for line in lines
+        if line.entry_type == EntryType.DEBIT
+    )
+    total_credit = sum(
+        (line.base_amount if line.base_amount is not None else line.amount)
+        for line in lines
+        if line.entry_type == EntryType.CREDIT
+    )
     if total_debit != total_credit:
         raise ValidationError(
             f"Journal imbalance detected: debit={total_debit}, credit={total_credit}."
@@ -603,8 +667,16 @@ async def _append_gl_entries(
     journal_date: date,
 ) -> None:
     lines = _active_journal_lines(jv)
-    total_debit = sum(line.amount for line in lines if line.entry_type == EntryType.DEBIT)
-    total_credit = sum(line.amount for line in lines if line.entry_type == EntryType.CREDIT)
+    total_debit = sum(
+        (line.base_amount if line.base_amount is not None else line.amount)
+        for line in lines
+        if line.entry_type == EntryType.DEBIT
+    )
+    total_credit = sum(
+        (line.base_amount if line.base_amount is not None else line.amount)
+        for line in lines
+        if line.entry_type == EntryType.CREDIT
+    )
     if total_debit != total_credit:
         raise ValidationError(
             f"GL integrity check failed: debit={total_debit}, credit={total_credit}."
@@ -612,8 +684,9 @@ async def _append_gl_entries(
 
     previous_hash: str | None = jv.chain_hash
     for line in lines:
-        debit_amount = line.amount if line.entry_type == EntryType.DEBIT else Decimal("0")
-        credit_amount = line.amount if line.entry_type == EntryType.CREDIT else Decimal("0")
+        base_amount = line.base_amount if line.base_amount is not None else line.amount
+        debit_amount = base_amount if line.entry_type == EntryType.DEBIT else Decimal("0")
+        credit_amount = base_amount if line.entry_type == EntryType.CREDIT else Decimal("0")
         content = (
             f"{jv.id}:{line.line_number}:{line.account_code}:"
             f"{debit_amount}:{credit_amount}:{journal_date.isoformat()}"
@@ -634,7 +707,7 @@ async def _append_gl_entries(
             credit_amount=credit_amount,
             description=jv.description,
             source_ref=jv.jv_number,
-            currency=jv.currency,
+            currency=line.functional_currency or jv.currency,
             uploaded_by=created_by,
         )
         db.add(row)
@@ -728,4 +801,8 @@ def _serialize_line(
         debit=debit,
         credit=credit,
         memo=line.narration,
+        transaction_currency=line.transaction_currency or line.currency,
+        functional_currency=line.functional_currency,
+        fx_rate=line.fx_rate,
+        base_amount=line.base_amount or line.amount_inr,
     )

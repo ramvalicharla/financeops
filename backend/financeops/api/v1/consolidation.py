@@ -29,6 +29,7 @@ from financeops.schemas.consolidation import (
     ConsolidationRunStatusResponse,
     ConsolidationResultsResponse,
     ConsolidationSnapshotLineDrillResponse,
+    ConsolidationTranslationResponse,
     IntercompanyDifferencesResponse,
 )
 from financeops.services.consolidation import (
@@ -42,6 +43,7 @@ from financeops.services.consolidation import (
     get_snapshot_line_drilldown,
     list_ic_differences,
     list_results,
+    translate_group_financials,
 )
 from financeops.services.consolidation.group_consolidation_service import (
     get_group_consolidation_run,
@@ -75,6 +77,7 @@ async def start_consolidation_run_endpoint(
             as_of_date=body.as_of_date,
             from_date=body.from_date,
             to_date=body.to_date,
+            presentation_currency=body.presentation_currency,
             correlation_id=correlation_id,
         )
 
@@ -127,6 +130,7 @@ async def get_consolidation_summary_endpoint(
     as_of_date: date = Query(...),
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
+    presentation_currency: str | None = Query(default=None, min_length=3, max_length=3),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
@@ -137,6 +141,7 @@ async def get_consolidation_summary_endpoint(
         as_of_date=as_of_date,
         from_date=from_date,
         to_date=to_date,
+        presentation_currency=presentation_currency,
     )
 
 
@@ -166,6 +171,24 @@ async def get_group_consolidation_run_statements_endpoint(
         session,
         tenant_id=user.tenant_id,
         run_id=run_id,
+    )
+
+
+@router.get("/translate", response_model=ConsolidationTranslationResponse)
+async def get_consolidation_translation_endpoint(
+    org_group_id: UUID = Query(...),
+    presentation_currency: str = Query(..., min_length=3, max_length=3),
+    as_of_date: date = Query(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    return await translate_group_financials(
+        session,
+        tenant_id=user.tenant_id,
+        org_group_id=org_group_id,
+        presentation_currency=presentation_currency,
+        as_of_date=as_of_date,
+        initiated_by=user.id,
     )
 
 

@@ -30,6 +30,9 @@ from financeops.services.consolidation.group_consolidation_service import (
     get_group_consolidation_summary,
     run_group_consolidation,
 )
+from financeops.services.consolidation.translation_service import (
+    translate_group_financials,
+)
 
 __all__ = [
     "EntitySnapshotMapping",
@@ -56,5 +59,6 @@ __all__ = [
     "run_group_consolidation",
     "get_group_consolidation_run",
     "get_group_consolidation_run_statements",
+    "translate_group_financials",
 ]
 

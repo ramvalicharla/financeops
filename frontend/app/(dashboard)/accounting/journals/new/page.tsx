@@ -14,6 +14,8 @@ type DraftLine = {
   debit: string
   credit: string
   memo: string
+  transaction_currency: string
+  fx_rate: string
 }
 
 const today = new Date().toISOString().slice(0, 10)
@@ -30,8 +32,8 @@ export default function NewJournalPage() {
   const [reference, setReference] = useState("")
   const [narration, setNarration] = useState("")
   const [lines, setLines] = useState<DraftLine[]>([
-    { tenant_coa_account_id: "", debit: "", credit: "", memo: "" },
-    { tenant_coa_account_id: "", debit: "", credit: "", memo: "" },
+    { tenant_coa_account_id: "", debit: "", credit: "", memo: "", transaction_currency: "", fx_rate: "" },
+    { tenant_coa_account_id: "", debit: "", credit: "", memo: "", transaction_currency: "", fx_rate: "" },
   ])
   const [error, setError] = useState<string | null>(null)
 
@@ -68,7 +70,7 @@ export default function NewJournalPage() {
   const addLine = (): void => {
     setLines((current) => [
       ...current,
-      { tenant_coa_account_id: "", debit: "", credit: "", memo: "" },
+      { tenant_coa_account_id: "", debit: "", credit: "", memo: "", transaction_currency: "", fx_rate: "" },
     ])
   }
 
@@ -128,6 +130,10 @@ export default function NewJournalPage() {
           debit: String(asNumber(line.debit)),
           credit: String(asNumber(line.credit)),
           memo: line.memo || undefined,
+          transaction_currency: line.transaction_currency
+            ? line.transaction_currency.toUpperCase()
+            : undefined,
+          fx_rate: line.fx_rate ? String(asNumber(line.fx_rate)) : undefined,
         }
       }),
     })
@@ -188,6 +194,8 @@ export default function NewJournalPage() {
                 <th className="px-4 py-2">Debit</th>
                 <th className="px-4 py-2">Credit</th>
                 <th className="px-4 py-2">Memo</th>
+                <th className="px-4 py-2">Txn Currency</th>
+                <th className="px-4 py-2">FX Rate</th>
                 <th className="px-4 py-2">Action</th>
               </tr>
             </thead>
@@ -244,6 +252,31 @@ export default function NewJournalPage() {
                         updateLine(index, { memo: event.target.value })
                       }
                       className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="text"
+                      maxLength={3}
+                      value={line.transaction_currency}
+                      onChange={(event) =>
+                        updateLine(index, { transaction_currency: event.target.value })
+                      }
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                      placeholder="USD"
+                    />
+                  </td>
+                  <td className="px-4 py-2">
+                    <input
+                      type="number"
+                      step="0.00000001"
+                      min="0"
+                      value={line.fx_rate}
+                      onChange={(event) =>
+                        updateLine(index, { fx_rate: event.target.value })
+                      }
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                      placeholder="Spot rate"
                     />
                   </td>
                   <td className="px-4 py-2">

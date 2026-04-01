@@ -320,11 +320,18 @@ async def _append_lines(
             raise ValidationError(f"Line {idx}: amount must be greater than zero.")
 
         currency = str(line_data.get("currency", jv.currency)).upper()
+        transaction_currency = str(line_data.get("transaction_currency", currency)).upper()
+        functional_currency = str(line_data.get("functional_currency", jv.currency)).upper()
         fx_rate = None
         amount_inr = amount
         if currency != "INR":
             fx_rate = _to_decimal(line_data.get("fx_rate", 1), f"line {idx} fx_rate")
             amount_inr = (amount * fx_rate).quantize(Decimal("0.0001"))
+
+        base_amount = _to_decimal(
+            line_data.get("base_amount", amount_inr if amount_inr is not None else amount),
+            f"line {idx} base_amount",
+        )
 
         line_hash_content = f"{jv.id}:{jv.version}:{idx}:{entry_type}:{amount}"
         chain_hash = _compute_hash(line_hash_content, previous_hash)
@@ -342,8 +349,11 @@ async def _append_lines(
             entry_type=entry_type,
             amount=amount,
             currency=currency,
+            transaction_currency=transaction_currency,
+            functional_currency=functional_currency,
             fx_rate=fx_rate,
             amount_inr=amount_inr,
+            base_amount=base_amount,
             entity_id=line_data.get("entity_id", jv.entity_id),
             location_id=line_data.get("location_id", jv.location_id),
             cost_centre_id=line_data.get("cost_centre_id", jv.cost_centre_id),

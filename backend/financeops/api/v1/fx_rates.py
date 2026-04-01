@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -24,16 +24,22 @@ from financeops.schemas.fx_rates import (
     ConvertDailyResponse,
     FetchLiveRatesRequest,
     FetchLiveRatesResponse,
+    FxRateCreateRequest,
+    FxRateListResponse,
+    FxRateRecord,
     FxVarianceRequest,
     FxVarianceResponse,
     ManualMonthlyRateCreateRequest,
     ManualMonthlyRateListResponse,
 )
 from financeops.services.fx import (
+    create_fx_rate,
     compute_and_store_variance,
     convert_daily_lines,
+    get_latest_fx_rate,
     create_manual_monthly_rate,
     get_required_latest_comparison,
+    list_fx_rates,
     list_manual_monthly_rates,
 )
 from financeops.temporal.client import get_temporal_client
@@ -45,6 +51,111 @@ from financeops.temporal.fx_workflows import (
 )
 
 router = APIRouter()
+
+
+@router.post("/rates", response_model=FxRateRecord, status_code=status.HTTP_201_CREATED)
+async def create_fx_rate_endpoint(
+    body: FxRateCreateRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_leader),
+) -> dict:
+    row = await create_fx_rate(
+        session,
+        tenant_id=None if body.is_global else user.tenant_id,
+        from_currency=body.from_currency,
+        to_currency=body.to_currency,
+        rate=body.rate,
+        rate_type=body.rate_type,
+        effective_date=body.effective_date,
+        source=body.source,
+        created_by=user.id,
+    )
+    await session.flush()
+    return {
+        "id": str(row.id),
+        "tenant_id": str(row.tenant_id) if row.tenant_id else None,
+        "from_currency": row.from_currency,
+        "to_currency": row.to_currency,
+        "rate": str(row.rate),
+        "rate_type": row.rate_type,
+        "effective_date": row.effective_date.isoformat(),
+        "source": row.source,
+        "created_by": str(row.created_by) if row.created_by else None,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+@router.get("/rates", response_model=FxRateListResponse)
+async def list_fx_rates_endpoint(
+    from_currency: str | None = None,
+    to_currency: str | None = None,
+    rate_type: str | None = None,
+    effective_date: date | None = None,
+    limit: int = 200,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    rows = await list_fx_rates(
+        session,
+        tenant_id=user.tenant_id,
+        from_currency=from_currency,
+        to_currency=to_currency,
+        rate_type=rate_type,
+        effective_date=effective_date,
+        limit=limit,
+    )
+    return {
+        "rates": [
+            {
+                "id": str(row.id),
+                "tenant_id": str(row.tenant_id) if row.tenant_id else None,
+                "from_currency": row.from_currency,
+                "to_currency": row.to_currency,
+                "rate": str(row.rate),
+                "rate_type": row.rate_type,
+                "effective_date": row.effective_date.isoformat(),
+                "source": row.source,
+                "created_by": str(row.created_by) if row.created_by else None,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in rows
+        ],
+        "count": len(rows),
+    }
+
+
+@router.get("/rates/latest", response_model=FxRateRecord)
+async def get_latest_fx_rate_endpoint(
+    from_currency: str,
+    to_currency: str,
+    rate_type: str = "SPOT",
+    as_of_date: date | None = None,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    today = as_of_date or date.today()
+    row = await get_latest_fx_rate(
+        session,
+        tenant_id=user.tenant_id,
+        from_currency=from_currency,
+        to_currency=to_currency,
+        rate_type=rate_type,
+        as_of_date=today,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="FX rate not found")
+    return {
+        "id": str(row.id),
+        "tenant_id": str(row.tenant_id) if row.tenant_id else None,
+        "from_currency": row.from_currency,
+        "to_currency": row.to_currency,
+        "rate": str(row.rate),
+        "rate_type": row.rate_type,
+        "effective_date": row.effective_date.isoformat(),
+        "source": row.source,
+        "created_by": str(row.created_by) if row.created_by else None,
+        "created_at": row.created_at.isoformat(),
+    }
 
 
 @router.post("/fetch-live", response_model=FetchLiveRatesResponse, status_code=status.HTTP_201_CREATED)
