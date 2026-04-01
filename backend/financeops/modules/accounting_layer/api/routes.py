@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import AuthorizationError
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.users import IamUser, UserRole
@@ -27,7 +28,9 @@ from financeops.modules.accounting_layer.application.journal_service import (
     get_journal,
     list_journals,
     post_journal,
+    review_journal,
     reverse_journal,
+    submit_journal,
 )
 from financeops.modules.accounting_layer.application.revaluation_service import (
     run_fx_revaluation,
@@ -72,6 +75,34 @@ router = APIRouter()
 
 def _is_admin(user: IamUser) -> bool:
     return user.role in {UserRole.super_admin, UserRole.finance_leader, UserRole.platform_owner}
+
+
+def _can_review(user: IamUser) -> bool:
+    return user.role in {
+        UserRole.finance_team,
+        UserRole.finance_leader,
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }
+
+
+def _can_approve(user: IamUser) -> bool:
+    return user.role in {
+        UserRole.finance_leader,
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }
+
+
+def _can_post(user: IamUser) -> bool:
+    return user.role in {
+        UserRole.finance_leader,
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }
 
 
 def _serialize_jv(jv: AccountingJVAggregate) -> dict[str, Any]:
@@ -326,11 +357,14 @@ async def approve_journal_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if not _can_approve(user):
+        raise AuthorizationError("finance approver role required")
     result = await approve_journal(
         session,
         tenant_id=user.tenant_id,
         journal_id=journal_id,
         acted_by=user.id,
+        actor_role=user.role.value,
     )
     await session.flush()
     payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
@@ -347,11 +381,14 @@ async def post_journal_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if not _can_post(user):
+        raise AuthorizationError("finance poster role required")
     result = await post_journal(
         session,
         tenant_id=user.tenant_id,
         journal_id=journal_id,
         acted_by=user.id,
+        actor_role=user.role.value,
     )
     await session.flush()
     payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
@@ -368,15 +405,64 @@ async def reverse_journal_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
+    if not _can_post(user):
+        raise AuthorizationError("finance poster role required")
     journal = await reverse_journal(
         session,
         tenant_id=user.tenant_id,
         journal_id=journal_id,
         acted_by=user.id,
+        actor_role=user.role.value,
     )
     await session.flush()
     return ok(
         journal.model_dump(mode="json"),
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.post("/{journal_id}/submit")
+async def submit_journal_endpoint(
+    request: Request,
+    journal_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    result = await submit_journal(
+        session,
+        tenant_id=user.tenant_id,
+        journal_id=journal_id,
+        acted_by=user.id,
+        actor_role=user.role.value,
+    )
+    await session.flush()
+    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
+    return ok(
+        payload,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.post("/{journal_id}/review")
+async def review_journal_endpoint(
+    request: Request,
+    journal_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    if not _can_review(user):
+        raise AuthorizationError("finance reviewer role required")
+    result = await review_journal(
+        session,
+        tenant_id=user.tenant_id,
+        journal_id=journal_id,
+        acted_by=user.id,
+        actor_role=user.role.value,
+    )
+    await session.flush()
+    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
+    return ok(
+        payload,
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -504,6 +590,7 @@ async def run_revaluation_endpoint(
         entity_id=body.org_entity_id,
         as_of_date=body.as_of_date,
         initiated_by=user.id,
+        actor_role=user.role.value,
     )
     result = RevaluationRunResponse.model_validate(payload).model_dump(mode="json")
     return ok(

@@ -95,6 +95,8 @@ class AccountingJVAggregate(FinancialBase):
     fiscal_period: Mapped[int] = mapped_column(Integer, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="MANUAL")
+    external_reference_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     total_debit: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=Decimal("0"))
     total_credit: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False, default=Decimal("0"))
     currency: Mapped[str] = mapped_column(String(3), nullable=False, default="INR")

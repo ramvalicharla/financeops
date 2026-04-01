@@ -21,6 +21,15 @@ from financeops.db.models.accounting_jv import (
 )
 from financeops.db.models.reconciliation import GlEntry
 from financeops.modules.accounting_layer.application.jv_service import create_jv
+from financeops.modules.accounting_layer.application.governance_service import (
+    assert_period_allows_modification,
+    assert_period_allows_posting,
+    enforce_distinct_poster_policy,
+    enforce_maker_checker_for_approval,
+    enforce_reviewer_policy,
+    get_approval_policy,
+    record_governance_event,
+)
 from financeops.modules.accounting_layer.domain.schemas import (
     JournalActionResponse,
     JournalCreate,
@@ -35,7 +44,6 @@ logger = logging.getLogger(__name__)
 
 REVIEW_SOURCE_STATUSES: frozenset[str] = frozenset(
     {
-        JVStatus.SUBMITTED,
         JVStatus.PENDING_REVIEW,
         JVStatus.UNDER_REVIEW,
         JVStatus.RESUBMITTED,
@@ -74,11 +82,20 @@ async def create_journal_draft(
     tenant_id: uuid.UUID,
     created_by: uuid.UUID,
     payload: JournalCreate,
+    source: str = "MANUAL",
+    external_reference_id: str | None = None,
 ) -> JournalResponse:
     entity = await _get_entity_for_tenant(
         db,
         tenant_id=tenant_id,
         entity_id=payload.org_entity_id,
+    )
+    await assert_period_allows_modification(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=entity.id,
+        fiscal_year=payload.journal_date.year,
+        period_number=payload.journal_date.month,
     )
     prepared_lines = await _prepare_lines(
         db,
@@ -124,6 +141,8 @@ async def create_journal_draft(
         fiscal_period=payload.journal_date.month,
         description=payload.narration,
         reference=payload.reference,
+        source=source,
+        external_reference_id=external_reference_id,
         currency=entity.base_currency,
         lines=jv_lines,
     )
@@ -136,6 +155,21 @@ async def create_journal_draft(
             "journal_number": jv.jv_number,
         },
     )
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=entity.id,
+        actor_user_id=created_by,
+        module="journal_workflow",
+        action="journal_draft_create",
+        target_id=str(jv.id),
+        payload={
+            "journal_id": str(jv.id),
+            "journal_number": jv.jv_number,
+            "fiscal_year": jv.fiscal_year,
+            "fiscal_period": jv.fiscal_period,
+        },
+    )
     return await get_journal(db, tenant_id=tenant_id, journal_id=jv.id)
 
 
@@ -145,18 +179,37 @@ async def approve_journal(
     tenant_id: uuid.UUID,
     journal_id: uuid.UUID,
     acted_by: uuid.UUID,
+    actor_role: str | None = None,
 ) -> JournalActionResponse:
     jv = await _get_journal_aggregate(
         db,
         tenant_id=tenant_id,
         journal_id=journal_id,
     )
+    await assert_period_allows_modification(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=jv.entity_id,
+        fiscal_year=jv.fiscal_year,
+        period_number=jv.fiscal_period,
+    )
     if _is_posted_status(jv.status):
         raise ValidationError("Posted journals cannot be re-approved.")
     if jv.status == JVStatus.APPROVED:
         return JournalActionResponse(id=jv.id, status="APPROVED", posted_at=None)
-    if jv.status not in {JVStatus.DRAFT, *REVIEW_SOURCE_STATUSES}:
+    if jv.status not in {JVStatus.SUBMITTED, *REVIEW_SOURCE_STATUSES}:
         raise ValidationError(f"Journal cannot be approved from status '{jv.status}'.")
+
+    policy = await get_approval_policy(db, tenant_id=tenant_id)
+    enforce_maker_checker_for_approval(
+        created_by=jv.created_by,
+        approved_by=acted_by,
+        policy=policy,
+    )
+    enforce_reviewer_policy(
+        has_review_marker=jv.first_reviewed_at is not None or jv.status in REVIEW_SOURCE_STATUSES,
+        policy=policy,
+    )
 
     from_status = jv.status
     now = _utcnow()
@@ -175,8 +228,137 @@ async def approve_journal(
         actor_role="ACCOUNTING_APPROVER",
         comment="Approved via /accounting/journals/{id}/approve",
     )
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=jv.entity_id,
+        actor_user_id=acted_by,
+        module="journal_workflow",
+        action="journal_approve",
+        target_id=str(jv.id),
+        payload={
+            "journal_id": str(jv.id),
+            "journal_number": jv.jv_number,
+            "from_status": from_status,
+            "to_status": JVStatus.APPROVED,
+            "actor_role": actor_role,
+        },
+    )
     await db.flush()
     return JournalActionResponse(id=jv.id, status="APPROVED", posted_at=None)
+
+
+async def submit_journal(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_id: uuid.UUID,
+    acted_by: uuid.UUID,
+    actor_role: str | None = None,
+) -> JournalActionResponse:
+    jv = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=journal_id,
+    )
+    await assert_period_allows_modification(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=jv.entity_id,
+        fiscal_year=jv.fiscal_year,
+        period_number=jv.fiscal_period,
+    )
+    if _is_posted_status(jv.status):
+        raise ValidationError("Posted journals cannot be submitted again.")
+    if jv.status != JVStatus.DRAFT:
+        raise ValidationError(f"Journal cannot be submitted from status '{jv.status}'.")
+
+    from_status = jv.status
+    now = _utcnow()
+    jv.status = JVStatus.SUBMITTED
+    jv.submitted_at = now
+    jv.updated_at = now
+    await _append_state_event(
+        db,
+        jv=jv,
+        from_status=from_status,
+        to_status=JVStatus.SUBMITTED,
+        triggered_by=acted_by,
+        actor_role=actor_role or "ACCOUNTING_SUBMITTER",
+        comment="Submitted via /accounting/journals/{id}/submit",
+    )
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=jv.entity_id,
+        actor_user_id=acted_by,
+        module="journal_workflow",
+        action="journal_submit",
+        target_id=str(jv.id),
+        payload={
+            "journal_id": str(jv.id),
+            "journal_number": jv.jv_number,
+        },
+    )
+    await db.flush()
+    return JournalActionResponse(id=jv.id, status="SUBMITTED", posted_at=None)
+
+
+async def review_journal(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_id: uuid.UUID,
+    acted_by: uuid.UUID,
+    actor_role: str | None = None,
+) -> JournalActionResponse:
+    jv = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=journal_id,
+    )
+    await assert_period_allows_modification(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=jv.entity_id,
+        fiscal_year=jv.fiscal_year,
+        period_number=jv.fiscal_period,
+    )
+    if _is_posted_status(jv.status):
+        raise ValidationError("Posted journals cannot be reviewed.")
+    if jv.status not in {JVStatus.SUBMITTED, JVStatus.PENDING_REVIEW, JVStatus.RESUBMITTED}:
+        raise ValidationError(f"Journal cannot be reviewed from status '{jv.status}'.")
+
+    from_status = jv.status
+    now = _utcnow()
+    jv.status = JVStatus.UNDER_REVIEW
+    jv.first_reviewed_at = jv.first_reviewed_at or now
+    jv.updated_at = now
+
+    await _append_state_event(
+        db,
+        jv=jv,
+        from_status=from_status,
+        to_status=JVStatus.UNDER_REVIEW,
+        triggered_by=acted_by,
+        actor_role=actor_role or "ACCOUNTING_REVIEWER",
+        comment="Reviewed via /accounting/journals/{id}/review",
+    )
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=jv.entity_id,
+        actor_user_id=acted_by,
+        module="journal_workflow",
+        action="journal_review",
+        target_id=str(jv.id),
+        payload={
+            "journal_id": str(jv.id),
+            "journal_number": jv.jv_number,
+        },
+    )
+    await db.flush()
+    return JournalActionResponse(id=jv.id, status="REVIEWED", posted_at=None)
 
 
 async def post_journal(
@@ -185,6 +367,7 @@ async def post_journal(
     tenant_id: uuid.UUID,
     journal_id: uuid.UUID,
     acted_by: uuid.UUID,
+    actor_role: str | None = None,
 ) -> JournalActionResponse:
     jv = await _get_journal_aggregate(
         db,
@@ -196,6 +379,25 @@ async def post_journal(
         return JournalActionResponse(id=jv.id, status="POSTED", posted_at=posted_at)
     if jv.status != JVStatus.APPROVED:
         raise ValidationError("Only APPROVED journals can be posted.")
+    await assert_period_allows_posting(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=jv.entity_id,
+        fiscal_year=jv.fiscal_year,
+        period_number=jv.fiscal_period,
+        actor_role=actor_role,
+    )
+    policy = await get_approval_policy(db, tenant_id=tenant_id)
+    reviewed_by = await _resolve_last_triggered_by_for_status(
+        db,
+        jv_id=jv.id,
+        to_status=JVStatus.UNDER_REVIEW,
+    )
+    enforce_distinct_poster_policy(
+        reviewed_by=reviewed_by,
+        posted_by=acted_by,
+        policy=policy,
+    )
     await _assert_balanced_active_lines(jv)
 
     existing_gl_entries = await _count_gl_entries_for_journal(
@@ -233,6 +435,21 @@ async def post_journal(
         actor_role="ACCOUNTING_POSTER",
         comment="Posted via /accounting/journals/{id}/post",
     )
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=jv.entity_id,
+        actor_user_id=acted_by,
+        module="journal_workflow",
+        action="journal_post",
+        target_id=str(jv.id),
+        payload={
+            "journal_id": str(jv.id),
+            "journal_number": jv.jv_number,
+            "actor_role": actor_role,
+            "posted_at": posted_at.isoformat(),
+        },
+    )
     await db.flush()
     return JournalActionResponse(id=jv.id, status="POSTED", posted_at=posted_at)
 
@@ -243,6 +460,7 @@ async def reverse_journal(
     tenant_id: uuid.UUID,
     journal_id: uuid.UUID,
     acted_by: uuid.UUID,
+    actor_role: str | None = None,
 ) -> JournalResponse:
     original = await _get_journal_aggregate(
         db,
@@ -251,6 +469,14 @@ async def reverse_journal(
     )
     if not _is_posted_status(original.status):
         raise ValidationError("Only POSTED journals can be reversed.")
+    await assert_period_allows_posting(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=original.entity_id,
+        fiscal_year=date.today().year,
+        period_number=date.today().month,
+        actor_role=actor_role,
+    )
 
     entity = await _get_entity_for_tenant(
         db,
@@ -307,6 +533,35 @@ async def reverse_journal(
         entity=entity,
         acted_by=acted_by,
         comment=f"Auto-posted reversal for {original.jv_number}",
+    )
+    from_status = original.status
+    original.status = JVStatus.VOIDED
+    original.voided_by = acted_by
+    original.void_reason = f"Reversed by journal {reversal.jv_number}"
+    original.voided_at = _utcnow()
+    await _append_state_event(
+        db,
+        jv=original,
+        from_status=from_status,
+        to_status=JVStatus.VOIDED,
+        triggered_by=acted_by,
+        actor_role=actor_role or "ACCOUNTING_POSTER",
+        comment=f"Reversed via {reversal.jv_number}",
+    )
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=original.entity_id,
+        actor_user_id=acted_by,
+        module="journal_workflow",
+        action="journal_reverse",
+        target_id=str(original.id),
+        payload={
+            "journal_id": str(original.id),
+            "journal_number": original.jv_number,
+            "reversal_journal_id": str(reversal.id),
+            "reversal_journal_number": reversal.jv_number,
+        },
     )
     await db.flush()
     return await get_journal(db, tenant_id=tenant_id, journal_id=reversal.id)
@@ -552,6 +807,24 @@ async def _resolve_posted_at(db: AsyncSession, jv: AccountingJVAggregate) -> dat
     return result.scalar_one_or_none()
 
 
+async def _resolve_last_triggered_by_for_status(
+    db: AsyncSession,
+    *,
+    jv_id: uuid.UUID,
+    to_status: str,
+) -> uuid.UUID | None:
+    stmt = (
+        select(AccountingJVStateEvent.triggered_by)
+        .where(
+            AccountingJVStateEvent.jv_id == jv_id,
+            AccountingJVStateEvent.to_status == to_status,
+        )
+        .order_by(AccountingJVStateEvent.occurred_at.desc())
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
 async def _set_approved(
     db: AsyncSession,
     *,
@@ -780,10 +1053,14 @@ def _is_posted_status(status: str) -> bool:
 def _map_journal_status(status: str, is_posted: bool) -> str:
     if is_posted:
         return "POSTED"
+    if status == JVStatus.VOIDED:
+        return "REVERSED"
+    if status == JVStatus.SUBMITTED:
+        return "SUBMITTED"
     if status == JVStatus.APPROVED:
         return "APPROVED"
     if status in REVIEW_SOURCE_STATUSES:
-        return "REVIEW"
+        return "REVIEWED"
     return "DRAFT"
 
 

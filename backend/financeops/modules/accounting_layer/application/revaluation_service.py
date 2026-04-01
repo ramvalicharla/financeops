@@ -12,6 +12,10 @@ from financeops.core.exceptions import ValidationError
 from financeops.db.models.accounting_jv import AccountingJVAggregate, AccountingJVLine, EntryType, JVStatus
 from financeops.db.models.fx_ias21 import AccountingFxRevaluationLine, AccountingFxRevaluationRun
 from financeops.modules.accounting_layer.application.journal_service import approve_journal, post_journal
+from financeops.modules.accounting_layer.application.governance_service import (
+    assert_period_allows_revaluation,
+    record_governance_event,
+)
 from financeops.modules.accounting_layer.application.jv_service import create_jv
 from financeops.modules.coa.models import CoaLedgerAccount, TenantCoaAccount
 from financeops.platform.db.models.entities import CpEntity
@@ -160,8 +164,16 @@ async def run_fx_revaluation(
     entity_id: uuid.UUID,
     as_of_date: date,
     initiated_by: uuid.UUID,
+    actor_role: str | None = None,
 ) -> dict[str, object]:
     entity = await _get_entity_for_tenant(db, tenant_id=tenant_id, entity_id=entity_id)
+    await assert_period_allows_revaluation(
+        db,
+        tenant_id=tenant_id,
+        org_entity_id=entity_id,
+        as_of_date=as_of_date,
+        actor_role=actor_role,
+    )
     exposures = await _load_monetary_exposures(
         db,
         tenant_id=tenant_id,
@@ -273,12 +285,14 @@ async def run_fx_revaluation(
             tenant_id=tenant_id,
             journal_id=reval_jv.id,
             acted_by=initiated_by,
+            actor_role=actor_role,
         )
         await post_journal(
             db,
             tenant_id=tenant_id,
             journal_id=reval_jv.id,
             acted_by=initiated_by,
+            actor_role=actor_role,
         )
         adjustment_jv_id = reval_jv.id
         run_status = "COMPLETED"
@@ -331,6 +345,21 @@ async def run_fx_revaluation(
         )
 
     await db.flush()
+    await record_governance_event(
+        db,
+        tenant_id=tenant_id,
+        entity_id=entity_id,
+        actor_user_id=initiated_by,
+        module="period_close",
+        action="revaluation_run",
+        target_id=str(run.id),
+        payload={
+            "run_id": str(run.id),
+            "entity_id": str(entity_id),
+            "as_of_date": as_of_date.isoformat(),
+            "status": run_status,
+        },
+    )
     return {
         "run_id": str(run.id),
         "entity_id": str(entity_id),

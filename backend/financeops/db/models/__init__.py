@@ -122,6 +122,16 @@ __all__ = [
     "AccountingFxRevaluationLine",
     "ConsolidationTranslationRun",
     "ConsolidationTranslationEntityResult",
+    "AccountingPeriod",
+    "CloseChecklist",
+    "ApprovalPolicy",
+    "AccountingGovernanceAuditEvent",
+    "ErpConnector",
+    "ErpSyncJob",
+    "ErpSyncLog",
+    "ErpCoaMapping",
+    "ErpJournalMapping",
+    "ErpMasterMapping",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -294,6 +304,28 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
         "financeops.db.models.fx_ias21",
         "ConsolidationTranslationEntityResult",
     ),
+    "AccountingPeriod": (
+        "financeops.db.models.accounting_governance",
+        "AccountingPeriod",
+    ),
+    "CloseChecklist": (
+        "financeops.db.models.accounting_governance",
+        "CloseChecklist",
+    ),
+    "ApprovalPolicy": (
+        "financeops.db.models.accounting_governance",
+        "ApprovalPolicy",
+    ),
+    "AccountingGovernanceAuditEvent": (
+        "financeops.db.models.accounting_governance",
+        "AccountingGovernanceAuditEvent",
+    ),
+    "ErpConnector": ("financeops.db.models.erp_integration", "ErpConnector"),
+    "ErpSyncJob": ("financeops.db.models.erp_integration", "ErpSyncJob"),
+    "ErpSyncLog": ("financeops.db.models.erp_integration", "ErpSyncLog"),
+    "ErpCoaMapping": ("financeops.db.models.erp_integration", "ErpCoaMapping"),
+    "ErpJournalMapping": ("financeops.db.models.erp_integration", "ErpJournalMapping"),
+    "ErpMasterMapping": ("financeops.db.models.erp_integration", "ErpMasterMapping"),
 }
 
 

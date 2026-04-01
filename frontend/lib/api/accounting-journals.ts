@@ -51,7 +51,7 @@ export interface JournalRecord {
 
 export interface JournalActionResult {
   id: string
-  status: "DRAFT" | "REVIEW" | "APPROVED" | "POSTED"
+  status: "DRAFT" | "SUBMITTED" | "REVIEWED" | "APPROVED" | "POSTED" | "REVERSED"
   posted_at: string | null
 }
 
@@ -67,7 +67,7 @@ export const createJournal = async (
 
 export const listJournals = async (params?: {
   org_entity_id?: string
-  status?: "DRAFT" | "REVIEW" | "APPROVED" | "POSTED"
+  status?: "DRAFT" | "SUBMITTED" | "REVIEWED" | "APPROVED" | "POSTED" | "REVERSED"
   limit?: number
   offset?: number
 }): Promise<JournalRecord[]> => {
@@ -95,6 +95,26 @@ export const approveJournal = async (
 ): Promise<JournalActionResult> => {
   const response = await apiClient.post<JournalActionResult>(
     `/api/v1/accounting/journals/${journalId}/approve`,
+    {},
+  )
+  return response.data
+}
+
+export const submitJournal = async (
+  journalId: string,
+): Promise<JournalActionResult> => {
+  const response = await apiClient.post<JournalActionResult>(
+    `/api/v1/accounting/journals/${journalId}/submit`,
+    {},
+  )
+  return response.data
+}
+
+export const reviewJournal = async (
+  journalId: string,
+): Promise<JournalActionResult> => {
+  const response = await apiClient.post<JournalActionResult>(
+    `/api/v1/accounting/journals/${journalId}/review`,
     {},
   )
   return response.data

@@ -3,11 +3,14 @@
 import Link from "next/link"
 import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
 import {
   approveJournal,
   listJournals,
   postJournal,
+  reviewJournal,
   reverseJournal,
+  submitJournal,
 } from "@/lib/api/accounting-journals"
 import { useTenantStore } from "@/lib/store/tenant"
 import { Button } from "@/components/ui/button"
@@ -18,7 +21,16 @@ const fmt = (value: string): string =>
     maximumFractionDigits: 2,
   })
 
+const roleCanReview = (role: string): boolean =>
+  ["finance_reviewer", "finance_team", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
+const roleCanApprove = (role: string): boolean =>
+  ["finance_approver", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
+const roleCanPost = (role: string): boolean =>
+  ["finance_poster", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
+
 export default function JournalsPage() {
+  const { data: session } = useSession()
+  const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
   const queryClient = useQueryClient()
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const query = useQuery({
@@ -31,6 +43,14 @@ export default function JournalsPage() {
   }
   const approveMutation = useMutation({
     mutationFn: (journalId: string) => approveJournal(journalId),
+    onSuccess: refresh,
+  })
+  const submitMutation = useMutation({
+    mutationFn: (journalId: string) => submitJournal(journalId),
+    onSuccess: refresh,
+  })
+  const reviewMutation = useMutation({
+    mutationFn: (journalId: string) => reviewJournal(journalId),
     onSuccess: refresh,
   })
   const postMutation = useMutation({
@@ -120,13 +140,31 @@ export default function JournalsPage() {
                         {journal.status === "DRAFT" ? (
                           <Button
                             variant="outline"
+                            onClick={() => submitMutation.mutate(journal.id)}
+                            disabled={submitMutation.isPending || !userRole}
+                          >
+                            Submit
+                          </Button>
+                        ) : null}
+                        {journal.status === "SUBMITTED" && roleCanReview(userRole) ? (
+                          <Button
+                            variant="outline"
+                            onClick={() => reviewMutation.mutate(journal.id)}
+                            disabled={reviewMutation.isPending}
+                          >
+                            Review
+                          </Button>
+                        ) : null}
+                        {journal.status === "REVIEWED" && roleCanApprove(userRole) ? (
+                          <Button
+                            variant="outline"
                             onClick={() => approveMutation.mutate(journal.id)}
                             disabled={approveMutation.isPending}
                           >
                             Approve
                           </Button>
                         ) : null}
-                        {journal.status === "APPROVED" ? (
+                        {journal.status === "APPROVED" && roleCanPost(userRole) ? (
                           <Button
                             variant="outline"
                             onClick={() => postMutation.mutate(journal.id)}
@@ -135,7 +173,7 @@ export default function JournalsPage() {
                             Post
                           </Button>
                         ) : null}
-                        {journal.status === "POSTED" ? (
+                        {journal.status === "POSTED" && roleCanPost(userRole) ? (
                           <Button
                             variant="outline"
                             onClick={() => reverseMutation.mutate(journal.id)}
@@ -144,6 +182,9 @@ export default function JournalsPage() {
                             Reverse
                           </Button>
                         ) : null}
+                        <Link href={`/accounting/journals/${journal.id}`}>
+                          <Button variant="outline">Open</Button>
+                        </Link>
                       </div>
                     </td>
                   </tr>

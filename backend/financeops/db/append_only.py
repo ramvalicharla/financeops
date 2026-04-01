@@ -195,6 +195,7 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "consolidation_results",
     "consolidation_translation_runs",
     "consolidation_translation_entity_results",
+    "accounting_governance_audit_events",
     "revenue_runs",
     "revenue_run_events",
     "revenue_contracts",

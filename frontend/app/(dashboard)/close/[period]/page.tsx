@@ -1,6 +1,4 @@
-﻿"use client"
-
-import { ChecklistScreen } from "@/components/closing/ChecklistScreen"
+import { redirect } from "next/navigation"
 
 interface ClosePeriodPageProps {
   params: {
@@ -9,5 +7,5 @@ interface ClosePeriodPageProps {
 }
 
 export default function ClosePeriodPage({ params }: ClosePeriodPageProps) {
-  return <ChecklistScreen initialPeriod={params.period} showPeriodSelector forceReadOnly={false} />
+  redirect(`/close/checklist?period=${encodeURIComponent(params.period)}`)
 }

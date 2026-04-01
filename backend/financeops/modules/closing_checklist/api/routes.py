@@ -25,6 +25,15 @@ from financeops.modules.closing_checklist.service import (
     period_start_date,
     update_task_status,
 )
+from financeops.modules.accounting_layer.application.governance_service import (
+    complete_checklist_item,
+    ensure_unlock_role,
+    get_close_checklist,
+    get_period_status,
+    lock_period,
+    run_close_readiness,
+    unlock_period,
+)
 from financeops.modules.notifications.service import send_notification
 from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
@@ -71,6 +80,35 @@ class ChecklistTemplateResponse(BaseModel):
     updated_at: date | None
 
 
+class LockPeriodRequest(BaseModel):
+    org_entity_id: uuid.UUID | None = None
+    fiscal_year: int = Field(..., ge=2000, le=2100)
+    period_number: int = Field(..., ge=1, le=12)
+    lock_type: str
+    reason: str | None = None
+
+
+class UnlockPeriodRequest(BaseModel):
+    org_entity_id: uuid.UUID | None = None
+    fiscal_year: int = Field(..., ge=2000, le=2100)
+    period_number: int = Field(..., ge=1, le=12)
+    reason: str
+
+
+class CompleteChecklistItemRequest(BaseModel):
+    org_entity_id: uuid.UUID
+    fiscal_year: int = Field(..., ge=2000, le=2100)
+    period_number: int = Field(..., ge=1, le=12)
+    checklist_type: str
+    evidence_json: dict[str, object] | None = None
+
+
+class ReadinessRequest(BaseModel):
+    org_entity_id: uuid.UUID
+    fiscal_year: int = Field(..., ge=2000, le=2100)
+    period_number: int = Field(..., ge=1, le=12)
+
+
 _ROLE_MAP: dict[str, set[str]] = {
     "finance_leader": {UserRole.finance_leader.value, UserRole.super_admin.value},
     "manager": {
@@ -110,6 +148,15 @@ def _to_str(value: Decimal | None) -> str:
     if value is None:
         return "0"
     return format(value, "f")
+
+
+def _can_lock_period(user: IamUser) -> bool:
+    return user.role in {
+        UserRole.finance_leader,
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }
 
 
 async def _load_run_by_period(
@@ -238,6 +285,172 @@ async def _resolve_entity_for_user(
             detail="entity_id is required because no entity is configured for this user",
         )
     return entities[0].id
+
+
+@router.post("/lock-period")
+async def lock_period_endpoint(
+    body: LockPeriodRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    if not _can_lock_period(user):
+        raise HTTPException(status_code=403, detail="finance approver role required")
+
+    if body.lock_type.upper() == "HARD_CLOSED":
+        if body.org_entity_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="org_entity_id is required for HARD_CLOSED lock.",
+            )
+        readiness = await run_close_readiness(
+            session,
+            tenant_id=user.tenant_id,
+            org_entity_id=body.org_entity_id,
+            fiscal_year=body.fiscal_year,
+            period_number=body.period_number,
+        )
+        if not readiness["pass"]:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "READINESS_FAILED",
+                    "message": "Cannot hard-close period with unresolved blockers.",
+                    "blockers": readiness["blockers"],
+                    "warnings": readiness["warnings"],
+                },
+            )
+
+    payload = await lock_period(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=body.org_entity_id,
+        fiscal_year=body.fiscal_year,
+        period_number=body.period_number,
+        lock_type=body.lock_type,
+        reason=body.reason,
+        actor_user_id=user.id,
+    )
+    await session.flush()
+    return payload
+
+
+@router.post("/unlock-period")
+async def unlock_period_endpoint(
+    body: UnlockPeriodRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    ensure_unlock_role(user.role)
+    payload = await unlock_period(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=body.org_entity_id,
+        fiscal_year=body.fiscal_year,
+        period_number=body.period_number,
+        reason=body.reason,
+        actor_user_id=user.id,
+    )
+    await session.flush()
+    return payload
+
+
+@router.get("/period-status")
+async def period_status_endpoint(
+    fiscal_year: int = Query(..., ge=2000, le=2100),
+    period_number: int = Query(..., ge=1, le=12),
+    org_entity_id: uuid.UUID | None = Query(default=None),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    if org_entity_id is not None:
+        await assert_entity_access(
+            session,
+            user.tenant_id,
+            org_entity_id,
+            user.id,
+            user.role,
+        )
+    payload = await get_period_status(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=org_entity_id,
+        fiscal_year=fiscal_year,
+        period_number=period_number,
+    )
+    return payload
+
+
+@router.get("/checklist")
+async def checklist_governance_endpoint(
+    org_entity_id: uuid.UUID = Query(...),
+    fiscal_year: int = Query(..., ge=2000, le=2100),
+    period_number: int = Query(..., ge=1, le=12),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    await assert_entity_access(
+        session,
+        user.tenant_id,
+        org_entity_id,
+        user.id,
+        user.role,
+    )
+    return await get_close_checklist(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=org_entity_id,
+        fiscal_year=fiscal_year,
+        period_number=period_number,
+    )
+
+
+@router.post("/checklist/complete")
+async def complete_checklist_item_endpoint(
+    body: CompleteChecklistItemRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    await assert_entity_access(
+        session,
+        user.tenant_id,
+        body.org_entity_id,
+        user.id,
+        user.role,
+    )
+    payload = await complete_checklist_item(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=body.org_entity_id,
+        fiscal_year=body.fiscal_year,
+        period_number=body.period_number,
+        checklist_type=body.checklist_type,
+        evidence_json=body.evidence_json,
+        actor_user_id=user.id,
+    )
+    await session.flush()
+    return payload
+
+
+@router.post("/run-readiness")
+async def run_readiness_endpoint(
+    body: ReadinessRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    await assert_entity_access(
+        session,
+        user.tenant_id,
+        body.org_entity_id,
+        user.id,
+        user.role,
+    )
+    return await run_close_readiness(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=body.org_entity_id,
+        fiscal_year=body.fiscal_year,
+        period_number=body.period_number,
+    )
 
 
 @router.get("/history")

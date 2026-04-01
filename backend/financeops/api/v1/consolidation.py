@@ -14,6 +14,7 @@ from financeops.api.deps import (
     require_finance_team,
 )
 from financeops.config import settings
+from financeops.core.exceptions import ValidationError
 from financeops.db.models.users import IamUser
 from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.schemas.consolidation import (
@@ -51,6 +52,11 @@ from financeops.services.consolidation.group_consolidation_service import (
     get_group_consolidation_summary,
     run_group_consolidation,
 )
+from financeops.modules.accounting_layer.application.governance_service import (
+    assert_group_period_not_hard_closed,
+    record_governance_event,
+    resolve_effective_period_lock,
+)
 from financeops.temporal.client import get_temporal_client
 from financeops.temporal.consolidation_workflows import (
     ConsolidationWorkflow,
@@ -69,6 +75,12 @@ async def start_consolidation_run_endpoint(
 ) -> dict:
     correlation_id = str(getattr(request.state, "correlation_id", "") or "")
     if isinstance(body, ConsolidationGroupRunRequest):
+        await assert_group_period_not_hard_closed(
+            session,
+            tenant_id=user.tenant_id,
+            org_group_id=body.org_group_id,
+            as_of_date=body.as_of_date,
+        )
         return await run_group_consolidation(
             session,
             tenant_id=user.tenant_id,
@@ -81,7 +93,19 @@ async def start_consolidation_run_endpoint(
             correlation_id=correlation_id,
         )
 
+    period_lock = await resolve_effective_period_lock(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=None,
+        fiscal_year=body.period_year,
+        period_number=body.period_month,
+    )
+    if period_lock.is_hard_closed:
+        raise ValidationError("Period is HARD_CLOSED. Consolidation rerun is blocked.")
+
     run = await create_or_get_run(
+        # Legacy consolidated run is blocked when tenant-level period is hard-closed.
+        # Entity-scoped lock checks are handled by group-consolidation path.
         session,
         tenant_id=user.tenant_id,
         initiated_by=user.id,
@@ -182,7 +206,13 @@ async def get_consolidation_translation_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    return await translate_group_financials(
+    await assert_group_period_not_hard_closed(
+        session,
+        tenant_id=user.tenant_id,
+        org_group_id=org_group_id,
+        as_of_date=as_of_date,
+    )
+    payload = await translate_group_financials(
         session,
         tenant_id=user.tenant_id,
         org_group_id=org_group_id,
@@ -190,6 +220,21 @@ async def get_consolidation_translation_endpoint(
         as_of_date=as_of_date,
         initiated_by=user.id,
     )
+    await record_governance_event(
+        session,
+        tenant_id=user.tenant_id,
+        entity_id=None,
+        actor_user_id=user.id,
+        module="period_close",
+        action="consolidation_translate",
+        target_id=str(org_group_id),
+        payload={
+            "org_group_id": str(org_group_id),
+            "as_of_date": as_of_date.isoformat(),
+            "presentation_currency": presentation_currency,
+        },
+    )
+    return payload
 
 
 @router.get("/run/{run_id}", response_model=ConsolidationRunStatusResponse)

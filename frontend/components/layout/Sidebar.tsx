@@ -32,6 +32,9 @@ import { cn } from "@/lib/utils"
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: BarChart2 },
   { label: "Sync", href: "/sync", icon: RefreshCw },
+  { label: "ERP Connectors", href: "/erp/connectors", icon: RefreshCw },
+  { label: "ERP Sync Jobs", href: "/erp/sync", icon: RefreshCw },
+  { label: "ERP Mappings", href: "/erp/mappings", icon: GitMerge },
   {
     label: "Reconciliation",
     icon: GitMerge,
@@ -47,6 +50,8 @@ const navItems = [
   { label: "Accounting BS", href: "/accounting/balance-sheet", icon: FileBarChart },
   { label: "Accounting CF", href: "/accounting/cash-flow", icon: FileBarChart },
   { label: "Accounting Revaluation", href: "/accounting/revaluation", icon: FileBarChart },
+  { label: "Period Close", href: "/close", icon: Lock },
+  { label: "Close Checklist", href: "/close/checklist", icon: CalendarClock },
   { label: "FX Rates", href: "/fx/rates", icon: FileBarChart },
   { label: "Trial Balance", href: "/trial-balance", icon: FileBarChart },
   { label: "Consolidation", href: "/consolidation", icon: Layers },
