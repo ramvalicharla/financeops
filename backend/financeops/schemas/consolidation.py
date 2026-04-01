@@ -50,6 +50,21 @@ class ConsolidationRunRequest(BaseModel):
         return self
 
 
+class ConsolidationGroupRunRequest(BaseModel):
+    org_group_id: UUID
+    as_of_date: date
+    from_date: date | None = None
+    to_date: date | None = None
+
+    @model_validator(mode="after")
+    def _validate_dates(self) -> "ConsolidationGroupRunRequest":
+        if self.from_date and self.to_date and self.from_date > self.to_date:
+            raise ValueError("from_date cannot be after to_date")
+        if self.to_date and self.to_date > self.as_of_date:
+            raise ValueError("to_date cannot be after as_of_date")
+        return self
+
+
 class ConsolidationRunAcceptedResponse(BaseModel):
     run_id: str
     workflow_id: str
@@ -180,3 +195,30 @@ class ConsolidationSnapshotLineDrillResponse(DrillLineageMetadata):
     snapshot_line_id: str
     child_references: list[dict[str, str]]
     snapshot_line: SnapshotLineDrillRow
+
+
+class ConsolidationGroupSummaryResponse(BaseModel):
+    summary: dict[str, Any]
+    hierarchy: dict[str, Any]
+    statements: dict[str, Any]
+    elimination_summary: list[dict[str, Any]]
+
+
+class ConsolidationGroupRunResponse(BaseModel):
+    run_id: str
+    status: str
+    event_seq: int
+    event_time: datetime
+    workflow_id: str
+    configuration: dict[str, Any]
+    summary: dict[str, Any] | None = None
+
+
+class ConsolidationGroupRunStatementsResponse(BaseModel):
+    run_id: str
+    status: str
+    statements: dict[str, Any]
+    elimination_summary: list[dict[str, Any]]
+    eliminations: list[dict[str, Any]]
+    hierarchy: dict[str, Any] | None = None
+    summary: dict[str, Any] | None = None

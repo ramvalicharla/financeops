@@ -24,6 +24,12 @@ from financeops.services.consolidation.drilldown_service import (
 )
 from financeops.services.consolidation.entity_loader import EntitySnapshotMapping
 from financeops.services.consolidation.lineage_resolver import resolve_lineage
+from financeops.services.consolidation.group_consolidation_service import (
+    get_group_consolidation_run,
+    get_group_consolidation_run_statements,
+    get_group_consolidation_summary,
+    run_group_consolidation,
+)
 
 __all__ = [
     "EntitySnapshotMapping",
@@ -46,5 +52,9 @@ __all__ = [
     "match_intercompany_for_run",
     "prepare_entities_for_run",
     "resolve_lineage",
+    "get_group_consolidation_summary",
+    "run_group_consolidation",
+    "get_group_consolidation_run",
+    "get_group_consolidation_run_statements",
 ]
 

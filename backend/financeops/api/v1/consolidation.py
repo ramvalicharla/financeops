@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import date, timedelta
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -19,6 +19,10 @@ from financeops.modules.closing_checklist.service import run_auto_complete_for_e
 from financeops.schemas.consolidation import (
     ConsolidationAccountDrillResponse,
     ConsolidationEntityDrillResponse,
+    ConsolidationGroupRunRequest,
+    ConsolidationGroupRunResponse,
+    ConsolidationGroupRunStatementsResponse,
+    ConsolidationGroupSummaryResponse,
     ConsolidationLineItemDrillResponse,
     ConsolidationRunAcceptedResponse,
     ConsolidationRunRequest,
@@ -39,6 +43,12 @@ from financeops.services.consolidation import (
     list_ic_differences,
     list_results,
 )
+from financeops.services.consolidation.group_consolidation_service import (
+    get_group_consolidation_run,
+    get_group_consolidation_run_statements,
+    get_group_consolidation_summary,
+    run_group_consolidation,
+)
 from financeops.temporal.client import get_temporal_client
 from financeops.temporal.consolidation_workflows import (
     ConsolidationWorkflow,
@@ -50,12 +60,24 @@ router = APIRouter()
 
 @router.post("/run", response_model=ConsolidationRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
 async def start_consolidation_run_endpoint(
-    body: ConsolidationRunRequest,
+    body: ConsolidationRunRequest | ConsolidationGroupRunRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
     correlation_id = str(getattr(request.state, "correlation_id", "") or "")
+    if isinstance(body, ConsolidationGroupRunRequest):
+        return await run_group_consolidation(
+            session,
+            tenant_id=user.tenant_id,
+            initiated_by=user.id,
+            org_group_id=body.org_group_id,
+            as_of_date=body.as_of_date,
+            from_date=body.from_date,
+            to_date=body.to_date,
+            correlation_id=correlation_id,
+        )
+
     run = await create_or_get_run(
         session,
         tenant_id=user.tenant_id,
@@ -97,6 +119,54 @@ async def start_consolidation_run_endpoint(
         "status": "accepted" if run.created_new else run.status,
         "correlation_id": correlation_id,
     }
+
+
+@router.get("/summary", response_model=ConsolidationGroupSummaryResponse)
+async def get_consolidation_summary_endpoint(
+    org_group_id: UUID = Query(...),
+    as_of_date: date = Query(...),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    return await get_group_consolidation_summary(
+        session,
+        tenant_id=user.tenant_id,
+        org_group_id=org_group_id,
+        as_of_date=as_of_date,
+        from_date=from_date,
+        to_date=to_date,
+    )
+
+
+@router.get("/runs/{run_id}", response_model=ConsolidationGroupRunResponse)
+async def get_group_consolidation_run_endpoint(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    return await get_group_consolidation_run(
+        session,
+        tenant_id=user.tenant_id,
+        run_id=run_id,
+    )
+
+
+@router.get(
+    "/runs/{run_id}/statements",
+    response_model=ConsolidationGroupRunStatementsResponse,
+)
+async def get_group_consolidation_run_statements_endpoint(
+    run_id: UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    return await get_group_consolidation_run_statements(
+        session,
+        tenant_id=user.tenant_id,
+        run_id=run_id,
+    )
 
 
 @router.get("/run/{run_id}", response_model=ConsolidationRunStatusResponse)

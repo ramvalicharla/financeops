@@ -1,40 +1,84 @@
 import apiClient from "@/lib/api/client"
 import type {
-  ConsolidationEntity,
-  ConsolidationSummary,
+  ConsolidationRunAcceptedResponse,
+  ConsolidationRunDetailsResponse,
+  ConsolidationRunRequestPayload,
+  ConsolidationRunStatementsResponse,
+  ConsolidationSummaryResponse,
 } from "@/types/consolidation"
 
-export const getConsolidationEntities = async (
-  tenantId?: string,
-): Promise<ConsolidationEntity[]> => {
-  const suffix = tenantId
-    ? `?tenant_id=${encodeURIComponent(tenantId)}`
-    : ""
-  const response = await apiClient.get<ConsolidationEntity[]>(
-    `/api/v1/consolidation/entities${suffix}`,
+export interface OrgSetupSummaryForConsolidation {
+  group: {
+    id: string
+    group_name: string
+    reporting_currency: string
+  } | null
+  entities: Array<{
+    id: string
+    legal_name: string
+    cp_entity_id: string | null
+  }>
+}
+
+export const getOrgSetupSummaryForConsolidation =
+  async (): Promise<OrgSetupSummaryForConsolidation> => {
+    const response = await apiClient.get<OrgSetupSummaryForConsolidation>(
+      "/api/v1/org-setup/summary",
+    )
+    return response.data
+  }
+
+export const getConsolidationSummary = async ({
+  orgGroupId,
+  asOfDate,
+  fromDate,
+  toDate,
+}: {
+  orgGroupId: string
+  asOfDate: string
+  fromDate?: string
+  toDate?: string
+}): Promise<ConsolidationSummaryResponse> => {
+  const params = new URLSearchParams({
+    org_group_id: orgGroupId,
+    as_of_date: asOfDate,
+  })
+  if (fromDate) {
+    params.set("from_date", fromDate)
+  }
+  if (toDate) {
+    params.set("to_date", toDate)
+  }
+  const response = await apiClient.get<ConsolidationSummaryResponse>(
+    `/api/v1/consolidation/summary?${params.toString()}`,
   )
   return response.data
 }
 
-export const getConsolidationSummary = async (
-  entityIds: string[],
-  period: string,
-): Promise<ConsolidationSummary> => {
-  const response = await apiClient.post<ConsolidationSummary>(
-    "/api/v1/consolidation/summary",
-    {
-      entity_ids: entityIds,
-      period,
-    },
+export const runConsolidation = async (
+  payload: ConsolidationRunRequestPayload,
+): Promise<ConsolidationRunAcceptedResponse> => {
+  const response = await apiClient.post<ConsolidationRunAcceptedResponse>(
+    "/api/v1/consolidation/run",
+    payload,
   )
   return response.data
 }
 
-export const getFXRates = async (
-  period: string,
-): Promise<Array<{ currency: string; rate_to_inr: string }>> => {
-  const response = await apiClient.get<
-    Array<{ currency: string; rate_to_inr: string }>
-  >(`/api/v1/consolidation/fx-rates?period=${encodeURIComponent(period)}`)
+export const getConsolidationRun = async (
+  runId: string,
+): Promise<ConsolidationRunDetailsResponse> => {
+  const response = await apiClient.get<ConsolidationRunDetailsResponse>(
+    `/api/v1/consolidation/runs/${runId}`,
+  )
+  return response.data
+}
+
+export const getConsolidationRunStatements = async (
+  runId: string,
+): Promise<ConsolidationRunStatementsResponse> => {
+  const response = await apiClient.get<ConsolidationRunStatementsResponse>(
+    `/api/v1/consolidation/runs/${runId}/statements`,
+  )
   return response.data
 }

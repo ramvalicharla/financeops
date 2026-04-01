@@ -1,31 +1,57 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import {
-  getConsolidationEntities,
+  getConsolidationRun,
+  getConsolidationRunStatements,
   getConsolidationSummary,
-  getFXRates,
+  getOrgSetupSummaryForConsolidation,
+  runConsolidation,
 } from "@/lib/api/consolidation"
+import type { ConsolidationRunRequestPayload } from "@/types/consolidation"
 
-export const useConsolidationEntities = (tenantId?: string) =>
+export const useOrgSetupSummaryForConsolidation = () =>
   useQuery({
-    queryKey: ["consolidation-entities", tenantId],
-    queryFn: () => getConsolidationEntities(tenantId),
+    queryKey: ["org-setup-summary-for-consolidation"],
+    queryFn: getOrgSetupSummaryForConsolidation,
   })
 
 export const useConsolidationSummary = (
-  entityIds: string[],
-  period: string | null,
+  params: {
+    orgGroupId: string
+    asOfDate: string
+    fromDate?: string
+    toDate?: string
+  } | null,
 ) =>
   useQuery({
-    queryKey: ["consolidation-summary", entityIds, period],
-    queryFn: () => getConsolidationSummary(entityIds, period ?? ""),
-    enabled: false,
+    queryKey: ["consolidation-summary", params],
+    queryFn: () =>
+      getConsolidationSummary({
+        orgGroupId: params?.orgGroupId ?? "",
+        asOfDate: params?.asOfDate ?? "",
+        fromDate: params?.fromDate,
+        toDate: params?.toDate,
+      }),
+    enabled: Boolean(params?.orgGroupId && params?.asOfDate),
   })
 
-export const useFXRates = (period: string | null) =>
+export const useRunConsolidation = () =>
+  useMutation({
+    mutationFn: (payload: ConsolidationRunRequestPayload) =>
+      runConsolidation(payload),
+  })
+
+export const useConsolidationRun = (runId: string | null) =>
   useQuery({
-    queryKey: ["consolidation-fx-rates", period],
-    queryFn: () => getFXRates(period ?? ""),
-    enabled: Boolean(period),
+    queryKey: ["consolidation-run", runId],
+    queryFn: () => getConsolidationRun(runId ?? ""),
+    enabled: Boolean(runId),
+  })
+
+export const useConsolidationRunStatements = (runId: string | null) =>
+  useQuery({
+    queryKey: ["consolidation-run-statements", runId],
+    queryFn: () => getConsolidationRunStatements(runId ?? ""),
+    enabled: Boolean(runId),
   })
