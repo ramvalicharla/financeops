@@ -124,6 +124,12 @@ export function Sidebar({
   }, [userName])
   const showTrust = userRole === "finance_leader"
   const showAdvisory = userRole === "finance_leader"
+  const showAdmin = [
+    "platform_owner",
+    "platform_admin",
+    "super_admin",
+    "admin",
+  ].includes(String(userRole))
   const isDirector = userRole === "director"
   const visibleNavItems = useMemo(() => {
     if (userRole !== "director") {
@@ -446,6 +452,88 @@ export function Sidebar({
               </Link>
             ) : null}
           </div>
+          {showAdmin ? (
+            <div className="mt-3 rounded-md border border-border/60 p-2">
+              <p className="px-2 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
+                Admin
+              </p>
+              <Link
+                href="/admin"
+                onClick={closeSidebar}
+                className={cn(
+                  "flex items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm transition",
+                  pathname === "/admin" || pathname.startsWith("/admin/")
+                    ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                    : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                )}
+              >
+                <ShieldCheck className="h-4 w-4" />
+                Admin Console
+              </Link>
+              <div className="space-y-1 pl-2">
+                <Link
+                  href="/admin/tenants"
+                  onClick={closeSidebar}
+                  className={cn(
+                    "block rounded-md border-l-2 px-3 py-2 text-xs transition",
+                    pathname === "/admin/tenants"
+                      ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                      : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  Tenants
+                </Link>
+                <Link
+                  href="/admin/users"
+                  onClick={closeSidebar}
+                  className={cn(
+                    "block rounded-md border-l-2 px-3 py-2 text-xs transition",
+                    pathname === "/admin/users"
+                      ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                      : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  Users
+                </Link>
+                <Link
+                  href="/admin/rbac"
+                  onClick={closeSidebar}
+                  className={cn(
+                    "block rounded-md border-l-2 px-3 py-2 text-xs transition",
+                    pathname === "/admin/rbac"
+                      ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                      : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  RBAC
+                </Link>
+                <Link
+                  href="/admin/flags"
+                  onClick={closeSidebar}
+                  className={cn(
+                    "block rounded-md border-l-2 px-3 py-2 text-xs transition",
+                    pathname === "/admin/flags"
+                      ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                      : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  Flags
+                </Link>
+                <Link
+                  href="/admin/modules"
+                  onClick={closeSidebar}
+                  className={cn(
+                    "block rounded-md border-l-2 px-3 py-2 text-xs transition",
+                    pathname === "/admin/modules"
+                      ? "border-l-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                      : "border-l-transparent text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  Modules
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </nav>
 
         <div className="space-y-3 border-t border-border p-3">

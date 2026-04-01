@@ -46,8 +46,10 @@ export const parseWithSchema = <T>(
   }
 }
 
+export const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim()
+
 const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: BASE_URL,
   timeout: 30_000,
 })
 
@@ -59,6 +61,9 @@ const captureBillingWarning = (warningHeader?: string) => {
 }
 
 const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
+  if (!BASE_URL) {
+    throw new Error("NEXT_PUBLIC_API_URL is required")
+  }
   const session = await getSession()
   const token = session?.access_token
   const state = useTenantStore.getState()

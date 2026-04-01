@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import apiClient from "@/lib/api/client"
 
 type Step = "generate" | "verify" | "done"
 
@@ -15,7 +16,7 @@ export default function MFASetupPage() {
   const [loading, setLoading] = useState(false)
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
 
-  const authHeaders = (): HeadersInit => {
+  const authHeaders = (): Record<string, string> => {
     const setupToken = sessionStorage.getItem("mfa_setup_token")
     if (!setupToken) return {}
     return { Authorization: `Bearer ${setupToken}` }
@@ -23,39 +24,44 @@ export default function MFASetupPage() {
 
   const generateSecret = async (): Promise<void> => {
     setLoading(true)
-    const response = await fetch("/api/v1/auth/mfa/setup", {
-      method: "POST",
-      headers: authHeaders(),
-    })
-    const payload = (await response.json()) as { data?: { secret?: string; qr_url?: string } }
-    setSecret(payload.data?.secret ?? "")
-    setQrUrl(payload.data?.qr_url ?? "")
-    setStep("verify")
-    setLoading(false)
+    try {
+      const payload = await apiClient.post<{ secret?: string; qr_url?: string }>(
+        "/api/v1/auth/mfa/setup",
+        {},
+        { headers: authHeaders() },
+      )
+      setSecret(payload.data?.secret ?? "")
+      setQrUrl(payload.data?.qr_url ?? "")
+      setStep("verify")
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to initialise MFA setup")
+    } finally {
+      setLoading(false)
+    }
   }
 
   const verifyAndEnable = async (): Promise<void> => {
     setLoading(true)
     setError(null)
-    const response = await fetch("/api/v1/auth/mfa/verify-setup", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...authHeaders(),
-      },
-      body: JSON.stringify({ code, secret }),
-    })
-    const payload = (await response.json()) as { data?: { access_token?: string; refresh_token?: string; recovery_codes?: string[] } }
-    if (!response.ok) {
+    try {
+      const payload = await apiClient.post<{ access_token?: string; refresh_token?: string; recovery_codes?: string[] }>(
+        "/api/v1/auth/mfa/verify-setup",
+        { code, secret },
+        {
+          headers: {
+            ...authHeaders(),
+          },
+        },
+      )
+      setRecoveryCodes(payload.data?.recovery_codes ?? [])
+      sessionStorage.removeItem("mfa_setup_token")
+      setStep("done")
+      setTimeout(() => router.push("/login?registered=true"), 2000)
+    } catch {
       setError("Invalid code. Check your authenticator app and try again.")
+    } finally {
       setLoading(false)
-      return
     }
-    setRecoveryCodes(payload.data?.recovery_codes ?? [])
-    sessionStorage.removeItem("mfa_setup_token")
-    setStep("done")
-    setLoading(false)
-    setTimeout(() => router.push("/login?registered=true"), 2000)
   }
 
   return (
@@ -110,4 +116,3 @@ export default function MFASetupPage() {
     </div>
   )
 }
-

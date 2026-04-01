@@ -75,10 +75,12 @@ export default function AdminHomePage() {
       <section className="rounded-xl border border-border bg-card p-4">
         <h2 className="mb-3 text-lg font-medium text-foreground">Quick Links</h2>
         <div className="grid gap-3 md:grid-cols-2">
-          <QuickLink href="/admin/white-label" title="Tenant management" description="Tenant configurations and branding status." />
-          <QuickLink href="/admin/service-registry" title="Service registry" description="Module health, tasks, and queue status." />
+          <QuickLink href="/admin/tenants" title="Tenant management" description="Tenant lifecycle status and activation controls." />
+          <QuickLink href="/admin/users" title="Platform users" description="Role changes, admin promotion, and deactivation." />
+          <QuickLink href="/admin/rbac" title="RBAC control" description="Roles, permissions, and user-role assignments." />
+          <QuickLink href="/admin/flags" title="Feature flags" description="Global, tenant, and user-scoped feature toggles." />
+          <QuickLink href="/admin/modules" title="Modules" description="Module-level enablement and health controls." />
           <QuickLink href="/admin/marketplace" title="Marketplace" description="Template marketplace revenue and moderation." />
-          <QuickLink href="/dashboard/partner" title="Partner program" description="Partner referrals, commissions, and applications." />
         </div>
       </section>
     </div>

@@ -1,0 +1,5539 @@
+[
+  {
+    "path": "/api/v1/accounting/jv/",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_jvs_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_jv_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/ap-ageing/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "ap_ageing_export_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/ap-ageing/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "ap_ageing_summary_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/audit/export",
+    "methods": [
+      "POST"
+    ],
+    "name": "audit_export_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/audit/exports",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_audit_exports_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/sla/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "sla_metrics_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/sla/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "sla_metrics_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/{jv_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_jv_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/{jv_id}/approvals",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_jv_approvals_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/{jv_id}/approve",
+    "methods": [
+      "POST"
+    ],
+    "name": "approve_jv_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/{jv_id}/history",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_jv_history_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/{jv_id}/lines",
+    "methods": [
+      "PUT"
+    ],
+    "name": "update_jv_lines_endpoint"
+  },
+  {
+    "path": "/api/v1/accounting/jv/{jv_id}/transition",
+    "methods": [
+      "POST"
+    ],
+    "name": "transition_jv_endpoint"
+  },
+  {
+    "path": "/api/v1/admin/ai/providers",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_provider_slots"
+  },
+  {
+    "path": "/api/v1/admin/ai/providers/{slot_name}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_provider_slot"
+  },
+  {
+    "path": "/api/v1/admin/ai/providers/{slot_name}/disable",
+    "methods": [
+      "POST"
+    ],
+    "name": "disable_provider_slot"
+  },
+  {
+    "path": "/api/v1/admin/ai/providers/{slot_name}/enable",
+    "methods": [
+      "POST"
+    ],
+    "name": "enable_provider_slot"
+  },
+  {
+    "path": "/api/v1/advisory/fdd/engagements",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_engagements_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/fdd/engagements",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_engagement_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/fdd/engagements/{engagement_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_engagement_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/fdd/engagements/{engagement_id}/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "export_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/fdd/engagements/{engagement_id}/report",
+    "methods": [
+      "GET"
+    ],
+    "name": "report_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/fdd/engagements/{engagement_id}/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_engagement_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_workspaces_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_workspace_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_workspace_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_workspace_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/dd",
+    "methods": [
+      "GET"
+    ],
+    "name": "dd_summary_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/dd",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_dd_item_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/dd/{item_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_dd_item_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/documents",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_documents_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/documents",
+    "methods": [
+      "POST"
+    ],
+    "name": "register_document_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/members",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_member_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/valuations",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_valuations_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ma/workspaces/{workspace_id}/valuations",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_valuation_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_engagements_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_engagement_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements/{engagement_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_engagement_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements/{engagement_id}/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "export_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements/{engagement_id}/identify-intangibles",
+    "methods": [
+      "POST"
+    ],
+    "name": "identify_intangibles_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements/{engagement_id}/report",
+    "methods": [
+      "GET"
+    ],
+    "name": "report_endpoint"
+  },
+  {
+    "path": "/api/v1/advisory/ppa/engagements/{engagement_id}/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_ppa_endpoint"
+  },
+  {
+    "path": "/api/v1/ai/stream",
+    "methods": [
+      "POST"
+    ],
+    "name": "stream_ai_response"
+  },
+  {
+    "path": "/api/v1/anomalies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_anomaly_alerts"
+  },
+  {
+    "path": "/api/v1/anomalies/thresholds",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_anomaly_thresholds"
+  },
+  {
+    "path": "/api/v1/anomalies/thresholds/{rule_code}",
+    "methods": [
+      "PUT"
+    ],
+    "name": "update_anomaly_threshold"
+  },
+  {
+    "path": "/api/v1/anomalies/{alert_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_anomaly_alert"
+  },
+  {
+    "path": "/api/v1/anomalies/{alert_id}/status",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_anomaly_alert_status"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/anomaly-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_anomaly_definitions"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/anomaly-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_anomaly_definition"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/anomaly-definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_anomaly_definition_versions"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/correlation-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_correlation_rules"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/correlation-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_correlation_rule"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/pattern-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_pattern_rules"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/pattern-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_pattern_rule"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/persistence-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_persistence_rules"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/persistence-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_persistence_rule"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_evidence"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs/{id}/results",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_results"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs/{id}/rollforwards",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rollforwards"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/runs/{id}/signals",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_signals"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/statistical-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_statistical_rules"
+  },
+  {
+    "path": "/api/v1/anomaly-engine/statistical-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_statistical_rule"
+  },
+  {
+    "path": "/api/v1/audit/access",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_access_endpoint"
+  },
+  {
+    "path": "/api/v1/audit/access/grant",
+    "methods": [
+      "POST"
+    ],
+    "name": "grant_access_endpoint"
+  },
+  {
+    "path": "/api/v1/audit/access/{access_id}/revoke",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "revoke_access_endpoint"
+  },
+  {
+    "path": "/api/v1/audit/portal/requests",
+    "methods": [
+      "GET"
+    ],
+    "name": "auditor_list_requests_endpoint"
+  },
+  {
+    "path": "/api/v1/audit/portal/requests",
+    "methods": [
+      "POST"
+    ],
+    "name": "auditor_create_request_endpoint"
+  },
+  {
+    "path": "/api/v1/audit/{engagement_id}/pbc",
+    "methods": [
+      "GET"
+    ],
+    "name": "pbc_tracker_endpoint"
+  },
+  {
+    "path": "/api/v1/audit/{engagement_id}/requests/{request_id}/respond",
+    "methods": [
+      "POST"
+    ],
+    "name": "respond_endpoint"
+  },
+  {
+    "path": "/api/v1/auditor/access-logs",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_access_logs"
+  },
+  {
+    "path": "/api/v1/auditor/grants",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_auditor_grants"
+  },
+  {
+    "path": "/api/v1/auditor/grants",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_auditor_grant"
+  },
+  {
+    "path": "/api/v1/auditor/grants/{grant_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "revoke_grant"
+  },
+  {
+    "path": "/api/v1/auditor/me/access-check",
+    "methods": [
+      "GET"
+    ],
+    "name": "check_my_access"
+  },
+  {
+    "path": "/api/v1/auth/accept-invite",
+    "methods": [
+      "POST"
+    ],
+    "name": "accept_invite"
+  },
+  {
+    "path": "/api/v1/auth/forgot-password",
+    "methods": [
+      "POST"
+    ],
+    "name": "forgot_password"
+  },
+  {
+    "path": "/api/v1/auth/login",
+    "methods": [
+      "POST"
+    ],
+    "name": "user_login"
+  },
+  {
+    "path": "/api/v1/auth/logout",
+    "methods": [
+      "POST"
+    ],
+    "name": "user_logout"
+  },
+  {
+    "path": "/api/v1/auth/me",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_me"
+  },
+  {
+    "path": "/api/v1/auth/mfa/setup",
+    "methods": [
+      "POST"
+    ],
+    "name": "mfa_setup"
+  },
+  {
+    "path": "/api/v1/auth/mfa/verify",
+    "methods": [
+      "POST"
+    ],
+    "name": "mfa_verify"
+  },
+  {
+    "path": "/api/v1/auth/mfa/verify-setup",
+    "methods": [
+      "POST"
+    ],
+    "name": "verify_mfa_setup"
+  },
+  {
+    "path": "/api/v1/auth/refresh",
+    "methods": [
+      "POST"
+    ],
+    "name": "token_refresh"
+  },
+  {
+    "path": "/api/v1/auth/register",
+    "methods": [
+      "POST"
+    ],
+    "name": "register"
+  },
+  {
+    "path": "/api/v1/auth/reset-password",
+    "methods": [
+      "POST"
+    ],
+    "name": "reset_password"
+  },
+  {
+    "path": "/api/v1/backup/log",
+    "methods": [
+      "POST"
+    ],
+    "name": "backup_log"
+  },
+  {
+    "path": "/api/v1/backup/runs",
+    "methods": [
+      "GET"
+    ],
+    "name": "backup_runs"
+  },
+  {
+    "path": "/api/v1/backup/status",
+    "methods": [
+      "GET"
+    ],
+    "name": "backup_status"
+  },
+  {
+    "path": "/api/v1/backup/verify-integrity",
+    "methods": [
+      "POST"
+    ],
+    "name": "backup_verify_integrity"
+  },
+  {
+    "path": "/api/v1/bank-recon/items",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_recon_items"
+  },
+  {
+    "path": "/api/v1/bank-recon/run/{statement_id}",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_bank_recon"
+  },
+  {
+    "path": "/api/v1/bank-recon/statements",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_statements"
+  },
+  {
+    "path": "/api/v1/bank-recon/statements",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_statement"
+  },
+  {
+    "path": "/api/v1/bank-recon/transactions",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_transaction"
+  },
+  {
+    "path": "/api/v1/bank-recon/transactions/{statement_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_transactions"
+  },
+  {
+    "path": "/api/v1/bank-recon/upload-statement",
+    "methods": [
+      "POST"
+    ],
+    "name": "upload_bank_statement"
+  },
+  {
+    "path": "/api/v1/billing/admin/activate-tenant",
+    "methods": [
+      "POST"
+    ],
+    "name": "activate_tenant_billing"
+  },
+  {
+    "path": "/api/v1/billing/admin/adjust-credits",
+    "methods": [
+      "POST"
+    ],
+    "name": "adjust_credits"
+  },
+  {
+    "path": "/api/v1/billing/admin/override-provider",
+    "methods": [
+      "POST"
+    ],
+    "name": "override_provider"
+  },
+  {
+    "path": "/api/v1/billing/credits/balance",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_credit_balance"
+  },
+  {
+    "path": "/api/v1/billing/credits/ledger",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_credit_ledger"
+  },
+  {
+    "path": "/api/v1/billing/credits/top-up",
+    "methods": [
+      "POST"
+    ],
+    "name": "top_up_credits"
+  },
+  {
+    "path": "/api/v1/billing/invoices",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_invoices"
+  },
+  {
+    "path": "/api/v1/billing/invoices/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_invoice"
+  },
+  {
+    "path": "/api/v1/billing/invoices/{id}/pay",
+    "methods": [
+      "POST"
+    ],
+    "name": "pay_invoice"
+  },
+  {
+    "path": "/api/v1/billing/payment-methods",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_payment_methods"
+  },
+  {
+    "path": "/api/v1/billing/payment-methods",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_payment_method"
+  },
+  {
+    "path": "/api/v1/billing/payment-methods/{id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_payment_method"
+  },
+  {
+    "path": "/api/v1/billing/payment-methods/{id}/set-default",
+    "methods": [
+      "POST"
+    ],
+    "name": "set_default_payment_method"
+  },
+  {
+    "path": "/api/v1/billing/plans",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_billing_plans"
+  },
+  {
+    "path": "/api/v1/billing/plans/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_billing_plan"
+  },
+  {
+    "path": "/api/v1/billing/portal",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_billing_portal"
+  },
+  {
+    "path": "/api/v1/billing/subscriptions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_subscription"
+  },
+  {
+    "path": "/api/v1/billing/subscriptions/cancel",
+    "methods": [
+      "POST"
+    ],
+    "name": "cancel_subscription"
+  },
+  {
+    "path": "/api/v1/billing/subscriptions/current",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_current_subscription"
+  },
+  {
+    "path": "/api/v1/billing/subscriptions/reactivate",
+    "methods": [
+      "POST"
+    ],
+    "name": "reactivate_subscription"
+  },
+  {
+    "path": "/api/v1/billing/subscriptions/upgrade",
+    "methods": [
+      "POST"
+    ],
+    "name": "upgrade_subscription"
+  },
+  {
+    "path": "/api/v1/billing/webhooks/razorpay",
+    "methods": [
+      "POST"
+    ],
+    "name": "razorpay_webhook"
+  },
+  {
+    "path": "/api/v1/billing/webhooks/stripe",
+    "methods": [
+      "POST"
+    ],
+    "name": "stripe_webhook"
+  },
+  {
+    "path": "/api/v1/board-pack/definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_definitions"
+  },
+  {
+    "path": "/api/v1/board-pack/definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_definition"
+  },
+  {
+    "path": "/api/v1/board-pack/definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_definition_versions"
+  },
+  {
+    "path": "/api/v1/board-pack/inclusion-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_inclusion_rules"
+  },
+  {
+    "path": "/api/v1/board-pack/inclusion-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_inclusion_rule"
+  },
+  {
+    "path": "/api/v1/board-pack/inclusion-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_inclusion_rule_versions"
+  },
+  {
+    "path": "/api/v1/board-pack/narrative-templates",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_narrative_templates"
+  },
+  {
+    "path": "/api/v1/board-pack/narrative-templates",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_narrative_template"
+  },
+  {
+    "path": "/api/v1/board-pack/narrative-templates/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_narrative_template_versions"
+  },
+  {
+    "path": "/api/v1/board-pack/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/board-pack/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/board-pack/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_evidence_for_run"
+  },
+  {
+    "path": "/api/v1/board-pack/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/board-pack/runs/{id}/narratives",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_narratives_for_run"
+  },
+  {
+    "path": "/api/v1/board-pack/runs/{id}/sections",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sections_for_run"
+  },
+  {
+    "path": "/api/v1/board-pack/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "run_summary"
+  },
+  {
+    "path": "/api/v1/board-pack/sections",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sections"
+  },
+  {
+    "path": "/api/v1/board-pack/sections",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_section"
+  },
+  {
+    "path": "/api/v1/board-pack/sections/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_section_versions"
+  },
+  {
+    "path": "/api/v1/board-packs/definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_definitions"
+  },
+  {
+    "path": "/api/v1/board-packs/definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_definition"
+  },
+  {
+    "path": "/api/v1/board-packs/definitions/{definition_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "deactivate_definition"
+  },
+  {
+    "path": "/api/v1/board-packs/definitions/{definition_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_definition"
+  },
+  {
+    "path": "/api/v1/board-packs/definitions/{definition_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_definition"
+  },
+  {
+    "path": "/api/v1/board-packs/generate",
+    "methods": [
+      "POST"
+    ],
+    "name": "generate_pack"
+  },
+  {
+    "path": "/api/v1/board-packs/runs",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_runs"
+  },
+  {
+    "path": "/api/v1/board-packs/runs/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/board-packs/runs/{run_id}/artifacts",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_artifacts"
+  },
+  {
+    "path": "/api/v1/board-packs/runs/{run_id}/download/{format}",
+    "methods": [
+      "GET"
+    ],
+    "name": "download_artifact"
+  },
+  {
+    "path": "/api/v1/board-packs/runs/{run_id}/sections",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sections"
+  },
+  {
+    "path": "/api/v1/budget/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_versions"
+  },
+  {
+    "path": "/api/v1/budget/versions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_version"
+  },
+  {
+    "path": "/api/v1/budget/versions/{version_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_version"
+  },
+  {
+    "path": "/api/v1/budget/versions/{version_id}/approve",
+    "methods": [
+      "POST"
+    ],
+    "name": "approve"
+  },
+  {
+    "path": "/api/v1/budget/versions/{version_id}/lines",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_line"
+  },
+  {
+    "path": "/api/v1/budget/vs-actual",
+    "methods": [
+      "GET"
+    ],
+    "name": "vs_actual"
+  },
+  {
+    "path": "/api/v1/budget/vs-actual/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "export_vs_actual"
+  },
+  {
+    "path": "/api/v1/cash-flow/bridge-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_bridge_rules"
+  },
+  {
+    "path": "/api/v1/cash-flow/bridge-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_bridge_rule"
+  },
+  {
+    "path": "/api/v1/cash-flow/bridge-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_bridge_rule_versions"
+  },
+  {
+    "path": "/api/v1/cash-flow/definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_statement_definitions"
+  },
+  {
+    "path": "/api/v1/cash-flow/definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_statement_definition"
+  },
+  {
+    "path": "/api/v1/cash-flow/definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_statement_definition_versions"
+  },
+  {
+    "path": "/api/v1/cash-flow/line-mappings",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_line_mappings"
+  },
+  {
+    "path": "/api/v1/cash-flow/line-mappings",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_line_mapping"
+  },
+  {
+    "path": "/api/v1/cash-flow/line-mappings/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_line_mapping_versions"
+  },
+  {
+    "path": "/api/v1/cash-flow/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/cash-flow/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/cash-flow/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_evidence"
+  },
+  {
+    "path": "/api/v1/cash-flow/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/cash-flow/runs/{id}/lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_lines"
+  },
+  {
+    "path": "/api/v1/cash-flow/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/close/analytics",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_analytics"
+  },
+  {
+    "path": "/api/v1/close/history",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_history"
+  },
+  {
+    "path": "/api/v1/close/templates",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_templates"
+  },
+  {
+    "path": "/api/v1/close/templates",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_template"
+  },
+  {
+    "path": "/api/v1/close/trigger",
+    "methods": [
+      "POST"
+    ],
+    "name": "trigger_month_end_close"
+  },
+  {
+    "path": "/api/v1/close/{period}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_or_create_checklist"
+  },
+  {
+    "path": "/api/v1/close/{period}/tasks/{task_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_task_status"
+  },
+  {
+    "path": "/api/v1/close/{period}/tasks/{task_id}/assign",
+    "methods": [
+      "POST"
+    ],
+    "name": "assign_task"
+  },
+  {
+    "path": "/api/v1/close/{workflow_id}/status",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_month_end_close_status"
+  },
+  {
+    "path": "/api/v1/coa/accounts",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_effective_accounts"
+  },
+  {
+    "path": "/api/v1/coa/apply",
+    "methods": [
+      "POST"
+    ],
+    "name": "apply_coa"
+  },
+  {
+    "path": "/api/v1/coa/erp-mappings",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_erp_mappings"
+  },
+  {
+    "path": "/api/v1/coa/erp-mappings/auto-suggest",
+    "methods": [
+      "POST"
+    ],
+    "name": "auto_suggest_erp_mappings"
+  },
+  {
+    "path": "/api/v1/coa/erp-mappings/bulk-confirm",
+    "methods": [
+      "POST"
+    ],
+    "name": "bulk_confirm_erp_mappings"
+  },
+  {
+    "path": "/api/v1/coa/erp-mappings/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_erp_mapping_summary"
+  },
+  {
+    "path": "/api/v1/coa/erp-mappings/unmapped",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_unmapped_erp_accounts"
+  },
+  {
+    "path": "/api/v1/coa/erp-mappings/{mapping_id}/confirm",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "confirm_erp_mapping"
+  },
+  {
+    "path": "/api/v1/coa/fs-classifications",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fs_classifications"
+  },
+  {
+    "path": "/api/v1/coa/fs-schedules",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fs_schedules"
+  },
+  {
+    "path": "/api/v1/coa/templates",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_templates"
+  },
+  {
+    "path": "/api/v1/coa/templates/{template_id}/accounts",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_template_accounts"
+  },
+  {
+    "path": "/api/v1/coa/templates/{template_id}/hierarchy",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_template_hierarchy"
+  },
+  {
+    "path": "/api/v1/coa/tenant/accounts",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_tenant_accounts"
+  },
+  {
+    "path": "/api/v1/coa/tenant/accounts",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_tenant_custom_account"
+  },
+  {
+    "path": "/api/v1/coa/tenant/accounts/{account_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_tenant_account_by_id"
+  },
+  {
+    "path": "/api/v1/coa/tenant/accounts/{account_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_tenant_account"
+  },
+  {
+    "path": "/api/v1/coa/tenant/initialise",
+    "methods": [
+      "POST"
+    ],
+    "name": "initialise_tenant_coa"
+  },
+  {
+    "path": "/api/v1/coa/trial-balance/classify",
+    "methods": [
+      "POST"
+    ],
+    "name": "classify_trial_balance"
+  },
+  {
+    "path": "/api/v1/coa/trial-balance/classify-multi-entity",
+    "methods": [
+      "POST"
+    ],
+    "name": "classify_multi_entity_trial_balance"
+  },
+  {
+    "path": "/api/v1/coa/trial-balance/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "export_classified_trial_balance"
+  },
+  {
+    "path": "/api/v1/coa/upload",
+    "methods": [
+      "POST"
+    ],
+    "name": "upload_coa"
+  },
+  {
+    "path": "/api/v1/coa/upload/batches",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_coa_upload_batches"
+  },
+  {
+    "path": "/api/v1/coa/validate",
+    "methods": [
+      "POST"
+    ],
+    "name": "validate_coa"
+  },
+  {
+    "path": "/api/v1/compliance/erasure",
+    "methods": [
+      "POST"
+    ],
+    "name": "erasure_endpoint"
+  },
+  {
+    "path": "/api/v1/compliance/erasure-log",
+    "methods": [
+      "GET"
+    ],
+    "name": "erasure_log_endpoint"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/breach",
+    "methods": [
+      "POST"
+    ],
+    "name": "gdpr_breach_create"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/breaches",
+    "methods": [
+      "GET"
+    ],
+    "name": "gdpr_breach_list"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/consent",
+    "methods": [
+      "GET"
+    ],
+    "name": "gdpr_consent_list"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/consent",
+    "methods": [
+      "POST"
+    ],
+    "name": "gdpr_consent_create"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/consent/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "gdpr_consent_summary"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/export",
+    "methods": [
+      "POST"
+    ],
+    "name": "gdpr_export"
+  },
+  {
+    "path": "/api/v1/compliance/gdpr/retention-check",
+    "methods": [
+      "POST"
+    ],
+    "name": "gdpr_retention_check"
+  },
+  {
+    "path": "/api/v1/compliance/iso27001/controls",
+    "methods": [
+      "GET"
+    ],
+    "name": "iso_controls"
+  },
+  {
+    "path": "/api/v1/compliance/iso27001/controls/{control_id}/status",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "iso_update_control_status"
+  },
+  {
+    "path": "/api/v1/compliance/iso27001/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "iso_dashboard"
+  },
+  {
+    "path": "/api/v1/compliance/iso27001/evaluate",
+    "methods": [
+      "POST"
+    ],
+    "name": "iso_evaluate"
+  },
+  {
+    "path": "/api/v1/compliance/iso27001/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "iso_evidence"
+  },
+  {
+    "path": "/api/v1/compliance/soc2/controls",
+    "methods": [
+      "GET"
+    ],
+    "name": "soc2_controls"
+  },
+  {
+    "path": "/api/v1/compliance/soc2/controls/{control_id}/status",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "soc2_update_control_status"
+  },
+  {
+    "path": "/api/v1/compliance/soc2/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "soc2_dashboard"
+  },
+  {
+    "path": "/api/v1/compliance/soc2/evaluate",
+    "methods": [
+      "POST"
+    ],
+    "name": "soc2_evaluate"
+  },
+  {
+    "path": "/api/v1/compliance/soc2/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "soc2_evidence"
+  },
+  {
+    "path": "/api/v1/consolidation/adjustment-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_adjustment_definitions"
+  },
+  {
+    "path": "/api/v1/consolidation/adjustment-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_adjustment_definition"
+  },
+  {
+    "path": "/api/v1/consolidation/adjustment-definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_adjustment_definition_versions"
+  },
+  {
+    "path": "/api/v1/consolidation/export/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_export_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/hierarchies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_hierarchies"
+  },
+  {
+    "path": "/api/v1/consolidation/hierarchies",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_hierarchy"
+  },
+  {
+    "path": "/api/v1/consolidation/hierarchies/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_hierarchy_versions"
+  },
+  {
+    "path": "/api/v1/consolidation/ic-differences/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_ic_differences_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/intercompany-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_intercompany_rules"
+  },
+  {
+    "path": "/api/v1/consolidation/intercompany-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_intercompany_rule"
+  },
+  {
+    "path": "/api/v1/consolidation/intercompany-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_intercompany_rule_versions"
+  },
+  {
+    "path": "/api/v1/consolidation/results/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_results_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rules"
+  },
+  {
+    "path": "/api/v1/consolidation/rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_rule"
+  },
+  {
+    "path": "/api/v1/consolidation/rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rule_versions"
+  },
+  {
+    "path": "/api/v1/consolidation/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_consolidation_run_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/run/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_run_status_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/run/{run_id}/accounts/{account_code}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_account_drilldown_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/run/{run_id}/entities/{entity_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_entity_drilldown_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/run/{run_id}/line-items/{line_item_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_line_item_drilldown_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/run/{run_id}/snapshot-lines/{snapshot_line_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_consolidation_snapshot_line_drilldown_endpoint"
+  },
+  {
+    "path": "/api/v1/consolidation/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/anomalies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_group_anomalies"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/board-pack",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_group_board_pack"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_evidence"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_metrics"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/risks",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_group_risks"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/consolidation/runs/{id}/variances",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_variances"
+  },
+  {
+    "path": "/api/v1/consolidation/scopes",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_scopes"
+  },
+  {
+    "path": "/api/v1/consolidation/scopes",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_scope"
+  },
+  {
+    "path": "/api/v1/consolidation/scopes/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_scope_versions"
+  },
+  {
+    "path": "/api/v1/covenants",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_covenant_endpoint"
+  },
+  {
+    "path": "/api/v1/covenants/check",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_check_endpoint"
+  },
+  {
+    "path": "/api/v1/covenants/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "covenant_dashboard_endpoint"
+  },
+  {
+    "path": "/api/v1/covenants/{covenant_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_covenant_endpoint"
+  },
+  {
+    "path": "/api/v1/covenants/{covenant_id}/history",
+    "methods": [
+      "GET"
+    ],
+    "name": "history_endpoint"
+  },
+  {
+    "path": "/api/v1/delivery/logs",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_logs"
+  },
+  {
+    "path": "/api/v1/delivery/logs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_log"
+  },
+  {
+    "path": "/api/v1/delivery/schedules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_schedules"
+  },
+  {
+    "path": "/api/v1/delivery/schedules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_schedule"
+  },
+  {
+    "path": "/api/v1/delivery/schedules/{id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_schedule"
+  },
+  {
+    "path": "/api/v1/delivery/schedules/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_schedule"
+  },
+  {
+    "path": "/api/v1/delivery/schedules/{id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_schedule"
+  },
+  {
+    "path": "/api/v1/delivery/schedules/{id}/trigger",
+    "methods": [
+      "POST"
+    ],
+    "name": "trigger_schedule"
+  },
+  {
+    "path": "/api/v1/equity/line-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_line_definition"
+  },
+  {
+    "path": "/api/v1/equity/rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rules"
+  },
+  {
+    "path": "/api/v1/equity/rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_rule"
+  },
+  {
+    "path": "/api/v1/equity/rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rule_versions"
+  },
+  {
+    "path": "/api/v1/equity/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/equity/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/equity/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_evidence"
+  },
+  {
+    "path": "/api/v1/equity/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/equity/runs/{id}/lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_lines"
+  },
+  {
+    "path": "/api/v1/equity/runs/{id}/statement",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_statement"
+  },
+  {
+    "path": "/api/v1/equity/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/equity/source-mappings",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_source_mapping"
+  },
+  {
+    "path": "/api/v1/equity/statements",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_statement_definitions"
+  },
+  {
+    "path": "/api/v1/equity/statements",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_statement_definition"
+  },
+  {
+    "path": "/api/v1/equity/statements/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_statement_definition_versions"
+  },
+  {
+    "path": "/api/v1/erp-push/erp-push/jv/{jv_id}/push",
+    "methods": [
+      "POST"
+    ],
+    "name": "push_jv_endpoint"
+  },
+  {
+    "path": "/api/v1/erp-push/erp-push/jv/{jv_id}/push-async",
+    "methods": [
+      "POST"
+    ],
+    "name": "push_jv_async_endpoint"
+  },
+  {
+    "path": "/api/v1/erp-push/erp-push/jv/{jv_id}/push-status",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_push_status_endpoint"
+  },
+  {
+    "path": "/api/v1/erp-push/webhooks/qbo",
+    "methods": [
+      "POST"
+    ],
+    "name": "qbo_webhook_endpoint"
+  },
+  {
+    "path": "/api/v1/erp-push/webhooks/tally",
+    "methods": [
+      "POST"
+    ],
+    "name": "tally_webhook_endpoint"
+  },
+  {
+    "path": "/api/v1/erp-push/webhooks/zoho",
+    "methods": [
+      "POST"
+    ],
+    "name": "zoho_webhook_endpoint"
+  },
+  {
+    "path": "/api/v1/erp-sync/backdated-alerts/{id}/acknowledge",
+    "methods": [
+      "POST"
+    ],
+    "name": "acknowledge_backdated_alert"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_connections"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_connection"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{connection_id}/oauth/callback",
+    "methods": [
+      "GET"
+    ],
+    "name": "oauth_callback"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{connection_id}/oauth/start",
+    "methods": [
+      "POST"
+    ],
+    "name": "oauth_start"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_connection"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/activate",
+    "methods": [
+      "POST"
+    ],
+    "name": "activate_connection"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/capabilities",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_connection_capabilities"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/revoke",
+    "methods": [
+      "POST"
+    ],
+    "name": "revoke_connection"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/rotate-credentials",
+    "methods": [
+      "POST"
+    ],
+    "name": "rotate_credentials"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/suspend",
+    "methods": [
+      "POST"
+    ],
+    "name": "suspend_connection"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/test",
+    "methods": [
+      "POST"
+    ],
+    "name": "test_connection"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/upgrade-connector-version",
+    "methods": [
+      "POST"
+    ],
+    "name": "upgrade_connector_version"
+  },
+  {
+    "path": "/api/v1/erp-sync/connections/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_connection_versions"
+  },
+  {
+    "path": "/api/v1/erp-sync/connectors",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_connectors"
+  },
+  {
+    "path": "/api/v1/erp-sync/connectors/{connector_type}/capabilities",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_connector_capabilities"
+  },
+  {
+    "path": "/api/v1/erp-sync/connectors/{connector_type}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_connector_versions"
+  },
+  {
+    "path": "/api/v1/erp-sync/datasets",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_datasets"
+  },
+  {
+    "path": "/api/v1/erp-sync/datasets/{dataset_type}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_dataset"
+  },
+  {
+    "path": "/api/v1/erp-sync/datasets/{dataset_type}/periods",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_dataset_periods"
+  },
+  {
+    "path": "/api/v1/erp-sync/datasets/{dataset_type}/preview",
+    "methods": [
+      "POST"
+    ],
+    "name": "preview_dataset"
+  },
+  {
+    "path": "/api/v1/erp-sync/datasets/{dataset_type}/template",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_dataset_template"
+  },
+  {
+    "path": "/api/v1/erp-sync/drift-reports",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_drift_reports"
+  },
+  {
+    "path": "/api/v1/erp-sync/drift-reports/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_drift_report"
+  },
+  {
+    "path": "/api/v1/erp-sync/health",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_sync_health"
+  },
+  {
+    "path": "/api/v1/erp-sync/health/alerts",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_health_alerts"
+  },
+  {
+    "path": "/api/v1/erp-sync/health/{connection_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_connection_health"
+  },
+  {
+    "path": "/api/v1/erp-sync/mappings",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_mappings"
+  },
+  {
+    "path": "/api/v1/erp-sync/mappings",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_mapping"
+  },
+  {
+    "path": "/api/v1/erp-sync/mappings/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_mapping"
+  },
+  {
+    "path": "/api/v1/erp-sync/mappings/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_mapping_versions"
+  },
+  {
+    "path": "/api/v1/erp-sync/mappings/{id}/versions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_mapping_version"
+  },
+  {
+    "path": "/api/v1/erp-sync/mappings/{id}/versions/{vid}/activate",
+    "methods": [
+      "POST"
+    ],
+    "name": "activate_mapping_version"
+  },
+  {
+    "path": "/api/v1/erp-sync/period-locks",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_period_locks"
+  },
+  {
+    "path": "/api/v1/erp-sync/period-locks",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_period_lock"
+  },
+  {
+    "path": "/api/v1/erp-sync/publish-events",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_publish_events"
+  },
+  {
+    "path": "/api/v1/erp-sync/publish-events/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_publish_event"
+  },
+  {
+    "path": "/api/v1/erp-sync/publish-events/{id}/approve",
+    "methods": [
+      "POST"
+    ],
+    "name": "approve_publish_event"
+  },
+  {
+    "path": "/api/v1/erp-sync/publish-events/{id}/reject",
+    "methods": [
+      "POST"
+    ],
+    "name": "reject_publish_event"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sync_definitions"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_sync_definition"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-definitions/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_sync_definition"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-definitions/{id}/retire",
+    "methods": [
+      "POST"
+    ],
+    "name": "retire_sync_definition"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-definitions/{id}/supersede",
+    "methods": [
+      "POST"
+    ],
+    "name": "supersede_sync_definition"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sync_runs"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_sync_run"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_sync_run"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}/drift-report",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_sync_run_drift_report"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}/errors",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_sync_run_errors"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_sync_run_evidence"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}/publish",
+    "methods": [
+      "POST"
+    ],
+    "name": "publish_sync_run"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}/replay",
+    "methods": [
+      "POST"
+    ],
+    "name": "replay_sync_run"
+  },
+  {
+    "path": "/api/v1/erp-sync/sync-runs/{id}/resume",
+    "methods": [
+      "POST"
+    ],
+    "name": "resume_sync_run"
+  },
+  {
+    "path": "/api/v1/expenses",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_expenses"
+  },
+  {
+    "path": "/api/v1/expenses",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_expense"
+  },
+  {
+    "path": "/api/v1/expenses/analytics",
+    "methods": [
+      "GET"
+    ],
+    "name": "analytics"
+  },
+  {
+    "path": "/api/v1/expenses/policy",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_policy"
+  },
+  {
+    "path": "/api/v1/expenses/policy",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_policy"
+  },
+  {
+    "path": "/api/v1/expenses/{claim_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_expense_claim"
+  },
+  {
+    "path": "/api/v1/expenses/{claim_id}/approve",
+    "methods": [
+      "POST"
+    ],
+    "name": "approve_expense_claim"
+  },
+  {
+    "path": "/api/v1/financial-risk/materiality-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_materiality_rules"
+  },
+  {
+    "path": "/api/v1/financial-risk/materiality-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_materiality_rule"
+  },
+  {
+    "path": "/api/v1/financial-risk/materiality-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_materiality_rule_versions"
+  },
+  {
+    "path": "/api/v1/financial-risk/risk-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_risk_definitions"
+  },
+  {
+    "path": "/api/v1/financial-risk/risk-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_risk_definition"
+  },
+  {
+    "path": "/api/v1/financial-risk/risk-definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_risk_definition_versions"
+  },
+  {
+    "path": "/api/v1/financial-risk/risk-weights",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_risk_weights"
+  },
+  {
+    "path": "/api/v1/financial-risk/risk-weights",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_risk_weight"
+  },
+  {
+    "path": "/api/v1/financial-risk/risk-weights/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_risk_weight_versions"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_run_evidence"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}/results",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_run_results"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}/rollforwards",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_run_rollforwards"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}/signals",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_run_signals"
+  },
+  {
+    "path": "/api/v1/financial-risk/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/fixed-assets",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_assets"
+  },
+  {
+    "path": "/api/v1/fixed-assets",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_asset"
+  },
+  {
+    "path": "/api/v1/fixed-assets/asset-classes",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_asset_classes"
+  },
+  {
+    "path": "/api/v1/fixed-assets/asset-classes",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_asset_class"
+  },
+  {
+    "path": "/api/v1/fixed-assets/asset-classes/{asset_class_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_asset_class"
+  },
+  {
+    "path": "/api/v1/fixed-assets/register",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_register"
+  },
+  {
+    "path": "/api/v1/fixed-assets/results/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_assets_results_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_fixed_assets_run_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run-period-depreciation",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_period_depreciation"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_assets_run_status_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run/{run_id}/assets/{asset_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_asset_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run/{run_id}/depreciation-lines/{line_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_asset_depreciation_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run/{run_id}/disposals/{disposal_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_asset_disposal_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run/{run_id}/impairments/{impairment_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_asset_impairment_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/run/{run_id}/journal-entries/{journal_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fixed_asset_journal_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_asset"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_asset"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/depreciation-history",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_depreciation_history"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/depreciation-run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_asset_depreciation"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/dispose",
+    "methods": [
+      "POST"
+    ],
+    "name": "dispose_asset"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/impairment",
+    "methods": [
+      "POST"
+    ],
+    "name": "post_impairment"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/impairment-history",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_impairment_history"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/revaluation",
+    "methods": [
+      "POST"
+    ],
+    "name": "post_revaluation"
+  },
+  {
+    "path": "/api/v1/fixed-assets/{asset_id}/revaluation-history",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revaluation_history"
+  },
+  {
+    "path": "/api/v1/forecast",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_runs"
+  },
+  {
+    "path": "/api/v1/forecast",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/forecast/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/forecast/{run_id}/assumptions/{key}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_assumption"
+  },
+  {
+    "path": "/api/v1/forecast/{run_id}/compute",
+    "methods": [
+      "POST"
+    ],
+    "name": "compute"
+  },
+  {
+    "path": "/api/v1/forecast/{run_id}/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "export_run"
+  },
+  {
+    "path": "/api/v1/forecast/{run_id}/publish",
+    "methods": [
+      "POST"
+    ],
+    "name": "publish"
+  },
+  {
+    "path": "/api/v1/forecast/{run_id}/vs-budget",
+    "methods": [
+      "GET"
+    ],
+    "name": "vs_budget"
+  },
+  {
+    "path": "/api/v1/fx/apply-month-end",
+    "methods": [
+      "POST"
+    ],
+    "name": "apply_month_end_endpoint"
+  },
+  {
+    "path": "/api/v1/fx/compare",
+    "methods": [
+      "GET"
+    ],
+    "name": "compare_rates_endpoint"
+  },
+  {
+    "path": "/api/v1/fx/convert-daily",
+    "methods": [
+      "POST"
+    ],
+    "name": "convert_daily_endpoint"
+  },
+  {
+    "path": "/api/v1/fx/fetch-live",
+    "methods": [
+      "POST"
+    ],
+    "name": "fetch_live_rates_endpoint"
+  },
+  {
+    "path": "/api/v1/fx/manual-monthly",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_manual_monthly_rates_endpoint"
+  },
+  {
+    "path": "/api/v1/fx/manual-monthly",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_manual_monthly_rate_endpoint"
+  },
+  {
+    "path": "/api/v1/fx/rate-policies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rate_selection_policies"
+  },
+  {
+    "path": "/api/v1/fx/rate-policies",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_rate_selection_policy"
+  },
+  {
+    "path": "/api/v1/fx/rate-policies/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rate_selection_policy_versions"
+  },
+  {
+    "path": "/api/v1/fx/reporting-currencies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_reporting_currency_definitions"
+  },
+  {
+    "path": "/api/v1/fx/reporting-currencies",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_reporting_currency_definition"
+  },
+  {
+    "path": "/api/v1/fx/reporting-currencies/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_reporting_currency_definition_versions"
+  },
+  {
+    "path": "/api/v1/fx/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_fx_translation_run"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fx_translation_run"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/anomalies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_fx_translated_anomalies"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/board-pack",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fx_translated_board_pack"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_fx_translation_evidence"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_fx_translation_run"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_fx_translated_metrics"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/risks",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_fx_translated_risks"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_fx_translation_run_summary"
+  },
+  {
+    "path": "/api/v1/fx/runs/{id}/variances",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_fx_translated_variances"
+  },
+  {
+    "path": "/api/v1/fx/translation-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_translation_rule_definitions"
+  },
+  {
+    "path": "/api/v1/fx/translation-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_translation_rule_definition"
+  },
+  {
+    "path": "/api/v1/fx/translation-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_translation_rule_definition_versions"
+  },
+  {
+    "path": "/api/v1/fx/variance",
+    "methods": [
+      "POST"
+    ],
+    "name": "compute_variance_endpoint"
+  },
+  {
+    "path": "/api/v1/gaap/comparison",
+    "methods": [
+      "GET"
+    ],
+    "name": "comparison_endpoint"
+  },
+  {
+    "path": "/api/v1/gaap/compute",
+    "methods": [
+      "POST"
+    ],
+    "name": "compute_endpoint"
+  },
+  {
+    "path": "/api/v1/gaap/config",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_config_endpoint"
+  },
+  {
+    "path": "/api/v1/gaap/config",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_config_endpoint"
+  },
+  {
+    "path": "/api/v1/gaap/{gaap_framework}/{period}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_specific_endpoint"
+  },
+  {
+    "path": "/api/v1/gst/recon-items",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_gst_recon_items_endpoint"
+  },
+  {
+    "path": "/api/v1/gst/reconcile",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_gst_recon"
+  },
+  {
+    "path": "/api/v1/gst/returns",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_returns"
+  },
+  {
+    "path": "/api/v1/gst/returns",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_return"
+  },
+  {
+    "path": "/api/v1/gst/returns/{return_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_return"
+  },
+  {
+    "path": "/api/v1/health",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_check"
+  },
+  {
+    "path": "/api/v1/health/ai",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_ai"
+  },
+  {
+    "path": "/api/v1/health/deep",
+    "methods": [
+      "GET"
+    ],
+    "name": "deep_health_check"
+  },
+  {
+    "path": "/api/v1/health/queues",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_queues"
+  },
+  {
+    "path": "/api/v1/health/temporal",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_temporal"
+  },
+  {
+    "path": "/api/v1/health/workers",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_workers"
+  },
+  {
+    "path": "/api/v1/ingestion/email/ingest",
+    "methods": [
+      "POST"
+    ],
+    "name": "email_ingest_endpoint"
+  },
+  {
+    "path": "/api/v1/ingestion/vendor-portal/status/{reference_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "vendor_portal_status_endpoint"
+  },
+  {
+    "path": "/api/v1/ingestion/vendor-portal/submit",
+    "methods": [
+      "POST"
+    ],
+    "name": "vendor_portal_submit_endpoint"
+  },
+  {
+    "path": "/api/v1/invoice-classifier",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_classifications"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/classify",
+    "methods": [
+      "POST"
+    ],
+    "name": "classify_invoice"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/queue",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_review_queue"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_rules"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_rule"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/rules/{rule_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_rule"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/rules/{rule_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_rule"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/{classification_id}/review",
+    "methods": [
+      "POST"
+    ],
+    "name": "review_classification"
+  },
+  {
+    "path": "/api/v1/invoice-classifier/{classification_id}/route",
+    "methods": [
+      "POST"
+    ],
+    "name": "route_classification"
+  },
+  {
+    "path": "/api/v1/learning/benchmark/results",
+    "methods": [
+      "GET"
+    ],
+    "name": "benchmark_results_endpoint"
+  },
+  {
+    "path": "/api/v1/learning/benchmark/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_benchmark_endpoint"
+  },
+  {
+    "path": "/api/v1/learning/corrections/{correction_id}/validate",
+    "methods": [
+      "POST"
+    ],
+    "name": "validate_correction_endpoint"
+  },
+  {
+    "path": "/api/v1/learning/signal",
+    "methods": [
+      "POST"
+    ],
+    "name": "capture_signal_endpoint"
+  },
+  {
+    "path": "/api/v1/learning/stats",
+    "methods": [
+      "GET"
+    ],
+    "name": "learning_stats_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/results/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_results_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_lease_run_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_run_status_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run/{run_id}/journal-entries/{journal_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_journal_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run/{run_id}/leases/{lease_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_contract_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run/{run_id}/liability-lines/{line_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_liability_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run/{run_id}/payments/{payment_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_payment_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/lease/run/{run_id}/rou-lines/{line_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_lease_rou_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/locations",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_locations"
+  },
+  {
+    "path": "/api/v1/locations",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_location"
+  },
+  {
+    "path": "/api/v1/locations/cost-centres",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_cost_centres"
+  },
+  {
+    "path": "/api/v1/locations/cost-centres",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_cost_centre"
+  },
+  {
+    "path": "/api/v1/locations/cost-centres/tree",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_cost_centre_tree"
+  },
+  {
+    "path": "/api/v1/locations/cost-centres/{cost_centre_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_cost_centre"
+  },
+  {
+    "path": "/api/v1/locations/state-codes",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_state_codes"
+  },
+  {
+    "path": "/api/v1/locations/validate-gstin",
+    "methods": [
+      "GET"
+    ],
+    "name": "validate_gstin_endpoint"
+  },
+  {
+    "path": "/api/v1/locations/{location_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_location"
+  },
+  {
+    "path": "/api/v1/locations/{location_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_location"
+  },
+  {
+    "path": "/api/v1/locations/{location_id}/set-primary",
+    "methods": [
+      "POST"
+    ],
+    "name": "set_primary_location"
+  },
+  {
+    "path": "/api/v1/marketplace/admin/payouts/process",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_process_payouts_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/admin/pending",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_pending_templates_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/admin/stats",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_marketplace_stats_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/admin/templates/{template_id}/review",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_review_template_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/contributor/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "contributor_dashboard_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/contributor/register",
+    "methods": [
+      "POST"
+    ],
+    "name": "register_contributor_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/contributor/templates",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_template_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/contributor/templates/{template_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_contributor_template_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/templates",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_templates_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/templates/{template_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_template_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/templates/{template_id}/purchase",
+    "methods": [
+      "POST"
+    ],
+    "name": "purchase_template_endpoint"
+  },
+  {
+    "path": "/api/v1/marketplace/templates/{template_id}/rate",
+    "methods": [
+      "POST"
+    ],
+    "name": "rate_template_endpoint"
+  },
+  {
+    "path": "/api/v1/mis/drift-events/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_drift_event"
+  },
+  {
+    "path": "/api/v1/mis/reports/{report_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_mis_report"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/upload",
+    "methods": [
+      "POST"
+    ],
+    "name": "upload_snapshot"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_snapshot"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/{id}/exceptions",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_snapshot_exceptions"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/{id}/finalize",
+    "methods": [
+      "POST"
+    ],
+    "name": "finalize_snapshot"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/{id}/normalized-lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_normalized_lines"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_snapshot_summary"
+  },
+  {
+    "path": "/api/v1/mis/snapshots/{id}/validate",
+    "methods": [
+      "POST"
+    ],
+    "name": "validate_snapshot"
+  },
+  {
+    "path": "/api/v1/mis/templates",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_templates"
+  },
+  {
+    "path": "/api/v1/mis/templates/commit-version",
+    "methods": [
+      "POST"
+    ],
+    "name": "commit_template_version"
+  },
+  {
+    "path": "/api/v1/mis/templates/detect",
+    "methods": [
+      "POST"
+    ],
+    "name": "detect_template"
+  },
+  {
+    "path": "/api/v1/mis/templates/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_template_versions"
+  },
+  {
+    "path": "/api/v1/monthend/",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_monthend_checklists"
+  },
+  {
+    "path": "/api/v1/monthend/",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_monthend_checklist"
+  },
+  {
+    "path": "/api/v1/monthend/{checklist_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_monthend_checklist"
+  },
+  {
+    "path": "/api/v1/monthend/{checklist_id}/close",
+    "methods": [
+      "POST"
+    ],
+    "name": "close_monthend_checklist"
+  },
+  {
+    "path": "/api/v1/monthend/{checklist_id}/tasks",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_checklist_task"
+  },
+  {
+    "path": "/api/v1/monthend/{checklist_id}/tasks/{task_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_task"
+  },
+  {
+    "path": "/api/v1/normalization/runs/upload",
+    "methods": [
+      "POST"
+    ],
+    "name": "upload_run"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}/exceptions",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_exceptions"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}/finalize",
+    "methods": [
+      "POST"
+    ],
+    "name": "finalize_run"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}/gl-lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_gl_lines"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}/payroll-lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_payroll_lines"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/normalization/runs/{id}/validate",
+    "methods": [
+      "POST"
+    ],
+    "name": "validate_run"
+  },
+  {
+    "path": "/api/v1/normalization/sources",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sources"
+  },
+  {
+    "path": "/api/v1/normalization/sources/commit-version",
+    "methods": [
+      "POST"
+    ],
+    "name": "commit_source_version"
+  },
+  {
+    "path": "/api/v1/normalization/sources/detect",
+    "methods": [
+      "POST"
+    ],
+    "name": "detect_source"
+  },
+  {
+    "path": "/api/v1/normalization/sources/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_source_versions"
+  },
+  {
+    "path": "/api/v1/notifications",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_notifications_endpoint"
+  },
+  {
+    "path": "/api/v1/notifications/preferences",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_preferences_endpoint"
+  },
+  {
+    "path": "/api/v1/notifications/preferences",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_preferences_endpoint"
+  },
+  {
+    "path": "/api/v1/notifications/read",
+    "methods": [
+      "POST"
+    ],
+    "name": "mark_as_read_endpoint"
+  },
+  {
+    "path": "/api/v1/notifications/read-all",
+    "methods": [
+      "POST"
+    ],
+    "name": "mark_all_as_read_endpoint"
+  },
+  {
+    "path": "/api/v1/notifications/stream",
+    "methods": [
+      "GET"
+    ],
+    "name": "stream_notifications_endpoint"
+  },
+  {
+    "path": "/api/v1/notifications/unread-count",
+    "methods": [
+      "GET"
+    ],
+    "name": "unread_count_endpoint"
+  },
+  {
+    "path": "/api/v1/observability/diff",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_diff"
+  },
+  {
+    "path": "/api/v1/observability/diff/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_diff"
+  },
+  {
+    "path": "/api/v1/observability/events/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_events"
+  },
+  {
+    "path": "/api/v1/observability/graph/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_graph"
+  },
+  {
+    "path": "/api/v1/observability/performance/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_performance"
+  },
+  {
+    "path": "/api/v1/observability/replay-validate/{run_id}",
+    "methods": [
+      "POST"
+    ],
+    "name": "replay_validate"
+  },
+  {
+    "path": "/api/v1/observability/runs",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_runs"
+  },
+  {
+    "path": "/api/v1/observability/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/observability/runs/{id}/dependencies",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_dependencies"
+  },
+  {
+    "path": "/api/v1/onboarding/apply",
+    "methods": [
+      "POST"
+    ],
+    "name": "apply_onboarding_template"
+  },
+  {
+    "path": "/api/v1/onboarding/complete",
+    "methods": [
+      "POST"
+    ],
+    "name": "finish_onboarding"
+  },
+  {
+    "path": "/api/v1/onboarding/state",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_onboarding_state"
+  },
+  {
+    "path": "/api/v1/onboarding/state",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_onboarding_state"
+  },
+  {
+    "path": "/api/v1/onboarding/templates",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_templates"
+  },
+  {
+    "path": "/api/v1/onboarding/templates/{template_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_template_detail"
+  },
+  {
+    "path": "/api/v1/org-setup/entities",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_entities"
+  },
+  {
+    "path": "/api/v1/org-setup/entities/{entity_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_entity"
+  },
+  {
+    "path": "/api/v1/org-setup/entities/{entity_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_entity"
+  },
+  {
+    "path": "/api/v1/org-setup/ownership-tree",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_ownership_tree"
+  },
+  {
+    "path": "/api/v1/org-setup/progress",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_progress"
+  },
+  {
+    "path": "/api/v1/org-setup/step1",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_step1"
+  },
+  {
+    "path": "/api/v1/org-setup/step2",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_step2"
+  },
+  {
+    "path": "/api/v1/org-setup/step3",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_step3"
+  },
+  {
+    "path": "/api/v1/org-setup/step4",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_step4"
+  },
+  {
+    "path": "/api/v1/org-setup/step5",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_step5"
+  },
+  {
+    "path": "/api/v1/org-setup/step6",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_step6"
+  },
+  {
+    "path": "/api/v1/org-setup/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_setup_summary"
+  },
+  {
+    "path": "/api/v1/ownership/minority-interest-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_minority_interest_rules"
+  },
+  {
+    "path": "/api/v1/ownership/minority-interest-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_minority_interest_rule"
+  },
+  {
+    "path": "/api/v1/ownership/minority-interest-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_minority_interest_rule_versions"
+  },
+  {
+    "path": "/api/v1/ownership/relationships",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_relationships"
+  },
+  {
+    "path": "/api/v1/ownership/relationships",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_relationship"
+  },
+  {
+    "path": "/api/v1/ownership/relationships/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_relationship_versions"
+  },
+  {
+    "path": "/api/v1/ownership/rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_ownership_rules"
+  },
+  {
+    "path": "/api/v1/ownership/rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_ownership_rule"
+  },
+  {
+    "path": "/api/v1/ownership/rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_ownership_rule_versions"
+  },
+  {
+    "path": "/api/v1/ownership/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/anomalies",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_anomalies"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/board-pack",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_board_pack"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_evidence"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_metrics"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/risks",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_risks"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/ownership/runs/{id}/variances",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_variances"
+  },
+  {
+    "path": "/api/v1/ownership/structures",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_structures"
+  },
+  {
+    "path": "/api/v1/ownership/structures",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_structure"
+  },
+  {
+    "path": "/api/v1/ownership/structures/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_structure_versions"
+  },
+  {
+    "path": "/api/v1/partner/admin/applications",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_applications_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/admin/stats",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_partner_stats_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/admin/{partner_id}/approve",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_approve_partner_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/commissions",
+    "methods": [
+      "GET"
+    ],
+    "name": "commissions_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "dashboard_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/payouts",
+    "methods": [
+      "GET"
+    ],
+    "name": "payouts_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/referrals",
+    "methods": [
+      "GET"
+    ],
+    "name": "referrals_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/register",
+    "methods": [
+      "POST"
+    ],
+    "name": "register_partner_endpoint"
+  },
+  {
+    "path": "/api/v1/partner/track",
+    "methods": [
+      "POST"
+    ],
+    "name": "track_referral_endpoint"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/lines/{id}/attach-evidence",
+    "methods": [
+      "POST"
+    ],
+    "name": "attach_evidence"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/lines/{id}/reopen",
+    "methods": [
+      "POST"
+    ],
+    "name": "reopen_line"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/lines/{id}/resolve",
+    "methods": [
+      "POST"
+    ],
+    "name": "resolve_line"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/mappings",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_mappings"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/mappings",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_mapping"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/mappings/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_mapping_versions"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rules"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_rule"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rule_versions"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/runs/{id}/exceptions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_exceptions"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/runs/{id}/lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_lines"
+  },
+  {
+    "path": "/api/v1/payroll-gl-reconciliation/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run_summary"
+  },
+  {
+    "path": "/api/v1/pipeline/runs",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_pipeline_runs"
+  },
+  {
+    "path": "/api/v1/pipeline/runs/{pipeline_run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_pipeline_run_detail"
+  },
+  {
+    "path": "/api/v1/pipeline/runs/{pipeline_run_id}/steps",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_pipeline_run_steps"
+  },
+  {
+    "path": "/api/v1/pipeline/trigger",
+    "methods": [
+      "POST"
+    ],
+    "name": "trigger_pipeline_run"
+  },
+  {
+    "path": "/api/v1/platform/entities",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_entities_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/entities/{entity_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_entity_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/flags/evaluate",
+    "methods": [
+      "POST"
+    ],
+    "name": "evaluate_feature_flag_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/flags/tenants/{tenant_id}",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_feature_flag_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/isolation/tenants/{tenant_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "resolve_route_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/isolation/tenants/{tenant_id}",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_route_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/modules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_module_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/modules/authorize",
+    "methods": [
+      "POST"
+    ],
+    "name": "authorize_finance_execution"
+  },
+  {
+    "path": "/api/v1/platform/modules/finance-exec-probe",
+    "methods": [
+      "POST"
+    ],
+    "name": "finance_execution_probe"
+  },
+  {
+    "path": "/api/v1/platform/modules/packages",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_package_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/modules/tenants/{tenant_id}/enablement",
+    "methods": [
+      "POST"
+    ],
+    "name": "set_module_enablement_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/modules/tenants/{tenant_id}/packages",
+    "methods": [
+      "POST"
+    ],
+    "name": "assign_package_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/org/assignments/entity",
+    "methods": [
+      "POST"
+    ],
+    "name": "assign_entity_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/org/assignments/organisation",
+    "methods": [
+      "POST"
+    ],
+    "name": "assign_org_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/org/entities",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_entity_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/org/groups",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_group_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/org/organisations",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_organisation_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/quotas/check",
+    "methods": [
+      "POST"
+    ],
+    "name": "quota_check_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/quotas/tenants/{tenant_id}/assignments",
+    "methods": [
+      "POST"
+    ],
+    "name": "assign_quota_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/rbac/assignments",
+    "methods": [
+      "POST"
+    ],
+    "name": "assign_user_role_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/rbac/permissions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_permission_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/rbac/role-permissions",
+    "methods": [
+      "POST"
+    ],
+    "name": "grant_role_permission_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/rbac/roles",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_role_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/services/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "dashboard_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/services/health-check",
+    "methods": [
+      "POST"
+    ],
+    "name": "health_check_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/services/modules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_modules_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/services/modules/{module_name}/toggle",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "toggle_module_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/services/tasks",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_tasks_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/tenants/onboard",
+    "methods": [
+      "POST"
+    ],
+    "name": "onboard_tenant_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/tenants/{tenant_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_tenant_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/users",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_platform_users"
+  },
+  {
+    "path": "/api/v1/platform/users",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_platform_user"
+  },
+  {
+    "path": "/api/v1/platform/users/me",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_platform_me"
+  },
+  {
+    "path": "/api/v1/platform/users/{user_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "deactivate_platform_user"
+  },
+  {
+    "path": "/api/v1/platform/users/{user_id}/role",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_platform_role"
+  },
+  {
+    "path": "/api/v1/platform/workflows/approvals",
+    "methods": [
+      "POST"
+    ],
+    "name": "submit_approval_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/workflows/instances",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_instance_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/workflows/instances/{workflow_instance_id}/status",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_workflow_status_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/workflows/template-versions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_template_version_endpoint"
+  },
+  {
+    "path": "/api/v1/platform/workflows/templates",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_template_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_schedules"
+  },
+  {
+    "path": "/api/v1/prepaid",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_schedule"
+  },
+  {
+    "path": "/api/v1/prepaid/results/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_prepaid_results_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_prepaid_run_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid/run-period",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_period"
+  },
+  {
+    "path": "/api/v1/prepaid/run/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_prepaid_run_status_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid/run/{run_id}/journal-entries/{journal_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_prepaid_journal_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid/run/{run_id}/prepaids/{prepaid_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_prepaid_registry_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid/run/{run_id}/schedule-lines/{schedule_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_prepaid_schedule_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/prepaid/{schedule_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_schedule"
+  },
+  {
+    "path": "/api/v1/prepaid/{schedule_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_schedule"
+  },
+  {
+    "path": "/api/v1/prepaid/{schedule_id}/entries",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_entries"
+  },
+  {
+    "path": "/api/v1/prepaid/{schedule_id}/schedule",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_amortisation_schedule"
+  },
+  {
+    "path": "/api/v1/ratio-variance/materiality-rules",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_materiality_rules"
+  },
+  {
+    "path": "/api/v1/ratio-variance/materiality-rules",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_materiality_rule"
+  },
+  {
+    "path": "/api/v1/ratio-variance/materiality-rules/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_materiality_rule_versions"
+  },
+  {
+    "path": "/api/v1/ratio-variance/metric-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_metric_definitions"
+  },
+  {
+    "path": "/api/v1/ratio-variance/metric-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_metric_definition"
+  },
+  {
+    "path": "/api/v1/ratio-variance/metric-definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_metric_definition_versions"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_run"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}/evidence",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_evidence"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}/execute",
+    "methods": [
+      "POST"
+    ],
+    "name": "execute_run"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_metrics"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_summary"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}/trends",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_trends"
+  },
+  {
+    "path": "/api/v1/ratio-variance/runs/{id}/variances",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_variances"
+  },
+  {
+    "path": "/api/v1/ratio-variance/trend-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_trend_definitions"
+  },
+  {
+    "path": "/api/v1/ratio-variance/trend-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_trend_definition"
+  },
+  {
+    "path": "/api/v1/ratio-variance/trend-definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_trend_definition_versions"
+  },
+  {
+    "path": "/api/v1/ratio-variance/variance-definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_variance_definitions"
+  },
+  {
+    "path": "/api/v1/ratio-variance/variance-definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_variance_definition"
+  },
+  {
+    "path": "/api/v1/ratio-variance/variance-definitions/{id}/versions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_variance_definition_versions"
+  },
+  {
+    "path": "/api/v1/recon/gl-entries",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_gl_entries_endpoint"
+  },
+  {
+    "path": "/api/v1/recon/gl-entries",
+    "methods": [
+      "POST"
+    ],
+    "name": "import_gl_entry"
+  },
+  {
+    "path": "/api/v1/recon/items",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_reconciliation_items"
+  },
+  {
+    "path": "/api/v1/recon/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_reconciliation"
+  },
+  {
+    "path": "/api/v1/recon/tb-rows",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_tb_rows_endpoint"
+  },
+  {
+    "path": "/api/v1/recon/tb-rows",
+    "methods": [
+      "POST"
+    ],
+    "name": "import_tb_row"
+  },
+  {
+    "path": "/api/v1/reconciliation/lines/{id}/attach-evidence",
+    "methods": [
+      "POST"
+    ],
+    "name": "attach_reconciliation_line_evidence"
+  },
+  {
+    "path": "/api/v1/reconciliation/lines/{id}/explain",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_reconciliation_line_explanation"
+  },
+  {
+    "path": "/api/v1/reconciliation/lines/{id}/reopen",
+    "methods": [
+      "POST"
+    ],
+    "name": "reopen_reconciliation_line"
+  },
+  {
+    "path": "/api/v1/reconciliation/lines/{id}/resolve",
+    "methods": [
+      "POST"
+    ],
+    "name": "resolve_reconciliation_line"
+  },
+  {
+    "path": "/api/v1/reconciliation/sessions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_reconciliation_session"
+  },
+  {
+    "path": "/api/v1/reconciliation/sessions/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_reconciliation_session"
+  },
+  {
+    "path": "/api/v1/reconciliation/sessions/{id}/exceptions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_reconciliation_exceptions"
+  },
+  {
+    "path": "/api/v1/reconciliation/sessions/{id}/lines",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_reconciliation_lines"
+  },
+  {
+    "path": "/api/v1/reconciliation/sessions/{id}/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_reconciliation_session"
+  },
+  {
+    "path": "/api/v1/reconciliation/sessions/{id}/summary",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_reconciliation_session_summary"
+  },
+  {
+    "path": "/api/v1/reports/definitions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_definitions"
+  },
+  {
+    "path": "/api/v1/reports/definitions",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_definition"
+  },
+  {
+    "path": "/api/v1/reports/definitions/{id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_definition"
+  },
+  {
+    "path": "/api/v1/reports/definitions/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_definition"
+  },
+  {
+    "path": "/api/v1/reports/definitions/{id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_definition"
+  },
+  {
+    "path": "/api/v1/reports/metrics",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_metrics"
+  },
+  {
+    "path": "/api/v1/reports/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_report"
+  },
+  {
+    "path": "/api/v1/reports/runs",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_runs"
+  },
+  {
+    "path": "/api/v1/reports/runs/{id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_run"
+  },
+  {
+    "path": "/api/v1/reports/runs/{id}/download/{fmt}",
+    "methods": [
+      "GET"
+    ],
+    "name": "download_result"
+  },
+  {
+    "path": "/api/v1/reports/runs/{id}/result",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_result"
+  },
+  {
+    "path": "/api/v1/revenue/results/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revenue_results_endpoint"
+  },
+  {
+    "path": "/api/v1/revenue/run",
+    "methods": [
+      "POST"
+    ],
+    "name": "start_revenue_run_endpoint"
+  },
+  {
+    "path": "/api/v1/revenue/run/{run_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revenue_run_status_endpoint"
+  },
+  {
+    "path": "/api/v1/revenue/run/{run_id}/contracts/{contract_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revenue_contract_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/revenue/run/{run_id}/journal-entries/{journal_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revenue_journal_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/revenue/run/{run_id}/obligations/{obligation_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revenue_obligation_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/revenue/run/{run_id}/schedule-lines/{schedule_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_revenue_schedule_drill_endpoint"
+  },
+  {
+    "path": "/api/v1/scenarios",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_sets"
+  },
+  {
+    "path": "/api/v1/scenarios",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_set"
+  },
+  {
+    "path": "/api/v1/scenarios/{set_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_set"
+  },
+  {
+    "path": "/api/v1/scenarios/{set_id}/comparison",
+    "methods": [
+      "GET"
+    ],
+    "name": "comparison"
+  },
+  {
+    "path": "/api/v1/scenarios/{set_id}/compute",
+    "methods": [
+      "POST"
+    ],
+    "name": "compute_set"
+  },
+  {
+    "path": "/api/v1/scenarios/{set_id}/export",
+    "methods": [
+      "GET"
+    ],
+    "name": "export_set"
+  },
+  {
+    "path": "/api/v1/scenarios/{set_id}/scenarios/{definition_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_definition"
+  },
+  {
+    "path": "/api/v1/search",
+    "methods": [
+      "GET"
+    ],
+    "name": "search_endpoint"
+  },
+  {
+    "path": "/api/v1/search/reindex",
+    "methods": [
+      "POST"
+    ],
+    "name": "reindex_endpoint"
+  },
+  {
+    "path": "/api/v1/search/reindex/{task_id}/status",
+    "methods": [
+      "GET"
+    ],
+    "name": "reindex_status_endpoint"
+  },
+  {
+    "path": "/api/v1/secrets/rotate/erp/{connector_instance_id}",
+    "methods": [
+      "POST"
+    ],
+    "name": "rotate_erp_secret_endpoint"
+  },
+  {
+    "path": "/api/v1/secrets/rotate/smtp",
+    "methods": [
+      "POST"
+    ],
+    "name": "rotate_smtp_endpoint"
+  },
+  {
+    "path": "/api/v1/secrets/rotate/webhook/{schedule_id}",
+    "methods": [
+      "POST"
+    ],
+    "name": "rotate_webhook_secret_endpoint"
+  },
+  {
+    "path": "/api/v1/secrets/rotation-log",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_rotation_log_endpoint"
+  },
+  {
+    "path": "/api/v1/secrets/rotation-log/{log_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_rotation_log_entry_endpoint"
+  },
+  {
+    "path": "/api/v1/signoff",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_endpoint"
+  },
+  {
+    "path": "/api/v1/signoff/initiate",
+    "methods": [
+      "POST"
+    ],
+    "name": "initiate_endpoint"
+  },
+  {
+    "path": "/api/v1/signoff/{signoff_id}/certificate",
+    "methods": [
+      "GET"
+    ],
+    "name": "certificate_endpoint"
+  },
+  {
+    "path": "/api/v1/signoff/{signoff_id}/sign",
+    "methods": [
+      "POST"
+    ],
+    "name": "complete_endpoint"
+  },
+  {
+    "path": "/api/v1/signoff/{signoff_id}/verify",
+    "methods": [
+      "POST"
+    ],
+    "name": "verify_endpoint"
+  },
+  {
+    "path": "/api/v1/statutory/calendar",
+    "methods": [
+      "GET"
+    ],
+    "name": "calendar_endpoint"
+  },
+  {
+    "path": "/api/v1/statutory/filings",
+    "methods": [
+      "GET"
+    ],
+    "name": "filings_endpoint"
+  },
+  {
+    "path": "/api/v1/statutory/filings/{filing_id}/file",
+    "methods": [
+      "POST"
+    ],
+    "name": "mark_filed_endpoint"
+  },
+  {
+    "path": "/api/v1/statutory/registers/{register_type}",
+    "methods": [
+      "GET"
+    ],
+    "name": "register_endpoint"
+  },
+  {
+    "path": "/api/v1/statutory/registers/{register_type}",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_register_endpoint"
+  },
+  {
+    "path": "/api/v1/tax/positions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_positions_endpoint"
+  },
+  {
+    "path": "/api/v1/tax/positions",
+    "methods": [
+      "POST"
+    ],
+    "name": "upsert_position_endpoint"
+  },
+  {
+    "path": "/api/v1/tax/provision/compute",
+    "methods": [
+      "POST"
+    ],
+    "name": "compute_provision_endpoint"
+  },
+  {
+    "path": "/api/v1/tax/provision/{period}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_provision_endpoint"
+  },
+  {
+    "path": "/api/v1/tax/schedule",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_schedule_endpoint"
+  },
+  {
+    "path": "/api/v1/tenants/display-preferences",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_display_preferences"
+  },
+  {
+    "path": "/api/v1/tenants/display-preferences",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_display_preferences"
+  },
+  {
+    "path": "/api/v1/tenants/me",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_my_tenant"
+  },
+  {
+    "path": "/api/v1/tenants/me",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_my_tenant"
+  },
+  {
+    "path": "/api/v1/tenants/me/credits",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_credits"
+  },
+  {
+    "path": "/api/v1/tenants/me/users",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_my_users"
+  },
+  {
+    "path": "/api/v1/tenants/me/users",
+    "methods": [
+      "POST"
+    ],
+    "name": "invite_user"
+  },
+  {
+    "path": "/api/v1/tenants/me/users/{user_id}",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "delete_user"
+  },
+  {
+    "path": "/api/v1/tenants/me/users/{user_id}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_user"
+  },
+  {
+    "path": "/api/v1/transfer-pricing/applicability",
+    "methods": [
+      "GET"
+    ],
+    "name": "applicability_endpoint"
+  },
+  {
+    "path": "/api/v1/transfer-pricing/documents",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_documents_endpoint"
+  },
+  {
+    "path": "/api/v1/transfer-pricing/documents/{document_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_document_endpoint"
+  },
+  {
+    "path": "/api/v1/transfer-pricing/generate-3ceb",
+    "methods": [
+      "POST"
+    ],
+    "name": "generate_3ceb_endpoint"
+  },
+  {
+    "path": "/api/v1/transfer-pricing/transactions",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_transactions_endpoint"
+  },
+  {
+    "path": "/api/v1/transfer-pricing/transactions",
+    "methods": [
+      "POST"
+    ],
+    "name": "add_transaction_endpoint"
+  },
+  {
+    "path": "/api/v1/treasury/forecasts",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_forecasts_endpoint"
+  },
+  {
+    "path": "/api/v1/treasury/forecasts",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_forecast_endpoint"
+  },
+  {
+    "path": "/api/v1/treasury/forecasts/{forecast_id}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_forecast_endpoint"
+  },
+  {
+    "path": "/api/v1/treasury/forecasts/{forecast_id}/publish",
+    "methods": [
+      "POST"
+    ],
+    "name": "publish_forecast_endpoint"
+  },
+  {
+    "path": "/api/v1/treasury/forecasts/{forecast_id}/weeks/{week_number}",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "update_week_endpoint"
+  },
+  {
+    "path": "/api/v1/users/{user_id}/offboard",
+    "methods": [
+      "POST"
+    ],
+    "name": "offboard_user_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/admin/all",
+    "methods": [
+      "GET"
+    ],
+    "name": "admin_list_configs_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/admin/{tenant_id}/enable",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_enable_tenant_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/audit-log",
+    "methods": [
+      "GET"
+    ],
+    "name": "audit_log_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/config",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_config_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/config",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "patch_config_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/domain/verify-check",
+    "methods": [
+      "POST"
+    ],
+    "name": "domain_verify_check_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/domain/verify-initiate",
+    "methods": [
+      "POST"
+    ],
+    "name": "domain_verify_initiate_endpoint"
+  },
+  {
+    "path": "/api/v1/white-label/resolve/{domain}",
+    "methods": [
+      "GET"
+    ],
+    "name": "resolve_domain_endpoint"
+  },
+  {
+    "path": "/api/v1/working-capital/ap",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_ap"
+  },
+  {
+    "path": "/api/v1/working-capital/ar",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_ar"
+  },
+  {
+    "path": "/api/v1/working-capital/dashboard",
+    "methods": [
+      "GET"
+    ],
+    "name": "wc_dashboard"
+  },
+  {
+    "path": "/api/v1/working-capital/snapshots",
+    "methods": [
+      "GET"
+    ],
+    "name": "list_wc_snapshots"
+  },
+  {
+    "path": "/api/v1/working-capital/snapshots",
+    "methods": [
+      "POST"
+    ],
+    "name": "create_wc_snapshot"
+  },
+  {
+    "path": "/api/v1/working-capital/snapshots/latest/{entity_name}",
+    "methods": [
+      "GET"
+    ],
+    "name": "get_latest_wc"
+  },
+  {
+    "path": "/api/v1/working-capital/trends",
+    "methods": [
+      "GET"
+    ],
+    "name": "trends"
+  },
+  {
+    "path": "/debug-network-full",
+    "methods": [
+      "GET"
+    ],
+    "name": "debug_network_full"
+  },
+  {
+    "path": "/health",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_check"
+  },
+  {
+    "path": "/health/ai",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_ai"
+  },
+  {
+    "path": "/health/deep",
+    "methods": [
+      "GET"
+    ],
+    "name": "deep_health_check"
+  },
+  {
+    "path": "/health/queues",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_queues"
+  },
+  {
+    "path": "/health/temporal",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_temporal"
+  },
+  {
+    "path": "/health/workers",
+    "methods": [
+      "GET"
+    ],
+    "name": "health_workers"
+  },
+  {
+    "path": "/openapi.json",
+    "methods": [
+      "GET"
+    ],
+    "name": "openapi"
+  }
+]

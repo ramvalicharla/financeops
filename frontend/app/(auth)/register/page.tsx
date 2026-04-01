@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import apiClient from "@/lib/api/client"
 
 type CompanyType = "ca_firm" | "corporate" | "other"
 
@@ -53,10 +54,9 @@ export default function RegisterPage() {
     setServerError(null)
     try {
       const tenantType = form.companyType === "ca_firm" ? "ca_firm" : "direct"
-      const response = await fetch("/api/v1/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const payload = await apiClient.post<{ status?: string; setup_token?: string }>(
+        "/api/v1/auth/register",
+        {
           full_name: form.fullName,
           email: form.email,
           password: form.password,
@@ -64,21 +64,16 @@ export default function RegisterPage() {
           tenant_type: tenantType,
           country: "IN",
           terms_accepted: termsAccepted,
-        }),
-      })
-      const payload = (await response.json()) as { data?: { status?: string; setup_token?: string }; detail?: string }
-      if (!response.ok) {
-        setServerError(payload.detail ?? "Registration failed. Please try again.")
-        return
-      }
+        },
+      )
       if (payload.data?.status === "requires_mfa_setup" && payload.data.setup_token) {
         sessionStorage.setItem("mfa_setup_token", payload.data.setup_token)
         router.push("/mfa/setup")
         return
       }
       router.push("/login?registered=true")
-    } catch {
-      setServerError("Network error. Please try again.")
+    } catch (error) {
+      setServerError(error instanceof Error ? error.message : "Registration failed. Please try again.")
     } finally {
       setLoading(false)
     }

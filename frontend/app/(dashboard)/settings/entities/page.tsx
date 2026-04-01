@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import apiClient from "@/lib/api/client"
 
 interface Entity {
   id: string
@@ -32,9 +33,8 @@ export default function EntitiesSettingsPage() {
   const [loading, setLoading] = useState(false)
 
   const loadEntities = async (): Promise<void> => {
-    const response = await fetch("/api/v1/platform/entities")
-    const payload = (await response.json()) as { data?: Entity[] }
-    setEntities(payload.data ?? [])
+    const response = await apiClient.get<Entity[]>("/api/v1/platform/entities")
+    setEntities(response.data)
   }
 
   useEffect(() => {
@@ -44,22 +44,17 @@ export default function EntitiesSettingsPage() {
   const createEntity = async (): Promise<void> => {
     setLoading(true)
     setError(null)
-    const response = await fetch("/api/v1/platform/org/entities", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await apiClient.post("/api/v1/platform/org/entities", {
         ...form,
         group_id: form.group_id || null,
-      }),
-    })
-    const payload = (await response.json()) as { detail?: string }
-    if (!response.ok) {
-      setError(payload.detail ?? "Failed to create entity")
+      })
       setLoading(false)
-      return
+      await loadEntities()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to create entity")
+      setLoading(false)
     }
-    setLoading(false)
-    await loadEntities()
   }
 
   return (
@@ -91,4 +86,3 @@ export default function EntitiesSettingsPage() {
     </div>
   )
 }
-

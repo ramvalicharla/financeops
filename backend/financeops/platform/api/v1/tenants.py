@@ -2,16 +2,54 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
-from financeops.db.models.users import IamUser
+from financeops.api.deps import get_async_session, get_current_user
+from financeops.db.models.tenants import IamTenant, TenantStatus
+from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.schemas.tenants import TenantOnboardingRequest, TenantOnboardingResponse
 from financeops.platform.services.tenancy.package_enablement import create_package
 from financeops.platform.services.tenancy.tenant_provisioning import get_tenant, onboard_tenant
+from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter()
+
+_PLATFORM_ADMIN_ROLES = {
+    UserRole.super_admin,
+    UserRole.platform_owner,
+    UserRole.platform_admin,
+}
+
+
+def _require_platform_admin(user: IamUser) -> IamUser:
+    if user.role not in _PLATFORM_ADMIN_ROLES:
+        raise HTTPException(status_code=403, detail="platform_admin role required")
+    return user
+
+
+class TenantStatusUpdateRequest(BaseModel):
+    status: TenantStatus
+
+
+def _serialize_tenant(row: IamTenant) -> dict:
+    return {
+        "id": str(row.id),
+        "tenant_id": str(row.tenant_id),
+        "display_name": row.display_name,
+        "slug": row.slug,
+        "tenant_type": row.tenant_type.value,
+        "country": row.country,
+        "timezone": row.timezone,
+        "status": row.status.value,
+        "org_setup_complete": row.org_setup_complete,
+        "org_setup_step": row.org_setup_step,
+        "is_platform_tenant": row.is_platform_tenant,
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+    }
 
 
 @router.post("/onboard", response_model=TenantOnboardingResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -19,8 +57,9 @@ async def onboard_tenant_endpoint(
     body: TenantOnboardingRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(get_current_user),
 ) -> dict:
+    _require_platform_admin(user)
     correlation_id = str(getattr(request.state, "correlation_id", "") or "")
 
     package = await create_package(
@@ -52,18 +91,63 @@ async def onboard_tenant_endpoint(
     }
 
 
+@router.get("", response_model=Paginated[dict])
+async def list_tenants_endpoint(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    status_filter: TenantStatus | None = Query(default=None, alias="status"),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> Paginated[dict]:
+    _require_platform_admin(user)
+    stmt = select(IamTenant)
+    if status_filter is not None:
+        stmt = stmt.where(IamTenant.status == status_filter)
+
+    total = int(
+        (
+            await session.execute(
+                select(func.count()).select_from(stmt.subquery())
+            )
+        ).scalar_one()
+    )
+    rows = (
+        await session.execute(
+            stmt.order_by(IamTenant.created_at.desc()).offset(offset).limit(limit)
+        )
+    ).scalars().all()
+    return Paginated[dict](
+        data=[_serialize_tenant(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get("/{tenant_id}")
 async def get_tenant_endpoint(
     tenant_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_team),
+    user: IamUser = Depends(get_current_user),
 ) -> dict:
-    del user
+    _require_platform_admin(user)
     tenant = await get_tenant(session, tenant_id=tenant_id)
-    return {
-        "id": str(tenant.id),
-        "tenant_id": str(tenant.tenant_id),
-        "tenant_code": tenant.tenant_code,
-        "display_name": tenant.display_name,
-        "status": tenant.status,
-    }
+    return _serialize_tenant(tenant)
+
+
+@router.patch("/{tenant_id}/status")
+async def update_tenant_status_endpoint(
+    tenant_id: uuid.UUID,
+    body: TenantStatusUpdateRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    _require_platform_admin(user)
+    row = (
+        await session.execute(select(IamTenant).where(IamTenant.id == tenant_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="tenant not found")
+    row.status = body.status
+    await session.commit()
+    return _serialize_tenant(row)

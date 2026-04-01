@@ -3,8 +3,7 @@
 import { Suspense, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() ?? ""
+import apiClient from "@/lib/api/client"
 
 export default function AcceptInvitePage() {
   return (
@@ -43,33 +42,17 @@ function AcceptInvitePageContent() {
       setError("You must accept the Terms of Service")
       return
     }
-    if (!API_BASE_URL) {
-      setError("Application configuration error: missing NEXT_PUBLIC_API_URL")
-      return
-    }
 
     setLoading(true)
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/auth/accept-invite`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await apiClient.post("/api/v1/auth/accept-invite", {
           token,
           password,
           terms_accepted: termsAccepted,
-        }),
       })
-      const payload = (await response.json()) as {
-        data?: { message?: string }
-        error?: { message?: string }
-      }
-      if (!response.ok) {
-        setError(payload.error?.message ?? "Invitation activation failed")
-        return
-      }
       router.push("/login?registered=true")
-    } catch {
-      setError("Network error. Please try again.")
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Invitation activation failed")
     } finally {
       setLoading(false)
     }

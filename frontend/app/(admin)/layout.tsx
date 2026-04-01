@@ -12,7 +12,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   const session = await auth()
   const role = session?.user?.role ?? ""
-  const allowed = ["platform_owner", "platform_admin", "super_admin"]
+  const allowed = ["platform_owner", "platform_admin", "super_admin", "admin"]
 
   if (!isE2EBypass && (!session?.user || !allowed.includes(role))) {
     redirect("/dashboard")

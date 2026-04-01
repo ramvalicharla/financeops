@@ -8,6 +8,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import apiClient, { BASE_URL } from "@/lib/api/client"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const loginSchema = z.object({
@@ -29,12 +30,6 @@ type LoginApiPayload =
   | { requires_mfa_setup: true; setup_token: string; status?: string }
   | { access_token: string; refresh_token: string; token_type: string }
 
-type BackendEnvelope<T> = {
-  data: T | null
-  error: { code: string; message: string } | null
-}
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL?.trim() ?? ""
 const BACKEND_LOGIN_TIMEOUT_MS = 3000
 
 const performCredentialsSignIn = async (
@@ -103,7 +98,7 @@ function LoginPageContent() {
 
     setIsSubmitting(true)
     try {
-      if (!API_BASE_URL) {
+      if (!BASE_URL) {
         setFormError("Application configuration error: missing NEXT_PUBLIC_API_URL")
         return
       }
@@ -116,21 +111,20 @@ function LoginPageContent() {
           BACKEND_LOGIN_TIMEOUT_MS,
         )
         try {
-          const loginResponse = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            signal: controller.signal,
-            body: JSON.stringify({
+          const loginResponse = await apiClient.post<LoginApiPayload>(
+            "/api/v1/auth/login",
+            {
               email: parsed.data.email,
               password: parsed.data.password,
-            }),
-          })
-          const loginPayload =
-            (await loginResponse.json()) as BackendEnvelope<LoginApiPayload>
-          const loginData = loginPayload.data
+            },
+            {
+              signal: controller.signal,
+              timeout: BACKEND_LOGIN_TIMEOUT_MS,
+            },
+          )
+          const loginData = loginResponse.data
 
           if (
-            loginResponse.ok &&
             loginData &&
             "requires_mfa_setup" in loginData &&
             loginData.requires_mfa_setup
@@ -141,7 +135,6 @@ function LoginPageContent() {
           }
 
           if (
-            loginResponse.ok &&
             loginData &&
             "requires_mfa" in loginData &&
             loginData.requires_mfa

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { getSession } from "next-auth/react"
+import { BASE_URL } from "@/lib/api/client"
 
 type StreamPayload = {
   chunk?: string
@@ -57,9 +58,10 @@ export function useStreamingAI() {
     setIsStreaming(true)
 
     try {
-      const endpoint = process.env.NEXT_PUBLIC_API_URL
-        ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1/ai/stream`
-        : "/api/v1/ai/stream"
+      if (!BASE_URL) {
+        throw new Error("NEXT_PUBLIC_API_URL is required")
+      }
+      const endpoint = `${BASE_URL}/api/v1/ai/stream`
       const session = await getSession()
       const accessToken = session?.access_token
       const headers: Record<string, string> = {

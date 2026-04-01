@@ -6,9 +6,10 @@ import {
   ShieldCheck,
   HardDrive,
   LayoutGrid,
-  Activity,
   Building2,
-  BarChart3,
+  Users,
+  KeyRound,
+  Flag,
   ServerCog,
   Store,
   Palette,
@@ -28,9 +29,11 @@ const navItems = [
   { href: "/admin/ai-quality", label: "AI Quality", icon: Sparkles },
   { href: "/admin/ai-providers", label: "AI Providers", icon: Sparkles },
   { href: "/admin/backup", label: "Backup & DR", icon: HardDrive },
-  { href: "/admin/health", label: "Platform Health", icon: Activity },
   { href: "/admin/tenants", label: "Tenants", icon: Building2 },
-  { href: "/admin/metrics", label: "Metrics", icon: BarChart3 },
+  { href: "/admin/users", label: "Users", icon: Users },
+  { href: "/admin/rbac", label: "RBAC", icon: KeyRound },
+  { href: "/admin/flags", label: "Flags", icon: Flag },
+  { href: "/admin/modules", label: "Modules", icon: ServerCog },
 ] as const
 
 export function AdminSidebar() {

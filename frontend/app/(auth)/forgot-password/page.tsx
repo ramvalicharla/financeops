@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
+import apiClient from "@/lib/api/client"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -11,12 +12,12 @@ export default function ForgotPasswordPage() {
   const submit = async (): Promise<void> => {
     if (!email.includes("@")) return
     setLoading(true)
-    await fetch("/api/v1/auth/forgot-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    })
-    setSubmitted(true)
+    try {
+      await apiClient.post("/api/v1/auth/forgot-password", { email })
+      setSubmitted(true)
+    } catch {
+      setSubmitted(true)
+    }
     setLoading(false)
   }
 
@@ -53,4 +54,3 @@ export default function ForgotPasswordPage() {
     </div>
   )
 }
-

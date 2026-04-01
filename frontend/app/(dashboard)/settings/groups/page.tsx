@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import apiClient from "@/lib/api/client"
 
 interface GroupForm {
   group_code: string
@@ -21,23 +22,24 @@ export default function GroupsSettingsPage() {
   const createGroup = async (): Promise<void> => {
     setLoading(true)
     setError(null)
-    const response = await fetch("/api/v1/platform/org/groups", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    })
-    const payload = (await response.json()) as { data?: { id?: string; group_code?: string }; detail?: string }
-    if (!response.ok) {
-      setError(payload.detail ?? "Failed to create group")
+    try {
+      const payload = await apiClient.post<{ id: string; group_code: string }>(
+        "/api/v1/platform/org/groups",
+        form,
+      )
+      const createdId = payload.data?.id
+      const createdCode = payload.data?.group_code
+      if (createdId && createdCode) {
+        setItems((prev) => [
+          { id: createdId, group_code: createdCode, group_name: form.group_name },
+          ...prev,
+        ])
+      }
       setLoading(false)
-      return
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to create group")
+      setLoading(false)
     }
-    const createdId = payload.data?.id
-    const createdCode = payload.data?.group_code
-    if (createdId && createdCode) {
-      setItems((prev) => [{ id: createdId, group_code: createdCode, group_name: form.group_name }, ...prev])
-    }
-    setLoading(false)
   }
 
   return (

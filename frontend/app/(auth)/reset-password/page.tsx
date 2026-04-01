@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
+import apiClient from "@/lib/api/client"
 
 export default function ResetPasswordPage() {
   return (
@@ -35,18 +36,14 @@ function ResetPasswordPageContent() {
     }
     setLoading(true)
     setError(null)
-    const response = await fetch("/api/v1/auth/reset-password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, new_password: password }),
-    })
-    if (response.ok) {
+    try {
+      await apiClient.post("/api/v1/auth/reset-password", { token, new_password: password })
       router.push("/login?reset=true")
       return
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Reset failed. Link may have expired.")
+      setLoading(false)
     }
-    const payload = (await response.json()) as { detail?: string }
-    setError(payload.detail ?? "Reset failed. Link may have expired.")
-    setLoading(false)
   }
 
   return (

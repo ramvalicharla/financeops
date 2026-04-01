@@ -19,6 +19,7 @@ const PUBLIC_PATH_PREFIXES = [
 ]
 const PUBLIC_PATH_EXACT = new Set(["/"])
 const ORG_SETUP_PATH = "/org-setup"
+const ORG_SETUP_COA_PATH = "/setup/coa"
 
 const isPublicPath = (pathname: string): boolean =>
   PUBLIC_PATH_EXACT.has(pathname) ||
@@ -145,7 +146,10 @@ export async function middleware(request: NextRequest) {
       : true
   if (!orgSetupComplete) {
     const isOrgSetupPath =
-      pathname === ORG_SETUP_PATH || pathname.startsWith(`${ORG_SETUP_PATH}/`)
+      pathname === ORG_SETUP_PATH ||
+      pathname.startsWith(`${ORG_SETUP_PATH}/`) ||
+      pathname === ORG_SETUP_COA_PATH ||
+      pathname.startsWith(`${ORG_SETUP_COA_PATH}/`)
     if (!isOrgSetupPath) {
       const setupUrl = new URL(ORG_SETUP_PATH, request.url)
       setupUrl.searchParams.set(
@@ -156,7 +160,9 @@ export async function middleware(request: NextRequest) {
     }
   } else if (
     pathname === ORG_SETUP_PATH ||
-    pathname.startsWith(`${ORG_SETUP_PATH}/`)
+    pathname.startsWith(`${ORG_SETUP_PATH}/`) ||
+    pathname === ORG_SETUP_COA_PATH ||
+    pathname.startsWith(`${ORG_SETUP_COA_PATH}/`)
   ) {
     const next = request.nextUrl.searchParams.get("next")
     const destination = next && next.startsWith("/") ? next : "/dashboard"
@@ -168,7 +174,7 @@ export async function middleware(request: NextRequest) {
 
   if (request.nextUrl.pathname.startsWith("/admin")) {
     const role = String(token.role ?? "")
-    if (!["platform_owner", "platform_admin", "super_admin"].includes(role)) {
+    if (!["platform_owner", "platform_admin", "super_admin", "admin"].includes(role)) {
       return applySecurityHeaders(
         NextResponse.redirect(new URL("/dashboard", request.url)),
         apiUrl,
