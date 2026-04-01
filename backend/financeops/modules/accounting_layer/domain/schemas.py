@@ -236,6 +236,74 @@ class TrialBalanceResponse(BaseModel):
     rows: list[TrialBalanceAccountRow]
 
 
+class PnLBreakdownRow(BaseModel):
+    category: str
+    account_code: str
+    account_name: str
+    amount: Decimal
+    debit_sum: Decimal
+    credit_sum: Decimal
+
+
+class PnLResponse(BaseModel):
+    org_entity_id: uuid.UUID
+    from_date: date
+    to_date: date
+    revenue: Decimal
+    cost_of_sales: Decimal
+    gross_profit: Decimal
+    operating_expense: Decimal
+    operating_profit: Decimal
+    other_income: Decimal
+    other_expense: Decimal
+    net_profit: Decimal
+    breakdown: list[PnLBreakdownRow]
+
+
+class BalanceSheetItem(BaseModel):
+    account_code: str
+    account_name: str
+    account_type: str
+    sub_type: str | None
+    amount: Decimal
+
+
+class BalanceSheetTotals(BaseModel):
+    assets: Decimal
+    liabilities: Decimal
+    equity: Decimal
+    liabilities_and_equity: Decimal
+
+
+class BalanceSheetResponse(BaseModel):
+    org_entity_id: uuid.UUID
+    as_of_date: date
+    assets: list[BalanceSheetItem]
+    liabilities: list[BalanceSheetItem]
+    equity: list[BalanceSheetItem]
+    retained_earnings: Decimal
+    totals: BalanceSheetTotals
+
+
+class CashFlowBreakdownRow(BaseModel):
+    category: str
+    amount: Decimal
+
+
+class CashFlowResponse(BaseModel):
+    org_entity_id: uuid.UUID
+    from_date: date
+    to_date: date
+    net_profit: Decimal
+    non_cash_adjustments: Decimal
+    working_capital_changes: Decimal
+    operating_cash_flow: Decimal
+    investing_cash_flow: Decimal
+    financing_cash_flow: Decimal
+    net_cash_flow: Decimal
+    breakdown: list[CashFlowBreakdownRow]
+
+
 class ApprovalRequest(BaseModel):
     decision: str = Field(..., pattern="^(APPROVED|REJECTED)$")
     decision_reason: str | None = None

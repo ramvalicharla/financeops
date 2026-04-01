@@ -16,6 +16,11 @@ from financeops.modules.accounting_layer.application.approval_service import (
     get_sla_metrics,
     submit_approval,
 )
+from financeops.modules.accounting_layer.application.financial_statements_service import (
+    get_balance_sheet,
+    get_cash_flow_statement,
+    get_profit_and_loss,
+)
 from financeops.modules.accounting_layer.application.journal_service import (
     approve_journal,
     create_journal_draft,
@@ -38,11 +43,14 @@ from financeops.modules.accounting_layer.application.jv_service import (
 from financeops.modules.accounting_layer.domain.schemas import (
     ApprovalRequest,
     ApprovalResponse,
+    BalanceSheetResponse,
+    CashFlowResponse,
     JournalActionResponse,
     JournalCreate,
     JournalResponse,
     JVCreate,
     JVLineResponse,
+    PnLResponse,
     JVResponse,
     JVStateEventResponse,
     JVTransitionRequest,
@@ -405,6 +413,73 @@ async def get_trial_balance_endpoint(
         to_date=to_date,
     )
     result = TrialBalanceResponse.model_validate(payload).model_dump(mode="json")
+    return ok(
+        result,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@router.get("/pnl")
+async def get_pnl_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+    org_entity_id: uuid.UUID = Query(...),
+    from_date: date = Query(...),
+    to_date: date = Query(...),
+) -> dict[str, Any]:
+    payload = await get_profit_and_loss(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=org_entity_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    result = PnLResponse.model_validate(payload).model_dump(mode="json")
+    return ok(
+        result,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@router.get("/balance-sheet")
+async def get_balance_sheet_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+    org_entity_id: uuid.UUID = Query(...),
+    as_of_date: date = Query(...),
+) -> dict[str, Any]:
+    payload = await get_balance_sheet(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=org_entity_id,
+        as_of_date=as_of_date,
+    )
+    result = BalanceSheetResponse.model_validate(payload).model_dump(mode="json")
+    return ok(
+        result,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@router.get("/cash-flow")
+async def get_cash_flow_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+    org_entity_id: uuid.UUID = Query(...),
+    from_date: date = Query(...),
+    to_date: date = Query(...),
+) -> dict[str, Any]:
+    payload = await get_cash_flow_statement(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=org_entity_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    result = CashFlowResponse.model_validate(payload).model_dump(mode="json")
     return ok(
         result,
         request_id=getattr(request.state, "request_id", None),

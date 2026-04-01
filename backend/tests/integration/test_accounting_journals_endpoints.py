@@ -179,3 +179,34 @@ async def test_create_list_get_journal(
     tb_after = trial_balance_after_reverse.json()["data"]
     assert tb_after["total_debit"] == "3000.000000"
     assert tb_after["total_credit"] == "3000.000000"
+
+    pnl_response = await async_client.get(
+        f"/api/v1/accounting/pnl?org_entity_id={entity.id}&from_date=2026-04-01&to_date=2026-04-30",
+        headers=headers,
+    )
+    assert pnl_response.status_code == 200
+    pnl_data = pnl_response.json()["data"]
+    assert "net_profit" in pnl_data
+    assert "breakdown" in pnl_data
+
+    balance_sheet_response = await async_client.get(
+        f"/api/v1/accounting/balance-sheet?org_entity_id={entity.id}&as_of_date=2026-04-30",
+        headers=headers,
+    )
+    assert balance_sheet_response.status_code == 200
+    bs_data = balance_sheet_response.json()["data"]
+    assert "assets" in bs_data
+    assert "liabilities" in bs_data
+    assert "equity" in bs_data
+    assert "totals" in bs_data
+
+    cash_flow_response = await async_client.get(
+        f"/api/v1/accounting/cash-flow?org_entity_id={entity.id}&from_date=2026-04-01&to_date=2026-04-30",
+        headers=headers,
+    )
+    assert cash_flow_response.status_code == 200
+    cf_data = cash_flow_response.json()["data"]
+    assert "operating_cash_flow" in cf_data
+    assert "investing_cash_flow" in cf_data
+    assert "financing_cash_flow" in cf_data
+    assert "net_cash_flow" in cf_data
