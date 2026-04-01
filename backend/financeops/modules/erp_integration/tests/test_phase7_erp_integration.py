@@ -1,22 +1,34 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from financeops.core.exceptions import ValidationError
+from financeops.db.models.erp_integration import (
+    ErpAuthType,
+    ErpConnectorStatus,
+    ErpSyncModule,
+    ErpSyncStatus,
+    ErpSyncType,
+)
+from financeops.db.models.users import UserRole
+from financeops.modules.erp_integration.api import routes as erp_routes
 from financeops.modules.erp_integration.application import service as erp_service_module
 from financeops.modules.erp_integration.application.service import ErpIntegrationService
 from financeops.modules.erp_integration.connectors.registry import ManualConnector, get_connector
 from financeops.modules.erp_integration.schemas import (
     CoaMapRequest,
     CoaMapItem,
+    ConnectorCreateRequest,
     JournalExportRequest,
     JournalImportRequest,
     JournalImportTransaction,
     JournalImportLine,
+    SyncRunRequest,
 )
 
 
@@ -199,3 +211,253 @@ async def test_map_coa_upserts_all_rows(monkeypatch: pytest.MonkeyPatch) -> None
     )
     payload = await service.map_coa(tenant_id=uuid.uuid4(), body=request)
     assert payload["upserted"] == 2
+
+
+@pytest.mark.asyncio
+async def test_import_journals_is_idempotent_for_duplicate_external_reference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_Result(all_values=[]))
+    session.add = MagicMock()
+    service = ErpIntegrationService(session)
+
+    connector_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        org_entity_id=uuid.uuid4(),
+        erp_type="MANUAL",
+        connection_config={},
+    )
+    actor = SimpleNamespace(id=uuid.uuid4())
+    create_draft_mock = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
+
+    monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
+    monkeypatch.setattr(service, "_assert_account_code_scope", AsyncMock(return_value=None))
+    monkeypatch.setattr(erp_service_module, "create_journal_draft", create_draft_mock)
+    monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
+
+    tx = JournalImportTransaction(
+        external_reference_id="ERP-TXN-001",
+        journal_date="2026-04-01",
+        reference="TXN-001",
+        narration="ERP import",
+        lines=[
+            JournalImportLine(account_code="1000", debit="100.00", credit="0"),
+            JournalImportLine(account_code="2000", debit="0", credit="100.00"),
+        ],
+    )
+    request = JournalImportRequest(
+        erp_connector_id=connector_row.id,
+        transactions=[tx, tx],
+    )
+
+    payload = await service.import_journals(
+        tenant_id=uuid.uuid4(),
+        actor=actor,
+        body=request,
+    )
+    assert payload["imported_count"] == 1
+    assert payload["skipped_duplicates"] == 1
+    assert payload["failed_count"] == 0
+    assert create_draft_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_import_journals_with_unmapped_account_is_flagged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_Result(all_values=[]))
+    session.add = MagicMock()
+    service = ErpIntegrationService(session)
+
+    connector_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        org_entity_id=uuid.uuid4(),
+        erp_type="MANUAL",
+        connection_config={},
+    )
+    actor = SimpleNamespace(id=uuid.uuid4())
+    create_draft_mock = AsyncMock()
+
+    monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
+    monkeypatch.setattr(
+        service,
+        "_assert_account_code_scope",
+        AsyncMock(side_effect=ValidationError("account mapping missing")),
+    )
+    monkeypatch.setattr(erp_service_module, "create_journal_draft", create_draft_mock)
+    monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
+
+    request = JournalImportRequest(
+        erp_connector_id=connector_row.id,
+        transactions=[
+            JournalImportTransaction(
+                external_reference_id="ERP-TXN-404",
+                journal_date="2026-04-01",
+                reference="TXN-404",
+                narration="Unmapped account",
+                lines=[
+                    JournalImportLine(account_code="9999", debit="100.00", credit="0"),
+                    JournalImportLine(account_code="2000", debit="0", credit="100.00"),
+                ],
+            )
+        ],
+    )
+
+    payload = await service.import_journals(
+        tenant_id=uuid.uuid4(),
+        actor=actor,
+        body=request,
+    )
+    assert payload["imported_count"] == 0
+    assert payload["failed_count"] == 1
+    assert create_draft_mock.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_imported_journals_are_created_as_draft_with_erp_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_Result(all_values=[]))
+    session.add = MagicMock()
+    service = ErpIntegrationService(session)
+
+    connector_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        org_entity_id=uuid.uuid4(),
+        erp_type="MANUAL",
+        connection_config={},
+    )
+    actor = SimpleNamespace(id=uuid.uuid4())
+    create_draft_mock = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
+
+    monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
+    monkeypatch.setattr(service, "_assert_account_code_scope", AsyncMock(return_value=None))
+    monkeypatch.setattr(erp_service_module, "create_journal_draft", create_draft_mock)
+    monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
+
+    request = JournalImportRequest(
+        erp_connector_id=connector_row.id,
+        transactions=[
+            JournalImportTransaction(
+                external_reference_id="ERP-TXN-DRAFT",
+                journal_date="2026-04-01",
+                reference="TXN-DRAFT",
+                narration="Draft import",
+                lines=[
+                    JournalImportLine(account_code="1000", debit="100.00", credit="0"),
+                    JournalImportLine(account_code="2000", debit="0", credit="100.00"),
+                ],
+            )
+        ],
+    )
+
+    payload = await service.import_journals(
+        tenant_id=uuid.uuid4(),
+        actor=actor,
+        body=request,
+    )
+    assert payload["imported_count"] == 1
+    kwargs = create_draft_mock.await_args.kwargs
+    assert kwargs["source"] == "ERP"
+    assert kwargs["external_reference_id"] == "ERP-TXN-DRAFT"
+
+
+@pytest.mark.asyncio
+async def test_run_sync_job_marks_failed_and_increments_retry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    session.add = MagicMock()
+    session.execute = AsyncMock(return_value=_Result(all_values=[]))
+    service = ErpIntegrationService(session)
+
+    connector_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        org_entity_id=uuid.uuid4(),
+        erp_type="MANUAL",
+        connection_config={},
+        last_sync_at=None,
+    )
+    actor = SimpleNamespace(id=uuid.uuid4())
+
+    monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
+    monkeypatch.setattr(service, "get_job", AsyncMock(return_value=SimpleNamespace(retry_count=2)))
+    monkeypatch.setattr(
+        service,
+        "_import_coa",
+        AsyncMock(side_effect=RuntimeError("connector auth failed")),
+    )
+    monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
+
+    job = await service.run_sync_job(
+        tenant_id=uuid.uuid4(),
+        actor=actor,
+        body=SyncRunRequest(
+            erp_connector_id=connector_row.id,
+            sync_type=ErpSyncType.IMPORT,
+            module=ErpSyncModule.COA,
+            payload={},
+            retry_of_job_id=uuid.uuid4(),
+        ),
+    )
+    assert job.status == ErpSyncStatus.FAILED
+    assert job.retry_count == 3
+    assert "connector auth failed" in (job.error_message or "")
+
+
+@pytest.mark.asyncio
+async def test_create_connector_route_commits_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    session.commit = AsyncMock()
+
+    row = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        org_entity_id=uuid.uuid4(),
+        erp_type="TALLY",
+        auth_type=ErpAuthType.API_KEY,
+        status=ErpConnectorStatus.ACTIVE,
+        last_sync_at=None,
+        created_at=datetime.now(tz=timezone.utc),
+    )
+
+    class _FakeService:
+        def __init__(self, _session: object) -> None:
+            self._session = _session
+
+        async def create_connector(
+            self,
+            *,
+            tenant_id: uuid.UUID,
+            user_id: uuid.UUID,
+            body: ConnectorCreateRequest,
+        ) -> object:
+            return row
+
+    user = SimpleNamespace(
+        id=uuid.uuid4(),
+        tenant_id=row.tenant_id,
+        role=UserRole.finance_leader,
+    )
+    request = SimpleNamespace(state=SimpleNamespace(request_id="req-1"))
+
+    monkeypatch.setattr(erp_routes, "ErpIntegrationService", _FakeService)
+
+    await erp_routes.create_connector(
+        request=request,
+        body=ConnectorCreateRequest(
+            org_entity_id=row.org_entity_id,
+            erp_type="TALLY",
+            auth_type=ErpAuthType.API_KEY,
+            connection_config={"credentials": {"api_key": "x"}},
+        ),
+        session=session,
+        user=user,
+    )
+
+    assert session.commit.await_count == 1

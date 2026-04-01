@@ -296,7 +296,7 @@ class ErpIntegrationService:
                 )
             )
             await self._session.flush()
-            raise
+            return job
 
     async def import_coa(
         self,
