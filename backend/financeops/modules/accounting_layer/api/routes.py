@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import uuid
 from typing import Any
 
@@ -16,9 +17,15 @@ from financeops.modules.accounting_layer.application.approval_service import (
     submit_approval,
 )
 from financeops.modules.accounting_layer.application.journal_service import (
-    create_posted_journal,
+    approve_journal,
+    create_journal_draft,
     get_journal,
     list_journals,
+    post_journal,
+    reverse_journal,
+)
+from financeops.modules.accounting_layer.application.trial_balance_service import (
+    get_trial_balance,
 )
 from financeops.modules.accounting_layer.application.jv_service import (
     create_jv,
@@ -31,6 +38,7 @@ from financeops.modules.accounting_layer.application.jv_service import (
 from financeops.modules.accounting_layer.domain.schemas import (
     ApprovalRequest,
     ApprovalResponse,
+    JournalActionResponse,
     JournalCreate,
     JournalResponse,
     JVCreate,
@@ -40,6 +48,7 @@ from financeops.modules.accounting_layer.domain.schemas import (
     JVTransitionRequest,
     JVUpdateLines,
     SLAMetricsResponse,
+    TrialBalanceResponse,
 )
 from financeops.shared_kernel.response import ok
 
@@ -260,7 +269,7 @@ async def create_journal_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    journal = await create_posted_journal(
+    journal = await create_journal_draft(
         session,
         tenant_id=user.tenant_id,
         created_by=user.id,
@@ -279,6 +288,7 @@ async def list_journals_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
     org_entity_id: uuid.UUID | None = Query(default=None),
+    status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> dict[str, Any]:
@@ -286,11 +296,74 @@ async def list_journals_endpoint(
         session,
         tenant_id=user.tenant_id,
         entity_id=org_entity_id,
+        status=status,
         limit=limit,
         offset=offset,
     )
     return ok(
         [item.model_dump(mode="json") for item in journals],
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.post("/{journal_id}/approve")
+async def approve_journal_endpoint(
+    request: Request,
+    journal_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    result = await approve_journal(
+        session,
+        tenant_id=user.tenant_id,
+        journal_id=journal_id,
+        acted_by=user.id,
+    )
+    await session.flush()
+    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
+    return ok(
+        payload,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.post("/{journal_id}/post")
+async def post_journal_endpoint(
+    request: Request,
+    journal_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    result = await post_journal(
+        session,
+        tenant_id=user.tenant_id,
+        journal_id=journal_id,
+        acted_by=user.id,
+    )
+    await session.flush()
+    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
+    return ok(
+        payload,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@journals_router.post("/{journal_id}/reverse")
+async def reverse_journal_endpoint(
+    request: Request,
+    journal_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    journal = await reverse_journal(
+        session,
+        tenant_id=user.tenant_id,
+        journal_id=journal_id,
+        acted_by=user.id,
+    )
+    await session.flush()
+    return ok(
+        journal.model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -309,6 +382,31 @@ async def get_journal_endpoint(
     )
     return ok(
         journal.model_dump(mode="json"),
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@router.get("/trial-balance")
+async def get_trial_balance_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+    org_entity_id: uuid.UUID = Query(...),
+    as_of_date: date = Query(...),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+) -> dict[str, Any]:
+    payload = await get_trial_balance(
+        session,
+        tenant_id=user.tenant_id,
+        org_entity_id=org_entity_id,
+        as_of_date=as_of_date,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    result = TrialBalanceResponse.model_validate(payload).model_dump(mode="json")
+    return ok(
+        result,
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 

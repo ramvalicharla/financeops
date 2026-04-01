@@ -42,6 +42,7 @@ const navItems = [
   },
   { label: "MIS", href: "/mis", icon: BarChart2 },
   { label: "Journals", href: "/accounting/journals", icon: FileBarChart },
+  { label: "Accounting TB", href: "/accounting/trial-balance", icon: FileBarChart },
   { label: "Trial Balance", href: "/trial-balance", icon: FileBarChart },
   { label: "Consolidation", href: "/consolidation", icon: Layers },
   { label: "Board Packs", href: "/board-pack", icon: LayoutTemplate },

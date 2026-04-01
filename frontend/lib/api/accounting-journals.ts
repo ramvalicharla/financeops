@@ -41,6 +41,12 @@ export interface JournalRecord {
   lines: JournalLine[]
 }
 
+export interface JournalActionResult {
+  id: string
+  status: "DRAFT" | "REVIEW" | "APPROVED" | "POSTED"
+  posted_at: string | null
+}
+
 export const createJournal = async (
   payload: CreateJournalPayload,
 ): Promise<JournalRecord> => {
@@ -53,11 +59,13 @@ export const createJournal = async (
 
 export const listJournals = async (params?: {
   org_entity_id?: string
+  status?: "DRAFT" | "REVIEW" | "APPROVED" | "POSTED"
   limit?: number
   offset?: number
 }): Promise<JournalRecord[]> => {
   const search = new URLSearchParams()
   if (params?.org_entity_id) search.set("org_entity_id", params.org_entity_id)
+  if (params?.status) search.set("status", params.status)
   if (params?.limit !== undefined) search.set("limit", String(params.limit))
   if (params?.offset !== undefined) search.set("offset", String(params.offset))
   const suffix = search.toString()
@@ -70,6 +78,36 @@ export const listJournals = async (params?: {
 export const getJournal = async (journalId: string): Promise<JournalRecord> => {
   const response = await apiClient.get<JournalRecord>(
     `/api/v1/accounting/journals/${journalId}`,
+  )
+  return response.data
+}
+
+export const approveJournal = async (
+  journalId: string,
+): Promise<JournalActionResult> => {
+  const response = await apiClient.post<JournalActionResult>(
+    `/api/v1/accounting/journals/${journalId}/approve`,
+    {},
+  )
+  return response.data
+}
+
+export const postJournal = async (
+  journalId: string,
+): Promise<JournalActionResult> => {
+  const response = await apiClient.post<JournalActionResult>(
+    `/api/v1/accounting/journals/${journalId}/post`,
+    {},
+  )
+  return response.data
+}
+
+export const reverseJournal = async (
+  journalId: string,
+): Promise<JournalRecord> => {
+  const response = await apiClient.post<JournalRecord>(
+    `/api/v1/accounting/journals/${journalId}/reverse`,
+    {},
   )
   return response.data
 }

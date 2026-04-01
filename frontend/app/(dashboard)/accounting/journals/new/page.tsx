@@ -139,7 +139,7 @@ export default function NewJournalPage() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">New Journal</h1>
           <p className="text-sm text-muted-foreground">
-            Create and post a balanced journal entry.
+            Create a balanced journal draft. Approve and post from Journals list.
           </p>
         </div>
         <Link href="/accounting/journals">
@@ -287,7 +287,7 @@ export default function NewJournalPage() {
           onClick={() => void submit()}
           disabled={createMutation.isPending || accountsQuery.isLoading}
         >
-          {createMutation.isPending ? "Posting..." : "Post Journal"}
+          {createMutation.isPending ? "Creating..." : "Create Draft"}
         </Button>
       </div>
     </div>

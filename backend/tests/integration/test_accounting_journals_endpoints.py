@@ -86,10 +86,34 @@ async def test_create_list_get_journal(
     )
     assert create_response.status_code == 200
     created = create_response.json()["data"]
-    assert created["status"] == "POSTED"
+    assert created["status"] == "DRAFT"
     assert created["total_debit"] == "1500.0000"
     assert created["total_credit"] == "1500.0000"
     assert len(created["lines"]) == 2
+
+    pre_post_gl = (
+        await async_session.execute(
+            select(GlEntry).where(
+                GlEntry.tenant_id == test_user.tenant_id,
+                GlEntry.source_ref == created["journal_number"],
+            )
+        )
+    ).scalars().all()
+    assert len(pre_post_gl) == 0
+
+    approve_response = await async_client.post(
+        f"/api/v1/accounting/journals/{created['id']}/approve",
+        headers=headers,
+    )
+    assert approve_response.status_code == 200
+    assert approve_response.json()["data"]["status"] == "APPROVED"
+
+    post_response = await async_client.post(
+        f"/api/v1/accounting/journals/{created['id']}/post",
+        headers=headers,
+    )
+    assert post_response.status_code == 200
+    assert post_response.json()["data"]["status"] == "POSTED"
 
     list_response = await async_client.get(
         "/api/v1/accounting/journals/",
@@ -106,6 +130,7 @@ async def test_create_list_get_journal(
     assert get_response.status_code == 200
     fetched = get_response.json()["data"]
     assert fetched["id"] == created["id"]
+    assert fetched["status"] == "POSTED"
     assert fetched["journal_number"]
 
     gl_count = (
@@ -117,3 +142,40 @@ async def test_create_list_get_journal(
         )
     ).scalars().all()
     assert len(gl_count) == 2
+
+    trial_balance_response = await async_client.get(
+        f"/api/v1/accounting/trial-balance?org_entity_id={entity.id}&as_of_date=2026-04-30",
+        headers=headers,
+    )
+    assert trial_balance_response.status_code == 200
+    tb_payload = trial_balance_response.json()["data"]
+    assert tb_payload["total_debit"] == "1500.000000"
+    assert tb_payload["total_credit"] == "1500.000000"
+
+    reverse_response = await async_client.post(
+        f"/api/v1/accounting/journals/{created['id']}/reverse",
+        headers=headers,
+    )
+    assert reverse_response.status_code == 200
+    reversed_journal = reverse_response.json()["data"]
+    assert reversed_journal["status"] == "POSTED"
+    assert reversed_journal["reference"] == f"REVERSAL_OF:{fetched['journal_number']}"
+
+    reversal_gl_count = (
+        await async_session.execute(
+            select(GlEntry).where(
+                GlEntry.tenant_id == test_user.tenant_id,
+                GlEntry.source_ref == reversed_journal["journal_number"],
+            )
+        )
+    ).scalars().all()
+    assert len(reversal_gl_count) == 2
+
+    trial_balance_after_reverse = await async_client.get(
+        f"/api/v1/accounting/trial-balance?org_entity_id={entity.id}&as_of_date=2026-04-30",
+        headers=headers,
+    )
+    assert trial_balance_after_reverse.status_code == 200
+    tb_after = trial_balance_after_reverse.json()["data"]
+    assert tb_after["total_debit"] == "3000.000000"
+    assert tb_after["total_credit"] == "3000.000000"

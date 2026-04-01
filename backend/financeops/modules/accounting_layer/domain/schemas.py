@@ -212,6 +212,30 @@ class JournalResponse(BaseModel):
     lines: list[JournalLineResponse]
 
 
+class JournalActionResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+    posted_at: datetime | None
+
+
+class TrialBalanceAccountRow(BaseModel):
+    account_code: str
+    account_name: str
+    debit_sum: Decimal
+    credit_sum: Decimal
+    balance: Decimal
+
+
+class TrialBalanceResponse(BaseModel):
+    org_entity_id: uuid.UUID
+    as_of_date: date
+    from_date: date | None
+    to_date: date | None
+    total_debit: Decimal
+    total_credit: Decimal
+    rows: list[TrialBalanceAccountRow]
+
+
 class ApprovalRequest(BaseModel):
     decision: str = Field(..., pattern="^(APPROVED|REJECTED)$")
     decision_reason: str | None = None

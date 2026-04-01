@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -22,6 +22,7 @@ from financeops.db.models.accounting_jv import (
 from financeops.db.models.reconciliation import GlEntry
 from financeops.modules.accounting_layer.application.jv_service import create_jv
 from financeops.modules.accounting_layer.domain.schemas import (
+    JournalActionResponse,
     JournalCreate,
     JournalLineResponse,
     JournalResponse,
@@ -31,8 +32,14 @@ from financeops.platform.db.models.entities import CpEntity
 
 logger = logging.getLogger(__name__)
 
-POSTED_STATUSES: frozenset[str] = frozenset(
-    {JVStatus.APPROVED, JVStatus.PUSH_IN_PROGRESS, JVStatus.PUSHED}
+REVIEW_SOURCE_STATUSES: frozenset[str] = frozenset(
+    {
+        JVStatus.SUBMITTED,
+        JVStatus.PENDING_REVIEW,
+        JVStatus.UNDER_REVIEW,
+        JVStatus.RESUBMITTED,
+        JVStatus.ESCALATED,
+    }
 )
 
 
@@ -48,15 +55,15 @@ def _compute_hash(content: str, previous_hash: str | None) -> str:
 @dataclass(frozen=True)
 class _PreparedJournalLine:
     line_number: int
-    account_id: uuid.UUID | None
+    account_id: uuid.UUID
     account_code: str
-    account_name: str | None
+    account_name: str
     entry_type: str
     amount: Decimal
     memo: str | None
 
 
-async def create_posted_journal(
+async def create_journal_draft(
     db: AsyncSession,
     *,
     tenant_id: uuid.UUID,
@@ -97,40 +104,183 @@ async def create_posted_journal(
         currency=entity.base_currency,
         lines=jv_lines,
     )
+    await db.flush()
+    logger.info(
+        "Journal draft created",
+        extra={
+            "tenant_id": str(tenant_id),
+            "journal_id": str(jv.id),
+            "journal_number": jv.jv_number,
+        },
+    )
+    return await get_journal(db, tenant_id=tenant_id, journal_id=jv.id)
 
-    posted_at = _utcnow()
-    previous_status = jv.status
+
+async def approve_journal(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_id: uuid.UUID,
+    acted_by: uuid.UUID,
+) -> JournalActionResponse:
+    jv = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=journal_id,
+    )
+    if _is_posted_status(jv.status):
+        raise ValidationError("Posted journals cannot be re-approved.")
+    if jv.status == JVStatus.APPROVED:
+        return JournalActionResponse(id=jv.id, status="APPROVED", posted_at=None)
+    if jv.status not in {JVStatus.DRAFT, *REVIEW_SOURCE_STATUSES}:
+        raise ValidationError(f"Journal cannot be approved from status '{jv.status}'.")
+
+    from_status = jv.status
+    now = _utcnow()
     jv.status = JVStatus.APPROVED
-    jv.submitted_at = posted_at
-    jv.first_reviewed_at = posted_at
-    jv.decided_at = posted_at
-    jv.updated_at = posted_at
+    jv.submitted_at = jv.submitted_at or now
+    jv.first_reviewed_at = jv.first_reviewed_at or now
+    jv.decided_at = now
+    jv.updated_at = now
 
-    await _append_posted_state_event(
+    await _append_state_event(
         db,
         jv=jv,
-        from_status=previous_status,
-        triggered_by=created_by,
+        from_status=from_status,
+        to_status=JVStatus.APPROVED,
+        triggered_by=acted_by,
+        actor_role="ACCOUNTING_APPROVER",
+        comment="Approved via /accounting/journals/{id}/approve",
     )
+    await db.flush()
+    return JournalActionResponse(id=jv.id, status="APPROVED", posted_at=None)
+
+
+async def post_journal(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_id: uuid.UUID,
+    acted_by: uuid.UUID,
+) -> JournalActionResponse:
+    jv = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=journal_id,
+    )
+    if _is_posted_status(jv.status):
+        posted_at = await _resolve_posted_at(db, jv)
+        return JournalActionResponse(id=jv.id, status="POSTED", posted_at=posted_at)
+    if jv.status != JVStatus.APPROVED:
+        raise ValidationError("Only APPROVED journals can be posted.")
+    await _assert_balanced_active_lines(jv)
+
+    existing_gl_entries = await _count_gl_entries_for_journal(
+        db,
+        tenant_id=tenant_id,
+        journal_number=jv.jv_number,
+    )
+    if existing_gl_entries > 0:
+        raise ValidationError("GL entries already exist for this journal; posting is append-only.")
+
+    entity = await _get_entity_for_tenant(
+        db,
+        tenant_id=tenant_id,
+        entity_id=jv.entity_id,
+    )
+    posted_at = _utcnow()
     await _append_gl_entries(
         db,
         jv=jv,
         entity=entity,
-        created_by=created_by,
-        journal_date=payload.journal_date,
+        created_by=acted_by,
+        journal_date=jv.period_date,
+    )
+    from_status = jv.status
+    jv.status = JVStatus.PUSHED
+    jv.updated_at = posted_at
+    jv.decided_at = jv.decided_at or posted_at
+
+    await _append_state_event(
+        db,
+        jv=jv,
+        from_status=from_status,
+        to_status=JVStatus.PUSHED,
+        triggered_by=acted_by,
+        actor_role="ACCOUNTING_POSTER",
+        comment="Posted via /accounting/journals/{id}/post",
     )
     await db.flush()
+    return JournalActionResponse(id=jv.id, status="POSTED", posted_at=posted_at)
 
-    logger.info(
-        "Posted journal created",
-        extra={
-            "tenant_id": str(tenant_id),
-            "jv_id": str(jv.id),
-            "journal_number": jv.jv_number,
-            "line_count": len(prepared_lines),
-        },
+
+async def reverse_journal(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_id: uuid.UUID,
+    acted_by: uuid.UUID,
+) -> JournalResponse:
+    original = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=journal_id,
     )
-    return await get_journal(db, tenant_id=tenant_id, journal_id=jv.id)
+    if not _is_posted_status(original.status):
+        raise ValidationError("Only POSTED journals can be reversed.")
+
+    entity = await _get_entity_for_tenant(
+        db,
+        tenant_id=tenant_id,
+        entity_id=original.entity_id,
+    )
+    active_lines = _active_journal_lines(original)
+    if len(active_lines) < 2:
+        raise ValidationError("Journal has no active lines to reverse.")
+
+    reverse_lines_payload: list[dict[str, object]] = []
+    for line in active_lines:
+        reverse_entry_type = EntryType.CREDIT if line.entry_type == EntryType.DEBIT else EntryType.DEBIT
+        reverse_lines_payload.append(
+            {
+                "account_code": line.account_code,
+                "account_name": line.account_name,
+                "entry_type": reverse_entry_type,
+                "amount": line.amount,
+                "entity_id": original.entity_id,
+                "narration": f"Reversal of {original.jv_number}",
+            }
+        )
+
+    reversal = await create_jv(
+        db,
+        tenant_id=tenant_id,
+        entity_id=original.entity_id,
+        created_by=acted_by,
+        period_date=date.today(),
+        fiscal_year=date.today().year,
+        fiscal_period=date.today().month,
+        description=f"Reversal of journal {original.jv_number}",
+        reference=f"REVERSAL_OF:{original.jv_number}",
+        currency=entity.base_currency,
+        lines=reverse_lines_payload,
+    )
+    await db.flush()
+    await _set_approved(
+        db,
+        jv=reversal,
+        acted_by=acted_by,
+        comment=f"Auto-approved reversal for {original.jv_number}",
+    )
+    await _post_approved_journal(
+        db,
+        jv=reversal,
+        entity=entity,
+        acted_by=acted_by,
+        comment=f"Auto-posted reversal for {original.jv_number}",
+    )
+    await db.flush()
+    return await get_journal(db, tenant_id=tenant_id, journal_id=reversal.id)
 
 
 async def list_journals(
@@ -138,16 +288,14 @@ async def list_journals(
     *,
     tenant_id: uuid.UUID,
     entity_id: uuid.UUID | None = None,
+    status: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[JournalResponse]:
     stmt = (
         select(AccountingJVAggregate)
         .options(selectinload(AccountingJVAggregate.lines))
-        .where(
-            AccountingJVAggregate.tenant_id == tenant_id,
-            AccountingJVAggregate.status.in_(POSTED_STATUSES),
-        )
+        .where(AccountingJVAggregate.tenant_id == tenant_id)
         .order_by(AccountingJVAggregate.created_at.desc())
         .limit(limit)
         .offset(offset)
@@ -156,7 +304,11 @@ async def list_journals(
         stmt = stmt.where(AccountingJVAggregate.entity_id == entity_id)
     result = await db.execute(stmt)
     rows = list(result.scalars().all())
-    return await _serialize_journals(db, tenant_id=tenant_id, journals=rows)
+    payload = await _serialize_journals(db, tenant_id=tenant_id, journals=rows)
+    if status is None:
+        return payload
+    normalized_status = status.upper()
+    return [item for item in payload if item.status == normalized_status]
 
 
 async def get_journal(
@@ -165,19 +317,11 @@ async def get_journal(
     tenant_id: uuid.UUID,
     journal_id: uuid.UUID,
 ) -> JournalResponse:
-    stmt = (
-        select(AccountingJVAggregate)
-        .options(selectinload(AccountingJVAggregate.lines))
-        .where(
-            AccountingJVAggregate.id == journal_id,
-            AccountingJVAggregate.tenant_id == tenant_id,
-            AccountingJVAggregate.status.in_(POSTED_STATUSES),
-        )
+    journal = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=journal_id,
     )
-    result = await db.execute(stmt)
-    journal = result.scalar_one_or_none()
-    if journal is None:
-        raise NotFoundError("Journal not found")
     payload = await _serialize_journals(db, tenant_id=tenant_id, journals=[journal])
     return payload[0]
 
@@ -253,9 +397,7 @@ async def _resolve_tenant_account(
 
     account = by_id or by_code
     if account is None:
-        raise ValidationError(
-            f"Line {line_number}: provide account_code or tenant_coa_account_id."
-        )
+        raise ValidationError(f"Line {line_number}: provide account_code or tenant_coa_account_id.")
     if by_id is not None and by_code is not None and by_id.id != by_code.id:
         raise ValidationError(
             f"Line {line_number}: account_code does not match tenant_coa_account_id."
@@ -280,12 +422,147 @@ async def _get_entity_for_tenant(
     return entity
 
 
-async def _append_posted_state_event(
+async def _get_journal_aggregate(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_id: uuid.UUID,
+) -> AccountingJVAggregate:
+    stmt = (
+        select(AccountingJVAggregate)
+        .options(selectinload(AccountingJVAggregate.lines))
+        .where(
+            AccountingJVAggregate.id == journal_id,
+            AccountingJVAggregate.tenant_id == tenant_id,
+        )
+    )
+    result = await db.execute(stmt)
+    journal = result.scalar_one_or_none()
+    if journal is None:
+        raise NotFoundError("Journal not found")
+    return journal
+
+
+def _active_journal_lines(jv: AccountingJVAggregate) -> list[AccountingJVLine]:
+    max_version = max((line.jv_version for line in jv.lines), default=jv.version)
+    return sorted(
+        [line for line in jv.lines if line.jv_version == max_version],
+        key=lambda item: item.line_number,
+    )
+
+
+async def _assert_balanced_active_lines(jv: AccountingJVAggregate) -> None:
+    lines = _active_journal_lines(jv)
+    if len(lines) < 2:
+        raise ValidationError("Journal must have at least two lines.")
+    total_debit = sum(line.amount for line in lines if line.entry_type == EntryType.DEBIT)
+    total_credit = sum(line.amount for line in lines if line.entry_type == EntryType.CREDIT)
+    if total_debit != total_credit:
+        raise ValidationError(
+            f"Journal imbalance detected: debit={total_debit}, credit={total_credit}."
+        )
+
+
+async def _count_gl_entries_for_journal(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    journal_number: str,
+) -> int:
+    stmt = select(func.count(GlEntry.id)).where(
+        GlEntry.tenant_id == tenant_id,
+        GlEntry.source_ref == journal_number,
+    )
+    result = await db.execute(stmt)
+    return int(result.scalar_one() or 0)
+
+
+async def _resolve_posted_at(db: AsyncSession, jv: AccountingJVAggregate) -> datetime | None:
+    stmt = (
+        select(GlEntry.created_at)
+        .where(GlEntry.tenant_id == jv.tenant_id, GlEntry.source_ref == jv.jv_number)
+        .order_by(GlEntry.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def _set_approved(
+    db: AsyncSession,
+    *,
+    jv: AccountingJVAggregate,
+    acted_by: uuid.UUID,
+    comment: str,
+) -> None:
+    now = _utcnow()
+    from_status = jv.status
+    jv.status = JVStatus.APPROVED
+    jv.submitted_at = jv.submitted_at or now
+    jv.first_reviewed_at = jv.first_reviewed_at or now
+    jv.decided_at = now
+    jv.updated_at = now
+    await _append_state_event(
+        db,
+        jv=jv,
+        from_status=from_status,
+        to_status=JVStatus.APPROVED,
+        triggered_by=acted_by,
+        actor_role="ACCOUNTING_APPROVER",
+        comment=comment,
+    )
+
+
+async def _post_approved_journal(
+    db: AsyncSession,
+    *,
+    jv: AccountingJVAggregate,
+    entity: CpEntity,
+    acted_by: uuid.UUID,
+    comment: str,
+) -> datetime:
+    await _assert_balanced_active_lines(jv)
+    existing_gl_entries = await _count_gl_entries_for_journal(
+        db,
+        tenant_id=jv.tenant_id,
+        journal_number=jv.jv_number,
+    )
+    if existing_gl_entries > 0:
+        raise ValidationError("GL entries already exist for this journal; posting is append-only.")
+
+    posted_at = _utcnow()
+    await _append_gl_entries(
+        db,
+        jv=jv,
+        entity=entity,
+        created_by=acted_by,
+        journal_date=jv.period_date,
+    )
+    from_status = jv.status
+    jv.status = JVStatus.PUSHED
+    jv.updated_at = posted_at
+    jv.decided_at = jv.decided_at or posted_at
+    await _append_state_event(
+        db,
+        jv=jv,
+        from_status=from_status,
+        to_status=JVStatus.PUSHED,
+        triggered_by=acted_by,
+        actor_role="ACCOUNTING_POSTER",
+        comment=comment,
+    )
+    return posted_at
+
+
+async def _append_state_event(
     db: AsyncSession,
     *,
     jv: AccountingJVAggregate,
     from_status: str,
+    to_status: str,
     triggered_by: uuid.UUID,
+    actor_role: str,
+    comment: str | None,
 ) -> None:
     previous_stmt = (
         select(AccountingJVStateEvent)
@@ -297,7 +574,7 @@ async def _append_posted_state_event(
     previous_event = previous_result.scalar_one_or_none()
     previous_hash = previous_event.chain_hash if previous_event is not None else None
     occurred_at = _utcnow()
-    content = f"{jv.id}:{from_status}:{JVStatus.APPROVED}:{triggered_by}:{occurred_at.isoformat()}"
+    content = f"{jv.id}:{from_status}:{to_status}:{triggered_by}:{occurred_at.isoformat()}"
     chain_hash = _compute_hash(content, previous_hash)
 
     event = AccountingJVStateEvent(
@@ -308,10 +585,10 @@ async def _append_posted_state_event(
         jv_id=jv.id,
         jv_version=jv.version,
         from_status=from_status,
-        to_status=JVStatus.APPROVED,
+        to_status=to_status,
         triggered_by=triggered_by,
-        actor_role="SYSTEM_AUTO_POST",
-        comment="Auto-posted via /accounting/journals",
+        actor_role=actor_role,
+        comment=comment,
         occurred_at=occurred_at,
     )
     db.add(event)
@@ -325,8 +602,14 @@ async def _append_gl_entries(
     created_by: uuid.UUID,
     journal_date: date,
 ) -> None:
-    max_version = max((line.jv_version for line in jv.lines), default=jv.version)
-    lines = [line for line in jv.lines if line.jv_version == max_version]
+    lines = _active_journal_lines(jv)
+    total_debit = sum(line.amount for line in lines if line.entry_type == EntryType.DEBIT)
+    total_credit = sum(line.amount for line in lines if line.entry_type == EntryType.CREDIT)
+    if total_debit != total_credit:
+        raise ValidationError(
+            f"GL integrity check failed: debit={total_debit}, credit={total_credit}."
+        )
+
     previous_hash: str | None = jv.chain_hash
     for line in lines:
         debit_amount = line.amount if line.entry_type == EntryType.DEBIT else Decimal("0")
@@ -379,17 +662,25 @@ async def _serialize_journals(
         account_rows = account_result.scalars().all()
         account_id_map = {row.account_code: row.id for row in account_rows}
 
+    jv_numbers = [journal.jv_number for journal in journals]
+    posted_refs: set[str] = set()
+    if jv_numbers:
+        gl_stmt = select(GlEntry.source_ref).where(
+            GlEntry.tenant_id == tenant_id,
+            GlEntry.source_ref.in_(jv_numbers),
+        )
+        gl_result = await db.execute(gl_stmt)
+        posted_refs = {row for row in gl_result.scalars().all() if row}
+
     payload: list[JournalResponse] = []
     for journal in journals:
-        max_version = max((line.jv_version for line in journal.lines), default=journal.version)
-        active_lines = sorted(
-            [line for line in journal.lines if line.jv_version == max_version],
-            key=lambda item: item.line_number,
-        )
+        active_lines = _active_journal_lines(journal)
         serialised_lines = [
             _serialize_line(line, account_id_map.get(line.account_code))
             for line in active_lines
         ]
+        is_posted = journal.jv_number in posted_refs or _is_posted_status(journal.status)
+        journal_status = _map_journal_status(journal.status, is_posted)
         payload.append(
             JournalResponse(
                 id=journal.id,
@@ -398,8 +689,8 @@ async def _serialize_journals(
                 journal_date=journal.period_date,
                 reference=journal.reference,
                 narration=journal.description,
-                status="POSTED",
-                posted_at=journal.decided_at or journal.updated_at,
+                status=journal_status,
+                posted_at=journal.updated_at if journal_status == "POSTED" else None,
                 total_debit=journal.total_debit,
                 total_credit=journal.total_credit,
                 currency=journal.currency,
@@ -407,6 +698,20 @@ async def _serialize_journals(
             )
         )
     return payload
+
+
+def _is_posted_status(status: str) -> bool:
+    return status in {JVStatus.PUSHED, JVStatus.PUSH_IN_PROGRESS}
+
+
+def _map_journal_status(status: str, is_posted: bool) -> str:
+    if is_posted:
+        return "POSTED"
+    if status == JVStatus.APPROVED:
+        return "APPROVED"
+    if status in REVIEW_SOURCE_STATUSES:
+        return "REVIEW"
+    return "DRAFT"
 
 
 def _serialize_line(
