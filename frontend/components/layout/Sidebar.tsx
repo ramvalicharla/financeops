@@ -31,6 +31,15 @@ import { cn } from "@/lib/utils"
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: BarChart2 },
+  { label: "CFO Dashboard", href: "/dashboard/cfo", icon: BarChart2 },
+  { label: "KPI Analytics", href: "/dashboard/kpis", icon: FileBarChart },
+  { label: "Variance Analytics", href: "/dashboard/variance", icon: FileBarChart },
+  { label: "Trend Analytics", href: "/dashboard/trends", icon: FileBarChart },
+  { label: "Ratio Analytics", href: "/dashboard/ratios", icon: FileBarChart },
+  { label: "AI CFO Dashboard", href: "/ai/dashboard", icon: AlertTriangle },
+  { label: "AI Anomalies", href: "/ai/anomalies", icon: AlertTriangle },
+  { label: "AI Recommendations", href: "/ai/recommendations", icon: AlertTriangle },
+  { label: "AI Narrative", href: "/ai/narrative", icon: FileBarChart },
   { label: "Sync", href: "/sync", icon: RefreshCw },
   { label: "ERP Connectors", href: "/erp/connectors", icon: RefreshCw },
   { label: "ERP Sync Jobs", href: "/erp/sync", icon: RefreshCw },

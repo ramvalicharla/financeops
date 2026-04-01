@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends
 from financeops.api.v1 import (
     accounting_ingestion,
     accounting_layer,
+    ai_cfo,
+    analytics,
     anomaly_pattern_engine,
     auth,
     auditor,
@@ -77,6 +79,18 @@ router.include_router(
     accounting_layer.router,
     prefix="/accounting",
     tags=["Accounting Layer"],
+    dependencies=[finance_control_plane_guard, org_setup_guard],
+)
+router.include_router(
+    analytics.router,
+    prefix="",
+    tags=["Analytics Layer"],
+    dependencies=[finance_control_plane_guard, org_setup_guard],
+)
+router.include_router(
+    ai_cfo.router,
+    prefix="",
+    tags=["AI CFO Layer"],
     dependencies=[finance_control_plane_guard, org_setup_guard],
 )
 router.include_router(

@@ -1,0 +1,86 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
+import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { getTrends } from "@/lib/api/analytics"
+import { useTenantStore } from "@/lib/store/tenant"
+
+const toAmount = (value: string | number | null | undefined) => Number(value ?? 0)
+
+export default function TrendsPage() {
+  const entityId = useTenantStore((state) => state.active_entity_id)
+  const today = new Date().toISOString().slice(0, 10)
+  const defaultFrom = `${today.slice(0, 4)}-01-01`
+  const [frequency, setFrequency] = useState("monthly")
+
+  const trendsQuery = useQuery({
+    queryKey: ["analytics-trends-page", entityId, defaultFrom, today, frequency],
+    queryFn: () =>
+      getTrends({
+        org_entity_id: entityId ?? undefined,
+        from_date: defaultFrom,
+        to_date: today,
+        frequency,
+      }),
+    enabled: Boolean(entityId),
+  })
+
+  const chartData = useMemo(() => {
+    const series = trendsQuery.data?.series ?? []
+    const periods = Array.from(
+      new Set(series.flatMap((item) => item.points.map((point) => point.period))),
+    ).sort()
+    return periods.map((period) => {
+      const row: Record<string, number | string> = { period }
+      for (const item of series) {
+        const point = item.points.find((p) => p.period === period)
+        row[item.metric_name] = toAmount(point?.value)
+      }
+      return row
+    })
+  }, [trendsQuery.data])
+
+  return (
+    <div className="space-y-6 p-6">
+      <section className="rounded-xl border border-border bg-card p-4">
+        <h1 className="text-xl font-semibold text-foreground">Trends</h1>
+        <p className="text-sm text-muted-foreground">Revenue, expense, profit, and cash trajectory over time.</p>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <label htmlFor="frequency" className="text-xs uppercase tracking-wide text-muted-foreground">
+          Frequency
+        </label>
+        <select
+          id="frequency"
+          value={frequency}
+          onChange={(event) => setFrequency(event.target.value)}
+          className="ml-3 rounded-md border border-border bg-background px-3 py-2 text-sm"
+        >
+          <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+        </select>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <div className="h-[420px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="period" />
+              <YAxis />
+              <Tooltip />
+              <Legend />
+              <Line type="monotone" dataKey="revenue" stroke="hsl(var(--brand-primary))" />
+              <Line type="monotone" dataKey="expenses" stroke="hsl(var(--brand-warning))" />
+              <Line type="monotone" dataKey="profit" stroke="hsl(var(--brand-success))" />
+              <Line type="monotone" dataKey="cash" stroke="hsl(var(--brand-secondary))" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </section>
+    </div>
+  )
+}
+

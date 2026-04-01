@@ -126,6 +126,13 @@ __all__ = [
     "CloseChecklist",
     "ApprovalPolicy",
     "AccountingGovernanceAuditEvent",
+    "AnalyticsSnapshot",
+    "AnalyticsMetric",
+    "AnalyticsVariance",
+    "Budget",
+    "AnalyticsAlert",
+    "AiCfoAnomaly",
+    "AiCfoRecommendation",
     "ErpConnector",
     "ErpSyncJob",
     "ErpSyncLog",
@@ -319,6 +326,34 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AccountingGovernanceAuditEvent": (
         "financeops.db.models.accounting_governance",
         "AccountingGovernanceAuditEvent",
+    ),
+    "AnalyticsSnapshot": (
+        "financeops.db.models.analytics_layer",
+        "AnalyticsSnapshot",
+    ),
+    "AnalyticsMetric": (
+        "financeops.db.models.analytics_layer",
+        "AnalyticsMetric",
+    ),
+    "AnalyticsVariance": (
+        "financeops.db.models.analytics_layer",
+        "AnalyticsVariance",
+    ),
+    "Budget": (
+        "financeops.db.models.analytics_layer",
+        "Budget",
+    ),
+    "AnalyticsAlert": (
+        "financeops.db.models.analytics_layer",
+        "AnalyticsAlert",
+    ),
+    "AiCfoAnomaly": (
+        "financeops.db.models.ai_cfo_layer",
+        "AiCfoAnomaly",
+    ),
+    "AiCfoRecommendation": (
+        "financeops.db.models.ai_cfo_layer",
+        "AiCfoRecommendation",
     ),
     "ErpConnector": ("financeops.db.models.erp_integration", "ErpConnector"),
     "ErpSyncJob": ("financeops.db.models.erp_integration", "ErpSyncJob"),
