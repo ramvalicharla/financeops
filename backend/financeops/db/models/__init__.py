@@ -139,6 +139,19 @@ __all__ = [
     "ErpCoaMapping",
     "ErpJournalMapping",
     "ErpMasterMapping",
+    "FinanceModule",
+    "IndustryLease",
+    "IndustryLeaseSchedule",
+    "IndustryContract",
+    "IndustryPerformanceObligation",
+    "IndustryRevenueSchedule",
+    "IndustryFixedAsset",
+    "IndustryAssetSchedule",
+    "IndustryPrepaidSchedule",
+    "IndustryAccrualSchedule",
+    "IndustrySubscription",
+    "IndustryBillingSchedule",
+    "IndustryJournalLink",
 ]
 
 _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
@@ -361,6 +374,40 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "ErpCoaMapping": ("financeops.db.models.erp_integration", "ErpCoaMapping"),
     "ErpJournalMapping": ("financeops.db.models.erp_integration", "ErpJournalMapping"),
     "ErpMasterMapping": ("financeops.db.models.erp_integration", "ErpMasterMapping"),
+    "FinanceModule": ("financeops.db.models.industry_modules", "FinanceModule"),
+    "IndustryLease": ("financeops.db.models.industry_modules", "IndustryLease"),
+    "IndustryLeaseSchedule": (
+        "financeops.db.models.industry_modules",
+        "IndustryLeaseSchedule",
+    ),
+    "IndustryContract": ("financeops.db.models.industry_modules", "IndustryContract"),
+    "IndustryPerformanceObligation": (
+        "financeops.db.models.industry_modules",
+        "IndustryPerformanceObligation",
+    ),
+    "IndustryRevenueSchedule": (
+        "financeops.db.models.industry_modules",
+        "IndustryRevenueSchedule",
+    ),
+    "IndustryFixedAsset": ("financeops.db.models.industry_modules", "IndustryFixedAsset"),
+    "IndustryAssetSchedule": ("financeops.db.models.industry_modules", "IndustryAssetSchedule"),
+    "IndustryPrepaidSchedule": (
+        "financeops.db.models.industry_modules",
+        "IndustryPrepaidSchedule",
+    ),
+    "IndustryAccrualSchedule": (
+        "financeops.db.models.industry_modules",
+        "IndustryAccrualSchedule",
+    ),
+    "IndustrySubscription": (
+        "financeops.db.models.industry_modules",
+        "IndustrySubscription",
+    ),
+    "IndustryBillingSchedule": (
+        "financeops.db.models.industry_modules",
+        "IndustryBillingSchedule",
+    ),
+    "IndustryJournalLink": ("financeops.db.models.industry_modules", "IndustryJournalLink"),
 }
 
 

@@ -25,6 +25,7 @@ from financeops.api.v1 import (
     fx_rates,
     gst,
     health,
+    industry_modules,
     lease,
     mis_manager,
     monthend,
@@ -228,6 +229,12 @@ router.include_router(
     payment.router,
     prefix="/billing",
     tags=["Billing"],
+)
+router.include_router(
+    industry_modules.router,
+    prefix="",
+    tags=["Industry Modules"],
+    dependencies=[finance_control_plane_guard, org_setup_guard],
 )
 router.include_router(
     revenue.router,
