@@ -7,6 +7,7 @@ from financeops.platform.api.v1 import (
     flags,
     isolation,
     modules,
+    ops,
     organisations,
     quotas,
     roles,
@@ -24,3 +25,4 @@ router.include_router(workflows.router, prefix="/workflows", tags=["Platform Wor
 router.include_router(quotas.router, prefix="/quotas", tags=["Platform Quotas"])
 router.include_router(flags.router, prefix="/flags", tags=["Platform Flags"])
 router.include_router(isolation.router, prefix="/isolation", tags=["Platform Isolation"])
+router.include_router(ops.router, prefix="/ops", tags=["Platform Ops"])
