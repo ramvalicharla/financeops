@@ -217,6 +217,8 @@ class ErpMappingService:
         tenant_id: uuid.UUID,
         entity_id: uuid.UUID,
         erp_connector_type: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[ErpAccountMapping]:
         stmt = select(ErpAccountMapping).where(
             ErpAccountMapping.tenant_id == tenant_id,
@@ -228,7 +230,11 @@ class ErpMappingService:
         )
         if erp_connector_type:
             stmt = stmt.where(ErpAccountMapping.erp_connector_type == erp_connector_type)
-        rows = (await self._session.execute(stmt.order_by(ErpAccountMapping.erp_account_code))).scalars().all()
+        rows = (
+            await self._session.execute(
+                stmt.order_by(ErpAccountMapping.erp_account_code).limit(limit).offset(offset)
+            )
+        ).scalars().all()
         return list(rows)
 
     async def get_mapping_summary(

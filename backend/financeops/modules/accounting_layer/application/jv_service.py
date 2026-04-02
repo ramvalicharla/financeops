@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -426,11 +426,11 @@ async def _generate_jv_number(
     fiscal_year: int,
     fiscal_period: int,
 ) -> str:
-    stmt = select(AccountingJVAggregate.id).where(
+    stmt = select(func.count(AccountingJVAggregate.id)).where(
         AccountingJVAggregate.tenant_id == tenant_id,
         AccountingJVAggregate.fiscal_year == fiscal_year,
         AccountingJVAggregate.fiscal_period == fiscal_period,
     )
     result = await db.execute(stmt)
-    sequence = len(result.scalars().all()) + 1
+    sequence = int(result.scalar_one() or 0) + 1
     return f"JV-{fiscal_year}-{str(fiscal_period).zfill(2)}-{str(sequence).zfill(4)}"

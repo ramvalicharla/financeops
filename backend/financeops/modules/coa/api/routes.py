@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 import uuid
 from decimal import Decimal
 from typing import Any
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Body, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook
@@ -15,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import (
     get_async_session,
     get_current_user,
+    get_redis,
     require_finance_team,
     require_org_setup,
 )
@@ -68,6 +72,7 @@ from financeops.db.models.users import UserRole
 from financeops.security.file_validation import FileValidationError, validate_file
 
 router = APIRouter(prefix="/coa", tags=["chart-of-accounts"])
+_COA_CACHE_TTL_SECONDS = 120
 
 
 def _is_platform_admin(role: UserRole) -> bool:
@@ -156,14 +161,56 @@ def _global_tb_response(payload: GlobalTBResult) -> GlobalTBResponse:
     )
 
 
+def _cache_key(prefix: str, *, tenant_id: uuid.UUID, request: Request) -> str:
+    pairs = sorted((str(key), str(value)) for key, value in request.query_params.multi_items())
+    payload = "&".join(f"{key}={value}" for key, value in pairs)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return f"coa:{prefix}:{tenant_id}:{digest}"
+
+
+async def _get_cached_payload(
+    redis_client: aioredis.Redis | None,
+    *,
+    key: str,
+) -> Any | None:
+    if redis_client is None:
+        return None
+    try:
+        raw = await redis_client.get(key)
+        return None if not raw else json.loads(raw)
+    except Exception:
+        return None
+
+
+async def _set_cached_payload(
+    redis_client: aioredis.Redis | None,
+    *,
+    key: str,
+    payload: Any,
+) -> None:
+    if redis_client is None:
+        return
+    try:
+        await redis_client.setex(name=key, time=_COA_CACHE_TTL_SECONDS, value=json.dumps(payload))
+    except Exception:
+        return
+
+
 @router.get("/templates", response_model=list[CoaTemplateResponse])
 async def list_templates(
+    request: Request,
     session: AsyncSession = Depends(get_async_session),
-    _: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(get_current_user),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> list[CoaTemplateResponse]:
+    key = _cache_key("templates", tenant_id=user.tenant_id, request=request)
+    cached = await _get_cached_payload(redis_client, key=key)
+    if isinstance(cached, list):
+        return [CoaTemplateResponse.model_validate(item) for item in cached]
+
     service = CoaTemplateService(session)
     rows = await service.get_all_templates()
-    return [
+    response = [
         CoaTemplateResponse(
             id=row.id,
             code=row.code,
@@ -173,6 +220,12 @@ async def list_templates(
         )
         for row in rows
     ]
+    await _set_cached_payload(
+        redis_client,
+        key=key,
+        payload=[item.model_dump(mode="json") for item in response],
+    )
+    return response
 
 
 @router.get("/templates/{template_id}/hierarchy", response_model=CoaHierarchyResponse)
@@ -531,13 +584,21 @@ async def auto_suggest_erp_mappings(
 
 @router.get("/erp-mappings", response_model=list[ErpMappingResponse])
 async def list_erp_mappings(
+    request: Request,
     entity_id: uuid.UUID,
     erp_connector_type: str | None = Query(default=None),
     is_confirmed: bool | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
     _: object = Depends(require_org_setup),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> list[ErpMappingResponse]:
+    key = _cache_key("erp_mappings", tenant_id=user.tenant_id, request=request)
+    cached = await _get_cached_payload(redis_client, key=key)
+    if isinstance(cached, list):
+        return [ErpMappingResponse.model_validate(item) for item in cached]
     stmt = select(ErpAccountMapping).where(
         ErpAccountMapping.tenant_id == user.tenant_id,
         ErpAccountMapping.entity_id == entity_id,
@@ -546,8 +607,18 @@ async def list_erp_mappings(
         stmt = stmt.where(ErpAccountMapping.erp_connector_type == erp_connector_type)
     if is_confirmed is not None:
         stmt = stmt.where(ErpAccountMapping.is_confirmed.is_(is_confirmed))
-    rows = (await session.execute(stmt.order_by(ErpAccountMapping.erp_account_code))).scalars().all()
-    return [_mapping_response(row) for row in rows]
+    rows = (
+        await session.execute(
+            stmt.order_by(ErpAccountMapping.erp_account_code).limit(limit).offset(offset)
+        )
+    ).scalars().all()
+    response = [_mapping_response(row) for row in rows]
+    await _set_cached_payload(
+        redis_client,
+        key=key,
+        payload=[item.model_dump(mode="json") for item in response],
+    )
+    return response
 
 
 @router.patch("/erp-mappings/{mapping_id}/confirm", response_model=ErpMappingResponse)
@@ -625,19 +696,35 @@ async def get_erp_mapping_summary(
 
 @router.get("/erp-mappings/unmapped", response_model=list[ErpMappingResponse])
 async def get_unmapped_erp_accounts(
+    request: Request,
     entity_id: uuid.UUID,
     erp_connector_type: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
     _: object = Depends(require_org_setup),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> list[ErpMappingResponse]:
+    key = _cache_key("erp_unmapped", tenant_id=user.tenant_id, request=request)
+    cached = await _get_cached_payload(redis_client, key=key)
+    if isinstance(cached, list):
+        return [ErpMappingResponse.model_validate(item) for item in cached]
     service = ErpMappingService(session)
     rows = await service.get_unmapped_accounts(
         tenant_id=user.tenant_id,
         entity_id=entity_id,
         erp_connector_type=erp_connector_type,
+        limit=limit,
+        offset=offset,
     )
-    return [_mapping_response(row) for row in rows]
+    response = [_mapping_response(row) for row in rows]
+    await _set_cached_payload(
+        redis_client,
+        key=key,
+        payload=[item.model_dump(mode="json") for item in response],
+    )
+    return response
 
 
 @router.post("/trial-balance/classify", response_model=GlobalTBResponse)

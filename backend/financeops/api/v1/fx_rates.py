@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import date, timedelta
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -50,6 +51,7 @@ from financeops.temporal.fx_workflows import (
 )
 
 router = APIRouter()
+_FX_LATEST_CACHE_TTL_SECONDS = 300
 
 
 @router.post("/rates", response_model=FxRateRecord, status_code=status.HTTP_201_CREATED)
@@ -90,7 +92,7 @@ async def list_fx_rates_endpoint(
     to_currency: str | None = None,
     rate_type: str | None = None,
     effective_date: date | None = None,
-    limit: int = 200,
+    limit: int = Query(default=100, ge=1, le=500),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
@@ -131,8 +133,23 @@ async def get_latest_fx_rate_endpoint(
     as_of_date: date | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
+    redis_client: aioredis.Redis = Depends(get_redis),
 ) -> dict:
     today = as_of_date or date.today()
+    cache_key = (
+        "fx:latest:"
+        f"{user.tenant_id}:{from_currency.upper()}:{to_currency.upper()}:"
+        f"{rate_type.upper()}:{today.isoformat()}"
+    )
+    try:
+        cached = await redis_client.get(cache_key)
+        if cached:
+            parsed = json.loads(cached)
+            if isinstance(parsed, dict):
+                return parsed
+    except Exception:
+        pass
+
     row = await get_latest_fx_rate(
         session,
         tenant_id=user.tenant_id,
@@ -143,7 +160,7 @@ async def get_latest_fx_rate_endpoint(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="FX rate not found")
-    return {
+    payload = {
         "id": str(row.id),
         "tenant_id": str(row.tenant_id) if row.tenant_id else None,
         "from_currency": row.from_currency,
@@ -155,6 +172,15 @@ async def get_latest_fx_rate_endpoint(
         "created_by": str(row.created_by) if row.created_by else None,
         "created_at": row.created_at.isoformat(),
     }
+    try:
+        await redis_client.setex(
+            name=cache_key,
+            time=_FX_LATEST_CACHE_TTL_SECONDS,
+            value=json.dumps(payload),
+        )
+    except Exception:
+        pass
+    return payload
 
 
 @router.post("/fetch-live", response_model=FetchLiveRatesResponse, status_code=status.HTTP_201_CREATED)
@@ -258,8 +284,8 @@ async def list_manual_monthly_rates_endpoint(
     period_month: int | None = None,
     base_currency: str | None = None,
     quote_currency: str | None = None,
-    limit: int = 200,
-    offset: int = 0,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:

@@ -154,22 +154,29 @@ async def list_sync_runs(
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
-    total = (
-        await session.execute(
-            select(func.count()).select_from(
-                select(ExternalSyncRun).where(ExternalSyncRun.tenant_id == user.tenant_id).subquery()
+    total = int(
+        (
+            await session.execute(
+                select(func.count(ExternalSyncRun.id)).where(
+                    ExternalSyncRun.tenant_id == user.tenant_id
+                )
             )
-        )
-    ).scalar_one()
-    rows = (
-        await session.execute(
-            select(ExternalSyncRun)
+        ).scalar_one()
+        or 0
+    )
+    rows = (await session.execute(
+            select(
+                ExternalSyncRun.id,
+                ExternalSyncRun.dataset_type,
+                ExternalSyncRun.run_status,
+                ExternalSyncRun.run_token,
+                ExternalSyncRun.reporting_period_label,
+            )
             .where(ExternalSyncRun.tenant_id == user.tenant_id)
             .order_by(ExternalSyncRun.created_at.desc(), ExternalSyncRun.id.desc())
             .limit(limit)
             .offset(offset)
-        )
-    ).scalars().all()
+        )).all()
     items = [
         {
             "id": str(row.id),
@@ -182,7 +189,7 @@ async def list_sync_runs(
     ]
     payload: dict[str, Any]
     if pagination_requested:
-        payload = {"data": items, "total": int(total), "limit": limit, "offset": offset}
+        payload = {"data": items, "total": total, "limit": limit, "offset": offset}
     else:
         payload = {"items": items}
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
@@ -227,26 +234,30 @@ async def get_sync_run_evidence(
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
-    total = (
-        await session.execute(
-            select(func.count()).select_from(
-                select(ExternalSyncEvidenceLink).where(
+    total = int(
+        (
+            await session.execute(
+                select(func.count(ExternalSyncEvidenceLink.id)).where(
                     ExternalSyncEvidenceLink.tenant_id == user.tenant_id,
                     ExternalSyncEvidenceLink.sync_run_id == uuid.UUID(id),
-                ).subquery()
+                )
             )
-        )
-    ).scalar_one()
-    rows = (
-        await session.execute(
-            select(ExternalSyncEvidenceLink).where(
+        ).scalar_one()
+        or 0
+    )
+    rows = (await session.execute(
+            select(
+                ExternalSyncEvidenceLink.id,
+                ExternalSyncEvidenceLink.evidence_type,
+                ExternalSyncEvidenceLink.evidence_ref,
+                ExternalSyncEvidenceLink.evidence_label,
+            ).where(
                 ExternalSyncEvidenceLink.tenant_id == user.tenant_id,
                 ExternalSyncEvidenceLink.sync_run_id == uuid.UUID(id),
             )
             .limit(limit)
             .offset(offset)
-        )
-    ).scalars().all()
+        )).all()
     items = [
         {
             "id": str(row.id),
@@ -261,7 +272,7 @@ async def get_sync_run_evidence(
         payload = {
             "id": id,
             "data": items,
-            "total": int(total),
+            "total": total,
             "limit": limit,
             "offset": offset,
         }
@@ -280,26 +291,31 @@ async def get_sync_run_errors(
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
-    total = (
-        await session.execute(
-            select(func.count()).select_from(
-                select(ExternalSyncError).where(
+    total = int(
+        (
+            await session.execute(
+                select(func.count(ExternalSyncError.id)).where(
                     ExternalSyncError.tenant_id == user.tenant_id,
                     ExternalSyncError.sync_run_id == uuid.UUID(id),
-                ).subquery()
+                )
             )
-        )
-    ).scalar_one()
-    rows = (
-        await session.execute(
-            select(ExternalSyncError).where(
+        ).scalar_one()
+        or 0
+    )
+    rows = (await session.execute(
+            select(
+                ExternalSyncError.id,
+                ExternalSyncError.error_code,
+                ExternalSyncError.severity,
+                ExternalSyncError.message,
+                ExternalSyncError.details_json,
+            ).where(
                 ExternalSyncError.tenant_id == user.tenant_id,
                 ExternalSyncError.sync_run_id == uuid.UUID(id),
             )
             .limit(limit)
             .offset(offset)
-        )
-    ).scalars().all()
+        )).all()
     items = [
         {
             "id": str(row.id),
@@ -315,7 +331,7 @@ async def get_sync_run_errors(
         payload = {
             "id": id,
             "data": items,
-            "total": int(total),
+            "total": total,
             "limit": limit,
             "offset": offset,
         }

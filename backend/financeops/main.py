@@ -12,6 +12,7 @@ from typing import AsyncIterator
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from prometheus_client import make_asgi_app
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -263,6 +264,7 @@ def create_app() -> FastAPI:
     app.add_middleware(ApiResponseEnvelopeMiddleware)
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(LoggingMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     # CORS (registered last so it executes before custom middleware in Starlette)
     resolved_origins = _resolve_cors_origins()

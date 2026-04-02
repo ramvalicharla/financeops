@@ -51,12 +51,16 @@ async def list_alerts(
     db: AsyncSession,
     *,
     tenant_id: uuid.UUID,
+    limit: int = 50,
+    offset: int = 0,
 ) -> list[AlertRow]:
     rows = (
         await db.execute(
             select(AnalyticsAlert)
             .where(AnalyticsAlert.tenant_id == tenant_id)
             .order_by(AnalyticsAlert.created_at.desc())
+            .limit(limit)
+            .offset(offset)
         )
     ).scalars().all()
     return [
@@ -99,4 +103,3 @@ async def evaluate_alerts(
             )
         )
     return payload
-

@@ -5,6 +5,7 @@ import uuid
 from datetime import date, timedelta
 from typing import Any
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,12 +28,14 @@ from financeops.modules.ai_cfo_layer.application.recommendation_service import (
 from financeops.modules.ai_cfo_layer.application.suggestion_service import (
     generate_journal_suggestions,
 )
+from financeops.modules.ai_cfo_layer.tasks import generate_narrative_async_task
 from financeops.observability.business_metrics import (
     ai_anomaly_generation_counter,
     ai_narrative_duration_ms,
     ai_recommendation_failures_counter,
 )
 from financeops.shared_kernel.response import ok
+from financeops.tasks.celery_app import celery_app
 
 router = APIRouter(prefix="/ai", tags=["AI CFO"])
 
@@ -183,6 +186,59 @@ async def narrative_endpoint(
     except Exception:
         ai_narrative_duration_ms.labels(status="failed").observe((time.perf_counter() - started) * 1000)
         raise
+
+
+@router.post("/narrative/async")
+async def narrative_async_endpoint(
+    request: Request,
+    org_entity_id: uuid.UUID | None = Query(default=None),
+    org_group_id: uuid.UUID | None = Query(default=None),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    comparison: str = Query(default="prev_month"),
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    _assert_access(user)
+    if from_date is None or to_date is None:
+        from_date, to_date = _default_window()
+    task = generate_narrative_async_task.delay(
+        tenant_id=str(user.tenant_id),
+        actor_user_id=str(user.id),
+        org_entity_id=str(org_entity_id) if org_entity_id else None,
+        org_group_id=str(org_group_id) if org_group_id else None,
+        from_date=from_date.isoformat(),
+        to_date=to_date.isoformat(),
+        comparison=comparison,
+    )
+    return ok(
+        {
+            "task_id": str(task.id),
+            "status": "queued",
+        },
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
+
+
+@router.get("/narrative/tasks/{task_id}")
+async def narrative_task_status_endpoint(
+    request: Request,
+    task_id: str,
+    user: IamUser = Depends(get_current_user),
+) -> dict[str, Any]:
+    _assert_access(user)
+    task_result = AsyncResult(task_id, app=celery_app)
+    payload: dict[str, Any] = {
+        "task_id": task_id,
+        "status": str(task_result.status).lower(),
+    }
+    if task_result.successful():
+        payload["result"] = task_result.result
+    elif task_result.failed():
+        payload["error"] = str(task_result.result)
+    return ok(
+        payload,
+        request_id=getattr(request.state, "request_id", None),
+    ).model_dump(mode="json")
 
 
 @router.get("/suggestions")
