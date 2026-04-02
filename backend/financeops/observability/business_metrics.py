@@ -97,3 +97,97 @@ workflow_completed_counter = Counter(
     "Temporal workflows completed",
     ["workflow_type", "status"],
 )
+
+# API observability metrics
+api_request_counter = Counter(
+    "financeops_api_requests_total",
+    "Total API requests",
+    ["method", "path", "status_code"],
+)
+
+api_error_counter = Counter(
+    "financeops_api_errors_total",
+    "Total API error responses",
+    ["method", "path", "status_code"],
+)
+
+api_request_latency_ms = Histogram(
+    "financeops_api_request_latency_ms",
+    "API request latency in milliseconds",
+    ["method", "path"],
+    buckets=[5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000],
+)
+
+# Finance workflow timings/signals (p50/p95/p99 derived by Prometheus over histogram)
+finance_workflow_duration_ms = Histogram(
+    "financeops_finance_workflow_duration_ms",
+    "Finance workflow duration in milliseconds",
+    ["workflow", "status"],
+    buckets=[10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000],
+)
+
+finance_workflow_counter = Counter(
+    "financeops_finance_workflow_total",
+    "Finance workflow run count",
+    ["workflow", "status"],
+)
+
+# ERP sync observability
+erp_sync_duration_ms = Histogram(
+    "financeops_erp_sync_duration_ms",
+    "ERP sync request duration in milliseconds",
+    ["operation", "status"],
+    buckets=[25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000],
+)
+
+# Governance observability
+governance_operation_counter = Counter(
+    "financeops_governance_operations_total",
+    "Governance operation count",
+    ["operation", "status"],
+)
+
+close_readiness_failures_counter = Counter(
+    "financeops_close_readiness_failures_total",
+    "Close readiness failures",
+    ["reason"],
+)
+
+close_checklist_blockers_gauge = Gauge(
+    "financeops_close_checklist_blockers_current",
+    "Current checklist blockers count",
+    ["tenant_id", "entity_id"],
+)
+
+# AI observability
+ai_anomaly_generation_counter = Counter(
+    "financeops_ai_anomaly_generation_total",
+    "AI anomaly generation events",
+    ["status"],
+)
+
+ai_narrative_duration_ms = Histogram(
+    "financeops_ai_narrative_duration_ms",
+    "AI narrative generation duration in milliseconds",
+    ["status"],
+    buckets=[50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000],
+)
+
+ai_recommendation_failures_counter = Counter(
+    "financeops_ai_recommendation_failures_total",
+    "AI recommendation generation failures",
+    ["reason"],
+)
+
+# Alert-ready counters
+auth_failure_counter = Counter(
+    "financeops_auth_failures_total",
+    "Authentication/authorization failures",
+    ["failure_type"],
+)
+
+upload_validation_failure_counter = Counter(
+    "financeops_upload_validation_failures_total",
+    "Upload validation failures",
+    ["module"],
+)

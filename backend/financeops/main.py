@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
 from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import make_asgi_app
 from slowapi import _rate_limit_exceeded_handler
@@ -79,6 +80,7 @@ from financeops.core.middleware import (
 from financeops.observability.logging import configure_logging
 from financeops.observability.middleware import LoggingMiddleware
 from financeops.observability.sentry import configure_sentry
+from financeops.observability.tracing import configure_telemetry
 from financeops.observability import business_metrics as _business_metrics  # noqa: F401
 from financeops.shared_kernel.response import (
     ApiResponseEnvelopeMiddleware,
@@ -281,9 +283,23 @@ def create_app() -> FastAPI:
     app.mount("/metrics", metrics_app)
 
     # Health endpoint (no prefix — accessible at root)
-    from financeops.api.v1.health import router as health_router
+    from financeops.api.v1.health import (
+        build_liveness_payload,
+        build_readiness_payload,
+        router as health_router,
+    )
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(debug_network_router)
+
+    @app.get("/live", tags=["Health"])
+    async def live_root() -> dict[str, object]:
+        return build_liveness_payload()
+
+    @app.get("/ready", tags=["Health"])
+    async def ready_root() -> JSONResponse:
+        startup_errors = getattr(app.state, "startup_errors", [])
+        payload, code = await build_readiness_payload(startup_errors=startup_errors)
+        return JSONResponse(content=payload, status_code=code)
 
     # API v1
     org_setup_dependency = [Depends(require_org_setup)]
@@ -332,13 +348,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_ai_providers_router, prefix="/api/v1", dependencies=org_setup_dependency)
 
     # OpenTelemetry instrumentation
-    if settings.OTEL_EXPORTER_OTLP_ENDPOINT:
-        try:
-            from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-            FastAPIInstrumentor.instrument_app(app)
-            log.info("OpenTelemetry FastAPI instrumentation enabled")
-        except Exception as exc:
-            log.warning("OTel FastAPI instrumentation failed: %s", exc)
+    configure_telemetry(app=app, engine=engine, settings=settings)
 
     log.info("FastAPI application created with %d routes", len(app.routes))
     return app

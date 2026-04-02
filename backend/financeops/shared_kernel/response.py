@@ -76,10 +76,17 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        request_id = (
+            getattr(request.state, "request_id", None)
+            or request.headers.get("X-Request-ID")
+            or str(uuid.uuid4())
+        )
         request.state.request_id = request_id
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        correlation_id = getattr(request.state, "correlation_id", None)
+        if correlation_id:
+            response.headers["X-Correlation-ID"] = str(correlation_id)
         billing_warning = getattr(request.state, "billing_warning", None)
         if billing_warning:
             response.headers["X-Billing-Warning"] = str(billing_warning)

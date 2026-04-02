@@ -8,12 +8,18 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from financeops.observability.business_metrics import (
+    auth_failure_counter,
+    upload_validation_failure_counter,
+)
 from financeops.shared_kernel.response import err
+
 log = logging.getLogger(__name__)
 
 
 class FinanceOpsError(Exception):
     """Base exception for all FinanceOps errors."""
+
     status_code: int = 500
     error_code: str = "internal_error"
 
@@ -143,17 +149,32 @@ def _error_response(
 
 
 async def financeops_error_handler(request: Request, exc: FinanceOpsError) -> JSONResponse:
+    if exc.status_code in {401, 403}:
+        auth_failure_counter.labels(failure_type=exc.error_code).inc()
+    if "file_validation_failed" in str(exc.message):
+        upload_validation_failure_counter.labels(module="api").inc()
     log.error(
-        "FinanceOpsError: %s %s — %s",
-        exc.error_code,
-        exc.status_code,
-        exc.message,
+        "financeops_error",
+        extra={
+            "event": "financeops_error",
+            "error_code": exc.error_code,
+            "status_code": exc.status_code,
+            "message": exc.message,
+            "path": request.url.path,
+        },
     )
     return _error_response(request, exc.status_code, exc.error_code, exc.message)
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    log.exception("Unhandled exception: %s", exc)
+    log.exception(
+        "unhandled_exception",
+        extra={
+            "event": "unhandled_exception",
+            "error_type": exc.__class__.__name__,
+            "path": request.url.path,
+        },
+    )
     return _error_response(
         request,
         500,
@@ -202,6 +223,11 @@ async def http_exception_handler(
         } or None
     else:
         message = str(detail)
+
+    if exc.status_code in {401, 403}:
+        auth_failure_counter.labels(failure_type=f"http_{exc.status_code}").inc()
+    if isinstance(detail, str) and "file_validation_failed" in detail:
+        upload_validation_failure_counter.labels(module="api").inc()
 
     return _error_response(
         request,

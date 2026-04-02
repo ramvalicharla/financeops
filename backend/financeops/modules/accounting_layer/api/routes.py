@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import time
 import uuid
 from typing import Any
 
@@ -67,6 +68,12 @@ from financeops.modules.accounting_layer.domain.schemas import (
     TrialBalanceResponse,
 )
 from financeops.shared_kernel.response import ok
+from financeops.observability.business_metrics import finance_workflow_duration_ms
+from financeops.observability.workflow_signals import (
+    complete_workflow,
+    fail_workflow,
+    start_workflow,
+)
 
 jv_router = APIRouter(prefix="/jv", tags=["Accounting JV"])
 journals_router = APIRouter(prefix="/journals", tags=["Accounting Journals"])
@@ -383,12 +390,16 @@ async def post_journal_endpoint(
 ) -> dict[str, Any]:
     if not _can_post(user):
         raise AuthorizationError("finance poster role required")
+    started = time.perf_counter()
     result = await post_journal(
         session,
         tenant_id=user.tenant_id,
         journal_id=journal_id,
         acted_by=user.id,
         actor_role=user.role.value,
+    )
+    finance_workflow_duration_ms.labels(workflow="journal_post", status="success").observe(
+        (time.perf_counter() - started) * 1000
     )
     await session.flush()
     payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
@@ -495,6 +506,7 @@ async def get_trial_balance_endpoint(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
 ) -> dict[str, Any]:
+    started = time.perf_counter()
     payload = await get_trial_balance(
         session,
         tenant_id=user.tenant_id,
@@ -502,6 +514,9 @@ async def get_trial_balance_endpoint(
         as_of_date=as_of_date,
         from_date=from_date,
         to_date=to_date,
+    )
+    finance_workflow_duration_ms.labels(workflow="trial_balance_generation", status="success").observe(
+        (time.perf_counter() - started) * 1000
     )
     result = TrialBalanceResponse.model_validate(payload).model_dump(mode="json")
     return ok(
@@ -519,12 +534,16 @@ async def get_pnl_endpoint(
     from_date: date = Query(...),
     to_date: date = Query(...),
 ) -> dict[str, Any]:
+    started = time.perf_counter()
     payload = await get_profit_and_loss(
         session,
         tenant_id=user.tenant_id,
         org_entity_id=org_entity_id,
         from_date=from_date,
         to_date=to_date,
+    )
+    finance_workflow_duration_ms.labels(workflow="pnl_generation", status="success").observe(
+        (time.perf_counter() - started) * 1000
     )
     result = PnLResponse.model_validate(payload).model_dump(mode="json")
     return ok(
@@ -541,11 +560,15 @@ async def get_balance_sheet_endpoint(
     org_entity_id: uuid.UUID = Query(...),
     as_of_date: date = Query(...),
 ) -> dict[str, Any]:
+    started = time.perf_counter()
     payload = await get_balance_sheet(
         session,
         tenant_id=user.tenant_id,
         org_entity_id=org_entity_id,
         as_of_date=as_of_date,
+    )
+    finance_workflow_duration_ms.labels(workflow="balance_sheet_generation", status="success").observe(
+        (time.perf_counter() - started) * 1000
     )
     result = BalanceSheetResponse.model_validate(payload).model_dump(mode="json")
     return ok(
@@ -563,12 +586,16 @@ async def get_cash_flow_endpoint(
     from_date: date = Query(...),
     to_date: date = Query(...),
 ) -> dict[str, Any]:
+    started = time.perf_counter()
     payload = await get_cash_flow_statement(
         session,
         tenant_id=user.tenant_id,
         org_entity_id=org_entity_id,
         from_date=from_date,
         to_date=to_date,
+    )
+    finance_workflow_duration_ms.labels(workflow="cash_flow_generation", status="success").observe(
+        (time.perf_counter() - started) * 1000
     )
     result = CashFlowResponse.model_validate(payload).model_dump(mode="json")
     return ok(
@@ -584,14 +611,30 @@ async def run_revaluation_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    payload = await run_fx_revaluation(
-        session,
-        tenant_id=user.tenant_id,
-        entity_id=body.org_entity_id,
-        as_of_date=body.as_of_date,
-        initiated_by=user.id,
-        actor_role=user.role.value,
+    timer = start_workflow(
+        workflow="revaluation_run",
+        tenant_id=str(user.tenant_id),
+        module="accounting",
+        correlation_id=str(getattr(request.state, "correlation_id", "") or "") or None,
+        run_id=str(body.org_entity_id),
     )
+    try:
+        payload = await run_fx_revaluation(
+            session,
+            tenant_id=user.tenant_id,
+            entity_id=body.org_entity_id,
+            as_of_date=body.as_of_date,
+            initiated_by=user.id,
+            actor_role=user.role.value,
+        )
+        complete_workflow(
+            timer,
+            status="success",
+            extra={"run_id": str(payload.get("revaluation_run_id") or "")},
+        )
+    except Exception as exc:
+        fail_workflow(timer, error=exc)
+        raise
     result = RevaluationRunResponse.model_validate(payload).model_dump(mode="json")
     return ok(
         result,

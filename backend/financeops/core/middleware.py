@@ -19,6 +19,8 @@ log = logging.getLogger(__name__)
 
 _RLS_SKIP_PREFIXES = (
     "/health",
+    "/ready",
+    "/live",
     "/docs",
     "/openapi.json",
     "/redoc",
@@ -28,6 +30,8 @@ _RLS_SKIP_PREFIXES = (
 _BODY_METHODS = {"POST", "PUT", "PATCH"}
 _REQUEST_SIZE_BYPASS_PREFIXES = (
     "/health",
+    "/ready",
+    "/live",
     "/metrics",
     "/docs",
     "/redoc",
@@ -55,7 +59,11 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        correlation_id = str(uuid.uuid4())
+        correlation_id = (
+            request.headers.get("X-Correlation-ID")
+            or getattr(request.state, "correlation_id", None)
+            or str(uuid.uuid4())
+        )
         request.state.correlation_id = correlation_id
         response = await call_next(request)
         response.headers["X-Correlation-ID"] = correlation_id
@@ -118,13 +126,16 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         correlation_id = getattr(request.state, "correlation_id", "unknown")
 
         log.info(
-            "%s %s %d %.2fms tenant=%s corr=%s",
-            request.method,
-            request.url.path,
-            response.status_code,
-            duration_ms,
-            tenant_id_hash,
-            correlation_id,
+            "request_observed",
+            extra={
+                "event": "request_observed",
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+                "tenant_hash": tenant_id_hash,
+                "correlation_id": correlation_id,
+            },
         )
         return response
 

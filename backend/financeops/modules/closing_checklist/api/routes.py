@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,14 @@ from financeops.modules.accounting_layer.application.governance_service import (
     unlock_period,
 )
 from financeops.modules.notifications.service import send_notification
+from financeops.observability.business_metrics import close_checklist_blockers_gauge
+from financeops.observability.workflow_signals import (
+    complete_workflow,
+    fail_workflow,
+    observe_close_readiness_failure,
+    observe_governance_operation,
+    start_workflow,
+)
 from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
@@ -294,6 +302,7 @@ async def lock_period_endpoint(
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     if not _can_lock_period(user):
+        observe_governance_operation(operation="lock_period", status="denied")
         raise HTTPException(status_code=403, detail="finance approver role required")
 
     if body.lock_type.upper() == "HARD_CLOSED":
@@ -310,6 +319,9 @@ async def lock_period_endpoint(
             period_number=body.period_number,
         )
         if not readiness["pass"]:
+            observe_governance_operation(operation="lock_period", status="blocked_readiness")
+            for blocker in readiness.get("blockers", []):
+                observe_close_readiness_failure(reason=str(blocker)[:100])
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -320,18 +332,23 @@ async def lock_period_endpoint(
                 },
             )
 
-    payload = await lock_period(
-        session,
-        tenant_id=user.tenant_id,
-        org_entity_id=body.org_entity_id,
-        fiscal_year=body.fiscal_year,
-        period_number=body.period_number,
-        lock_type=body.lock_type,
-        reason=body.reason,
-        actor_user_id=user.id,
-    )
-    await session.flush()
-    return payload
+    try:
+        payload = await lock_period(
+            session,
+            tenant_id=user.tenant_id,
+            org_entity_id=body.org_entity_id,
+            fiscal_year=body.fiscal_year,
+            period_number=body.period_number,
+            lock_type=body.lock_type,
+            reason=body.reason,
+            actor_user_id=user.id,
+        )
+        await session.flush()
+        observe_governance_operation(operation="lock_period", status="success")
+        return payload
+    except Exception:
+        observe_governance_operation(operation="lock_period", status="failed")
+        raise
 
 
 @router.post("/unlock-period")
@@ -340,18 +357,27 @@ async def unlock_period_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    ensure_unlock_role(user.role)
-    payload = await unlock_period(
-        session,
-        tenant_id=user.tenant_id,
-        org_entity_id=body.org_entity_id,
-        fiscal_year=body.fiscal_year,
-        period_number=body.period_number,
-        reason=body.reason,
-        actor_user_id=user.id,
-    )
-    await session.flush()
-    return payload
+    try:
+        ensure_unlock_role(user.role)
+    except Exception:
+        observe_governance_operation(operation="unlock_period", status="denied")
+        raise
+    try:
+        payload = await unlock_period(
+            session,
+            tenant_id=user.tenant_id,
+            org_entity_id=body.org_entity_id,
+            fiscal_year=body.fiscal_year,
+            period_number=body.period_number,
+            reason=body.reason,
+            actor_user_id=user.id,
+        )
+        await session.flush()
+        observe_governance_operation(operation="unlock_period", status="success")
+        return payload
+    except Exception:
+        observe_governance_operation(operation="unlock_period", status="failed")
+        raise
 
 
 @router.get("/period-status")
@@ -433,6 +459,7 @@ async def complete_checklist_item_endpoint(
 
 @router.post("/run-readiness")
 async def run_readiness_endpoint(
+    request: Request,
     body: ReadinessRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -444,13 +471,38 @@ async def run_readiness_endpoint(
         user.id,
         user.role,
     )
-    return await run_close_readiness(
-        session,
-        tenant_id=user.tenant_id,
-        org_entity_id=body.org_entity_id,
-        fiscal_year=body.fiscal_year,
-        period_number=body.period_number,
+    timer = start_workflow(
+        workflow="close_readiness_run",
+        tenant_id=str(user.tenant_id),
+        module="close",
+        correlation_id=str(getattr(request.state, "correlation_id", "") or "") or None,
+        run_id=str(body.org_entity_id),
     )
+    try:
+        payload = await run_close_readiness(
+            session,
+            tenant_id=user.tenant_id,
+            org_entity_id=body.org_entity_id,
+            fiscal_year=body.fiscal_year,
+            period_number=body.period_number,
+        )
+        blockers = payload.get("blockers", [])
+        close_checklist_blockers_gauge.labels(
+            tenant_id=str(user.tenant_id),
+            entity_id=str(body.org_entity_id),
+        ).set(len(blockers))
+        if not payload.get("pass", False):
+            for blocker in blockers:
+                observe_close_readiness_failure(reason=str(blocker)[:100])
+        complete_workflow(
+            timer,
+            status="success" if payload.get("pass", False) else "failed",
+            extra={"blocker_count": len(blockers)},
+        )
+        return payload
+    except Exception as exc:
+        fail_workflow(timer, error=exc)
+        raise
 
 
 @router.get("/history")

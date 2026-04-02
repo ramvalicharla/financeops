@@ -51,6 +51,11 @@ from financeops.services.consolidation.group_consolidation_service import (
     get_group_consolidation_summary,
     run_group_consolidation,
 )
+from financeops.observability.workflow_signals import (
+    complete_workflow,
+    fail_workflow,
+    start_workflow,
+)
 from financeops.modules.accounting_layer.application.governance_service import (
     assert_group_period_not_hard_closed,
     record_governance_event,
@@ -73,78 +78,96 @@ async def start_consolidation_run_endpoint(
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
     correlation_id = str(getattr(request.state, "correlation_id", "") or "")
-    if isinstance(body, ConsolidationGroupRunRequest):
-        await assert_group_period_not_hard_closed(
+    timer = start_workflow(
+        workflow="consolidation_run",
+        tenant_id=str(user.tenant_id),
+        module="consolidation",
+        correlation_id=correlation_id,
+    )
+    try:
+        if isinstance(body, ConsolidationGroupRunRequest):
+            await assert_group_period_not_hard_closed(
+                session,
+                tenant_id=user.tenant_id,
+                org_group_id=body.org_group_id,
+                as_of_date=body.as_of_date,
+            )
+            payload = await run_group_consolidation(
+                session,
+                tenant_id=user.tenant_id,
+                initiated_by=user.id,
+                org_group_id=body.org_group_id,
+                as_of_date=body.as_of_date,
+                from_date=body.from_date,
+                to_date=body.to_date,
+                presentation_currency=body.presentation_currency,
+                correlation_id=correlation_id,
+            )
+            complete_workflow(
+                timer,
+                status="accepted",
+                extra={"run_id": payload.get("run_id"), "workflow_id": payload.get("workflow_id")},
+            )
+            return payload
+
+        period_lock = await resolve_effective_period_lock(
             session,
             tenant_id=user.tenant_id,
-            org_group_id=body.org_group_id,
-            as_of_date=body.as_of_date,
+            org_entity_id=None,
+            fiscal_year=body.period_year,
+            period_number=body.period_month,
         )
-        return await run_group_consolidation(
+        if period_lock.is_hard_closed:
+            raise ValidationError("Period is HARD_CLOSED. Consolidation rerun is blocked.")
+
+        run = await create_or_get_run(
+            # Legacy consolidated run is blocked when tenant-level period is hard-closed.
+            # Entity-scoped lock checks are handled by group-consolidation path.
             session,
             tenant_id=user.tenant_id,
             initiated_by=user.id,
-            org_group_id=body.org_group_id,
-            as_of_date=body.as_of_date,
-            from_date=body.from_date,
-            to_date=body.to_date,
-            presentation_currency=body.presentation_currency,
+            period_year=body.period_year,
+            period_month=body.period_month,
+            parent_currency=body.parent_currency,
+            rate_mode=body.rate_mode.value,
+            mappings=[
+                EntitySnapshotMapping(entity_id=item.entity_id, snapshot_id=item.snapshot_id)
+                for item in body.entity_snapshots
+            ],
+            amount_tolerance_parent=body.amount_tolerance_parent,
+            fx_explained_tolerance_parent=body.fx_explained_tolerance_parent,
+            timing_tolerance_days=body.timing_tolerance_days,
             correlation_id=correlation_id,
         )
+        await session.flush()
 
-    period_lock = await resolve_effective_period_lock(
-        session,
-        tenant_id=user.tenant_id,
-        org_entity_id=None,
-        fiscal_year=body.period_year,
-        period_number=body.period_month,
-    )
-    if period_lock.is_hard_closed:
-        raise ValidationError("Period is HARD_CLOSED. Consolidation rerun is blocked.")
+        if run.created_new:
+            temporal_client = await get_temporal_client()
+            await temporal_client.start_workflow(
+                ConsolidationWorkflow.run,
+                ConsolidationWorkflowInput(
+                    run_id=str(run.run_id),
+                    tenant_id=str(user.tenant_id),
+                    correlation_id=correlation_id,
+                    requested_by=str(user.id),
+                    config_hash=run.request_signature,
+                ),
+                id=run.workflow_id,
+                task_queue=settings.TEMPORAL_TASK_QUEUE,
+                execution_timeout=timedelta(minutes=15),
+            )
 
-    run = await create_or_get_run(
-        # Legacy consolidated run is blocked when tenant-level period is hard-closed.
-        # Entity-scoped lock checks are handled by group-consolidation path.
-        session,
-        tenant_id=user.tenant_id,
-        initiated_by=user.id,
-        period_year=body.period_year,
-        period_month=body.period_month,
-        parent_currency=body.parent_currency,
-        rate_mode=body.rate_mode.value,
-        mappings=[
-            EntitySnapshotMapping(entity_id=item.entity_id, snapshot_id=item.snapshot_id)
-            for item in body.entity_snapshots
-        ],
-        amount_tolerance_parent=body.amount_tolerance_parent,
-        fx_explained_tolerance_parent=body.fx_explained_tolerance_parent,
-        timing_tolerance_days=body.timing_tolerance_days,
-        correlation_id=correlation_id,
-    )
-    await session.flush()
-
-    if run.created_new:
-        temporal_client = await get_temporal_client()
-        await temporal_client.start_workflow(
-            ConsolidationWorkflow.run,
-            ConsolidationWorkflowInput(
-                run_id=str(run.run_id),
-                tenant_id=str(user.tenant_id),
-                correlation_id=correlation_id,
-                requested_by=str(user.id),
-                config_hash=run.request_signature,
-            ),
-            id=run.workflow_id,
-            task_queue=settings.TEMPORAL_TASK_QUEUE,
-            execution_timeout=timedelta(minutes=15),
-        )
-
-    return {
-        "run_id": str(run.run_id),
-        "workflow_id": run.workflow_id,
-        "status": "accepted" if run.created_new else run.status,
-        "correlation_id": correlation_id,
-    }
+        payload = {
+            "run_id": str(run.run_id),
+            "workflow_id": run.workflow_id,
+            "status": "accepted" if run.created_new else run.status,
+            "correlation_id": correlation_id,
+        }
+        complete_workflow(timer, status="accepted", extra={"run_id": payload["run_id"]})
+        return payload
+    except Exception as exc:
+        fail_workflow(timer, error=exc)
+        raise
 
 
 @router.get("/summary", response_model=ConsolidationGroupSummaryResponse)
@@ -199,41 +222,58 @@ async def get_group_consolidation_run_statements_endpoint(
 
 @router.get("/translate", response_model=ConsolidationTranslationResponse)
 async def get_consolidation_translation_endpoint(
+    request: Request,
     org_group_id: UUID = Query(...),
     presentation_currency: str = Query(..., min_length=3, max_length=3),
     as_of_date: date = Query(...),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
+    correlation_id = str(getattr(request.state, "correlation_id", "") or "")
+    timer = start_workflow(
+        workflow="translation_run",
+        tenant_id=str(user.tenant_id),
+        module="consolidation",
+        correlation_id=correlation_id or None,
+    )
     await assert_group_period_not_hard_closed(
         session,
         tenant_id=user.tenant_id,
         org_group_id=org_group_id,
         as_of_date=as_of_date,
     )
-    payload = await translate_group_financials(
-        session,
-        tenant_id=user.tenant_id,
-        org_group_id=org_group_id,
-        presentation_currency=presentation_currency,
-        as_of_date=as_of_date,
-        initiated_by=user.id,
-    )
-    await record_governance_event(
-        session,
-        tenant_id=user.tenant_id,
-        entity_id=None,
-        actor_user_id=user.id,
-        module="period_close",
-        action="consolidation_translate",
-        target_id=str(org_group_id),
-        payload={
-            "org_group_id": str(org_group_id),
-            "as_of_date": as_of_date.isoformat(),
-            "presentation_currency": presentation_currency,
-        },
-    )
-    return payload
+    try:
+        payload = await translate_group_financials(
+            session,
+            tenant_id=user.tenant_id,
+            org_group_id=org_group_id,
+            presentation_currency=presentation_currency,
+            as_of_date=as_of_date,
+            initiated_by=user.id,
+        )
+        await record_governance_event(
+            session,
+            tenant_id=user.tenant_id,
+            entity_id=None,
+            actor_user_id=user.id,
+            module="period_close",
+            action="consolidation_translate",
+            target_id=str(org_group_id),
+            payload={
+                "org_group_id": str(org_group_id),
+                "as_of_date": as_of_date.isoformat(),
+                "presentation_currency": presentation_currency,
+            },
+        )
+        complete_workflow(
+            timer,
+            status="success",
+            extra={"run_id": str(payload.get("translation_run_id") or "")},
+        )
+        return payload
+    except Exception as exc:
+        fail_workflow(timer, error=exc)
+        raise
 
 
 @router.get("/run/{run_id}", response_model=ConsolidationRunStatusResponse)

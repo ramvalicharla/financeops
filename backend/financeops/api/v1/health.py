@@ -229,18 +229,63 @@ async def _build_health_payload() -> dict[str, Any]:
     }
 
 
+async def build_health_summary_payload(startup_errors: list[str] | None = None) -> dict[str, Any]:
+    startup_errors = startup_errors or []
+    payload = await asyncio.wait_for(_build_health_payload(), timeout=5.0)
+    payload["startup_errors"] = startup_errors
+    if startup_errors and payload["health_status"] == "healthy":
+        payload["health_status"] = "degraded"
+    payload["status"] = "ok" if payload["health_status"] == "healthy" else payload["health_status"]
+    return payload
+
+
+async def build_readiness_payload(startup_errors: list[str] | None = None) -> tuple[dict[str, Any], int]:
+    startup_errors = startup_errors or []
+    db_check, redis_check = await asyncio.gather(_check_database(), _check_redis())
+    ready = (
+        db_check.get("status") == "healthy"
+        and redis_check.get("status") == "healthy"
+    )
+    payload = {
+        "status": "ready" if ready else "not_ready",
+        "ready": ready,
+        "checks": {
+            "database": db_check,
+            "redis": redis_check,
+        },
+        "startup_errors": startup_errors,
+        "timestamp": utc_now_iso(),
+        "environment": settings.APP_ENVIRONMENT,
+    }
+    return payload, status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
+
+
+def build_liveness_payload() -> dict[str, Any]:
+    return {
+        "status": "alive",
+        "live": True,
+        "timestamp": utc_now_iso(),
+        "version": settings.APP_RELEASE,
+    }
+
+
 @router.get("")
 async def health_check(request: Request) -> JSONResponse:
     startup_errors = getattr(request.app.state, "startup_errors", [])
-    payload = {
-        "status": "ok",
-        "health_status": "healthy" if not startup_errors else "degraded",
-        "version": settings.APP_RELEASE,
-        "environment": settings.APP_ENVIRONMENT,
-        "timestamp": utc_now_iso(),
-        "startup_errors": startup_errors,
-    }
+    payload = await build_health_summary_payload(startup_errors=startup_errors)
     return JSONResponse(content=payload, status_code=status.HTTP_200_OK)
+
+
+@router.get("/ready")
+async def health_ready(request: Request) -> JSONResponse:
+    startup_errors = getattr(request.app.state, "startup_errors", [])
+    payload, code = await build_readiness_payload(startup_errors=startup_errors)
+    return JSONResponse(content=payload, status_code=code)
+
+
+@router.get("/live")
+async def health_live() -> JSONResponse:
+    return JSONResponse(content=build_liveness_payload(), status_code=status.HTTP_200_OK)
 
 
 @router.get("/deep")

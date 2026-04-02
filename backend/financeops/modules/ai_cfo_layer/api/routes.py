@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import date, timedelta
 from typing import Any
@@ -25,6 +26,11 @@ from financeops.modules.ai_cfo_layer.application.recommendation_service import (
 )
 from financeops.modules.ai_cfo_layer.application.suggestion_service import (
     generate_journal_suggestions,
+)
+from financeops.observability.business_metrics import (
+    ai_anomaly_generation_counter,
+    ai_narrative_duration_ms,
+    ai_recommendation_failures_counter,
 )
 from financeops.shared_kernel.response import ok
 
@@ -65,18 +71,23 @@ async def anomalies_endpoint(
     _assert_access(user)
     if from_date is None or to_date is None:
         from_date, to_date = _default_window()
-    payload = await detect_anomalies(
-        db,
-        tenant_id=user.tenant_id,
-        actor_user_id=user.id,
-        org_entity_id=org_entity_id,
-        org_group_id=org_group_id,
-        from_date=from_date,
-        to_date=to_date,
-        comparison=comparison,
-    )
-    await db.commit()
-    return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    try:
+        payload = await detect_anomalies(
+            db,
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            org_entity_id=org_entity_id,
+            org_group_id=org_group_id,
+            from_date=from_date,
+            to_date=to_date,
+            comparison=comparison,
+        )
+        await db.commit()
+        ai_anomaly_generation_counter.labels(status="success").inc()
+        return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    except Exception:
+        ai_anomaly_generation_counter.labels(status="failed").inc()
+        raise
 
 
 @router.get("/explain-variance")
@@ -122,18 +133,22 @@ async def recommendations_endpoint(
     _assert_access(user)
     if from_date is None or to_date is None:
         from_date, to_date = _default_window()
-    payload = await generate_recommendations(
-        db,
-        tenant_id=user.tenant_id,
-        actor_user_id=user.id,
-        org_entity_id=org_entity_id,
-        org_group_id=org_group_id,
-        from_date=from_date,
-        to_date=to_date,
-        comparison=comparison,
-    )
-    await db.commit()
-    return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    try:
+        payload = await generate_recommendations(
+            db,
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            org_entity_id=org_entity_id,
+            org_group_id=org_group_id,
+            from_date=from_date,
+            to_date=to_date,
+            comparison=comparison,
+        )
+        await db.commit()
+        return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    except Exception as exc:
+        ai_recommendation_failures_counter.labels(reason=exc.__class__.__name__).inc()
+        raise
 
 
 @router.get("/narrative")
@@ -150,18 +165,24 @@ async def narrative_endpoint(
     _assert_access(user)
     if from_date is None or to_date is None:
         from_date, to_date = _default_window()
-    payload = await generate_narrative(
-        db,
-        tenant_id=user.tenant_id,
-        actor_user_id=user.id,
-        org_entity_id=org_entity_id,
-        org_group_id=org_group_id,
-        from_date=from_date,
-        to_date=to_date,
-        comparison=comparison,
-    )
-    await db.commit()
-    return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    started = time.perf_counter()
+    try:
+        payload = await generate_narrative(
+            db,
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            org_entity_id=org_entity_id,
+            org_group_id=org_group_id,
+            from_date=from_date,
+            to_date=to_date,
+            comparison=comparison,
+        )
+        await db.commit()
+        ai_narrative_duration_ms.labels(status="success").observe((time.perf_counter() - started) * 1000)
+        return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    except Exception:
+        ai_narrative_duration_ms.labels(status="failed").observe((time.perf_counter() - started) * 1000)
+        raise
 
 
 @router.get("/suggestions")
@@ -215,4 +236,3 @@ async def audit_samples_endpoint(
         sample_size=sample_size,
     )
     return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
-
