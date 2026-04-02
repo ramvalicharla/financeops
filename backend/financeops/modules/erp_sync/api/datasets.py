@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
-from financeops.api.deps import get_current_user
+from financeops.api.deps import require_finance_team
 from financeops.db.models.users import IamUser
 from financeops.modules.erp_sync.application.normalization_service import (
     NormalizationNotImplemented,
@@ -25,7 +25,7 @@ router = APIRouter()
 @router.get("/datasets")
 async def list_datasets(
     request: Request,
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     _ = user  # dependency enforces tenant context
     normalization = NormalizationService()
@@ -52,7 +52,7 @@ async def list_datasets(
 async def get_dataset(
     request: Request,
     dataset_type: str,
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     _ = user
     dataset = DatasetType(dataset_type)
@@ -72,7 +72,7 @@ async def get_dataset(
 async def get_dataset_periods(
     request: Request,
     dataset_type: str,
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     _ = user
     dataset = DatasetType(dataset_type)
@@ -122,7 +122,7 @@ async def get_dataset_periods(
 async def get_dataset_template(
     request: Request,
     dataset_type: str,
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     _ = user
     dataset = DatasetType(dataset_type)
@@ -140,7 +140,7 @@ async def preview_dataset(
     request: Request,
     dataset_type: str,
     body: dict[str, Any] | None = None,
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     payload = body or {}
     dataset = DatasetType(dataset_type)
@@ -165,3 +165,4 @@ async def preview_dataset(
             "message": str(exc),
         }
     return ok(response, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+

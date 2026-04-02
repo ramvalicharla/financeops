@@ -84,6 +84,9 @@ class Settings(BaseSettings):
     AUTH_LOGIN_RATE_LIMIT: str = "5/minute"
     AUTH_TOKEN_RATE_LIMIT: str = "5/minute"
     AUTH_MFA_RATE_LIMIT: str = "3/minute"
+    AI_STREAM_RATE_LIMIT: str = "20/minute"
+    ERP_SYNC_WRITE_RATE_LIMIT: str = "15/minute"
+    UPLOAD_RATE_LIMIT: str = "10/minute"
     CURRENT_TERMS_VERSION: str = "2026-03-01"
 
     # Encryption

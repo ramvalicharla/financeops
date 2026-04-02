@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, require_finance_team
+from financeops.config import limiter, settings
 from financeops.config import get_settings
 from financeops.core.exceptions import FeatureNotImplementedError
 from financeops.db.models.erp_sync import ExternalConnection, ExternalConnectionVersion
@@ -74,12 +75,13 @@ async def _resolve_connection_secret_ref(
     return secret_ref or None
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections")
 async def create_connection(
     request: Request,
     body: dict[str, Any],
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
     _: str = Depends(require_erp_sync_idempotency_key),
 ) -> dict[str, Any]:
     connector_type = ConnectorType(body["connector_type"])
@@ -126,7 +128,7 @@ async def list_connections(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
     total = (
@@ -168,7 +170,7 @@ async def get_connection(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     row = (
         await session.execute(
@@ -191,13 +193,14 @@ async def get_connection(
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections/{id}/test")
 async def test_connection(
     request: Request,
     id: str,
     body: dict[str, Any] | None = None,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     row = (
         await session.execute(
@@ -229,32 +232,56 @@ async def test_connection(
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections/{id}/activate")
-async def activate_connection(request: Request, id: str) -> dict[str, Any]:
+async def activate_connection(
+    request: Request,
+    id: str,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    _ = user
     return ok(
         {"id": id, "status": "accepted", "note": "append-only model; status transitions are event-driven"},
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections/{id}/suspend")
-async def suspend_connection(request: Request, id: str) -> dict[str, Any]:
+async def suspend_connection(
+    request: Request,
+    id: str,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    _ = user
     return ok(
         {"id": id, "status": "accepted", "note": "append-only model; status transitions are event-driven"},
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections/{id}/revoke")
-async def revoke_connection(request: Request, id: str) -> dict[str, Any]:
+async def revoke_connection(
+    request: Request,
+    id: str,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    _ = user
     return ok(
         {"id": id, "status": "accepted", "note": "append-only model; status transitions are event-driven"},
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections/{id}/rotate-credentials")
-async def rotate_credentials(request: Request, id: str) -> dict[str, Any]:
+async def rotate_credentials(
+    request: Request,
+    id: str,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    _ = user
     if not get_settings().ERP_CONNECTION_SERVICE_ENABLED:
         raise FeatureNotImplementedError("erp_connection_credential_rotation")
     return ok(
@@ -263,8 +290,14 @@ async def rotate_credentials(request: Request, id: str) -> dict[str, Any]:
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/connections/{id}/upgrade-connector-version")
-async def upgrade_connector_version(request: Request, id: str) -> dict[str, Any]:
+async def upgrade_connector_version(
+    request: Request,
+    id: str,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    _ = user
     if not get_settings().ERP_CONNECTOR_VERSIONING_ENABLED:
         raise FeatureNotImplementedError("erp_connector_versioning")
     return ok(
@@ -280,7 +313,7 @@ async def list_connection_versions(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
     total = (
@@ -332,7 +365,7 @@ async def list_connection_capabilities(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     row = (
         await session.execute(
@@ -352,3 +385,4 @@ async def list_connection_capabilities(
         },
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
+

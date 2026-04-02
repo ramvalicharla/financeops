@@ -6,12 +6,14 @@ import time
 import uuid
 
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
 from starlette_csrf import CSRFMiddleware as _BaseCSRFMiddleware
 
 from financeops.core.security import decode_token
 from financeops.core.exceptions import AuthenticationError
+from financeops.config import settings
 
 log = logging.getLogger(__name__)
 
@@ -22,6 +24,14 @@ _RLS_SKIP_PREFIXES = (
     "/redoc",
     "/metrics",
     "/api/v1/auth/",
+)
+_BODY_METHODS = {"POST", "PUT", "PATCH"}
+_REQUEST_SIZE_BYPASS_PREFIXES = (
+    "/health",
+    "/metrics",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
 )
 
 
@@ -117,3 +127,37 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             correlation_id,
         )
         return response
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """
+    Fail closed on oversized request bodies using Content-Length.
+    """
+
+    def __init__(self, app: ASGIApp, max_bytes: int | None = None) -> None:
+        super().__init__(app)
+        self.max_bytes = max_bytes or int(settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024)
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if request.method.upper() not in _BODY_METHODS:
+            return await call_next(request)
+        if any(request.url.path.startswith(prefix) for prefix in _REQUEST_SIZE_BYPASS_PREFIXES):
+            return await call_next(request)
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                requested = int(content_length)
+            except ValueError:
+                requested = 0
+            if requested > self.max_bytes:
+                log.warning(
+                    "Rejected oversized request path=%s content_length=%s max_bytes=%s",
+                    request.url.path,
+                    requested,
+                    self.max_bytes,
+                )
+                return JSONResponse(
+                    status_code=413,
+                    content={"error": "payload_too_large", "message": "Request payload exceeds allowed size"},
+                )
+        return await call_next(request)

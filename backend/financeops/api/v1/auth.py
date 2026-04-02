@@ -37,6 +37,7 @@ from financeops.services.auth_service import (
     login,
     logout,
     refresh_tokens,
+    revoke_all_sessions,
     setup_totp,
     verify_mfa_challenge,
 )
@@ -504,6 +505,36 @@ async def user_logout(
     await logout(session, body.refresh_token)
     await session.flush()
     return {"logged_out": True}
+
+
+@limiter.limit(settings.AUTH_TOKEN_RATE_LIMIT)
+@router.post("/sessions/revoke-all")
+async def revoke_all_my_sessions(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    """
+    Revoke all active refresh sessions for current user.
+    Access tokens remain valid until expiry; refresh is blocked immediately.
+    """
+    revoked_count = await revoke_all_sessions(
+        session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+    )
+    await log_action(
+        session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        action="user.sessions.revoke_all",
+        resource_type="iam_session",
+        resource_id=str(user.id),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await session.flush()
+    return {"revoked_sessions": revoked_count}
 
 
 @router.get("/me")

@@ -4,10 +4,11 @@ import hashlib
 import json
 import logging
 import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 import redis.asyncio as aioredis
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
@@ -330,6 +331,40 @@ async def logout(session: AsyncSession, refresh_token: str) -> None:
                 new_value={"revoked_at": db_session.revoked_at.isoformat()},
             ),
         )
+
+
+async def revoke_all_sessions(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> int:
+    """
+    Revoke every active refresh session for a user.
+    """
+    now = datetime.now(UTC)
+    result = await session.execute(
+        update(IamSession)
+        .where(
+            IamSession.tenant_id == tenant_id,
+            IamSession.user_id == user_id,
+            IamSession.revoked_at.is_(None),
+        )
+        .values(revoked_at=now)
+    )
+    revoked_count = int(result.rowcount or 0)
+    await AuditWriter.flush_with_audit(
+        session,
+        audit=AuditEvent(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            action="auth.session.revoked_all",
+            resource_type="iam_session",
+            resource_name=f"revoked_count={revoked_count}",
+            new_value={"revoked_count": revoked_count, "revoked_at": now.isoformat()},
+        ),
+    )
+    return revoked_count
 
 
 async def setup_totp(user: IamUser, session: AsyncSession) -> dict:

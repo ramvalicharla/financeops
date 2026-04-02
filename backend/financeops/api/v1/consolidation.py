@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
     get_async_session,
-    get_current_user,
     require_finance_leader,
     require_finance_team,
 )
@@ -241,7 +240,7 @@ async def get_consolidation_translation_endpoint(
 async def get_consolidation_run_status_endpoint(
     run_id: UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict:
     payload = await get_run_status(
         session,

@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
     get_async_session,
-    get_current_user,
     get_redis,
     require_finance_leader,
     require_finance_team,
@@ -190,7 +189,7 @@ async def compare_rates_endpoint(
     base_currency: str,
     quote_currency: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict:
     comparison = await get_required_latest_comparison(
         session,
@@ -262,7 +261,7 @@ async def list_manual_monthly_rates_endpoint(
     limit: int = 200,
     offset: int = 0,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict:
     rows = await list_manual_monthly_rates(
         session,

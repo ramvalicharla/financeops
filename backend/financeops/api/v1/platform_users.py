@@ -7,7 +7,7 @@ import smtplib
 import uuid
 from email.message import EmailMessage
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,7 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.config import settings
 from financeops.core.security import hash_password
 from financeops.db.models.users import IamUser, UserRole
+from financeops.services.audit_service import log_action
 from financeops.shared_kernel.pagination import Paginated
 
 log = logging.getLogger(__name__)
@@ -157,6 +158,7 @@ async def _active_platform_owner_count(session: AsyncSession) -> int:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_platform_user(
+    request: Request,
     body: CreatePlatformUserRequest,
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(get_current_user),
@@ -206,6 +208,18 @@ async def create_platform_user(
         else:
             log.warning("SMTP not configured; returning temporary password for platform user invite")
             response["temp_password"] = temp_password
+    await log_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="platform.user.created",
+        resource_type="iam_user",
+        resource_id=str(user.id),
+        resource_name=user.email,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await session.flush()
     return response
 
 
@@ -248,6 +262,7 @@ async def get_platform_me(
 
 @router.patch("/{user_id}/role")
 async def update_platform_role(
+    request: Request,
     user_id: uuid.UUID,
     body: UpdatePlatformRoleRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -266,13 +281,28 @@ async def update_platform_role(
     ):
         raise HTTPException(status_code=422, detail="cannot demote last platform_owner")
 
+    previous_role = _role_value(row.role)
     row.role = body.role
+    await log_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="platform.user.role_updated",
+        resource_type="iam_user",
+        resource_id=str(row.id),
+        resource_name=row.email,
+        old_value={"role": previous_role},
+        new_value={"role": _role_value(row.role)},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     await session.flush()
     return _serialize_user(row)
 
 
 @router.delete("/{user_id}")
 async def deactivate_platform_user(
+    request: Request,
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(get_current_user),
@@ -287,5 +317,18 @@ async def deactivate_platform_user(
         raise HTTPException(status_code=422, detail="cannot deactivate last platform_owner")
 
     row.is_active = False
+    await log_action(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        action="platform.user.deactivated",
+        resource_type="iam_user",
+        resource_id=str(row.id),
+        resource_name=row.email,
+        old_value={"is_active": True},
+        new_value={"is_active": False},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
     await session.flush()
     return _serialize_user(row)

@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, require_finance_team
+from financeops.config import limiter, settings
 from financeops.db.models.erp_sync import ExternalSyncPublishEvent
 from financeops.db.models.users import IamUser
 from financeops.modules.erp_sync.application.publish_service import PublishService
@@ -21,7 +22,7 @@ router = APIRouter()
 async def list_publish_events(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     rows = (
         await session.execute(
@@ -52,7 +53,7 @@ async def get_publish_event(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     row = (
         await session.execute(
@@ -76,12 +77,13 @@ async def get_publish_event(
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/publish-events/{id}/approve")
 async def approve_publish_event(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
     idempotency_key: str = Depends(require_erp_sync_idempotency_key),
 ) -> dict[str, Any]:
     service = PublishService(session)
@@ -95,13 +97,14 @@ async def approve_publish_event(
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/publish-events/{id}/reject")
 async def reject_publish_event(
     request: Request,
     id: str,
     body: dict[str, Any] | None = None,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     payload = body or {}
     service = PublishService(session)
@@ -114,3 +117,4 @@ async def reject_publish_event(
     )
     await session.flush()
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+

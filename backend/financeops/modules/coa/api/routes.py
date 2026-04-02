@@ -6,13 +6,19 @@ import uuid
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import Response
 from openpyxl import Workbook
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user, require_org_setup
+from financeops.api.deps import (
+    get_async_session,
+    get_current_user,
+    require_finance_team,
+    require_org_setup,
+)
+from financeops.config import limiter, settings
 from financeops.core.exceptions import ValidationError
 from financeops.db.models.users import IamUser
 from financeops.modules.coa.api.schemas import (
@@ -59,6 +65,7 @@ from financeops.modules.coa.models import (
     CoaUploadBatch,
 )
 from financeops.db.models.users import UserRole
+from financeops.security.file_validation import FileValidationError, validate_file
 
 router = APIRouter(prefix="/coa", tags=["chart-of-accounts"])
 
@@ -210,14 +217,29 @@ async def get_effective_accounts(
     return [CoaLedgerAccountResponse.model_validate(row, from_attributes=True) for row in rows]
 
 
+def _validate_upload_file(*, file: UploadFile, file_bytes: bytes) -> None:
+    filename = file.filename or "coa_upload.csv"
+    try:
+        validate_file(
+            filename=filename,
+            content=file_bytes,
+            max_size=5 * 1024 * 1024,  # strict CoA upload cap
+        )
+    except FileValidationError as exc:
+        raise ValidationError(f"file_validation_failed:{exc.reason}") from exc
+
+
+@limiter.limit(settings.UPLOAD_RATE_LIMIT)
 @router.post("/upload", response_model=CoaUploadResponse)
 async def upload_coa(
+    request: Request,
     file: UploadFile = File(...),
     template_id: uuid.UUID = Form(...),
     mode: str = Form(default="APPEND"),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> CoaUploadResponse:
+    del request
     try:
         upload_mode = CoaUploadMode(mode.upper())
     except ValueError as exc:
@@ -226,6 +248,7 @@ async def upload_coa(
     file_bytes = await file.read()
     if not file_bytes:
         raise ValidationError("Uploaded file is empty")
+    _validate_upload_file(file=file, file_bytes=file_bytes)
 
     platform_admin = _is_platform_admin(user.role)
     source_type = (
@@ -254,15 +277,19 @@ async def upload_coa(
     )
 
 
+@limiter.limit(settings.UPLOAD_RATE_LIMIT)
 @router.post("/validate", response_model=CoaValidateResponse)
 async def validate_coa(
+    request: Request,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_async_session),
-    _: IamUser = Depends(get_current_user),
+    _: IamUser = Depends(require_finance_team),
 ) -> CoaValidateResponse:
+    del request
     file_bytes = await file.read()
     if not file_bytes:
         raise ValidationError("Uploaded file is empty")
+    _validate_upload_file(file=file, file_bytes=file_bytes)
 
     service = CoaUploadService(session)
     result = await service.validate_only(
@@ -277,12 +304,15 @@ async def validate_coa(
     )
 
 
+@limiter.limit(settings.UPLOAD_RATE_LIMIT)
 @router.post("/apply", response_model=CoaApplyResponse)
 async def apply_coa(
+    request: Request,
     body: CoaApplyRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> CoaApplyResponse:
+    del request
     service = CoaUploadService(session)
     result = await service.apply_batch(
         batch_id=body.batch_id,

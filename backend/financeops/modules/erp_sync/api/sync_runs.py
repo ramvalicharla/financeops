@@ -11,7 +11,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, require_finance_team
+from financeops.config import limiter, settings
 from financeops.db.models.erp_sync import (
     ExternalSyncDriftReport,
     ExternalSyncError,
@@ -33,12 +34,13 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/sync-runs")
 async def create_sync_run(
     request: Request,
     body: dict[str, Any],
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
     idempotency_key: str = Depends(require_erp_sync_idempotency_key),
 ) -> dict[str, Any]:
     content_bytes = b""
@@ -112,7 +114,7 @@ async def list_sync_runs(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
     total = (
@@ -154,7 +156,7 @@ async def get_sync_run(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     row = (
         await session.execute(
@@ -185,7 +187,7 @@ async def get_sync_run_evidence(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
     total = (
@@ -238,7 +240,7 @@ async def get_sync_run_errors(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
     total = (
@@ -290,7 +292,7 @@ async def get_sync_run_drift_report(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     row = (
         await session.execute(
@@ -316,21 +318,28 @@ async def get_sync_run_drift_report(
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/sync-runs/{id}/replay")
-async def replay_sync_run(request: Request, id: str) -> dict[str, Any]:
+async def replay_sync_run(
+    request: Request,
+    id: str,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    _ = user
     return ok(
         {"id": id, "status": "accepted", "note": "replay endpoint queued"},
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/sync-runs/{id}/resume")
 async def resume_sync_run(
     request: Request,
     id: str,
     body: dict[str, Any],
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
     sync_service = SyncService(session)
     result = await sync_service.resume_sync_run(
@@ -343,12 +352,13 @@ async def resume_sync_run(
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
+@limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
 @router.post("/sync-runs/{id}/publish")
 async def publish_sync_run(
     request: Request,
     id: str,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_finance_team),
     idempotency_key: str | None = Depends(optional_idempotency_key),
 ) -> dict[str, Any]:
     publish_service = PublishService(session)
@@ -360,3 +370,4 @@ async def publish_sync_run(
     )
     await session.flush()
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from financeops.api.deps import get_current_user
+from financeops.api.deps import require_finance_team
+from financeops.config import limiter, settings
 from financeops.db.models.users import IamUser
 from financeops.llm.streaming import stream_llm_response
 
@@ -19,11 +20,14 @@ class AIStreamRequest(BaseModel):
     task_type: str = "advisory"
 
 
+@limiter.limit(settings.AI_STREAM_RATE_LIMIT)
 @router.post("/stream")
 async def stream_ai_response(
+    request: Request,
     body: AIStreamRequest,
-    current_user: IamUser = Depends(get_current_user),
+    current_user: IamUser = Depends(require_finance_team),
 ) -> StreamingResponse:
+    del request
     trace_id = str(uuid.uuid4())
     stream = stream_llm_response(
         prompt=body.prompt,

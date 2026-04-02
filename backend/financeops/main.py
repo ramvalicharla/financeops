@@ -72,6 +72,7 @@ from financeops.api.deps import require_org_setup
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     FinanceOpsCSRFMiddleware,
+    RequestSizeLimitMiddleware,
     RequestLoggingMiddleware,
     RLSMiddleware,
 )
@@ -255,6 +256,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RLSMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_middleware(RequestSizeLimitMiddleware)
     app.add_middleware(IdempotencyMiddleware)
     app.add_middleware(ApiResponseEnvelopeMiddleware)
     app.add_middleware(RequestIDMiddleware)

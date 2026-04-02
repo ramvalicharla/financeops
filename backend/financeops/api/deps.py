@@ -39,6 +39,20 @@ _ONBOARDING_BYPASS_PREFIXES = (
     "/api/v1/platform/org",
     "/api/v1/platform/entities",
 )
+_PLATFORM_ADMIN_ROLES = {
+    UserRole.super_admin,
+    UserRole.platform_owner,
+    UserRole.platform_admin,
+}
+_FINANCE_APPROVER_ROLES = _PLATFORM_ADMIN_ROLES | {
+    UserRole.finance_leader,
+}
+_FINANCE_REVIEWER_ROLES = _FINANCE_APPROVER_ROLES | {
+    UserRole.finance_team,
+}
+_SUPPORT_ROLES = _PLATFORM_ADMIN_ROLES | {
+    UserRole.platform_support,
+}
 
 
 async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
@@ -46,10 +60,8 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
     Yield an async DB session with RLS context set from request middleware.
     Rolls back on exception, closes on exit.
     """
-    log.info("DEPENDENCY HIT: get_async_session")
     path = request.url.path
     if path in _PUBLIC_AUTH_BYPASS_PATHS:
-        log.info("Public route bypass auth: %s", path)
         async with AsyncSessionLocal() as session:
             try:
                 yield session
@@ -68,14 +80,6 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
             token = auth_header[7:]
             payload = decode_token(token)
             tenant_id = str(payload.get("tenant_id", "") or "")
-    if not tenant_id:
-        auditor_token = request.headers.get("X-Auditor-Token", "").strip()
-        if auditor_token:
-            tenant_prefix = auditor_token.split(".", 1)[0]
-            try:
-                tenant_id = str(uuid.UUID(tenant_prefix))
-            except ValueError:
-                tenant_id = ""
     if not tenant_id:
         raise AuthenticationError(
             "tenant_id missing from token - RLS context cannot be set"
@@ -128,10 +132,6 @@ async def get_current_user(
     session: AsyncSession = Depends(get_async_session),
 ) -> IamUser:
     """Decode JWT, load user from DB, verify is_active. Raises 401 if invalid."""
-    log.info("DEPENDENCY HIT: get_current_user")
-    if request.method.upper() == "OPTIONS":
-        log.info("OPTIONS bypass at dependency: %s", request.url.path)
-        raise HTTPException(status_code=204, detail=None)
     payload = decode_token(token)
     if payload.get("type") != "access":
         raise AuthenticationError("Invalid token type")
@@ -167,7 +167,6 @@ async def get_current_user(
 
     if request.url.path.startswith("/api/v1/org-setup"):
         log.info("MFA bypass for onboarding: %s", request.url.path)
-        log.info("MFA BYPASS ACTIVE")
         return user
 
     if token_scope == "mfa_setup_only":
@@ -206,11 +205,6 @@ async def get_current_tenant(
     user: IamUser = Depends(get_current_user),
     session: AsyncSession = Depends(get_async_session),
 ) -> IamTenant:
-    log.info("DEPENDENCY HIT: get_current_tenant")
-    if request.method.upper() == "OPTIONS":
-        log.info("OPTIONS bypass at dependency: %s", request.url.path)
-        raise HTTPException(status_code=204, detail=None)
-    log.info("PATH HIT: %s", request.url.path)
     jwt_tenant_id = getattr(user, "_jwt_tenant_id", None)
     if jwt_tenant_id is None:
         raise AuthenticationError("Missing JWT tenant context")
@@ -225,7 +219,7 @@ async def get_current_tenant(
         tenant.id,
     )
     if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
-        log.info("BYPASS ACTIVE")
+        log.info("Bypassing onboarding check for: %s", request.url.path)
         return tenant
     return tenant
 
@@ -234,13 +228,9 @@ async def require_org_setup(
     request: Request,
     current_tenant: IamTenant = Depends(get_current_tenant),
 ) -> IamTenant:
-    log.info("DEPENDENCY HIT: require_org_setup")
     if request.method.upper() == "OPTIONS":
-        log.info("OPTIONS bypass at dependency: %s", request.url.path)
         return current_tenant
-    log.info("PATH HIT: %s", request.url.path)
     if request.url.path.startswith(_ONBOARDING_BYPASS_PREFIXES):
-        log.info("BYPASS ACTIVE")
         log.info("Bypassing onboarding check for: %s", request.url.path)
         return current_tenant
     if current_tenant.is_platform_tenant:
@@ -263,18 +253,34 @@ async def require_org_setup(
 def require_finance_leader(
     user: IamUser = Depends(get_current_user),
 ) -> IamUser:
-    allowed = {UserRole.super_admin, UserRole.finance_leader}
+    allowed = _FINANCE_APPROVER_ROLES
     if user.role not in allowed:
-        raise AuthorizationError("finance_leader or higher required")
+        raise AuthorizationError("finance_approver role required")
     return user
 
 
 def require_finance_team(
     user: IamUser = Depends(get_current_user),
 ) -> IamUser:
-    allowed = {UserRole.super_admin, UserRole.finance_leader, UserRole.finance_team}
+    allowed = _FINANCE_REVIEWER_ROLES
     if user.role not in allowed:
-        raise AuthorizationError("finance_team or higher required")
+        raise AuthorizationError("finance_reviewer or higher required")
+    return user
+
+
+def require_platform_admin(
+    user: IamUser = Depends(get_current_user),
+) -> IamUser:
+    if user.role not in _PLATFORM_ADMIN_ROLES:
+        raise AuthorizationError("platform_admin role required")
+    return user
+
+
+def require_support_or_admin(
+    user: IamUser = Depends(get_current_user),
+) -> IamUser:
+    if user.role not in _SUPPORT_ROLES:
+        raise AuthorizationError("platform_support or admin role required")
     return user
 
 
