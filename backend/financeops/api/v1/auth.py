@@ -33,6 +33,7 @@ from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import welcome_email
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
+    build_billing_token_claims,
     create_mfa_challenge,
     login,
     logout,
@@ -295,7 +296,13 @@ async def verify_mfa_setup(
 
     await session.flush()
 
-    access_token = create_access_token(user.id, user.tenant_id, user.role.value)
+    billing_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
+    access_token = create_access_token(
+        user.id,
+        user.tenant_id,
+        user.role.value,
+        additional_claims=billing_claims,
+    )
     refresh_token = create_refresh_token(user.id, user.tenant_id)
     return {
         "status": "mfa_enabled",
@@ -547,7 +554,36 @@ async def get_me(
     Returns current user profile + tenant info.
     """
     from financeops.services.tenant_service import get_tenant
+    from financeops.db.models.payment import BillingPlan, TenantSubscription
+
     tenant = await get_tenant(session, user.tenant_id)
+    subscription = (
+        await session.execute(
+            select(TenantSubscription)
+            .where(TenantSubscription.tenant_id == user.tenant_id)
+            .order_by(TenantSubscription.created_at.desc(), TenantSubscription.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    plan_payload: dict | None = None
+    if subscription is not None:
+        plan = (
+            await session.execute(
+                select(BillingPlan).where(
+                    BillingPlan.tenant_id == user.tenant_id,
+                    BillingPlan.id == subscription.plan_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if plan is not None:
+            plan_payload = {
+                "id": str(plan.id),
+                "name": plan.name,
+                "plan_tier": plan.plan_tier,
+                "pricing_type": plan.pricing_type,
+                "price": str(plan.price) if plan.price is not None else None,
+                "currency": plan.currency,
+            }
     return {
         "user_id": str(user.id),
         "email": user.email,
@@ -566,5 +602,13 @@ async def get_me(
             "status": tenant.status.value,
             "org_setup_complete": tenant.org_setup_complete,
             "org_setup_step": tenant.org_setup_step,
+        },
+        "billing": None
+        if subscription is None
+        else {
+            "subscription_id": str(subscription.id),
+            "plan_id": str(subscription.plan_id),
+            "status": subscription.status,
+            "plan": plan_payload,
         },
     }

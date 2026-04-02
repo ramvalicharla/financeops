@@ -1,14 +1,17 @@
 "use client"
 
+import Link from "next/link"
 import { PlanCard } from "@/components/billing/PlanCard"
 import { CreditBalance } from "@/components/billing/CreditBalance"
 import { InvoiceTable } from "@/components/billing/InvoiceTable"
 import { SubscriptionStatus } from "@/components/billing/SubscriptionStatus"
 import {
   useCancelSubscription,
+  useCheckoutSession,
   useCreditBalance,
   useCreditLedger,
   useCurrentSubscription,
+  useGenerateInvoice,
   useInvoices,
   usePlans,
   useTopUp,
@@ -24,12 +27,49 @@ export default function BillingPage() {
   const topUpMutation = useTopUp()
   const cancelMutation = useCancelSubscription()
   const upgradeMutation = useUpgradeSubscription()
+  const generateInvoiceMutation = useGenerateInvoice()
+  const checkoutMutation = useCheckoutSession()
 
   const subscription = subscriptionQuery.data ?? null
   const recentTransactions = (ledgerQuery.data ?? []).slice(0, 10)
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <Link href="/billing/plans" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
+          Plans
+        </Link>
+        <Link href="/billing/invoices" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
+          Invoices
+        </Link>
+        <Link href="/billing/usage" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
+          Usage
+        </Link>
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent disabled:opacity-60"
+          disabled={generateInvoiceMutation.isPending}
+          onClick={async () => {
+            await generateInvoiceMutation.mutateAsync({})
+          }}
+        >
+          Generate Invoice
+        </button>
+        <button
+          type="button"
+          className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent disabled:opacity-60"
+          disabled={checkoutMutation.isPending}
+          onClick={async () => {
+            const payload = await checkoutMutation.mutateAsync(window.location.href)
+            if (payload.url) {
+              window.location.assign(payload.url)
+            }
+          }}
+        >
+          Manage Billing
+        </button>
+      </div>
+
       {subscriptionQuery.isError ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Failed to load billing subscription details.

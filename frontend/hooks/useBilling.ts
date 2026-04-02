@@ -3,12 +3,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   cancelSubscription,
+  createCheckoutSession,
   createTopUp,
+  generateInvoice,
+  getCurrentEntitlements,
   getCreditBalance,
   getCreditLedger,
   getCurrentSubscription,
   getInvoices,
   getPlans,
+  getUsageAggregates,
+  refreshEntitlements,
+  recordUsage,
   upgradeSubscription,
 } from "@/lib/api/billing"
 import type { BillingCycle } from "@/types/billing"
@@ -43,6 +49,18 @@ export const useInvoices = () =>
     queryFn: getInvoices,
   })
 
+export const useCurrentEntitlements = () =>
+  useQuery({
+    queryKey: ["billing-entitlements"],
+    queryFn: getCurrentEntitlements,
+  })
+
+export const useUsageAggregates = (params?: { period_start?: string; period_end?: string }) =>
+  useQuery({
+    queryKey: ["billing-usage", params?.period_start, params?.period_end],
+    queryFn: () => getUsageAggregates(params),
+  })
+
 export const useTopUp = () => {
   const queryClient = useQueryClient()
   return useMutation({
@@ -75,3 +93,38 @@ export const useUpgradeSubscription = () => {
     },
   })
 }
+
+export const useRefreshEntitlements = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: refreshEntitlements,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["billing-entitlements"] })
+    },
+  })
+}
+
+export const useRecordUsage = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: recordUsage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["billing-usage"] })
+    },
+  })
+}
+
+export const useGenerateInvoice = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: generateInvoice,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["billing-invoices"] })
+    },
+  })
+}
+
+export const useCheckoutSession = () =>
+  useMutation({
+    mutationFn: createCheckoutSession,
+  })

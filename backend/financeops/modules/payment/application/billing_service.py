@@ -13,6 +13,7 @@ from financeops.db.models.payment import BillingPlan, ProrationRecord, TenantSub
 from financeops.modules.payment.application.proration_service import ProrationService
 from financeops.modules.payment.application.provider_router import resolve_provider
 from financeops.modules.payment.application.subscription_service import SubscriptionService
+from financeops.modules.payment.application.entitlement_service import EntitlementService
 from financeops.modules.payment.application.trial_service import TrialService
 from financeops.modules.payment.domain.enums import BillingCycle, OnboardingMode, PaymentProvider
 from financeops.modules.payment.infrastructure.providers.registry import get_provider
@@ -23,6 +24,7 @@ class BillingService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._subscription_service = SubscriptionService(session)
+        self._entitlement_service = EntitlementService(session)
 
     async def create_subscription(
         self,
@@ -73,7 +75,7 @@ class BillingService:
         period_start = datetime.now(UTC).date()
         period_end = date.fromordinal(period_start.toordinal() + (30 if billing_cycle == BillingCycle.MONTHLY else 365))
 
-        return await self._subscription_service.create_subscription_record(
+        row = await self._subscription_service.create_subscription_record(
             tenant_id=tenant_id,
             plan_id=plan_id,
             provider=provider.value,
@@ -93,6 +95,11 @@ class BillingService:
             },
             created_by=created_by,
         )
+        await self._entitlement_service.refresh_tenant_entitlements(
+            tenant_id=tenant_id,
+            actor_user_id=created_by,
+        )
+        return row
 
     async def upgrade_subscription(
         self,
@@ -142,6 +149,10 @@ class BillingService:
         await self._subscription_service.append_subscription_revision(
             source=subscription,
             plan_id=to_plan_id,
+        )
+        await self._entitlement_service.refresh_tenant_entitlements(
+            tenant_id=tenant_id,
+            actor_user_id=created_by,
         )
 
         return await AuditWriter.insert_financial_record(
@@ -202,8 +213,13 @@ class BillingService:
         result = await provider_impl.reactivate_subscription(subscription.provider_subscription_id)
         if not result.success:
             raise ValidationError(result.error_message or "Provider reactivation failed")
-        return await self._subscription_service.reactivate(
+        row = await self._subscription_service.reactivate(
             tenant_id=tenant_id,
             subscription_id=subscription_id,
             provider_event_id=result.provider_id,
         )
+        await self._entitlement_service.refresh_tenant_entitlements(
+            tenant_id=tenant_id,
+            actor_user_id=None,
+        )
+        return row

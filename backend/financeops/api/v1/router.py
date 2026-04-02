@@ -46,12 +46,16 @@ from financeops.api.v1 import (
 )
 from financeops.platform.api.v1 import router as platform_router
 from financeops.platform.services.enforcement.interceptors import require_valid_context_token
-from financeops.api.deps import require_org_setup
+from financeops.api.deps import require_entitlement, require_org_setup
 
 router = APIRouter()
 
 finance_control_plane_guard = Depends(require_valid_context_token())
 org_setup_guard = Depends(require_org_setup)
+analytics_entitlement_guard = Depends(require_entitlement("analytics", record_usage=True))
+ai_entitlement_guard = Depends(require_entitlement("ai_cfo", record_usage=True))
+erp_entitlement_guard = Depends(require_entitlement("erp_integration", record_usage=True))
+industry_modules_entitlement_guard = Depends(require_entitlement("industry_modules"))
 
 # Phase 0
 router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
@@ -86,13 +90,13 @@ router.include_router(
     analytics.router,
     prefix="",
     tags=["Analytics Layer"],
-    dependencies=[finance_control_plane_guard, org_setup_guard],
+    dependencies=[finance_control_plane_guard, org_setup_guard, analytics_entitlement_guard],
 )
 router.include_router(
     ai_cfo.router,
     prefix="",
     tags=["AI CFO Layer"],
-    dependencies=[finance_control_plane_guard, org_setup_guard],
+    dependencies=[finance_control_plane_guard, org_setup_guard, ai_entitlement_guard],
 )
 router.include_router(
     mis_manager.router,
@@ -206,13 +210,13 @@ router.include_router(
     erp.router,
     prefix="",
     tags=["ERP Integration"],
-    dependencies=[finance_control_plane_guard, org_setup_guard],
+    dependencies=[finance_control_plane_guard, org_setup_guard, erp_entitlement_guard],
 )
 router.include_router(
     erp_sync.router,
     prefix="/erp-sync",
     tags=["ERP Sync Kernel"],
-    dependencies=[finance_control_plane_guard, org_setup_guard],
+    dependencies=[finance_control_plane_guard, org_setup_guard, erp_entitlement_guard],
 )
 router.include_router(
     erp_push.webhook_router,
@@ -234,7 +238,7 @@ router.include_router(
     industry_modules.router,
     prefix="",
     tags=["Industry Modules"],
-    dependencies=[finance_control_plane_guard, org_setup_guard],
+    dependencies=[finance_control_plane_guard, org_setup_guard, industry_modules_entitlement_guard],
 )
 router.include_router(
     revenue.router,

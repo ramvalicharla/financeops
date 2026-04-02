@@ -65,7 +65,26 @@ class DummyPaymentProvider:
         return True
 
     async def parse_webhook_event(self, payload: dict) -> tuple[str, dict]:
-        return "payment.succeeded", {"provider_event_id": str(payload.get("id", "evt_1"))}
+        provider_event_type = str(payload.get("type") or payload.get("event") or "invoice.paid")
+        canonical_map = {
+            "invoice.payment_succeeded": "invoice.paid",
+            "invoice.paid": "invoice.paid",
+            "invoice.payment_failed": "invoice.payment_failed",
+            "payment_intent.succeeded": "payment.succeeded",
+            "payment.failed": "payment.failed",
+            "customer.subscription.updated": "subscription.updated",
+            "customer.subscription.deleted": "subscription.cancelled",
+        }
+        canonical = canonical_map.get(provider_event_type, "invoice.paid")
+        if "data" in payload:
+            obj = payload.get("data", {}).get("object", {})
+        else:
+            obj = payload.get("payload", {})
+        return canonical, {
+            "provider_event_id": str(payload.get("id", "evt_1")),
+            "provider_event_type": provider_event_type,
+            "object": obj,
+        }
 
     async def get_billing_portal_url(self, customer_id: str, return_url: str) -> str:
         return f"{return_url}?customer={customer_id}"
@@ -139,4 +158,3 @@ async def create_subscription(
             "metadata_json": {},
         },
     )
-

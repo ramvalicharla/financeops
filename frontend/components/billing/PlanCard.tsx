@@ -37,10 +37,16 @@ export function PlanCard({
     )
   }
 
+  const resolvedPlan =
+    subscription.plan ??
+    plans.find((plan) => plan.id === subscription.plan_id) ??
+    null
   const showINR = subscription.billing_country.toUpperCase() === "IN"
-  const planPrice = showINR
-    ? formatINR(subscription.plan.base_price_inr)
-    : `$${subscription.plan.base_price_usd}`
+  const planPrice = resolvedPlan
+    ? showINR
+      ? formatINR(resolvedPlan.base_price_inr)
+      : `$${resolvedPlan.base_price_usd}`
+    : "-"
 
   return (
     <>
@@ -48,7 +54,7 @@ export function PlanCard({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h3 className="text-lg font-semibold text-foreground">
-              {subscription.plan.plan_tier.toUpperCase()}
+              {(resolvedPlan?.plan_tier ?? "unknown").toUpperCase()}
             </h3>
             <p className="text-sm text-muted-foreground">
               {planPrice} / {subscription.billing_cycle}

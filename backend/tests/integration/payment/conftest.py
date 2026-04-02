@@ -16,6 +16,7 @@ def mock_payment_provider(monkeypatch: pytest.MonkeyPatch) -> DummyPaymentProvid
     monkeypatch.setattr("financeops.modules.payment.api.credits.get_provider", lambda _provider: provider)
     monkeypatch.setattr("financeops.modules.payment.api.payment_methods.get_provider", lambda _provider: provider)
     monkeypatch.setattr("financeops.modules.payment.api.billing_portal.get_provider", lambda _provider: provider)
+    monkeypatch.setattr("financeops.modules.payment.application.saas_billing_service.get_provider", lambda _provider: provider)
     monkeypatch.setattr("financeops.modules.payment.application.webhook_service.get_provider", lambda _provider: provider)
     monkeypatch.setattr("financeops.modules.payment.infrastructure.providers.registry.get_provider", lambda _provider: provider)
     return provider

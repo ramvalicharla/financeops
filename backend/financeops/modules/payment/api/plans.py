@@ -34,7 +34,11 @@ async def list_billing_plans(
             "items": [
                 {
                     "id": str(row.id),
+                    "name": row.name,
                     "plan_tier": row.plan_tier,
+                    "pricing_type": row.pricing_type,
+                    "price": str(row.price) if row.price is not None else None,
+                    "currency": row.currency,
                     "billing_cycle": row.billing_cycle,
                     "base_price_inr": str(row.base_price_inr),
                     "base_price_usd": str(row.base_price_usd),
@@ -68,7 +72,11 @@ async def get_billing_plan(
     return ok(
         {
             "id": str(row.id),
+            "name": row.name,
             "plan_tier": row.plan_tier,
+            "pricing_type": row.pricing_type,
+            "price": str(row.price) if row.price is not None else None,
+            "currency": row.currency,
             "billing_cycle": row.billing_cycle,
             "base_price_inr": str(row.base_price_inr),
             "base_price_usd": str(row.base_price_usd),

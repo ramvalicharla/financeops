@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -21,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from financeops.db.base import FinancialBase
+from financeops.db.base import FinancialBase, utc_now
 
 
 class BillingPlan(FinancialBase):
@@ -29,11 +30,19 @@ class BillingPlan(FinancialBase):
     __table_args__ = (
         CheckConstraint("plan_tier IN ('starter','professional','enterprise')", name="ck_billing_plans_tier"),
         CheckConstraint("billing_cycle IN ('monthly','annual')", name="ck_billing_plans_cycle"),
+        CheckConstraint(
+            "pricing_type IS NULL OR pricing_type IN ('flat','tiered','usage','hybrid')",
+            name="ck_billing_plans_pricing_type",
+        ),
         CheckConstraint("annual_discount_pct >= 0", name="ck_billing_plans_discount_non_negative"),
         Index("idx_billing_plans_tenant_active", "tenant_id", "is_active", "created_at"),
     )
 
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     plan_tier: Mapped[str] = mapped_column(String(32), nullable=False)
+    pricing_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    price: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     billing_cycle: Mapped[str] = mapped_column(String(16), nullable=False)
     base_price_inr: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     base_price_usd: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
@@ -75,6 +84,10 @@ class TenantSubscription(FinancialBase):
     current_period_end: Mapped[date] = mapped_column(Date, nullable=False)
     trial_start: Mapped[date | None] = mapped_column(Date, nullable=True)
     trial_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    trial_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    auto_renew: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     onboarding_mode: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -121,6 +134,9 @@ class BillingInvoice(FinancialBase):
     subtotal: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     tax: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     credits_applied: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -245,3 +261,101 @@ class ProrationRecord(FinancialBase):
         ForeignKey("billing_invoices.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+
+class BillingPayment(FinancialBase):
+    __tablename__ = "billing_payments"
+    __table_args__ = (
+        CheckConstraint(
+            "payment_status IN ('pending','succeeded','failed','refunded')",
+            name="ck_billing_payments_status",
+        ),
+        Index("idx_billing_payments_tenant_invoice", "tenant_id", "invoice_id", "created_at"),
+        UniqueConstraint("tenant_id", "provider_reference", name="uq_billing_payments_provider_ref"),
+    )
+
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing_invoices.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    payment_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+
+
+class BillingEntitlement(FinancialBase):
+    __tablename__ = "billing_entitlements"
+    __table_args__ = (
+        CheckConstraint(
+            "access_type IN ('boolean','limit','quota')",
+            name="ck_billing_entitlements_access_type",
+        ),
+        Index("idx_billing_entitlements_plan_feature", "tenant_id", "plan_id", "feature_name", "created_at"),
+    )
+
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing_plans.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    feature_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    access_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    limit_value: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class TenantEntitlement(FinancialBase):
+    __tablename__ = "billing_tenant_entitlements"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('plan','override')",
+            name="ck_billing_tenant_entitlements_source",
+        ),
+        Index("idx_billing_tenant_entitlements_feature", "tenant_id", "feature_name", "created_at"),
+    )
+
+    feature_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    access_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    effective_limit: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="plan")
+    source_reference_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class BillingUsageEvent(FinancialBase):
+    __tablename__ = "billing_usage_events"
+    __table_args__ = (
+        Index("idx_billing_usage_events_feature_time", "tenant_id", "feature_name", "event_time"),
+    )
+
+    feature_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    usage_quantity: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    event_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utc_now)
+    period_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    reference_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reference_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
+
+
+class BillingUsageAggregate(FinancialBase):
+    __tablename__ = "billing_usage_aggregates"
+    __table_args__ = (
+        Index("idx_billing_usage_aggregates_period", "tenant_id", "feature_name", "period_start", "period_end"),
+    )
+
+    feature_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    total_usage: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    last_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing_usage_events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)

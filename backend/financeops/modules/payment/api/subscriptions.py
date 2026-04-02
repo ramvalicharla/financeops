@@ -13,7 +13,7 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_leader,
 )
-from financeops.db.models.payment import TenantSubscription
+from financeops.db.models.payment import BillingPlan, TenantSubscription
 from financeops.db.models.users import IamUser
 from financeops.modules.payment.application.billing_service import BillingService
 from financeops.modules.payment.application.subscription_service import SubscriptionService
@@ -67,6 +67,35 @@ async def get_current_subscription(
 ) -> dict:
     service = SubscriptionService(session)
     row = await service.get_active_subscription_for_tenant(tenant_id=user.tenant_id)
+    plan_payload: dict[str, Any] | None = None
+    if row is not None:
+        plan_row = (
+            await session.execute(
+                select(BillingPlan).where(
+                    BillingPlan.tenant_id == user.tenant_id,
+                    BillingPlan.id == row.plan_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if plan_row is not None:
+            plan_payload = {
+                "id": str(plan_row.id),
+                "name": plan_row.name,
+                "plan_tier": plan_row.plan_tier,
+                "pricing_type": plan_row.pricing_type,
+                "price": str(plan_row.price) if plan_row.price is not None else None,
+                "currency": plan_row.currency,
+                "billing_cycle": plan_row.billing_cycle,
+                "base_price_inr": str(plan_row.base_price_inr),
+                "base_price_usd": str(plan_row.base_price_usd),
+                "included_credits": plan_row.included_credits,
+                "max_entities": plan_row.max_entities,
+                "max_connectors": plan_row.max_connectors,
+                "max_users": plan_row.max_users,
+                "trial_days": plan_row.trial_days,
+                "annual_discount_pct": str(plan_row.annual_discount_pct),
+                "is_active": plan_row.is_active,
+            }
     return ok(
         {
             "item": None
@@ -74,6 +103,7 @@ async def get_current_subscription(
             else {
                 "id": str(row.id),
                 "plan_id": str(row.plan_id),
+                "plan": plan_payload,
                 "provider": row.provider,
                 "status": row.status,
                 "billing_cycle": row.billing_cycle,
@@ -81,6 +111,10 @@ async def get_current_subscription(
                 "current_period_end": row.current_period_end.isoformat(),
                 "trial_start": row.trial_start.isoformat() if row.trial_start else None,
                 "trial_end": row.trial_end.isoformat() if row.trial_end else None,
+                "start_date": row.start_date.isoformat() if row.start_date else None,
+                "end_date": row.end_date.isoformat() if row.end_date else None,
+                "trial_end_date": row.trial_end_date.isoformat() if row.trial_end_date else None,
+                "auto_renew": row.auto_renew,
                 "cancel_at_period_end": row.cancel_at_period_end,
                 "billing_country": row.billing_country,
                 "billing_currency": row.billing_currency,

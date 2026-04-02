@@ -8,6 +8,7 @@ from financeops.modules.payment.api import (
     invoices,
     payment_methods,
     plans,
+    saas,
     subscriptions,
     webhooks,
 )
@@ -23,4 +24,6 @@ router.include_router(invoices.router, dependencies=[finance_control_plane_guard
 router.include_router(payment_methods.router, dependencies=[finance_control_plane_guard])
 router.include_router(credits.router, dependencies=[finance_control_plane_guard])
 router.include_router(billing_portal.router, dependencies=[finance_control_plane_guard])
+router.include_router(saas.router, dependencies=[finance_control_plane_guard])
 router.include_router(webhooks.router)
+router.include_router(saas.public_router)

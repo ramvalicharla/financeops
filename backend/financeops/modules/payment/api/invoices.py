@@ -32,11 +32,17 @@ async def list_invoices(
             "items": [
                 {
                     "id": str(row.id),
+                    "provider_invoice_id": row.provider_invoice_id,
                     "status": row.status,
                     "currency": row.currency,
+                    "amount": str(row.amount or row.total),
                     "total": str(row.total),
+                    "issued_at": row.issued_at.isoformat() if row.issued_at else None,
                     "due_date": row.due_date.isoformat(),
+                    "due_at": row.due_at.isoformat() if row.due_at else None,
                     "paid_at": row.paid_at.isoformat() if row.paid_at else None,
+                    "invoice_pdf_url": row.invoice_pdf_url,
+                    "created_at": row.created_at.isoformat(),
                 }
                 for row in rows
             ]
@@ -63,16 +69,21 @@ async def get_invoice(
     return ok(
         {
             "id": str(row.id),
+            "provider_invoice_id": row.provider_invoice_id,
             "status": row.status,
             "currency": row.currency,
             "subtotal": str(row.subtotal),
             "tax": str(row.tax),
+            "amount": str(row.amount or row.total),
             "total": str(row.total),
             "credits_applied": row.credits_applied,
+            "issued_at": row.issued_at.isoformat() if row.issued_at else None,
             "line_items": row.line_items,
             "due_date": row.due_date.isoformat(),
+            "due_at": row.due_at.isoformat() if row.due_at else None,
             "paid_at": row.paid_at.isoformat() if row.paid_at else None,
             "invoice_pdf_url": row.invoice_pdf_url,
+            "created_at": row.created_at.isoformat(),
         },
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")

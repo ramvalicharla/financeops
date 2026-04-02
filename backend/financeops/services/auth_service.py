@@ -24,6 +24,7 @@ from financeops.core.security import (
 )
 from financeops.db.models.users import IamSession, IamUser
 from financeops.db.models.auth_tokens import MfaRecoveryCode
+from financeops.db.models.payment import BillingPlan, TenantSubscription
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
@@ -76,7 +77,13 @@ async def _issue_session_tokens(
     ip_address: str | None = None,
     device_info: str | None = None,
 ) -> dict:
-    access_token = create_access_token(user.id, user.tenant_id, user.role.value)
+    token_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
+    access_token = create_access_token(
+        user.id,
+        user.tenant_id,
+        user.role.value,
+        additional_claims=token_claims,
+    )
     refresh_token = create_refresh_token(user.id, user.tenant_id)
     refresh_token_hash = _hash_token(refresh_token)
 
@@ -278,7 +285,13 @@ async def refresh_tokens(
     if user is None or not user.is_active:
         raise AuthenticationError("User not found or deactivated")
 
-    new_access = create_access_token(user.id, user.tenant_id, user.role.value)
+    token_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
+    new_access = create_access_token(
+        user.id,
+        user.tenant_id,
+        user.role.value,
+        additional_claims=token_claims,
+    )
     new_refresh = create_refresh_token(user.id, user.tenant_id)
     new_hash = _hash_token(new_refresh)
 
@@ -307,6 +320,40 @@ async def refresh_tokens(
         "refresh_token": new_refresh,
         "token_type": "bearer",
     }
+
+
+async def build_billing_token_claims(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+) -> dict[str, str]:
+    subscription = (
+        await session.execute(
+            select(TenantSubscription)
+            .where(TenantSubscription.tenant_id == tenant_id)
+            .order_by(TenantSubscription.created_at.desc(), TenantSubscription.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if subscription is None:
+        return {}
+
+    claims: dict[str, str] = {
+        "subscription_id": str(subscription.id),
+        "plan_id": str(subscription.plan_id),
+        "subscription_status": subscription.status,
+    }
+    plan = (
+        await session.execute(
+            select(BillingPlan).where(
+                BillingPlan.tenant_id == tenant_id,
+                BillingPlan.id == subscription.plan_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if plan is not None:
+        claims["plan_tier"] = plan.plan_tier
+    return claims
 
 
 async def logout(session: AsyncSession, refresh_token: str) -> None:

@@ -21,6 +21,9 @@ from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
+from financeops.modules.payment.application.entitlement_service import EntitlementService
+from financeops.platform.db.models.modules import CpModuleRegistry
+from financeops.platform.services.feature_flags.flag_service import evaluate_feature_flag
 
 log = logging.getLogger(__name__)
 
@@ -248,6 +251,88 @@ async def require_org_setup(
             },
         )
     return current_tenant
+
+
+def require_entitlement(
+    feature_name: str,
+    *,
+    quantity: int = 1,
+    record_usage: bool = False,
+):
+    async def _dependency(
+        request: Request,
+        session: AsyncSession = Depends(get_async_session),
+        user: IamUser = Depends(get_current_user),
+    ) -> dict[str, object]:
+        if request.method.upper() == "OPTIONS":
+            log.info("OPTIONS bypass at dependency: %s", request.url.path)
+            return {"allowed": True, "feature_name": feature_name}
+        service = EntitlementService(session)
+        decision = await service.check_entitlement(
+            tenant_id=user.tenant_id,
+            feature_name=feature_name,
+            quantity=quantity,
+        )
+        if not decision.allowed:
+            raise AuthorizationError(
+                f"Entitlement denied for feature '{feature_name}': {decision.reason}"
+            )
+        module_row = (
+            await session.execute(
+                select(CpModuleRegistry).where(
+                    CpModuleRegistry.module_code == feature_name,
+                    CpModuleRegistry.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if module_row is not None:
+            entity_id_raw = (
+                getattr(request.state, "active_entity_id", None)
+                or request.headers.get("X-Entity-ID")
+            )
+            entity_id = None
+            if entity_id_raw:
+                try:
+                    entity_id = uuid.UUID(str(entity_id_raw))
+                except ValueError:
+                    entity_id = None
+            flag_eval = await evaluate_feature_flag(
+                session,
+                tenant_id=user.tenant_id,
+                module_id=module_row.id,
+                flag_key="enabled",
+                request_fingerprint=str(
+                    getattr(request.state, "request_id", None)
+                    or request.url.path
+                ),
+                user_id=user.id,
+                entity_id=entity_id,
+            )
+            # Only enforce when a flag has been explicitly configured.
+            if flag_eval.get("selected_flag_id") and not flag_eval.get("enabled"):
+                raise AuthorizationError(
+                    f"Feature flag disabled for '{feature_name}'"
+                )
+        if record_usage:
+            await service.record_usage_event(
+                tenant_id=user.tenant_id,
+                feature_name=feature_name,
+                usage_quantity=max(quantity, 1),
+                reference_type="api",
+                reference_id=request.url.path,
+                actor_user_id=user.id,
+            )
+        return {
+            "allowed": decision.allowed,
+            "feature_name": decision.feature_name,
+            "access_type": decision.access_type,
+            "effective_limit": decision.effective_limit,
+            "used": decision.used,
+            "remaining": decision.remaining,
+            "reason": decision.reason,
+        }
+
+    return _dependency
 
 
 def require_finance_leader(
