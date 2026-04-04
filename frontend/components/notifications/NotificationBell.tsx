@@ -6,7 +6,11 @@ import { getUnreadNotificationCount } from "@/lib/api/notifications"
 import { useUIStore } from "@/lib/store/ui"
 import { NotificationPanel } from "@/components/notifications/NotificationPanel"
 
-export function NotificationBell() {
+interface NotificationBellProps {
+  onTrigger?: () => void
+}
+
+export function NotificationBell({ onTrigger }: NotificationBellProps = {}) {
   const [open, setOpen] = useState(false)
   const [count, setCount] = useState(0)
   const setStoreCount = useUIStore((state) => state.setNotificationCount)
@@ -34,9 +38,15 @@ export function NotificationBell() {
     <div className="relative">
       <button
         className="relative rounded-md border border-border p-2 text-foreground"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => {
+          onTrigger?.()
+          setOpen((prev) => !prev)
+        }}
         type="button"
         aria-label="Notifications"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-controls="notifications-panel"
       >
         <Bell className="h-4 w-4" />
         {count > 0 ? (

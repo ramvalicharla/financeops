@@ -232,13 +232,13 @@ export default function ErpMappingPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
+            <table aria-label="ERP mapping" className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">ERP Account</th>
-                  <th className="px-4 py-2">Suggested Platform Account</th>
-                  <th className="px-4 py-2">Confidence</th>
-                  <th className="px-4 py-2">Status</th>
+                  <th scope="col" className="px-4 py-2">ERP Account</th>
+                  <th scope="col" className="px-4 py-2">Suggested Platform Account</th>
+                  <th scope="col" className="px-4 py-2">Confidence</th>
+                  <th scope="col" className="px-4 py-2">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">

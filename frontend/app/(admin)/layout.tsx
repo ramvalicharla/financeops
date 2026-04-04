@@ -1,4 +1,4 @@
-﻿import type { ReactNode } from "react"
+import type { ReactNode } from "react"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
@@ -21,8 +21,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   return (
     <div className="min-h-screen bg-background text-foreground">
       <AdminSidebar />
-      <main className="p-6 md:pl-72">{children}</main>
+      <main id="main-content" className="p-6 md:pl-72">{children}</main>
     </div>
   )
 }
-

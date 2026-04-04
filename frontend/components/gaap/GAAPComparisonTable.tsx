@@ -29,14 +29,14 @@ export function GAAPComparisonTable({ comparison, frameworks }: GAAPComparisonTa
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="w-full min-w-[980px] text-sm">
+      <table aria-label="GAAP comparison" className="w-full min-w-[980px] text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Metric</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Metric</th>
             {frameworks.map((framework) => (
-              <th key={framework} className="px-3 py-2 text-right text-xs text-muted-foreground">{framework}</th>
+              <th key={framework} scope="col" className="px-3 py-2 text-right text-xs text-muted-foreground">{framework}</th>
             ))}
-            <th className="px-3 py-2 text-right text-xs text-muted-foreground">Difference vs INDAS</th>
+            <th scope="col" className="px-3 py-2 text-right text-xs text-muted-foreground">Difference vs INDAS</th>
           </tr>
           <tr className="border-b border-border/60">
             <th

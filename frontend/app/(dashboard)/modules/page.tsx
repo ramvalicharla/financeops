@@ -37,7 +37,7 @@ export default function ModulesPage() {
   }
 
   return (
-    <main className="space-y-6 p-6">
+    <section aria-label="Industry modules" className="space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-foreground">Industry Modules</h1>
         <p className="text-sm text-muted-foreground">
@@ -80,7 +80,6 @@ export default function ModulesPage() {
           </tbody>
         </table>
       </div>
-    </main>
+    </section>
   )
 }
-

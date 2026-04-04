@@ -10,7 +10,7 @@ export default function OrgSetupLayout({ children }: { children: ReactNode }) {
             FinanceOps
           </Link>
         </header>
-        <main className="mx-auto w-full max-w-4xl">{children}</main>
+        <main id="main-content" className="mx-auto w-full max-w-4xl">{children}</main>
       </div>
     </div>
   )

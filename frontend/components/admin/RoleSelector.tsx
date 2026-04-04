@@ -1,5 +1,6 @@
 "use client"
 
+import { FormField } from "@/components/ui/FormField"
 import type { PlatformUserRole } from "@/lib/types/platform-admin"
 
 export function RoleSelector({
@@ -7,14 +8,25 @@ export function RoleSelector({
   roles,
   onChange,
   disabled = false,
+  id = "role-selector",
+  label,
+  error,
+  hint,
+  required = false,
 }: {
   value: PlatformUserRole
   roles: PlatformUserRole[]
   onChange: (next: PlatformUserRole) => void
   disabled?: boolean
+  id?: string
+  label?: string
+  error?: string
+  hint?: string
+  required?: boolean
 }) {
-  return (
+  const control = (
     <select
+      aria-label={label}
       value={value}
       onChange={(event) => onChange(event.target.value as PlatformUserRole)}
       disabled={disabled}
@@ -26,5 +38,21 @@ export function RoleSelector({
         </option>
       ))}
     </select>
+  )
+
+  if (!label) {
+    return control
+  }
+
+  return (
+    <FormField
+      id={id}
+      label={label}
+      error={error}
+      hint={hint}
+      required={required}
+    >
+      {control}
+    </FormField>
   )
 }

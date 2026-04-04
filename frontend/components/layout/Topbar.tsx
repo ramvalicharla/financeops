@@ -1,6 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react"
 import { usePathname } from "next/navigation"
 import { Ellipsis, Menu, Search } from "lucide-react"
 import { signOut } from "next-auth/react"
@@ -24,14 +30,22 @@ interface TopbarProps {
 }
 
 interface ProfileMenuProps {
+  menuId: string
+  menuRef: MutableRefObject<HTMLDivElement | null>
   open: boolean
+  onClose: () => void
+  triggerRef: MutableRefObject<HTMLButtonElement | null>
   userEmail: string
   userName: string
   onToggle: () => void
 }
 
 function ProfileMenu({
+  menuId,
+  menuRef,
   open,
+  onClose,
+  triggerRef,
   userEmail,
   userName,
   onToggle,
@@ -39,6 +53,11 @@ function ProfileMenu({
   return (
     <div className="relative">
       <button
+        ref={triggerRef}
+        aria-controls={menuId}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="Account menu"
         className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-foreground"
         onClick={onToggle}
         type="button"
@@ -46,7 +65,40 @@ function ProfileMenu({
         {userName.slice(0, 1).toUpperCase()}
       </button>
       {open ? (
-        <div className="absolute right-0 z-50 mt-2 w-64 rounded-md border border-border bg-card p-3 shadow-lg">
+        <div
+          id={menuId}
+          ref={menuRef}
+          role="menu"
+          tabIndex={-1}
+          className="absolute right-0 z-50 mt-2 w-64 rounded-md border border-border bg-card p-3 shadow-lg"
+          onKeyDown={(event) => {
+            if (event.key === "Tab") {
+              onClose()
+              return
+            }
+            if (event.key === "Escape") {
+              onClose()
+              triggerRef.current?.focus()
+              return
+            }
+            const items = menuRef.current?.querySelectorAll('[role="menuitem"]')
+            if (!items?.length) {
+              return
+            }
+            const current = document.activeElement
+            const currentIndex = Array.from(items).indexOf(current as Element)
+            if (event.key === "ArrowDown") {
+              event.preventDefault()
+              const next = items[currentIndex + 1] ?? items[0]
+              ;(next as HTMLElement)?.focus()
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault()
+              const previous = items[currentIndex - 1] ?? items[items.length - 1]
+              ;(previous as HTMLElement)?.focus()
+            }
+          }}
+        >
           <p className="text-sm font-medium text-foreground">{userName}</p>
           <p className="text-xs text-muted-foreground">{userEmail}</p>
           <Button
@@ -55,6 +107,7 @@ function ProfileMenu({
             variant="outline"
             onClick={() => signOut({ callbackUrl: "/login" })}
             type="button"
+            role="menuitem"
           >
             Sign out
           </Button>
@@ -75,6 +128,10 @@ export function Topbar({
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false)
   const mobileActionsRef = useRef<HTMLDivElement>(null)
   const mobileActionsButtonRef = useRef<HTMLButtonElement>(null)
+  const mobileProfileTriggerRef = useRef<HTMLButtonElement>(null)
+  const mobileProfileMenuRef = useRef<HTMLDivElement>(null)
+  const desktopProfileTriggerRef = useRef<HTMLButtonElement>(null)
+  const desktopProfileMenuRef = useRef<HTMLDivElement>(null)
   const { openPalette } = useSearch()
   const toggleSidebar = useUIStore((state) => state.toggleSidebar)
   const billingWarning = useUIStore((state) => state.billingWarning)
@@ -134,6 +191,30 @@ export function Topbar({
     }
   }, [mobileActionsOpen])
 
+  useEffect(() => {
+    if (!profileOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (
+        mobileProfileMenuRef.current?.contains(target) ||
+        mobileProfileTriggerRef.current?.contains(target) ||
+        desktopProfileMenuRef.current?.contains(target) ||
+        desktopProfileTriggerRef.current?.contains(target)
+      ) {
+        return
+      }
+      setProfileOpen(false)
+    }
+
+    document.addEventListener("mousedown", handlePointerDown)
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown)
+    }
+  }, [profileOpen])
+
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
       <div className="relative md:hidden">
@@ -169,7 +250,11 @@ export function Topbar({
           </button>
 
           <ProfileMenu
+            menuId="mobile-account-menu"
+            menuRef={mobileProfileMenuRef}
             open={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            triggerRef={mobileProfileTriggerRef}
             userEmail={userEmail}
             userName={userName}
             onToggle={() => {
@@ -209,12 +294,9 @@ export function Topbar({
                 </span>
               </button>
 
-              <div
-                className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-                onClick={() => setProfileOpen(false)}
-              >
+              <div className="flex items-center justify-between rounded-md border border-border px-3 py-2">
                 <span className="text-sm text-foreground">Notifications</span>
-                <NotificationBell />
+                <NotificationBell onTrigger={() => setProfileOpen(false)} />
               </div>
             </div>
           </div>
@@ -249,12 +331,14 @@ export function Topbar({
             </span>
           </button>
 
-          <div onClick={() => setProfileOpen(false)}>
-            <NotificationBell />
-          </div>
+          <NotificationBell onTrigger={() => setProfileOpen(false)} />
 
           <ProfileMenu
+            menuId="desktop-account-menu"
+            menuRef={desktopProfileMenuRef}
             open={profileOpen}
+            onClose={() => setProfileOpen(false)}
+            triggerRef={desktopProfileTriggerRef}
             userEmail={userEmail}
             userName={userName}
             onToggle={() => setProfileOpen((open) => !open)}

@@ -13,11 +13,11 @@ const renderErrors = (errors: CoaUploadError[]) => {
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full divide-y divide-border text-sm">
+      <table aria-label="Validation results" className="min-w-full divide-y divide-border text-sm">
         <thead>
           <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th className="px-3 py-2">Row</th>
-            <th className="px-3 py-2">Errors</th>
+            <th scope="col" className="px-3 py-2">Row</th>
+            <th scope="col" className="px-3 py-2">Errors</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">

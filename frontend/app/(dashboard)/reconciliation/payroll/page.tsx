@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
 import { PayrollReconTable } from "@/components/reconciliation/PayrollReconTable"
 import { useConnections, useSyncRuns } from "@/hooks/useSync"
 import {
@@ -181,110 +182,99 @@ export default function PayrollReconciliationPage() {
       ) : null}
 
       {selectedCostCentre ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[85vh] w-full max-w-4xl overflow-y-auto rounded-lg border border-border bg-card p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">
-                  {selectedCostCentre.cost_centre_name}
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Employee breakdown
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSelectedCostCentre(null)}
-              >
-                Close
-              </Button>
-            </div>
-            <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full min-w-[960px] text-sm">
-                <thead>
-                  <tr className="bg-muted/30">
-                    <th className="px-3 py-2 text-left font-medium text-foreground">
-                      Employee
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium text-foreground">
-                      Gross Pay
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium text-foreground">
-                      Net Pay
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium text-foreground">
-                      Deductions
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium text-foreground">
-                      GL Posting
-                    </th>
-                    <th className="px-3 py-2 text-right font-medium text-foreground">
-                      Variance
-                    </th>
-                    <th className="px-3 py-2 text-left font-medium text-foreground">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {employees.map((employee) => {
-                    const matched = isZeroDecimal(employee.variance)
-                    return (
-                      <tr key={employee.employee_id} className="border-t border-border">
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {employee.employee_name}
-                        </td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {formatINR(employee.gross_pay)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {formatINR(employee.net_pay)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {formatINR(employee.deductions)}
-                        </td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">
-                          {formatINR(employee.gl_posting)}
-                        </td>
-                        <td
-                          className={`px-3 py-2 text-right ${
+        <Dialog open={Boolean(selectedCostCentre)} onClose={() => setSelectedCostCentre(null)} title="Payroll detail" size="lg">
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-foreground">
+              {selectedCostCentre.cost_centre_name}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Employee breakdown
+            </p>
+          </div>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <table className="w-full min-w-[960px] text-sm">
+              <thead>
+                <tr className="bg-muted/30">
+                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                    Employee
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-foreground">
+                    Gross Pay
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-foreground">
+                    Net Pay
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-foreground">
+                    Deductions
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-foreground">
+                    GL Posting
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-foreground">
+                    Variance
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                    Status
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((employee) => {
+                  const matched = isZeroDecimal(employee.variance)
+                  return (
+                    <tr key={employee.employee_id} className="border-t border-border">
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {employee.employee_name}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {formatINR(employee.gross_pay)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {formatINR(employee.net_pay)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {formatINR(employee.deductions)}
+                      </td>
+                      <td className="px-3 py-2 text-right text-muted-foreground">
+                        {formatINR(employee.gl_posting)}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right ${
+                          matched
+                            ? "text-[hsl(var(--brand-success))]"
+                            : "text-[hsl(var(--brand-danger))]"
+                        }`}
+                      >
+                        {formatINR(employee.variance)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
                             matched
-                              ? "text-[hsl(var(--brand-success))]"
-                              : "text-[hsl(var(--brand-danger))]"
+                              ? "bg-[hsl(var(--brand-success)/0.2)] text-[hsl(var(--brand-success))]"
+                              : "bg-[hsl(var(--brand-danger)/0.2)] text-[hsl(var(--brand-danger))]"
                           }`}
                         >
-                          {formatINR(employee.variance)}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
-                              matched
-                                ? "bg-[hsl(var(--brand-success)/0.2)] text-[hsl(var(--brand-success))]"
-                                : "bg-[hsl(var(--brand-danger)/0.2)] text-[hsl(var(--brand-danger))]"
-                            }`}
-                          >
-                            {matched ? "Matched" : "Variance"}
-                          </span>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                  {!employees.length ? (
-                    <tr>
-                      <td
-                        colSpan={7}
-                        className="px-3 py-4 text-center text-muted-foreground"
-                      >
-                        No employee breakdown available.
+                          {matched ? "Matched" : "Variance"}
+                        </span>
                       </td>
                     </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
+                  )
+                })}
+                {!employees.length ? (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="px-3 py-4 text-center text-muted-foreground"
+                    >
+                      No employee breakdown available.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
-        </div>
+        </Dialog>
       ) : null}
     </div>
   )

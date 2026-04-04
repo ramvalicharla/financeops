@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { createLease, getLeaseSchedule } from "@/lib/api/modules"
 
 type LeaseScheduleRow = {
@@ -51,7 +52,7 @@ export default function LeaseModulePage() {
   }
 
   return (
-    <main className="space-y-6 p-6">
+    <section aria-label="Lease module" className="space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold">Lease Module</h1>
         <p className="text-sm text-muted-foreground">
@@ -60,12 +61,12 @@ export default function LeaseModulePage() {
       </header>
 
       <section className="grid gap-3 rounded-lg border border-border bg-card p-4 md:grid-cols-3">
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Entity ID" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Lease payment" value={payment} onChange={(e) => setPayment(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Annual discount rate (e.g. 0.12)" value={discountRate} onChange={(e) => setDiscountRate(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Lease type" value={leaseType} onChange={(e) => setLeaseType(e.target.value)} />
+        <FormField id="lease-entity-id" label="Entity ID"><input className="rounded-md border border-border bg-background px-3 py-2" value={entityId} onChange={(e) => setEntityId(e.target.value)} /></FormField>
+        <FormField id="lease-start-date" label="Lease start date"><input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></FormField>
+        <FormField id="lease-end-date" label="Lease end date"><input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></FormField>
+        <FormField id="lease-payment" label="Lease payment"><input className="rounded-md border border-border bg-background px-3 py-2" value={payment} onChange={(e) => setPayment(e.target.value)} inputMode="decimal" /></FormField>
+        <FormField id="lease-discount-rate" label="Discount rate"><input className="rounded-md border border-border bg-background px-3 py-2" value={discountRate} onChange={(e) => setDiscountRate(e.target.value)} inputMode="decimal" /></FormField>
+        <FormField id="lease-type" label="Lease type"><input className="rounded-md border border-border bg-background px-3 py-2" value={leaseType} onChange={(e) => setLeaseType(e.target.value)} /></FormField>
         <button className="rounded-md border border-border px-3 py-2 hover:bg-accent md:col-span-3" type="button" onClick={() => void submit()} disabled={loading}>
           {loading ? "Generating..." : "Create Lease Schedule"}
         </button>
@@ -110,7 +111,6 @@ export default function LeaseModulePage() {
           </table>
         </div>
       ) : null}
-    </main>
+    </section>
   )
 }
-

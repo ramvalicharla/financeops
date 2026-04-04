@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { ERP_TYPE_OPTIONS } from "@/components/org-setup/constants"
 import type { ErpConfigPayload, OrgEntity } from "@/lib/api/orgSetup"
@@ -61,35 +62,45 @@ export function Step4AccountingTools({
           return (
             <div key={entity.id} className="grid gap-3 rounded-lg border border-border bg-background/40 p-4 md:grid-cols-4">
               <div className="text-sm text-foreground">{entity.display_name ?? entity.legal_name}</div>
-              <select
-                value={selected.erp_type}
-                onChange={(event) => updateRow(index, "erp_type", event.target.value as ErpConfigPayload["erp_type"])}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {ERP_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              {selectedOption?.showVersion ? (
-                <input
-                  value={selected.erp_version ?? ""}
-                  onChange={(event) => updateRow(index, "erp_version", event.target.value)}
-                  placeholder="Version"
+              <FormField id={`erp-system-${index}`} label="ERP system" required>
+                <select
+                  value={selected.erp_type}
+                  onChange={(event) =>
+                    updateRow(index, "erp_type", event.target.value as ErpConfigPayload["erp_type"])
+                  }
                   className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                />
+                >
+                  {ERP_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              {selectedOption?.showVersion ? (
+                <FormField
+                  id={`erp-version-${index}`}
+                  label="Version"
+                  hint="Enter the version number of your ERP system"
+                >
+                  <input
+                    value={selected.erp_version ?? ""}
+                    onChange={(event) => updateRow(index, "erp_version", event.target.value)}
+                    placeholder="Version"
+                    className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                  />
+                </FormField>
               ) : (
                 <div className="text-sm text-muted-foreground">Version not required</div>
               )}
-              <label className="flex items-center gap-2 text-sm text-foreground">
+              <FormField id={`erp-primary-${index}`} label="Primary configuration">
                 <input
                   checked={selected.is_primary}
                   onChange={(event) => updateRow(index, "is_primary", event.target.checked)}
                   type="checkbox"
+                  className="h-4 w-4"
                 />
-                Primary
-              </label>
+              </FormField>
             </div>
           )
         })}

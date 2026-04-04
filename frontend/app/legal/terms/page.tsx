@@ -1,4 +1,7 @@
 import Link from "next/link"
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Terms of Service")
 
 export default function TermsPage() {
   return (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
+import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 import { GAAPComparisonTable } from "@/components/gaap/GAAPComparisonTable"
 import { GAAPToggle } from "@/components/gaap/GAAPToggle"
@@ -67,7 +68,9 @@ export default function GaapPage() {
         <ScaleSelector value={scale} onChange={setScale} />
       </div>
       <div className="max-w-xs">
-        <Input value={period} onChange={(event) => setPeriod(event.target.value)} />
+        <FormField id="gaap-period" label="Reporting period">
+          <Input value={period} onChange={(event) => setPeriod(event.target.value)} />
+        </FormField>
       </div>
       <GAAPToggle
         frameworks={[...frameworks]}

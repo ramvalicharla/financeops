@@ -23,6 +23,13 @@ export interface SourceOption {
   id: string
   name: string
 }
+type ConfirmState = {
+  open: boolean
+  title: string
+  description: string
+  variant: "default" | "destructive"
+  onConfirm: () => void
+}
 
 export interface ScheduleFormState {
   name: string
@@ -85,6 +92,7 @@ export function useDeliveries() {
   const [sheetMode, setSheetMode] = useState<"create" | "edit" | null>(null)
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
   const [formState, setFormState] = useState<ScheduleFormState>(createDefaultForm())
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
   const schedulesQuery = useFetch(() => fetchDeliverySchedules(), [])
   const schedules = schedulesQuery.data ?? []
@@ -213,6 +221,10 @@ export function useDeliveries() {
     setSheetError(null)
   }
 
+  const dismissConfirm = useCallback(() => {
+    setConfirmState(null)
+  }, [])
+
   const setForm = (updates: Partial<ScheduleFormState>) => {
     setFormState((previous) => ({ ...previous, ...updates }))
   }
@@ -281,20 +293,35 @@ export function useDeliveries() {
   }
 
   const deleteScheduleAction = async (scheduleId: string) => {
-    if (!window.confirm("Delete this schedule? This performs a soft delete.")) return
-    try {
-      setActionError(null)
-      await deleteScheduleActionState.execute(scheduleId)
-    } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : "Delete failed.")
-    }
+    setConfirmState({
+      open: true,
+      title: "Delete delivery schedule",
+      description:
+        "This will permanently delete this delivery schedule. Scheduled deliveries will no longer be sent. This cannot be undone.",
+      variant: "destructive",
+      onConfirm: () => {
+        void (async () => {
+          try {
+            setActionError(null)
+            await deleteScheduleActionState.execute(scheduleId)
+          } catch (cause) {
+            setActionError(cause instanceof Error ? cause.message : "Delete failed.")
+          } finally {
+            dismissConfirm()
+          }
+        })()
+      },
+    })
   }
 
   return {
     addRecipient,
     closeSheet,
+    confirmLoading: deleteScheduleActionState.isLoading,
+    confirmState,
     definitionNameById,
     deleteScheduleAction,
+    dismissConfirm,
     error,
     formState,
     loading,

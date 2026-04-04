@@ -14,6 +14,7 @@ import {
 import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
 import { Button } from "@/components/ui/button"
+import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 
 type EditableLocation = {
@@ -63,6 +64,11 @@ export default function LocationsSettingsPage() {
   const [pincode, setPincode] = useState("")
   const [gstinHint, setGstinHint] = useState<string | null>(null)
   const [gstinError, setGstinError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{
+    entity?: string
+    location_name?: string
+    location_code?: string
+  }>({})
 
   const locationsQuery = useQuery({
     queryKey: ["settings-locations", activeEntityId, skip, limit],
@@ -169,6 +175,19 @@ export default function LocationsSettingsPage() {
     [activeEntityId, entityRoles],
   )
 
+  const handleCreate = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!activeEntityId) nextFieldErrors.entity = "Entity is required."
+    if (!locationName.trim()) nextFieldErrors.location_name = "Location name is required."
+    if (!locationCode.trim()) nextFieldErrors.location_code = "Location code is required."
+    if (Object.keys(nextFieldErrors).length > 0 || gstinError) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    createMutation.mutate()
+  }
+
   return (
     <div className="space-y-6 p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -187,22 +206,24 @@ export default function LocationsSettingsPage() {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-3">
-          <select
-            value={activeEntityId ?? ""}
-            onChange={(event) => {
-              useTenantStore.getState().setActiveEntity(event.target.value || null)
-              useLocationStore.getState().setActiveLocation(null)
-              setSkip(0)
-            }}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select entity</option>
-            {entityRoles.map((role) => (
-              <option key={role.entity_id} value={role.entity_id}>
-                {role.entity_name}
-              </option>
-            ))}
-          </select>
+          <FormField id="location-entity" label="Entity" error={fieldErrors.entity} required>
+            <select
+              value={activeEntityId ?? ""}
+              onChange={(event) => {
+                useTenantStore.getState().setActiveEntity(event.target.value || null)
+                useLocationStore.getState().setActiveLocation(null)
+                setSkip(0)
+              }}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select entity</option>
+              {entityRoles.map((role) => (
+                <option key={role.entity_id} value={role.entity_id}>
+                  {role.entity_name}
+                </option>
+              ))}
+            </select>
+          </FormField>
           <select
             value={String(limit)}
             onChange={(event) => {
@@ -222,25 +243,39 @@ export default function LocationsSettingsPage() {
         <section className="rounded-xl border border-border bg-card p-4">
           <h2 className="mb-3 text-sm font-medium text-foreground">New Location</h2>
           <div className="grid gap-3 md:grid-cols-3">
-            <Input value={locationName} onChange={(event) => setLocationName(event.target.value)} placeholder="Location name" />
-            <Input value={locationCode} onChange={(event) => setLocationCode(event.target.value)} placeholder="Location code" />
-            <Input
-              value={gstin}
-              onChange={(event) => setGstin(event.target.value.toUpperCase())}
-              onBlur={() => void handleValidateGstin(gstin, "create")}
-              placeholder="GSTIN"
-            />
-            <Input value={stateCode} onChange={(event) => setStateCode(event.target.value)} placeholder="State code" />
-            <Input value={addressLine1} onChange={(event) => setAddressLine1(event.target.value)} placeholder="Address" />
-            <Input value={city} onChange={(event) => setCity(event.target.value)} placeholder="City" />
-            <Input value={stateName} onChange={(event) => setStateName(event.target.value)} placeholder="State" />
-            <Input value={pincode} onChange={(event) => setPincode(event.target.value)} placeholder="Pincode" />
+            <FormField id="location-name" label="Location name" error={fieldErrors.location_name} required>
+              <Input value={locationName} onChange={(event) => setLocationName(event.target.value)} />
+            </FormField>
+            <FormField id="location-code" label="Location code" error={fieldErrors.location_code} required>
+              <Input value={locationCode} onChange={(event) => setLocationCode(event.target.value)} />
+            </FormField>
+            <FormField id="location-gstin" label="GSTIN" error={gstinError ?? undefined}>
+              <Input
+                value={gstin}
+                onChange={(event) => setGstin(event.target.value.toUpperCase())}
+                onBlur={() => void handleValidateGstin(gstin, "create")}
+              />
+            </FormField>
+            <FormField id="location-state-code" label="State code">
+              <Input value={stateCode} onChange={(event) => setStateCode(event.target.value)} />
+            </FormField>
+            <FormField id="location-address" label="Address">
+              <Input value={addressLine1} onChange={(event) => setAddressLine1(event.target.value)} />
+            </FormField>
+            <FormField id="location-city" label="City">
+              <Input value={city} onChange={(event) => setCity(event.target.value)} />
+            </FormField>
+            <FormField id="location-state" label="State">
+              <Input value={stateName} onChange={(event) => setStateName(event.target.value)} />
+            </FormField>
+            <FormField id="location-pincode" label="Pincode">
+              <Input value={pincode} onChange={(event) => setPincode(event.target.value)} />
+            </FormField>
           </div>
           {gstinHint ? <p className="mt-2 text-xs text-emerald-300">GSTIN state: {gstinHint}</p> : null}
-          {gstinError ? <p className="mt-2 text-xs text-[hsl(var(--brand-danger))]">{gstinError}</p> : null}
           <div className="mt-4 flex justify-end">
             <Button
-              onClick={() => createMutation.mutate()}
+              onClick={handleCreate}
               disabled={!activeEntityId || !locationName || !locationCode || createMutation.isPending || Boolean(gstinError)}
             >
               Create Location
@@ -260,15 +295,15 @@ export default function LocationsSettingsPage() {
           <div className="p-4 text-sm text-[hsl(var(--brand-danger))]">Failed to load locations.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
+            <table aria-label="Locations" className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Name</th>
-                  <th className="px-4 py-2">Code</th>
-                  <th className="px-4 py-2">GSTIN</th>
-                  <th className="px-4 py-2">State</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2 text-right">Actions</th>
+                  <th scope="col" className="px-4 py-2">Name</th>
+                  <th scope="col" className="px-4 py-2">Code</th>
+                  <th scope="col" className="px-4 py-2">GSTIN</th>
+                  <th scope="col" className="px-4 py-2">State</th>
+                  <th scope="col" className="px-4 py-2">Status</th>
+                  <th scope="col" className="px-4 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">

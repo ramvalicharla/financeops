@@ -131,17 +131,26 @@ export default function AccountingPnLPage() {
             <table className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Category</th>
-                  <th className="px-4 py-2">Account</th>
-                  <th className="px-4 py-2">Amount</th>
+                  <th scope="col" className="px-4 py-2">Category</th>
+                  <th scope="col" className="px-4 py-2">Account</th>
+                  <th scope="col" className="px-4 py-2">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {pnlQuery.data?.breakdown.map((row) => (
                   <tr
                     key={`${row.category}-${row.account_code}`}
-                    className="cursor-pointer hover:bg-muted/20"
+                    role="row"
+                    tabIndex={0}
+                    className="cursor-pointer hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     onClick={() => setSelectedAccountCode(row.account_code)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        setSelectedAccountCode(row.account_code)
+                      }
+                    }}
+                    aria-label={`View details for ${row.account_name || row.account_code}`}
                   >
                     <td className="px-4 py-2 text-muted-foreground">{row.category}</td>
                     <td className="px-4 py-2">

@@ -14,14 +14,14 @@ export function APAgingTable({ rows }: APAgingTableProps) {
     <section className="rounded-xl border border-border bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-foreground">Discount Opportunities AP</h3>
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table aria-label="Accounts payable aging" className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted-foreground">
-              <th className="py-2">Vendor</th>
-              <th className="py-2">Amount</th>
-              <th className="py-2">Days Overdue</th>
-              <th className="py-2">Discount %</th>
-              <th className="py-2">Saving ₹</th>
+              <th scope="col" className="py-2">Vendor</th>
+              <th scope="col" className="py-2">Amount</th>
+              <th scope="col" className="py-2">Days Overdue</th>
+              <th scope="col" className="py-2">Discount %</th>
+              <th scope="col" className="py-2">Saving ₹</th>
             </tr>
           </thead>
           <tbody>

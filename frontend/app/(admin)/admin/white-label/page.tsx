@@ -58,14 +58,14 @@ export default function AdminWhiteLabelPage() {
 
       <section className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
+          <table aria-label="White label configurations" className="min-w-full text-sm">
             <thead className="bg-background/50 text-xs uppercase tracking-[0.14em] text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 text-left">Tenant ID</th>
-                <th className="px-4 py-3 text-left">Domain</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-left">Verified</th>
-                <th className="px-4 py-3 text-left">Actions</th>
+                <th scope="col" className="px-4 py-3 text-left">Tenant ID</th>
+                <th scope="col" className="px-4 py-3 text-left">Domain</th>
+                <th scope="col" className="px-4 py-3 text-left">Status</th>
+                <th scope="col" className="px-4 py-3 text-left">Verified</th>
+                <th scope="col" className="px-4 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">

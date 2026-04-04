@@ -14,6 +14,7 @@ import {
 } from "@/lib/api/fixedAssets"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { Button } from "@/components/ui/button"
+import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 
 interface FixedAssetDetailPageProps {
@@ -41,6 +42,17 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
 
   const [disposalDate, setDisposalDate] = useState("")
   const [disposalProceeds, setDisposalProceeds] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<{
+    depStart?: string
+    depEnd?: string
+    fairValue?: string
+    revaluationDate?: string
+    impairmentDate?: string
+    valueInUse?: string
+    fvlcts?: string
+    disposalDate?: string
+    disposalProceeds?: string
+  }>({})
 
   const assetQuery = useQuery({
     queryKey: ["fa-asset", params.id],
@@ -116,6 +128,57 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
 
   const latestDep = useMemo(() => depreciationQuery.data?.items.at(0) ?? null, [depreciationQuery.data])
 
+  const handleDepreciationRun = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!depStart) nextFieldErrors.depStart = "Depreciation period start is required."
+    if (!depEnd) nextFieldErrors.depEnd = "Depreciation period end is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    depMutation.mutate()
+  }
+
+  const handleRevaluation = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!fairValue.trim()) nextFieldErrors.fairValue = "Fair value is required."
+    if (!revaluationDate) nextFieldErrors.revaluationDate = "Revaluation date is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    revaluationMutation.mutate()
+  }
+
+  const handleImpairment = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!impairmentDate) nextFieldErrors.impairmentDate = "Impairment date is required."
+    if (!valueInUse && !fvlcts) {
+      nextFieldErrors.valueInUse = "Provide value in use or FVLCTS."
+      nextFieldErrors.fvlcts = "Provide value in use or FVLCTS."
+    }
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    impairmentMutation.mutate()
+  }
+
+  const handleDisposal = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!disposalDate) nextFieldErrors.disposalDate = "Disposal date is required."
+    if (!disposalProceeds.trim()) nextFieldErrors.disposalProceeds = "Disposal proceeds are required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    disposalMutation.mutate()
+  }
+
   if (assetQuery.isLoading) {
     return (
       <div className="space-y-4 p-6">
@@ -176,21 +239,29 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2 rounded-lg border border-border p-3">
             <h3 className="text-sm font-medium text-foreground">Post Depreciation Run</h3>
-            <Input type="date" value={depStart} onChange={(event) => setDepStart(event.target.value)} />
-            <Input type="date" value={depEnd} onChange={(event) => setDepEnd(event.target.value)} />
-            <Button onClick={() => depMutation.mutate()} disabled={!depStart || !depEnd || depMutation.isPending}>
+            <FormField id="depreciation-period-start" label="Depreciation period start" error={fieldErrors.depStart} required>
+              <Input type="date" value={depStart} onChange={(event) => setDepStart(event.target.value)} />
+            </FormField>
+            <FormField id="depreciation-period-end" label="Depreciation period end" error={fieldErrors.depEnd} required>
+              <Input type="date" value={depEnd} onChange={(event) => setDepEnd(event.target.value)} />
+            </FormField>
+            <Button onClick={handleDepreciationRun} disabled={!depStart || !depEnd || depMutation.isPending}>
               Post Run
             </Button>
           </div>
 
           <div className="space-y-2 rounded-lg border border-border p-3">
             <h3 className="text-sm font-medium text-foreground">Post Revaluation</h3>
-            <Input value={fairValue} onChange={(event) => setFairValue(event.target.value)} placeholder="Fair value" />
-            <Input
-              type="date"
-              value={revaluationDate}
-              onChange={(event) => setRevaluationDate(event.target.value)}
-            />
+            <FormField id="revaluation-fair-value" label="Fair value" error={fieldErrors.fairValue} required>
+              <Input value={fairValue} onChange={(event) => setFairValue(event.target.value)} inputMode="decimal" />
+            </FormField>
+            <FormField id="revaluation-date" label="Revaluation date" error={fieldErrors.revaluationDate} required>
+              <Input
+                type="date"
+                value={revaluationDate}
+                onChange={(event) => setRevaluationDate(event.target.value)}
+              />
+            </FormField>
             <select
               value={revaluationMethod}
               onChange={(event) => setRevaluationMethod(event.target.value)}
@@ -200,7 +271,7 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
               <option value="ELIMINATION">Elimination</option>
             </select>
             <Button
-              onClick={() => revaluationMutation.mutate()}
+              onClick={handleRevaluation}
               disabled={!fairValue || !revaluationDate || revaluationMutation.isPending}
             >
               Post Revaluation
@@ -209,20 +280,28 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
 
           <div className="space-y-2 rounded-lg border border-border p-3">
             <h3 className="text-sm font-medium text-foreground">Post Impairment</h3>
-            <Input
-              type="date"
-              value={impairmentDate}
-              onChange={(event) => setImpairmentDate(event.target.value)}
-            />
-            <Input value={valueInUse} onChange={(event) => setValueInUse(event.target.value)} placeholder="Value in use" />
-            <Input value={fvlcts} onChange={(event) => setFvlcts(event.target.value)} placeholder="FVLCTS" />
-            <Input
-              value={discountRate}
-              onChange={(event) => setDiscountRate(event.target.value)}
-              placeholder="Discount rate"
-            />
+            <FormField id="impairment-date" label="Impairment date" error={fieldErrors.impairmentDate} required>
+              <Input
+                type="date"
+                value={impairmentDate}
+                onChange={(event) => setImpairmentDate(event.target.value)}
+              />
+            </FormField>
+            <FormField id="impairment-value-in-use" label="Value in use" error={fieldErrors.valueInUse}>
+              <Input value={valueInUse} onChange={(event) => setValueInUse(event.target.value)} inputMode="decimal" />
+            </FormField>
+            <FormField id="impairment-fvlcts" label="FVLCTS" error={fieldErrors.fvlcts}>
+              <Input value={fvlcts} onChange={(event) => setFvlcts(event.target.value)} inputMode="decimal" />
+            </FormField>
+            <FormField id="impairment-discount-rate" label="Discount rate">
+              <Input
+                value={discountRate}
+                onChange={(event) => setDiscountRate(event.target.value)}
+                inputMode="decimal"
+              />
+            </FormField>
             <Button
-              onClick={() => impairmentMutation.mutate()}
+              onClick={handleImpairment}
               disabled={
                 !impairmentDate ||
                 (!valueInUse && !fvlcts) ||
@@ -235,15 +314,19 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
 
           <div className="space-y-2 rounded-lg border border-border p-3">
             <h3 className="text-sm font-medium text-foreground">Dispose Asset</h3>
-            <Input type="date" value={disposalDate} onChange={(event) => setDisposalDate(event.target.value)} />
-            <Input
-              value={disposalProceeds}
-              onChange={(event) => setDisposalProceeds(event.target.value)}
-              placeholder="Disposal proceeds"
-            />
+            <FormField id="disposal-date" label="Disposal date" error={fieldErrors.disposalDate} required>
+              <Input type="date" value={disposalDate} onChange={(event) => setDisposalDate(event.target.value)} />
+            </FormField>
+            <FormField id="disposal-proceeds" label="Disposal proceeds" error={fieldErrors.disposalProceeds} required>
+              <Input
+                value={disposalProceeds}
+                onChange={(event) => setDisposalProceeds(event.target.value)}
+                inputMode="decimal"
+              />
+            </FormField>
             <Button
               variant="outline"
-              onClick={() => disposalMutation.mutate()}
+              onClick={handleDisposal}
               disabled={!disposalDate || !disposalProceeds || disposalMutation.isPending}
             >
               Mark Disposed
@@ -257,14 +340,14 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
           <h2 className="text-lg font-medium text-foreground">Depreciation History</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
+          <table aria-label="Asset transactions" className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-muted/30">
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-2">Period</th>
-                <th className="px-4 py-2">GAAP</th>
-                <th className="px-4 py-2">Opening NBV</th>
-                <th className="px-4 py-2">Depreciation</th>
-                <th className="px-4 py-2">Closing NBV</th>
+                <th scope="col" className="px-4 py-2">Period</th>
+                <th scope="col" className="px-4 py-2">GAAP</th>
+                <th scope="col" className="px-4 py-2">Opening NBV</th>
+                <th scope="col" className="px-4 py-2">Depreciation</th>
+                <th scope="col" className="px-4 py-2">Closing NBV</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

@@ -19,6 +19,7 @@ import {
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { Button } from "@/components/ui/button"
+import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 
 const classificationOptions: InvoiceClassificationType[] = [
@@ -94,6 +95,18 @@ export default function InvoiceClassifierPage() {
   const [ruleClassification, setRuleClassification] = useState<InvoiceClassificationType>("DIRECT_EXPENSE")
   const [ruleConfidence, setRuleConfidence] = useState("0.9500")
   const [rulePriority, setRulePriority] = useState("100")
+  const [fieldErrors, setFieldErrors] = useState<{
+    activeEntityId?: string
+    invoiceNumber?: string
+    vendorName?: string
+    invoiceDate?: string
+    invoiceAmount?: string
+    lineDescription?: string
+    ruleName?: string
+    rulePatternValue?: string
+    ruleConfidence?: string
+    rulePriority?: string
+  }>({})
 
   const queueQuery = useQuery({
     queryKey: ["invoice-review-queue", activeEntityId, skip, limit],
@@ -218,6 +231,35 @@ export default function InvoiceClassifierPage() {
     return { total, mapped, confirmed, unmapped, avg }
   }, [historyQuery.data])
 
+  const handleClassify = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!activeEntityId) nextFieldErrors.activeEntityId = "Entity is required."
+    if (!invoiceNumber.trim()) nextFieldErrors.invoiceNumber = "Invoice number is required."
+    if (!vendorName.trim()) nextFieldErrors.vendorName = "Vendor is required."
+    if (!invoiceAmount.trim()) nextFieldErrors.invoiceAmount = "Amount is required."
+    if (!lineDescription.trim()) nextFieldErrors.lineDescription = "Line description is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    classifyMutation.mutate()
+  }
+
+  const handleCreateRule = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!ruleName.trim()) nextFieldErrors.ruleName = "Rule name is required."
+    if (!rulePatternValue.trim()) nextFieldErrors.rulePatternValue = "Pattern value is required."
+    if (!ruleConfidence.trim()) nextFieldErrors.ruleConfidence = "Confidence is required."
+    if (!rulePriority.trim()) nextFieldErrors.rulePriority = "Priority is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    createRuleMutation.mutate()
+  }
+
   return (
     <div className="space-y-6 p-6">
       <header>
@@ -229,18 +271,20 @@ export default function InvoiceClassifierPage() {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-5">
-          <select
-            value={activeEntityId ?? ""}
-            onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select entity</option>
-            {entityRoles.map((role) => (
-              <option key={role.entity_id} value={role.entity_id}>
-                {role.entity_name}
-              </option>
-            ))}
-          </select>
+          <FormField id="invoice-entity" label="Entity" error={fieldErrors.activeEntityId} required>
+            <select
+              value={activeEntityId ?? ""}
+              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select entity</option>
+              {entityRoles.map((role) => (
+                <option key={role.entity_id} value={role.entity_id}>
+                  {role.entity_name}
+                </option>
+              ))}
+            </select>
+          </FormField>
           <div className="col-span-4 flex flex-wrap gap-2">
             <Button variant={tab === "classify" ? "default" : "outline"} onClick={() => setTab("classify")}>Classify</Button>
             <Button variant={tab === "queue" ? "default" : "outline"} onClick={() => setTab("queue")}>Review queue</Button>
@@ -253,20 +297,29 @@ export default function InvoiceClassifierPage() {
       {tab === "classify" ? (
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
           <div className="grid gap-3 md:grid-cols-2">
-            <Input value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} placeholder="Invoice number" />
-            <Input value={vendorName} onChange={(event) => setVendorName(event.target.value)} placeholder="Vendor" />
-            <Input type="date" value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
-            <Input value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} placeholder="Amount" />
+            <FormField id="invoice-number" label="Invoice number" error={fieldErrors.invoiceNumber} required>
+              <Input value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
+            </FormField>
+            <FormField id="invoice-vendor" label="Vendor" error={fieldErrors.vendorName} required>
+              <Input value={vendorName} onChange={(event) => setVendorName(event.target.value)} />
+            </FormField>
+            <FormField id="invoice-date" label="Invoice date">
+              <Input type="date" value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
+            </FormField>
+            <FormField id="invoice-amount" label="Amount" error={fieldErrors.invoiceAmount} required>
+              <Input value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} inputMode="decimal" />
+            </FormField>
             <div className="md:col-span-2">
-              <Input
-                value={lineDescription}
-                onChange={(event) => setLineDescription(event.target.value)}
-                placeholder="Line description"
-              />
+              <FormField id="invoice-notes" label="Line description" error={fieldErrors.lineDescription} required>
+                <Input
+                  value={lineDescription}
+                  onChange={(event) => setLineDescription(event.target.value)}
+                />
+              </FormField>
             </div>
           </div>
           <Button
-            onClick={() => classifyMutation.mutate()}
+            onClick={handleClassify}
             disabled={!activeEntityId || !invoiceNumber || !vendorName || !invoiceAmount || !lineDescription || classifyMutation.isPending}
           >
             Classify Invoice
@@ -473,7 +526,9 @@ export default function InvoiceClassifierPage() {
       {tab === "rules" ? (
         <section className="space-y-4 rounded-xl border border-border bg-card p-4">
           <div className="grid gap-3 md:grid-cols-3">
-            <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} placeholder="Rule name" />
+            <FormField id="invoice-rule-name" label="Rule name" error={fieldErrors.ruleName} required>
+              <Input value={ruleName} onChange={(event) => setRuleName(event.target.value)} />
+            </FormField>
             <select
               value={rulePatternType}
               onChange={(event) => setRulePatternType(event.target.value as ClassificationRule["pattern_type"])}
@@ -501,23 +556,24 @@ export default function InvoiceClassifierPage() {
               />
             </div>
             <div className="md:col-span-3">
-              <Input
-                value={rulePatternValue}
-                onChange={(event) => setRulePatternValue(event.target.value)}
-                placeholder="Pattern value"
-              />
+              <FormField id="invoice-rule-pattern" label="Pattern value" error={fieldErrors.rulePatternValue} required>
+                <Input
+                  value={rulePatternValue}
+                  onChange={(event) => setRulePatternValue(event.target.value)}
+                />
+              </FormField>
             </div>
-            <Input value={ruleAmountMin} onChange={(event) => setRuleAmountMin(event.target.value)} placeholder="Amount min" />
-            <Input value={ruleAmountMax} onChange={(event) => setRuleAmountMax(event.target.value)} placeholder="Amount max" />
-            <Input
+            <FormField id="invoice-rule-amount-min" label="Amount min"><Input value={ruleAmountMin} onChange={(event) => setRuleAmountMin(event.target.value)} inputMode="decimal" /></FormField>
+            <FormField id="invoice-rule-amount-max" label="Amount max"><Input value={ruleAmountMax} onChange={(event) => setRuleAmountMax(event.target.value)} inputMode="decimal" /></FormField>
+            <FormField id="invoice-rule-confidence" label="Confidence" error={fieldErrors.ruleConfidence} required><Input
               value={ruleConfidence}
               onChange={(event) => setRuleConfidence(event.target.value)}
-              placeholder="Confidence (0.9500)"
-            />
-            <Input value={rulePriority} onChange={(event) => setRulePriority(event.target.value)} placeholder="Priority" />
+              inputMode="decimal"
+            /></FormField>
+            <FormField id="invoice-rule-priority" label="Priority" error={fieldErrors.rulePriority} required><Input value={rulePriority} onChange={(event) => setRulePriority(event.target.value)} inputMode="decimal" /></FormField>
           </div>
           <Button
-            onClick={() => createRuleMutation.mutate()}
+            onClick={handleCreateRule}
             disabled={!ruleName || !rulePatternValue || !ruleConfidence || !rulePriority || createRuleMutation.isPending}
           >
             Add Rule

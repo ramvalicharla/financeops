@@ -10,6 +10,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table"
+import { SortableHeader } from "@/components/ui/SortableHeader"
 import { Button } from "@/components/ui/button"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { PayrollCostCentre } from "@/types/reconciliation"
@@ -94,25 +95,36 @@ export function PayrollReconTable({
     },
   })
 
+  const currentSort = {
+    key: sorting[0]?.id ?? "",
+    direction: sorting[0]?.desc === undefined ? null : sorting[0].desc ? "desc" : "asc",
+  } as const
+
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[760px] text-sm">
+        <table aria-label="Payroll reconciliation" className="w-full min-w-[760px] text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="bg-muted/30">
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left font-medium text-foreground"
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) =>
+                  header.isPlaceholder ? null : (
+                    <SortableHeader
+                      key={header.id}
+                      sortKey={header.column.id}
+                      currentSort={currentSort}
+                      onSort={(key) => {
+                        table.getColumn(key)?.toggleSorting()
+                      }}
+                      className="px-3 py-2 text-left text-foreground"
+                    >
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                    </SortableHeader>
+                  ),
+                )}
               </tr>
             ))}
           </thead>
@@ -120,8 +132,17 @@ export function PayrollReconTable({
             {table.getRowModel().rows.map((row) => (
               <tr
                 key={row.id}
-                className="cursor-pointer border-t border-border hover:bg-accent/30"
+                role="row"
+                tabIndex={0}
+                className="cursor-pointer border-t border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => onRowClick(row.original)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault()
+                    onRowClick(row.original)
+                  }
+                }}
+                aria-label={`View details for ${row.original.cost_centre_name}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-3 py-2 text-muted-foreground">

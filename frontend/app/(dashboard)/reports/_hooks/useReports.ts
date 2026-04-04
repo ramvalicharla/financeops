@@ -23,6 +23,13 @@ import { useAsyncAction, useFetch, usePolling } from "@/hooks"
 
 export type ActiveReportTab = "runs" | "definitions"
 export type ReportSheetMode = "create" | "edit"
+type ConfirmState = {
+  open: boolean
+  title: string
+  description: string
+  variant: "default" | "destructive"
+  onConfirm: () => void
+}
 
 export interface ReportFormState {
   name: string
@@ -145,6 +152,7 @@ export function useReports() {
   )
   const [runDialogDefinition, setRunDialogDefinition] =
     useState<ReportDefinitionResponse | null>(null)
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
   const definitionsQuery = useFetch(() => fetchReportDefinitions(false), [])
   const runsQuery = useFetch(() => fetchReportRuns({ limit: 50 }), [])
@@ -351,17 +359,16 @@ export function useReports() {
   }
 
   const deleteDefinitionAction = async (id: string) => {
-    if (!window.confirm("Delete this definition? This performs a soft delete.")) {
-      return
-    }
-    try {
-      setDefinitionActionError(null)
-      await deleteDefinitionActionState.execute(id)
-    } catch (error) {
-      setDefinitionActionError(
-        error instanceof Error ? error.message : "Delete failed.",
-      )
-    }
+    setConfirmState({
+      open: true,
+      title: "Delete report",
+      description:
+        "This will permanently delete the report definition and all associated run history. This cannot be undone.",
+      variant: "destructive",
+      onConfirm: () => {
+        void executeDeleteDefinition(id)
+      },
+    })
   }
 
   const openRunDialog = (definition: ReportDefinitionResponse) => {
@@ -371,6 +378,26 @@ export function useReports() {
   const closeRunDialog = () => {
     setRunDialogDefinition(null)
   }
+
+  const dismissConfirm = useCallback(() => {
+    setConfirmState(null)
+  }, [])
+
+  const executeDeleteDefinition = useCallback(
+    async (id: string) => {
+      try {
+        setDefinitionActionError(null)
+        await deleteDefinitionActionState.execute(id)
+      } catch (error) {
+        setDefinitionActionError(
+          error instanceof Error ? error.message : "Delete failed.",
+        )
+      } finally {
+        dismissConfirm()
+      }
+    },
+    [deleteDefinitionActionState, dismissConfirm],
+  )
 
   const runDefinitionAction = async (id: string) => {
     setRunningDefinitionId(id)
@@ -416,10 +443,13 @@ export function useReports() {
     addTags,
     closeRunDialog,
     closeSheet,
+    confirmLoading: deleteDefinitionActionState.isLoading,
+    confirmState,
     definitionError,
     definitionNameById,
     definitions,
     deleteDefinitionAction,
+    dismissConfirm,
     formState,
     groupedMetrics,
     loadRuns,

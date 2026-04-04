@@ -47,7 +47,7 @@ export function AdminSidebar() {
           ADMIN
         </span>
       </div>
-      <nav className="space-y-1 p-3">
+      <nav aria-label="Admin navigation" className="space-y-1 p-3">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)

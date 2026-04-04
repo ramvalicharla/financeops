@@ -14,15 +14,15 @@ const shortTenant = (tenantId: string): string => {
 export function LearningSignalTable({ signals }: LearningSignalTableProps) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="min-w-full text-sm">
+      <table aria-label="Learning signals" className="min-w-full text-sm">
         <thead className="border-b border-border text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
           <tr>
-            <th className="px-3 py-2">Tenant</th>
-            <th className="px-3 py-2">Task Type</th>
-            <th className="px-3 py-2">Signal Type</th>
-            <th className="px-3 py-2">Model</th>
-            <th className="px-3 py-2">Tokens</th>
-            <th className="px-3 py-2">Date</th>
+            <th scope="col" className="px-3 py-2">Tenant</th>
+            <th scope="col" className="px-3 py-2">Task Type</th>
+            <th scope="col" className="px-3 py-2">Signal Type</th>
+            <th scope="col" className="px-3 py-2">Model</th>
+            <th scope="col" className="px-3 py-2">Tokens</th>
+            <th scope="col" className="px-3 py-2">Date</th>
           </tr>
         </thead>
         <tbody>
@@ -52,4 +52,3 @@ export function LearningSignalTable({ signals }: LearningSignalTableProps) {
     </div>
   )
 }
-

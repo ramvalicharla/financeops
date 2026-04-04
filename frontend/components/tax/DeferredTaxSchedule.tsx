@@ -22,13 +22,13 @@ export function DeferredTaxSchedule({ positions }: DeferredTaxScheduleProps) {
     <div className="overflow-x-auto rounded-xl border border-border bg-card p-4">
       <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Deferred Tax Positions</p>
       <p className="mt-1 text-xs text-muted-foreground">{scaleLabel}</p>
-      <table className="mt-3 w-full min-w-[760px] text-sm">
+      <table aria-label="Deferred tax schedule" className="mt-3 w-full min-w-[760px] text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Position</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Type</th>
-            <th className="px-3 py-2 text-right text-xs text-muted-foreground">Temporary Difference</th>
-            <th className="px-3 py-2 text-right text-xs text-muted-foreground">Deferred Impact</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Position</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Type</th>
+            <th scope="col" className="px-3 py-2 text-right text-xs text-muted-foreground">Temporary Difference</th>
+            <th scope="col" className="px-3 py-2 text-right text-xs text-muted-foreground">Deferred Impact</th>
           </tr>
         </thead>
         <tbody>

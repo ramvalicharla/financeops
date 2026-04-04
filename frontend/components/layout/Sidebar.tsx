@@ -143,7 +143,7 @@ export function Sidebar({
           </p>
         </div>
 
-        <nav className="flex-1 space-y-2 overflow-y-auto p-3">
+        <nav aria-label="Main navigation" className="flex-1 space-y-2 overflow-y-auto p-3">
           <SidebarNavGroup
             closeSidebar={closeSidebar}
             items={primaryNavItems}

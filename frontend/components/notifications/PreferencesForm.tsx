@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import {
   getNotificationPreferences,
   updateNotificationPreferences,
@@ -115,44 +116,45 @@ export function PreferencesForm() {
         </p>
       </header>
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <label className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-          <span>Email</span>
+      <fieldset className="grid gap-3 md:grid-cols-3">
+        <legend className="text-sm font-medium text-foreground">Delivery channels</legend>
+        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+          <label htmlFor="notif-channel-email">Email</label>
           <input
+            id="notif-channel-email"
             type="checkbox"
             checked={preferences.email_enabled}
             onChange={(event) =>
               setPreferences({ ...preferences, email_enabled: event.target.checked })
             }
           />
-        </label>
-        <label className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-          <span>In-app</span>
+        </div>
+        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+          <label htmlFor="notif-channel-inapp">In-app</label>
           <input
+            id="notif-channel-inapp"
             type="checkbox"
             checked={preferences.inapp_enabled}
             onChange={(event) =>
               setPreferences({ ...preferences, inapp_enabled: event.target.checked })
             }
           />
-        </label>
-        <label className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
-          <span>Push</span>
+        </div>
+        <div className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm">
+          <label htmlFor="notif-channel-push">Push</label>
           <input
+            id="notif-channel-push"
             type="checkbox"
             checked={preferences.push_enabled}
             onChange={(event) =>
               setPreferences({ ...preferences, push_enabled: event.target.checked })
             }
           />
-        </label>
-      </div>
+        </div>
+      </fieldset>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <label className="space-y-1 text-sm text-foreground">
-          <span className="block text-xs uppercase tracking-[0.14em] text-muted-foreground">
-            Quiet Hours Start
-          </span>
+        <FormField id="notif-quiet-hours-start" label="Quiet hours start">
           <input
             type="time"
             value={normalizeTimeValue(preferences.quiet_hours_start)}
@@ -161,11 +163,8 @@ export function PreferencesForm() {
             }
             className="w-full rounded-md border border-border bg-background px-3 py-2"
           />
-        </label>
-        <label className="space-y-1 text-sm text-foreground">
-          <span className="block text-xs uppercase tracking-[0.14em] text-muted-foreground">
-            Quiet Hours End
-          </span>
+        </FormField>
+        <FormField id="notif-quiet-hours-end" label="Quiet hours end">
           <input
             type="time"
             value={normalizeTimeValue(preferences.quiet_hours_end)}
@@ -174,11 +173,8 @@ export function PreferencesForm() {
             }
             className="w-full rounded-md border border-border bg-background px-3 py-2"
           />
-        </label>
-        <label className="space-y-1 text-sm text-foreground">
-          <span className="block text-xs uppercase tracking-[0.14em] text-muted-foreground">
-            Timezone
-          </span>
+        </FormField>
+        <FormField id="notif-timezone" label="Timezone">
           <select
             value={preferences.timezone}
             onChange={(event) => setPreferences({ ...preferences, timezone: event.target.value })}
@@ -190,58 +186,70 @@ export function PreferencesForm() {
               </option>
             ))}
           </select>
-        </label>
+        </FormField>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
-        <table className="min-w-full text-sm">
-          <thead className="border-b border-border text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2">Notification Type</th>
-              <th className="px-3 py-2">Email</th>
-              <th className="px-3 py-2">In-app</th>
-              <th className="px-3 py-2">Push</th>
-            </tr>
-          </thead>
-          <tbody>
-            {NOTIFICATION_TYPES.map((notificationType) => {
-              const row = typePreferences[notificationType] ?? {}
-              return (
-                <tr key={notificationType} className="border-b border-border/50">
-                  <td className="px-3 py-2 text-foreground">{notificationType}</td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(row.email ?? true)}
-                      onChange={(event) =>
-                        toggleTypeChannel(notificationType, "email", event.target.checked)
-                      }
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(row.inapp ?? true)}
-                      onChange={(event) =>
-                        toggleTypeChannel(notificationType, "inapp", event.target.checked)
-                      }
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(row.push ?? false)}
-                      onChange={(event) =>
-                        toggleTypeChannel(notificationType, "push", event.target.checked)
-                      }
-                    />
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium text-foreground">Email, in-app, and push notifications</legend>
+        <div className="overflow-x-auto rounded-md border border-border">
+          <table className="min-w-full text-sm">
+            <thead className="border-b border-border text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2">Notification Type</th>
+                <th className="px-3 py-2">Email</th>
+                <th className="px-3 py-2">In-app</th>
+                <th className="px-3 py-2">Push</th>
+              </tr>
+            </thead>
+            <tbody>
+              {NOTIFICATION_TYPES.map((notificationType) => {
+                const row = typePreferences[notificationType] ?? {}
+                const emailId = `notif-${notificationType}-email`
+                const inappId = `notif-${notificationType}-inapp`
+                const pushId = `notif-${notificationType}-push`
+                return (
+                  <tr key={notificationType} className="border-b border-border/50">
+                    <td className="px-3 py-2 text-foreground">{notificationType}</td>
+                    <td className="px-3 py-2">
+                      <label htmlFor={emailId} className="sr-only">{`${notificationType} email notifications`}</label>
+                      <input
+                        id={emailId}
+                        type="checkbox"
+                        checked={Boolean(row.email ?? true)}
+                        onChange={(event) =>
+                          toggleTypeChannel(notificationType, "email", event.target.checked)
+                        }
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <label htmlFor={inappId} className="sr-only">{`${notificationType} in-app notifications`}</label>
+                      <input
+                        id={inappId}
+                        type="checkbox"
+                        checked={Boolean(row.inapp ?? true)}
+                        onChange={(event) =>
+                          toggleTypeChannel(notificationType, "inapp", event.target.checked)
+                        }
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <label htmlFor={pushId} className="sr-only">{`${notificationType} push notifications`}</label>
+                      <input
+                        id={pushId}
+                        type="checkbox"
+                        checked={Boolean(row.push ?? false)}
+                        onChange={(event) =>
+                          toggleTypeChannel(notificationType, "push", event.target.checked)
+                        }
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </fieldset>
 
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">{message ?? " "}</p>
@@ -257,4 +265,3 @@ export function PreferencesForm() {
     </section>
   )
 }
-

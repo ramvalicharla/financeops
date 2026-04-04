@@ -80,14 +80,14 @@ export default function ConsolidationRunDetailsPage() {
               />
             </div>
             <div className="max-h-[420px] overflow-auto rounded-md border border-border">
-              <table className="w-full text-sm">
+              <table aria-label="Consolidation run details" className="w-full text-sm">
                 <thead className="sticky top-0 bg-muted/30">
                   <tr>
-                    <th className="px-3 py-2 text-left">Code</th>
-                    <th className="px-3 py-2 text-left">Account</th>
-                    <th className="px-3 py-2 text-right">Debit</th>
-                    <th className="px-3 py-2 text-right">Credit</th>
-                    <th className="px-3 py-2 text-right">Balance</th>
+                    <th scope="col" className="px-3 py-2 text-left">Code</th>
+                    <th scope="col" className="px-3 py-2 text-left">Account</th>
+                    <th scope="col" className="px-3 py-2 text-right">Debit</th>
+                    <th scope="col" className="px-3 py-2 text-right">Credit</th>
+                    <th scope="col" className="px-3 py-2 text-right">Balance</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -116,11 +116,11 @@ export default function ConsolidationRunDetailsPage() {
               Elimination Summary
             </h3>
             <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full text-sm">
+              <table aria-label="Consolidation run details" className="w-full text-sm">
                 <thead className="bg-muted/30">
                   <tr>
-                    <th className="px-3 py-2 text-left">Type</th>
-                    <th className="px-3 py-2 text-right">Amount</th>
+                    <th scope="col" className="px-3 py-2 text-left">Type</th>
+                    <th scope="col" className="px-3 py-2 text-right">Amount</th>
                   </tr>
                 </thead>
                 <tbody>

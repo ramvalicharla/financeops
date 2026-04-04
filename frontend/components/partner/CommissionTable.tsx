@@ -22,15 +22,15 @@ export function CommissionTable({ commissions }: CommissionTableProps) {
         <h2 className="text-sm font-semibold text-foreground">Commission History</h2>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table aria-label="Commissions" className="min-w-full text-sm">
           <thead className="bg-background/50 text-xs uppercase tracking-[0.14em] text-muted-foreground">
             <tr>
-              <th className="px-4 py-3 text-left">Type</th>
-              <th className="px-4 py-3 text-left">Amount</th>
-              <th className="px-4 py-3 text-left">Rate</th>
-              <th className="px-4 py-3 text-left">Commission</th>
-              <th className="px-4 py-3 text-left">Status</th>
-              <th className="px-4 py-3 text-left">Period</th>
+              <th scope="col" className="px-4 py-3 text-left">Type</th>
+              <th scope="col" className="px-4 py-3 text-left">Amount</th>
+              <th scope="col" className="px-4 py-3 text-left">Rate</th>
+              <th scope="col" className="px-4 py-3 text-left">Commission</th>
+              <th scope="col" className="px-4 py-3 text-left">Status</th>
+              <th scope="col" className="px-4 py-3 text-left">Period</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">

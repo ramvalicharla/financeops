@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
+import { Dialog } from "@/components/ui/Dialog"
 import { SubscriptionStatus } from "@/components/billing/SubscriptionStatus"
 import { formatINR } from "@/lib/utils"
 import type { BillingCycle, BillingPlan, TenantSubscription } from "@/types/billing"
@@ -27,7 +29,6 @@ export function PlanCard({
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [selectedPlanId, setSelectedPlanId] = useState<string>("")
   const [selectedCycle, setSelectedCycle] = useState<BillingCycle>("monthly")
-  const [cancelText, setCancelText] = useState("")
 
   if (!subscription) {
     return (
@@ -101,105 +102,79 @@ export function PlanCard({
       </section>
 
       {showUpgradeModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-lg border border-border bg-card p-5">
-            <h4 className="text-lg font-semibold text-foreground">Upgrade plan</h4>
-            <div className="mt-4 space-y-3">
-              <div>
-                <label className="mb-1 block text-sm text-foreground">Plan</label>
-                <select
-                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
-                  value={selectedPlanId}
-                  onChange={(event) => setSelectedPlanId(event.target.value)}
-                >
-                  <option value="">Select plan</option>
-                  {plans.map((plan) => (
-                    <option key={plan.id} value={plan.id}>
-                      {plan.plan_tier.toUpperCase()} -{" "}
-                      {showINR ? formatINR(plan.base_price_inr) : `$${plan.base_price_usd}`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm text-foreground">Billing cycle</label>
-                <select
-                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
-                  value={selectedCycle}
-                  onChange={(event) =>
-                    setSelectedCycle(event.target.value as BillingCycle)
-                  }
-                >
-                  <option value="monthly">Monthly</option>
-                  <option value="annual">Annual</option>
-                </select>
-              </div>
+        <Dialog open={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} title="Upgrade plan" size="sm">
+          <div className="space-y-3">
+            <div>
+              <label className="mb-1 block text-sm text-foreground">Plan</label>
+              <select
+                className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
+              >
+                <option value="">Select plan</option>
+                {plans.map((plan) => (
+                  <option key={plan.id} value={plan.id}>
+                    {plan.plan_tier.toUpperCase()} -{" "}
+                    {showINR ? formatINR(plan.base_price_inr) : `$${plan.base_price_usd}`}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setShowUpgradeModal(false)}
+            <div>
+              <label className="mb-1 block text-sm text-foreground">Billing cycle</label>
+              <select
+                className="w-full rounded border border-border bg-background px-3 py-2 text-sm"
+                value={selectedCycle}
+                onChange={(event) =>
+                  setSelectedCycle(event.target.value as BillingCycle)
+                }
               >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={!selectedPlanId || isUpgrading}
-                onClick={() => {
-                  void onUpgrade(selectedPlanId, selectedCycle).then(() =>
-                    setShowUpgradeModal(false),
-                  )
-                }}
-              >
-                {isUpgrading ? "Updating..." : "Confirm Upgrade"}
-              </Button>
+                <option value="monthly">Monthly</option>
+                <option value="annual">Annual</option>
+              </select>
             </div>
           </div>
-        </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowUpgradeModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!selectedPlanId || isUpgrading}
+              onClick={() => {
+                void onUpgrade(selectedPlanId, selectedCycle).then(() =>
+                  setShowUpgradeModal(false),
+                )
+              }}
+            >
+              {isUpgrading ? "Updating..." : "Confirm Upgrade"}
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
 
       {showCancelModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-lg border border-border bg-card p-5">
-            <h4 className="text-lg font-semibold text-foreground">
-              Confirm cancellation
-            </h4>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Type <strong>CANCEL</strong> to confirm cancellation.
-            </p>
-            <input
-              className="mt-3 w-full rounded border border-border bg-background px-3 py-2 text-sm"
-              value={cancelText}
-              onChange={(event) => setCancelText(event.target.value)}
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setCancelText("")
-                  setShowCancelModal(false)
-                }}
-              >
-                Back
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={cancelText !== "CANCEL" || isCancelling}
-                onClick={() => {
-                  void onCancel().then(() => {
-                    setCancelText("")
-                    setShowCancelModal(false)
-                  })
-                }}
-              >
-                {isCancelling ? "Cancelling..." : "Confirm Cancellation"}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          open={showCancelModal}
+          title="Cancel subscription"
+          description="Your subscription will remain active until the end of the current billing period. You will lose access to premium features after that date."
+          variant="destructive"
+          confirmLabel="Cancel subscription"
+          cancelLabel="Keep subscription"
+          isLoading={isCancelling}
+          onCancel={() => {
+            setShowCancelModal(false)
+          }}
+          onConfirm={() => {
+            void onCancel().then(() => {
+              setShowCancelModal(false)
+            })
+          }}
+        />
       ) : null}
     </>
   )

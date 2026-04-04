@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { createFixedAsset, getAssetSchedule } from "@/lib/api/modules"
 
 type AssetScheduleRow = {
@@ -45,7 +46,7 @@ export default function AssetsModulePage() {
   }
 
   return (
-    <main className="space-y-6 p-6">
+    <section aria-label="Assets module" className="space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold">Fixed Assets Module</h1>
         <p className="text-sm text-muted-foreground">
@@ -54,14 +55,14 @@ export default function AssetsModulePage() {
       </header>
 
       <section className="grid gap-3 rounded-lg border border-border bg-card p-4 md:grid-cols-3">
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Entity ID" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Asset name" value={assetName} onChange={(e) => setAssetName(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Cost" value={cost} onChange={(e) => setCost(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" type="number" min={1} value={lifeYears} onChange={(e) => setLifeYears(Number(e.target.value))} />
-        <select className="rounded-md border border-border bg-background px-3 py-2" value={method} onChange={(e) => setMethod(e.target.value as "SLM" | "WDV")}>
+        <FormField id="assets-entity-id" label="Entity ID"><input className="rounded-md border border-border bg-background px-3 py-2" value={entityId} onChange={(e) => setEntityId(e.target.value)} /></FormField>
+        <FormField id="assets-asset-name" label="Asset name"><input className="rounded-md border border-border bg-background px-3 py-2" value={assetName} onChange={(e) => setAssetName(e.target.value)} /></FormField>
+        <FormField id="assets-cost" label="Cost"><input className="rounded-md border border-border bg-background px-3 py-2" value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" /></FormField>
+        <FormField id="assets-useful-life" label="Useful life (years)"><input className="rounded-md border border-border bg-background px-3 py-2" type="number" min={1} value={lifeYears} onChange={(e) => setLifeYears(Number(e.target.value))} inputMode="decimal" /></FormField>
+        <FormField id="assets-method" label="Depreciation method"><select className="rounded-md border border-border bg-background px-3 py-2" value={method} onChange={(e) => setMethod(e.target.value as "SLM" | "WDV")}>
           <option value="SLM">SLM</option>
           <option value="WDV">WDV</option>
-        </select>
+        </select></FormField>
         <button className="rounded-md border border-border px-3 py-2 hover:bg-accent" type="button" onClick={() => void submit()} disabled={loading}>
           {loading ? "Generating..." : "Create Asset Schedule"}
         </button>
@@ -98,7 +99,6 @@ export default function AssetsModulePage() {
           </table>
         </div>
       ) : null}
-    </main>
+    </section>
   )
 }
-

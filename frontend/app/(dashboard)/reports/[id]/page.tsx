@@ -246,11 +246,15 @@ export default function ReportRunViewerPage() {
               ) : (
                 <>
                   <div className="overflow-x-auto rounded-md border border-border">
-                    <table className="w-full min-w-[780px] text-sm">
+                    <table aria-label="Report runs" className="w-full min-w-[780px] text-sm">
                       <thead>
                         <tr className="bg-muted/30">
                           {columns.map((column) => (
-                            <th key={column} className="px-3 py-2 text-left font-medium text-foreground">
+                            <th
+                              key={column}
+                              scope="col"
+                              className="px-3 py-2 text-left font-medium text-foreground"
+                            >
                               {metricByKey.get(column)?.label ?? humanizeKey(column)}
                             </th>
                           ))}

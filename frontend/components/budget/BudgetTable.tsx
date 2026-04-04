@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { Fragment } from "react"
+import { Fragment, useState } from "react"
 import { ChevronDown, ChevronUp } from "lucide-react"
-import type { BudgetVsActualLine } from "@/lib/types/budget"
-import { formatINR } from "@/lib/utils"
 import { VarianceBadge } from "@/components/budget/VarianceBadge"
+import { formatINR } from "@/lib/utils"
+import type { BudgetVsActualLine } from "@/lib/types/budget"
 
 interface BudgetTableProps {
   rows: BudgetVsActualLine[]
@@ -20,14 +19,24 @@ export function BudgetTable({ rows }: BudgetTableProps) {
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="min-w-full text-sm">
+      <table aria-label="Budget" className="min-w-full text-sm">
         <thead className="border-b border-border text-left text-xs uppercase tracking-[0.16em] text-muted-foreground">
           <tr>
-            <th className="px-4 py-3">Line Item</th>
-            <th className="px-4 py-3">Budget YTD</th>
-            <th className="px-4 py-3">Actual YTD</th>
-            <th className="px-4 py-3">Variance ₹</th>
-            <th className="px-4 py-3">Variance %</th>
+            <th scope="col" className="px-4 py-3">
+              Line Item
+            </th>
+            <th scope="col" className="px-4 py-3">
+              Budget YTD
+            </th>
+            <th scope="col" className="px-4 py-3">
+              Actual YTD
+            </th>
+            <th scope="col" className="px-4 py-3">
+              Variance INR
+            </th>
+            <th scope="col" className="px-4 py-3">
+              Variance %
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -49,9 +58,15 @@ export function BudgetTable({ rows }: BudgetTableProps) {
                   </button>
                   <p className="text-xs text-muted-foreground">{row.mis_category}</p>
                 </td>
-                <td className="px-4 py-3 text-foreground">{formatINR(row.budget_ytd)}</td>
-                <td className="px-4 py-3 text-foreground">{formatINR(row.actual_ytd)}</td>
-                <td className="px-4 py-3 text-foreground">{formatINR(row.variance_amount)}</td>
+                <td className="px-4 py-3 text-foreground">
+                  {formatINR(row.budget_ytd)}
+                </td>
+                <td className="px-4 py-3 text-foreground">
+                  {formatINR(row.actual_ytd)}
+                </td>
+                <td className="px-4 py-3 text-foreground">
+                  {formatINR(row.variance_amount)}
+                </td>
                 <td className="px-4 py-3">
                   <VarianceBadge
                     variance_pct={row.variance_pct}
@@ -64,11 +79,22 @@ export function BudgetTable({ rows }: BudgetTableProps) {
                   <td colSpan={5} className="px-4 py-3">
                     <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
                       {row.monthly.map((month) => (
-                        <article key={month.month} className="rounded-md border border-border bg-background px-3 py-2">
-                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{month.month}</p>
-                          <p className="text-xs text-foreground">Budget: {formatINR(month.budget)}</p>
-                          <p className="text-xs text-foreground">Actual: {formatINR(month.actual)}</p>
-                          <p className="text-xs text-muted-foreground">Variance: {formatINR(month.variance)}</p>
+                        <article
+                          key={month.month}
+                          className="rounded-md border border-border bg-background px-3 py-2"
+                        >
+                          <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                            {month.month}
+                          </p>
+                          <p className="text-xs text-foreground">
+                            Budget: {formatINR(month.budget)}
+                          </p>
+                          <p className="text-xs text-foreground">
+                            Actual: {formatINR(month.actual)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Variance: {formatINR(month.variance)}
+                          </p>
                         </article>
                       ))}
                     </div>

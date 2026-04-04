@@ -17,6 +17,13 @@ import {
 import { useAsyncAction, useFetch, usePolling } from "@/hooks"
 
 export type ActiveBoardPackTab = "runs" | "definitions"
+type ConfirmState = {
+  open: boolean
+  title: string
+  description: string
+  variant: "default" | "destructive"
+  onConfirm: () => void
+}
 
 export interface EditDefinitionState {
   id: string
@@ -81,6 +88,7 @@ export function useBoardPack() {
   const [generatePeriodEnd, setGeneratePeriodEnd] = useState(currentMonthEnd())
 
   const [editState, setEditState] = useState<EditDefinitionState | null>(null)
+  const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
   const definitionsQuery = useFetch(() => fetchDefinitions(false), [])
   const runsQuery = useFetch(() => fetchRuns({ limit: 50 }), [])
@@ -222,6 +230,10 @@ export function useBoardPack() {
     setEditState(null)
   }
 
+  const dismissConfirm = useCallback(() => {
+    setConfirmState(null)
+  }, [])
+
   const setEditValue = (updates: Partial<EditDefinitionState>) => {
     setEditState((previous) => (previous ? { ...previous, ...updates } : previous))
   }
@@ -328,20 +340,27 @@ export function useBoardPack() {
   }
 
   const handleDeleteDefinition = async (definitionId: string) => {
-    const confirmed = window.confirm(
-      "Delete this definition? This will deactivate it (soft delete).",
-    )
-    if (!confirmed) {
-      return
-    }
-    try {
-      setDefinitionActionError(null)
-      await deleteDefinitionActionState.execute(definitionId)
-    } catch (error) {
-      setDefinitionActionError(
-        error instanceof Error ? error.message : "Delete action failed.",
-      )
-    }
+    setConfirmState({
+      open: true,
+      title: "Delete board pack",
+      description:
+        "This will permanently delete the board pack definition and all associated run history. This cannot be undone.",
+      variant: "destructive",
+      onConfirm: () => {
+        void (async () => {
+          try {
+            setDefinitionActionError(null)
+            await deleteDefinitionActionState.execute(definitionId)
+          } catch (error) {
+            setDefinitionActionError(
+              error instanceof Error ? error.message : "Delete action failed.",
+            )
+          } finally {
+            dismissConfirm()
+          }
+        })()
+      },
+    })
   }
 
   return {
@@ -349,9 +368,12 @@ export function useBoardPack() {
     activeTab,
     closeEditSheet,
     closeGenerateDialog,
+    confirmLoading: deleteDefinitionActionState.isLoading,
+    confirmState,
     definitionError,
     definitionNameById,
     definitions,
+    dismissConfirm,
     editState,
     generateDefinitionId,
     generateError,

@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/locations"
 import { useTenantStore } from "@/lib/store/tenant"
 import { Button } from "@/components/ui/button"
+import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 
 type ExpandedMap = Record<string, boolean>
@@ -77,6 +78,11 @@ export default function CostCentresSettingsPage() {
   const [code, setCode] = useState("")
   const [name, setName] = useState("")
   const [parentId, setParentId] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<{
+    entity?: string
+    code?: string
+    name?: string
+  }>({})
 
   const flatQuery = useQuery({
     queryKey: ["settings-cost-centres-flat", activeEntityId],
@@ -132,6 +138,19 @@ export default function CostCentresSettingsPage() {
     [flatItems],
   )
 
+  const handleCreate = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!activeEntityId) nextFieldErrors.entity = "Entity is required."
+    if (!code.trim()) nextFieldErrors.code = "Cost centre code is required."
+    if (!name.trim()) nextFieldErrors.name = "Cost centre name is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    createMutation.mutate()
+  }
+
   return (
     <div className="space-y-6 p-6">
       <header>
@@ -143,35 +162,43 @@ export default function CostCentresSettingsPage() {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-4">
-          <select
-            value={activeEntityId ?? ""}
-            onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select entity</option>
-            {entityRoles.map((role) => (
-              <option key={role.entity_id} value={role.entity_id}>
-                {role.entity_name}
-              </option>
-            ))}
-          </select>
-          <Input value={code} onChange={(event) => setCode(event.target.value)} placeholder="Cost centre code" />
-          <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Cost centre name" />
-          <select
-            value={parentId}
-            onChange={(event) => setParentId(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">No parent</option>
-            {parentOptions.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <FormField id="cc-entity" label="Entity" error={fieldErrors.entity} required>
+            <select
+              value={activeEntityId ?? ""}
+              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select entity</option>
+              {entityRoles.map((role) => (
+                <option key={role.entity_id} value={role.entity_id}>
+                  {role.entity_name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField id="cc-code" label="Cost centre code" error={fieldErrors.code} required>
+            <Input value={code} onChange={(event) => setCode(event.target.value)} />
+          </FormField>
+          <FormField id="cc-name" label="Cost centre name" error={fieldErrors.name} required>
+            <Input value={name} onChange={(event) => setName(event.target.value)} />
+          </FormField>
+          <FormField id="cc-parent" label="Parent cost centre">
+            <select
+              value={parentId}
+              onChange={(event) => setParentId(event.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">No parent</option>
+              {parentOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </FormField>
         </div>
         <div className="mt-4 flex justify-end">
-          <Button onClick={() => createMutation.mutate()} disabled={!activeEntityId || !code || !name || createMutation.isPending}>
+          <Button onClick={handleCreate} disabled={!activeEntityId || !code || !name || createMutation.isPending}>
             Add Cost Centre
           </Button>
         </div>
@@ -189,13 +216,13 @@ export default function CostCentresSettingsPage() {
           <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load cost centres.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
+            <table aria-label="Cost centres" className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Code</th>
-                  <th className="px-4 py-2">Name</th>
-                  <th className="px-4 py-2">Status</th>
-                  <th className="px-4 py-2 text-right">Actions</th>
+                  <th scope="col" className="px-4 py-2">Code</th>
+                  <th scope="col" className="px-4 py-2">Name</th>
+                  <th scope="col" className="px-4 py-2">Status</th>
+                  <th scope="col" className="px-4 py-2 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">

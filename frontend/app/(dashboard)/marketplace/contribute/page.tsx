@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import {
   getMarketplaceContributorDashboard,
   registerMarketplaceContributor,
@@ -36,6 +37,7 @@ export default function MarketplaceContributePage() {
 
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const loadContributor = async () => {
     try {
@@ -74,6 +76,16 @@ export default function MarketplaceContributePage() {
   const onSubmitTemplate = async () => {
     setError(null)
     setMessage(null)
+    const nextFieldErrors: Record<string, string> = {}
+    if (!title.trim()) nextFieldErrors.title = "Template title is required."
+    if (!description.trim()) nextFieldErrors.description = "Description is required."
+    if (!templateType.trim()) nextFieldErrors.category = "Category is required."
+    if (!templateDataText.trim()) nextFieldErrors.file = "Template data is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
     try {
       const parsed = JSON.parse(templateDataText) as Record<string, unknown>
       await submitMarketplaceTemplate({
@@ -141,58 +153,86 @@ export default function MarketplaceContributePage() {
       <section className="rounded-xl border border-border bg-card p-4">
         <h2 className="text-sm font-semibold text-foreground">Step 2: Submit Template</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder="Template title"
-          />
-          <input
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder="Short description"
-          />
-          <select
-            value={templateType}
-            onChange={(event) => setTemplateType(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          <FormField id="contrib-title" label="Template title" required error={fieldErrors.title}>
+            <input
+              value={title}
+              onChange={(event) => {
+                setTitle(event.target.value)
+                setFieldErrors((current) => ({ ...current, title: "" }))
+              }}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
+          <FormField
+            id="contrib-description"
+            label="Description"
+            required
+            error={fieldErrors.description}
           >
-            {templateTypeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-          <input
-            value={industry}
-            onChange={(event) => setIndustry(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder="Industry (optional)"
-          />
-          <input
-            type="number"
-            value={priceCredits}
-            min={0}
-            onChange={(event) => setPriceCredits(Number(event.target.value))}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder="Price in credits"
-          />
-          <input
-            value={tagsInput}
-            onChange={(event) => setTagsInput(event.target.value)}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-            placeholder="Tags (comma separated)"
-          />
-          <label className="md:col-span-2 text-xs text-muted-foreground">
-            Template Data JSON
+            <input
+              value={description}
+              onChange={(event) => {
+                setDescription(event.target.value)
+                setFieldErrors((current) => ({ ...current, description: "" }))
+              }}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
+          <FormField id="contrib-category" label="Category" required error={fieldErrors.category}>
+            <select
+              value={templateType}
+              onChange={(event) => {
+                setTemplateType(event.target.value)
+                setFieldErrors((current) => ({ ...current, category: "" }))
+              }}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              {templateTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField id="contrib-industry" label="Industry">
+            <input
+              value={industry}
+              onChange={(event) => setIndustry(event.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
+          <FormField id="contrib-tags" label="Tags" hint="Comma-separated list of relevant tags">
+            <input
+              value={tagsInput}
+              onChange={(event) => setTagsInput(event.target.value)}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
+          <FormField id="contrib-price" label="Price">
+            <input
+              type="number"
+              value={priceCredits}
+              min={0}
+              onChange={(event) => setPriceCredits(Number(event.target.value))}
+              className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
+          <FormField
+            id="contrib-file"
+            label="Template file"
+            required
+            error={fieldErrors.file}
+          >
             <textarea
               value={templateDataText}
-              onChange={(event) => setTemplateDataText(event.target.value)}
+              onChange={(event) => {
+                setTemplateDataText(event.target.value)
+                setFieldErrors((current) => ({ ...current, file: "" }))
+              }}
               rows={10}
-              className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
             />
-          </label>
+          </FormField>
           <button
             type="button"
             onClick={() => void onSubmitTemplate()}

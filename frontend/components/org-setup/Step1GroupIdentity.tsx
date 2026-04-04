@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { COUNTRY_OPTIONS, CURRENCY_OPTIONS } from "@/components/org-setup/constants"
@@ -48,12 +49,10 @@ export function Step1GroupIdentity({
     <form className="space-y-4 rounded-xl border border-border bg-card p-5" onSubmit={handleSubmit}>
       <h2 className="text-lg font-semibold text-foreground">Group identity</h2>
       <div className="grid gap-4 md:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Group name</span>
+        <FormField id="group-legal-name" label="Legal name" required>
           <Input value={groupName} onChange={(event) => setGroupName(event.target.value)} required />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Country of incorporation</span>
+        </FormField>
+        <FormField id="group-country" label="Country of incorporation" required>
           <select
             value={countryCode}
             onChange={(event) => setCountryCode(event.target.value)}
@@ -65,9 +64,8 @@ export function Step1GroupIdentity({
               </option>
             ))}
           </select>
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Functional currency</span>
+        </FormField>
+        <FormField id="group-currency" label="Functional currency" required>
           <select
             value={functionalCurrency}
             onChange={(event) => setFunctionalCurrency(event.target.value)}
@@ -79,9 +77,8 @@ export function Step1GroupIdentity({
               </option>
             ))}
           </select>
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Reporting currency</span>
+        </FormField>
+        <FormField id="group-reporting-currency" label="Reporting currency" required>
           <select
             value={reportingCurrency}
             onChange={(event) => setReportingCurrency(event.target.value)}
@@ -93,12 +90,11 @@ export function Step1GroupIdentity({
               </option>
             ))}
           </select>
-        </label>
+        </FormField>
       </div>
-      <label className="space-y-1 text-sm">
-        <span className="text-muted-foreground">Website (optional)</span>
+      <FormField id="group-website" label="Website">
         <Input value={website} onChange={(event) => setWebsite(event.target.value)} placeholder="https://" />
-      </label>
+      </FormField>
       <div className="flex justify-end">
         <Button disabled={submitting || !groupName.trim()} type="submit">
           {submitting ? "Saving..." : "Continue"}

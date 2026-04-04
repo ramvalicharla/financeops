@@ -10,6 +10,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table"
+import { SortableHeader } from "@/components/ui/SortableHeader"
 import { Button } from "@/components/ui/button"
 import { formatINR } from "@/lib/utils"
 import type { BillingInvoice } from "@/types/billing"
@@ -105,25 +106,47 @@ export function InvoiceTable({ invoices }: InvoiceTableProps) {
     },
   })
 
+  const currentSort = {
+    key: sorting[0]?.id ?? "",
+    direction: sorting[0]?.desc === undefined ? null : sorting[0].desc ? "desc" : "asc",
+  } as const
+
   return (
     <div className="space-y-3">
       <div className="overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[840px] text-sm">
+        <table aria-label="Invoices" className="w-full min-w-[840px] text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="bg-muted/30">
-                {headerGroup.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    className="cursor-pointer px-3 py-2 text-left font-medium text-foreground"
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext(),
-                    )}
-                  </th>
-                ))}
+                {headerGroup.headers.map((header) =>
+                  header.isPlaceholder ? null : header.column.getCanSort() ? (
+                    <SortableHeader
+                      key={header.id}
+                      sortKey={header.column.id}
+                      currentSort={currentSort}
+                      onSort={(key) => {
+                        table.getColumn(key)?.toggleSorting()
+                      }}
+                      className="px-3 py-2 text-left text-foreground"
+                    >
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                    </SortableHeader>
+                  ) : (
+                    <th
+                      key={header.id}
+                      scope="col"
+                      className="px-3 py-2 text-left font-medium text-foreground"
+                    >
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext(),
+                      )}
+                    </th>
+                  ),
+                )}
               </tr>
             ))}
           </thead>

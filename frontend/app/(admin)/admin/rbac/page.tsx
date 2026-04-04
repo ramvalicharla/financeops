@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { DataTable } from "@/components/admin/DataTable"
+import { FormField } from "@/components/ui/FormField"
 import {
   assignRbacRole,
   createRbacRole,
@@ -37,6 +38,14 @@ export default function AdminRbacPage() {
   const [selectedPermissionId, setSelectedPermissionId] = useState("")
   const [selectedUserId, setSelectedUserId] = useState("")
   const [selectedAssignRoleId, setSelectedAssignRoleId] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<{
+    roleName?: string
+    roleScope?: string
+    permissionRole?: string
+    permissionAction?: string
+    userRoleUser?: string
+    userRoleRole?: string
+  }>({})
 
   const load = async () => {
     setError(null)
@@ -82,7 +91,14 @@ export default function AdminRbacPage() {
   )
 
   const onCreateRole = async () => {
-    if (!newRoleCode.trim()) return
+    if (!newRoleCode.trim() || !newRoleScope.trim()) {
+      setFieldErrors({
+        roleName: !newRoleCode.trim() ? "Role name is required." : undefined,
+        roleScope: !newRoleScope.trim() ? "Scope is required." : undefined,
+      })
+      return
+    }
+    setFieldErrors((previous) => ({ ...previous, roleName: undefined, roleScope: undefined }))
     setMessage(null)
     setError(null)
     try {
@@ -100,7 +116,18 @@ export default function AdminRbacPage() {
   }
 
   const onGrantPermission = async () => {
-    if (!selectedRoleId || !selectedPermissionId) return
+    if (!selectedRoleId || !selectedPermissionId) {
+      setFieldErrors({
+        permissionRole: !selectedRoleId ? "Role is required." : undefined,
+        permissionAction: !selectedPermissionId ? "Permission is required." : undefined,
+      })
+      return
+    }
+    setFieldErrors((previous) => ({
+      ...previous,
+      permissionRole: undefined,
+      permissionAction: undefined,
+    }))
     setMessage(null)
     setError(null)
     try {
@@ -117,7 +144,18 @@ export default function AdminRbacPage() {
   }
 
   const onAssignRole = async () => {
-    if (!selectedUserId || !selectedAssignRoleId) return
+    if (!selectedUserId || !selectedAssignRoleId) {
+      setFieldErrors({
+        userRoleUser: !selectedUserId ? "User is required." : undefined,
+        userRoleRole: !selectedAssignRoleId ? "Role is required." : undefined,
+      })
+      return
+    }
+    setFieldErrors((previous) => ({
+      ...previous,
+      userRoleUser: undefined,
+      userRoleRole: undefined,
+    }))
     setMessage(null)
     setError(null)
     try {
@@ -151,18 +189,22 @@ export default function AdminRbacPage() {
       <section className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-3">
         <div className="space-y-2">
           <p className="text-sm font-medium text-foreground">Create Role</p>
-          <input
-            value={newRoleCode}
-            onChange={(event) => setNewRoleCode(event.target.value)}
-            placeholder="ROLE_CODE"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          />
-          <input
-            value={newRoleScope}
-            onChange={(event) => setNewRoleScope(event.target.value)}
-            placeholder="role_scope"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          />
+          <FormField id="role-name" label="Role name" error={fieldErrors.roleName} required>
+            <input
+              value={newRoleCode}
+              onChange={(event) => setNewRoleCode(event.target.value)}
+              placeholder="ROLE_CODE"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
+          <FormField id="role-scope" label="Scope" error={fieldErrors.roleScope} required>
+            <input
+              value={newRoleScope}
+              onChange={(event) => setNewRoleScope(event.target.value)}
+              placeholder="role_scope"
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            />
+          </FormField>
           <button
             type="button"
             onClick={() => void onCreateRole()}
@@ -174,30 +216,34 @@ export default function AdminRbacPage() {
 
         <div className="space-y-2">
           <p className="text-sm font-medium text-foreground">Assign Permission</p>
-          <select
-            value={selectedRoleId}
-            onChange={(event) => setSelectedRoleId(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select role</option>
-            {roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.role_code}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedPermissionId}
-            onChange={(event) => setSelectedPermissionId(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select permission</option>
-            {permissions.map((permission) => (
-              <option key={permission.id} value={permission.id}>
-                {permission.permission_code}
-              </option>
-            ))}
-          </select>
+          <FormField id="permission-resource" label="Role" error={fieldErrors.permissionRole} required>
+            <select
+              value={selectedRoleId}
+              onChange={(event) => setSelectedRoleId(event.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select role</option>
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.role_code}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField id="permission-action" label="Permission" error={fieldErrors.permissionAction} required>
+            <select
+              value={selectedPermissionId}
+              onChange={(event) => setSelectedPermissionId(event.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select permission</option>
+              {permissions.map((permission) => (
+                <option key={permission.id} value={permission.id}>
+                  {permission.permission_code}
+                </option>
+              ))}
+            </select>
+          </FormField>
           <button
             type="button"
             onClick={() => void onGrantPermission()}
@@ -209,30 +255,34 @@ export default function AdminRbacPage() {
 
         <div className="space-y-2">
           <p className="text-sm font-medium text-foreground">Map User to Role</p>
-          <select
-            value={selectedUserId}
-            onChange={(event) => setSelectedUserId(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select user</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.email}
-              </option>
-            ))}
-          </select>
-          <select
-            value={selectedAssignRoleId}
-            onChange={(event) => setSelectedAssignRoleId(event.target.value)}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-          >
-            <option value="">Select role</option>
-            {roles.map((role) => (
-              <option key={role.id} value={role.id}>
-                {role.role_code}
-              </option>
-            ))}
-          </select>
+          <FormField id="user-role-user" label="User" error={fieldErrors.userRoleUser} required>
+            <select
+              value={selectedUserId}
+              onChange={(event) => setSelectedUserId(event.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select user</option>
+              {users.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.email}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField id="user-role-role" label="Role" error={fieldErrors.userRoleRole} required>
+            <select
+              value={selectedAssignRoleId}
+              onChange={(event) => setSelectedAssignRoleId(event.target.value)}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            >
+              <option value="">Select role</option>
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>
+                  {role.role_code}
+                </option>
+              ))}
+            </select>
+          </FormField>
           <button
             type="button"
             onClick={() => void onAssignRole()}

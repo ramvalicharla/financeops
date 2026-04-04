@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import apiClient from "@/lib/api/client"
 
 interface GroupForm {
@@ -18,9 +19,24 @@ export default function GroupsSettingsPage() {
   const [items, setItems] = useState<Array<{ id: string; group_code: string; group_name: string }>>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState<{
+    group_code?: string
+    group_name?: string
+    organisation_id?: string
+  }>({})
 
   const createGroup = async (): Promise<void> => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!form.group_code.trim()) nextFieldErrors.group_code = "Group code is required."
+    if (!form.group_name.trim()) nextFieldErrors.group_name = "Group name is required."
+    if (!form.organisation_id.trim()) nextFieldErrors.organisation_id = "Organisation is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setError(null)
+      return
+    }
     setLoading(true)
+    setFieldErrors({})
     setError(null)
     try {
       const payload = await apiClient.post<{ id: string; group_code: string }>(
@@ -48,9 +64,27 @@ export default function GroupsSettingsPage() {
       <div className="rounded-lg border border-gray-800 bg-gray-900/60 p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-100">Create Group</h2>
         <div className="grid gap-3 md:grid-cols-3">
-          <input className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="Group code" value={form.group_code} onChange={(e) => setForm((f) => ({ ...f, group_code: e.target.value }))} />
-          <input className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="Group name" value={form.group_name} onChange={(e) => setForm((f) => ({ ...f, group_name: e.target.value }))} />
-          <input className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white" placeholder="Organisation ID" value={form.organisation_id} onChange={(e) => setForm((f) => ({ ...f, organisation_id: e.target.value }))} />
+          <FormField id="group-code" label="Group code" error={fieldErrors.group_code} required>
+            <input
+              className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white"
+              value={form.group_code}
+              onChange={(e) => setForm((f) => ({ ...f, group_code: e.target.value }))}
+            />
+          </FormField>
+          <FormField id="group-name" label="Group name" error={fieldErrors.group_name} required>
+            <input
+              className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white"
+              value={form.group_name}
+              onChange={(e) => setForm((f) => ({ ...f, group_name: e.target.value }))}
+            />
+          </FormField>
+          <FormField id="group-organisation" label="Organisation" error={fieldErrors.organisation_id} required>
+            <input
+              className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white"
+              value={form.organisation_id}
+              onChange={(e) => setForm((f) => ({ ...f, organisation_id: e.target.value }))}
+            />
+          </FormField>
         </div>
         {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
         <button onClick={createGroup} disabled={loading} className="mt-3 rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700 disabled:opacity-50">

@@ -53,21 +53,21 @@ export function BoardPackList(props: BoardPackListProps) {
 
         {!!runs.length ? (
           <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full min-w-[980px] text-sm">
+            <table aria-label="Board packs" className="w-full min-w-[980px] text-sm">
               <thead>
                 <tr className="bg-muted/30">
-                  <th className="px-3 py-2 text-left font-medium text-foreground">Period</th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Period</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                     Definition
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">Status</th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Status</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                     Chain Hash
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                     Generated
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                     Actions
                   </th>
                 </tr>
@@ -132,21 +132,21 @@ export function BoardPackList(props: BoardPackListProps) {
 
       {!!definitions.length ? (
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full min-w-[980px] text-sm">
+          <table aria-label="Board packs" className="w-full min-w-[980px] text-sm">
             <thead>
               <tr className="bg-muted/30">
-                <th className="px-3 py-2 text-left font-medium text-foreground">Name</th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Name</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Period Type
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Sections
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Entities
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">Active</th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Active</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Actions
                 </th>
               </tr>

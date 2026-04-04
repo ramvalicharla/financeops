@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { DataTable } from "@/components/admin/DataTable"
 import { TenantSelector } from "@/components/admin/TenantSelector"
 import { ToggleSwitch } from "@/components/admin/ToggleSwitch"
+import { FormField } from "@/components/ui/FormField"
 import {
   createFeatureFlag,
   deleteFeatureFlag,
@@ -26,6 +27,12 @@ export default function AdminFlagsPage() {
   const [flagKey, setFlagKey] = useState("")
   const [scopeType, setScopeType] = useState<"tenant" | "user" | "entity" | "canary">("tenant")
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<{
+    tenant?: string
+    module?: string
+    scope?: string
+    flagKey?: string
+  }>({})
   const [message, setMessage] = useState<string | null>(null)
 
   const load = async () => {
@@ -72,10 +79,17 @@ export default function AdminFlagsPage() {
   )
 
   const onCreate = async () => {
-    if (!selectedTenant || !selectedModule || !flagKey.trim()) {
-      setError("Tenant, module, and flag key are required.")
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!selectedTenant) nextFieldErrors.tenant = "Tenant is required."
+    if (!selectedModule) nextFieldErrors.module = "Module is required."
+    if (!scopeType) nextFieldErrors.scope = "Scope is required."
+    if (!flagKey.trim()) nextFieldErrors.flagKey = "Flag key is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      setError(null)
       return
     }
+    setFieldErrors({})
     setError(null)
     setMessage(null)
     try {
@@ -142,38 +156,48 @@ export default function AdminFlagsPage() {
 
       <section className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
         <TenantSelector
+          id="flag-tenant"
+          label="Tenant"
+          error={fieldErrors.tenant}
+          required
           tenants={tenants}
           value={selectedTenant}
           onChange={setSelectedTenant}
         />
-        <select
-          value={selectedModule}
-          onChange={(event) => setSelectedModule(event.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="">Select module</option>
-          {modules.map((module) => (
-            <option key={module.id} value={module.id}>
-              {module.module_name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={scopeType}
-          onChange={(event) => setScopeType(event.target.value as "tenant" | "user" | "entity" | "canary")}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="tenant">tenant</option>
-          <option value="user">user</option>
-          <option value="entity">entity</option>
-          <option value="canary">canary</option>
-        </select>
-        <input
-          value={flagKey}
-          onChange={(event) => setFlagKey(event.target.value)}
-          placeholder="flag key"
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        />
+        <FormField id="flag-module" label="Module" error={fieldErrors.module} required>
+          <select
+            value={selectedModule}
+            onChange={(event) => setSelectedModule(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">Select module</option>
+            {modules.map((module) => (
+              <option key={module.id} value={module.id}>
+                {module.module_name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField id="flag-scope" label="Scope" error={fieldErrors.scope} required>
+          <select
+            value={scopeType}
+            onChange={(event) => setScopeType(event.target.value as "tenant" | "user" | "entity" | "canary")}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="tenant">tenant</option>
+            <option value="user">user</option>
+            <option value="entity">entity</option>
+            <option value="canary">canary</option>
+          </select>
+        </FormField>
+        <FormField id="flag-key" label="Flag key" error={fieldErrors.flagKey} required>
+          <input
+            value={flagKey}
+            onChange={(event) => setFlagKey(event.target.value)}
+            placeholder="flag key"
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          />
+        </FormField>
         <button
           type="button"
           onClick={() => void onCreate()}

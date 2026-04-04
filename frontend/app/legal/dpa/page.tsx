@@ -1,3 +1,7 @@
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Data Processing Agreement")
+
 export default function DPAPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">

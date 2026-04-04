@@ -104,8 +104,9 @@ export function BoardPackEditSheet({
                     type="button"
                     className="text-foreground"
                     onClick={() => onRemoveEntityId(entityId)}
+                    aria-label={`Remove ${entityId}`}
                   >
-                    x
+                    <span aria-hidden="true">×</span>
                   </button>
                 </span>
               ))}

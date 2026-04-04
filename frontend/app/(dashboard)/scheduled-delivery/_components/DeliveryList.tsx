@@ -42,20 +42,20 @@ export function DeliveryList({
       ) : null}
       {!!schedules.length ? (
         <div className="overflow-x-auto rounded-md border border-border">
-          <table className="w-full min-w-[1020px] text-sm">
+          <table aria-label="Scheduled deliveries" className="w-full min-w-[1020px] text-sm">
             <thead>
               <tr className="bg-muted/30">
-                <th className="px-3 py-2 text-left font-medium text-foreground">Name</th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">Type</th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">Source</th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">Cron</th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Name</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Type</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Source</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Cron</th>
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Next Run
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Active
                 </th>
-                <th className="px-3 py-2 text-left font-medium text-foreground">
+                <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                   Actions
                 </th>
               </tr>

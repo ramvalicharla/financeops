@@ -133,16 +133,25 @@ export default function AccountingCashFlowPage() {
             <table className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Category</th>
-                  <th className="px-4 py-2">Amount</th>
+                  <th scope="col" className="px-4 py-2">Category</th>
+                  <th scope="col" className="px-4 py-2">Amount</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {cashFlowQuery.data?.breakdown.map((row) => (
                   <tr
                     key={row.category}
-                    className="cursor-pointer hover:bg-muted/20"
+                    role="row"
+                    tabIndex={0}
+                    className="cursor-pointer hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     onClick={() => setSelectedCategory(row.category)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault()
+                        setSelectedCategory(row.category)
+                      }
+                    }}
+                    aria-label={`View details for ${row.category}`}
                   >
                     <td className="px-4 py-2 text-foreground">{row.category}</td>
                     <td className="px-4 py-2 text-foreground">{fmt(row.amount)}</td>

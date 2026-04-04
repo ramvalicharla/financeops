@@ -13,6 +13,8 @@ import {
   updateTenantAccount,
 } from "@/lib/api/coa"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
+import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 
 const DEFAULT_TEMPLATE_CODE = "SOFTWARE_SAAS"
@@ -76,6 +78,11 @@ export default function ChartOfAccountsSettingsPage() {
   const [customCode, setCustomCode] = useState("")
   const [customName, setCustomName] = useState("")
   const [parentSubgroupId, setParentSubgroupId] = useState<string>("")
+  const [fieldErrors, setFieldErrors] = useState<{
+    customCode?: string
+    customName?: string
+    parentSubgroupId?: string
+  }>({})
 
   const templatesQuery = useQuery({
     queryKey: ["coa-templates"],
@@ -177,6 +184,19 @@ export default function ChartOfAccountsSettingsPage() {
     return Array.from(unique.entries()).map(([value]) => ({ value, label: value }))
   }, [tenantAccountsQuery.data])
 
+  const handleAddCustomAccount = () => {
+    const nextFieldErrors: typeof fieldErrors = {}
+    if (!customCode.trim()) nextFieldErrors.customCode = "Account code is required."
+    if (!customName.trim()) nextFieldErrors.customName = "Account name is required."
+    if (!parentSubgroupId) nextFieldErrors.parentSubgroupId = "Parent account is required."
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors)
+      return
+    }
+    setFieldErrors({})
+    addCustomMutation.mutate()
+  }
+
   return (
     <div className="space-y-6 p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -266,14 +286,14 @@ export default function ChartOfAccountsSettingsPage() {
               </button>
               {!collapsed ? (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-border text-sm">
+                  <table aria-label="Chart of accounts" className="min-w-full divide-y divide-border text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                        <th className="px-4 py-2">Code</th>
-                        <th className="px-4 py-2">Display Name</th>
-                        <th className="px-4 py-2">FS Path</th>
-                        <th className="px-4 py-2">Status</th>
-                        <th className="px-4 py-2 text-right">Actions</th>
+                        <th scope="col" className="px-4 py-2">Code</th>
+                        <th scope="col" className="px-4 py-2">Display Name</th>
+                        <th scope="col" className="px-4 py-2">FS Path</th>
+                        <th scope="col" className="px-4 py-2">Status</th>
+                        <th scope="col" className="px-4 py-2 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -377,23 +397,27 @@ export default function ChartOfAccountsSettingsPage() {
       </section>
 
       {customModalOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-border bg-card p-5">
-            <h2 className="text-lg font-semibold text-foreground">Add Custom Account</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Add a tenant-specific account under a subgroup.
-            </p>
-            <div className="mt-4 space-y-3">
+        <Dialog
+          open={customModalOpen}
+          onClose={() => setCustomModalOpen(false)}
+          title="Add account"
+          description="Add a tenant-specific account under a subgroup."
+          size="sm"
+        >
+          <div className="space-y-3">
+            <FormField id="account-code" label="Account code" error={fieldErrors.customCode} required>
               <Input
                 value={customCode}
                 onChange={(event) => setCustomCode(event.target.value)}
-                placeholder="Account code"
               />
+            </FormField>
+            <FormField id="account-name" label="Account name" error={fieldErrors.customName} required>
               <Input
                 value={customName}
                 onChange={(event) => setCustomName(event.target.value)}
-                placeholder="Display name"
               />
+            </FormField>
+            <FormField id="account-parent" label="Parent account" error={fieldErrors.parentSubgroupId} required>
               <select
                 value={parentSubgroupId}
                 onChange={(event) => setParentSubgroupId(event.target.value)}
@@ -406,20 +430,20 @@ export default function ChartOfAccountsSettingsPage() {
                   </option>
                 ))}
               </select>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setCustomModalOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => addCustomMutation.mutate()}
-                disabled={!customCode || !customName || !parentSubgroupId || addCustomMutation.isPending}
-              >
-                Create Account
-              </Button>
-            </div>
+            </FormField>
           </div>
-        </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setCustomModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAddCustomAccount}
+              disabled={!customCode || !customName || !parentSubgroupId || addCustomMutation.isPending}
+            >
+              Create Account
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
     </div>
   )

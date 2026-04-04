@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { searchGlobal } from "@/lib/api/search"
 import type { SearchResultRow } from "@/lib/types/search"
 import { SearchResult } from "@/components/search/SearchResult"
+import { Dialog } from "@/components/ui/Dialog"
 import { Input } from "@/components/ui/input"
 import { useStreamingAI } from "@/hooks/useStreamingAI"
 
@@ -138,18 +139,11 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   let runningIndex = -1
 
   return (
-    <div
-      className="fixed inset-0 z-[70] bg-black/70 p-4 backdrop-blur-sm md:p-8"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Global search"
-    >
+    <Dialog open={isOpen} onClose={onClose} title="Command palette" size="lg">
       <div
-        className={`mx-auto max-h-[85vh] w-full overflow-hidden rounded-xl border border-border bg-card shadow-2xl ${
+        className={`mx-auto max-h-[85vh] w-full overflow-hidden ${
           mode === "ai" ? "max-w-4xl" : "max-w-3xl"
         }`}
-        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex border-b border-border">
           <button
@@ -262,6 +256,6 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
           </div>
         )}
       </div>
-    </div>
+    </Dialog>
   )
 }

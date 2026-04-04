@@ -91,17 +91,17 @@ export default function ConsolidationTranslationPage() {
             </p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
+            <table aria-label="Currency translation" className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Entity</th>
-                  <th className="px-4 py-2">Closing</th>
-                  <th className="px-4 py-2">Average</th>
-                  <th className="px-4 py-2 text-right">Assets</th>
-                  <th className="px-4 py-2 text-right">Liabilities</th>
-                  <th className="px-4 py-2 text-right">Equity</th>
-                  <th className="px-4 py-2 text-right">Net Profit</th>
-                  <th className="px-4 py-2 text-right">CTA</th>
+                  <th scope="col" className="px-4 py-2">Entity</th>
+                  <th scope="col" className="px-4 py-2">Closing</th>
+                  <th scope="col" className="px-4 py-2">Average</th>
+                  <th scope="col" className="px-4 py-2 text-right">Assets</th>
+                  <th scope="col" className="px-4 py-2 text-right">Liabilities</th>
+                  <th scope="col" className="px-4 py-2 text-right">Equity</th>
+                  <th scope="col" className="px-4 py-2 text-right">Net Profit</th>
+                  <th scope="col" className="px-4 py-2 text-right">CTA</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -141,4 +141,3 @@ export default function ConsolidationTranslationPage() {
     </div>
   )
 }
-

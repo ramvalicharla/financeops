@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
 import { Input } from "@/components/ui/input"
 import {
   fetchAnomalyThresholds,
@@ -137,15 +138,15 @@ export default function AnomalyThresholdsPage() {
 
         {!!sortedRows.length ? (
           <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full min-w-[980px] text-sm">
+            <table aria-label="Anomaly thresholds" className="w-full min-w-[980px] text-sm">
               <thead>
                 <tr className="bg-muted/30">
-                  <th className="px-3 py-2 text-left font-medium text-foreground">Rule Code</th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Rule Code</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">
                     Current Threshold
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">Config</th>
-                  <th className="px-3 py-2 text-left font-medium text-foreground">Actions</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Config</th>
+                  <th scope="col" className="px-3 py-2 text-left font-medium text-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -178,68 +179,64 @@ export default function AnomalyThresholdsPage() {
       </section>
 
       {editState ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-2xl rounded-lg border border-border bg-card p-5">
-            <h2 className="text-lg font-semibold text-foreground">
-              Edit Threshold: {editState.ruleCode}
-            </h2>
-            <div className="mt-4 space-y-3">
-              <label className="space-y-1 text-sm text-foreground" htmlFor="threshold-value">
-                <span>Threshold Value</span>
-                <Input
-                  id="threshold-value"
-                  value={editState.thresholdValue}
-                  onChange={(event) =>
-                    setEditState((previous) =>
-                      previous
-                        ? { ...previous, thresholdValue: event.target.value }
-                        : previous,
-                    )
-                  }
-                />
-              </label>
-              <label className="space-y-1 text-sm text-foreground" htmlFor="threshold-config">
-                <span>Config (JSON)</span>
-                <textarea
-                  id="threshold-config"
-                  className="min-h-40 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-                  value={editState.configText}
-                  onChange={(event) =>
-                    setEditState((previous) =>
-                      previous ? { ...previous, configText: event.target.value } : previous,
-                    )
-                  }
-                />
-              </label>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setEditState(null)}
-                disabled={savingRule === editState.ruleCode}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  void saveEdit()
-                }}
-                disabled={savingRule === editState.ruleCode}
-              >
-                {savingRule === editState.ruleCode ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save"
-                )}
-              </Button>
-            </div>
+        <Dialog open={Boolean(editState)} onClose={() => setEditState(null)} title="Edit threshold" size="lg">
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Rule: {editState.ruleCode}</p>
+            <label className="space-y-1 text-sm text-foreground" htmlFor="threshold-value">
+              <span>Threshold Value</span>
+              <Input
+                id="threshold-value"
+                value={editState.thresholdValue}
+                onChange={(event) =>
+                  setEditState((previous) =>
+                    previous
+                      ? { ...previous, thresholdValue: event.target.value }
+                      : previous,
+                  )
+                }
+              />
+            </label>
+            <label className="space-y-1 text-sm text-foreground" htmlFor="threshold-config">
+              <span>Config (JSON)</span>
+              <textarea
+                id="threshold-config"
+                className="min-h-40 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+                value={editState.configText}
+                onChange={(event) =>
+                  setEditState((previous) =>
+                    previous ? { ...previous, configText: event.target.value } : previous,
+                  )
+                }
+              />
+            </label>
           </div>
-        </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditState(null)}
+              disabled={savingRule === editState.ruleCode}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                void saveEdit()
+              }}
+              disabled={savingRule === editState.ruleCode}
+            >
+              {savingRule === editState.ruleCode ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save"
+              )}
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
     </div>
   )

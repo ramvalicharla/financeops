@@ -2,6 +2,7 @@ import Link from "next/link"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
+import { createMetadata } from "@/lib/metadata"
 
 const FEATURES = [
   {
@@ -30,6 +31,11 @@ const FEATURES = [
   },
 ]
 
+export const metadata = createMetadata(
+  "FinanceOps ? Enterprise Financial Operations Platform",
+  "The financial operations platform built for 1B+ USD entities",
+)
+
 export default async function LandingPage() {
   const session = await auth()
   if (session) {
@@ -54,7 +60,7 @@ export default async function LandingPage() {
           </div>
         </div>
       </nav>
-      <section className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
+      <main id="main-content" className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 lg:px-8">
         <h1 className="mb-6 text-4xl font-semibold leading-tight text-foreground sm:text-5xl">
           Enterprise finance platform for the India mid-market
         </h1>
@@ -78,28 +84,16 @@ export default async function LandingPage() {
             <Link href="/login">Sign in to dashboard</Link>
           </Button>
         </div>
-      </section>
-      <section className="mx-auto grid max-w-5xl grid-cols-1 gap-6 px-4 pb-24 sm:px-6 lg:px-8 md:grid-cols-3">
-        {FEATURES.map((feature) => (
-          <div key={feature.title} className="rounded-xl border border-border bg-card p-6 shadow-sm">
-            <h3 className="mb-2 font-semibold text-foreground">{feature.title}</h3>
-            <p className="text-sm text-muted-foreground">{feature.description}</p>
-          </div>
-        ))}
-      </section>
-      <footer className="border-t border-border px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-          <span>&copy; 2026 FinanceOps</span>
-          <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
-            <Link href="/legal/terms" className="transition hover:text-foreground">
-              Terms
-            </Link>
-            <Link href="/legal/privacy" className="transition hover:text-foreground">
-              Privacy
-            </Link>
-          </div>
+
+        <div className="mt-20 grid gap-6 sm:grid-cols-2">
+          {FEATURES.map((feature) => (
+            <div key={feature.title} className="rounded-xl border border-border bg-card p-6 text-left">
+              <h2 className="mb-3 text-lg font-semibold text-foreground">{feature.title}</h2>
+              <p className="text-sm leading-6 text-muted-foreground">{feature.description}</p>
+            </div>
+          ))}
         </div>
-      </footer>
+      </main>
     </div>
   )
 }

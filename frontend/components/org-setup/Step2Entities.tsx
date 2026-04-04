@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -106,90 +107,108 @@ export function Step2Entities({ submitting, initial, onSubmit }: Step2EntitiesPr
               ) : null}
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <Input
-                placeholder="Legal name"
-                value={row.legal_name}
-                onChange={(event) => updateRow(index, "legal_name", event.target.value)}
-                required
-              />
-              <Input
-                placeholder="Display name"
-                value={row.display_name ?? ""}
-                onChange={(event) => updateRow(index, "display_name", event.target.value)}
-              />
-              <select
-                value={row.entity_type}
-                onChange={(event) => updateRow(index, "entity_type", event.target.value as Step2EntityPayload["entity_type"])}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {ENTITY_TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={row.country_code}
-                onChange={(event) => updateRow(index, "country_code", event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {COUNTRY_OPTIONS.map((country) => (
-                  <option key={country.code} value={country.code}>
-                    {country.label}
-                  </option>
-                ))}
-              </select>
-              {row.country_code === "IN" ? (
+              <FormField id={`entity-legal-name-${index}`} label="Legal name" required>
                 <Input
-                  placeholder="State code"
-                  value={row.state_code ?? ""}
-                  onChange={(event) => updateRow(index, "state_code", event.target.value)}
+                  placeholder="Legal name"
+                  value={row.legal_name}
+                  onChange={(event) => updateRow(index, "legal_name", event.target.value)}
+                  required
                 />
+              </FormField>
+              <FormField id={`entity-short-name-${index}`} label="Short name">
+                <Input
+                  placeholder="Display name"
+                  value={row.display_name ?? ""}
+                  onChange={(event) => updateRow(index, "display_name", event.target.value)}
+                />
+              </FormField>
+              <FormField id={`entity-type-${index}`} label="Entity type" required>
+                <select
+                  value={row.entity_type}
+                  onChange={(event) => updateRow(index, "entity_type", event.target.value as Step2EntityPayload["entity_type"])}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {ENTITY_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField id={`entity-country-${index}`} label="Country" required>
+                <select
+                  value={row.country_code}
+                  onChange={(event) => updateRow(index, "country_code", event.target.value)}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {COUNTRY_OPTIONS.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.label}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              {row.country_code === "IN" ? (
+                <FormField id={`entity-state-code-${index}`} label="State code">
+                  <Input
+                    placeholder="State code"
+                    value={row.state_code ?? ""}
+                    onChange={(event) => updateRow(index, "state_code", event.target.value)}
+                  />
+                </FormField>
               ) : null}
-              <select
-                value={row.functional_currency}
-                onChange={(event) => updateRow(index, "functional_currency", event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {CURRENCY_OPTIONS.map((currency) => (
-                  <option key={currency} value={currency}>
-                    {currency}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={row.reporting_currency}
-                onChange={(event) => updateRow(index, "reporting_currency", event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {CURRENCY_OPTIONS.map((currency) => (
-                  <option key={currency} value={currency}>
-                    {currency}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={row.fiscal_year_start}
-                onChange={(event) => updateRow(index, "fiscal_year_start", Number(event.target.value))}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {FISCAL_MONTHS.map((month) => (
-                  <option key={month.value} value={month.value}>
-                    {month.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={row.applicable_gaap}
-                onChange={(event) => updateRow(index, "applicable_gaap", event.target.value as Step2EntityPayload["applicable_gaap"])}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                {GAAP_OPTIONS.map((gaap) => (
-                  <option key={gaap} value={gaap}>
-                    {gaap}
-                  </option>
-                ))}
-              </select>
+              <FormField id={`entity-currency-${index}`} label="Functional currency" required>
+                <select
+                  value={row.functional_currency}
+                  onChange={(event) => updateRow(index, "functional_currency", event.target.value)}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {CURRENCY_OPTIONS.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField id={`entity-reporting-currency-${index}`} label="Reporting currency" required>
+                <select
+                  value={row.reporting_currency}
+                  onChange={(event) => updateRow(index, "reporting_currency", event.target.value)}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {CURRENCY_OPTIONS.map((currency) => (
+                    <option key={currency} value={currency}>
+                      {currency}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField id={`entity-fiscal-year-${index}`} label="Fiscal year start">
+                <select
+                  value={row.fiscal_year_start}
+                  onChange={(event) => updateRow(index, "fiscal_year_start", Number(event.target.value))}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {FISCAL_MONTHS.map((month) => (
+                    <option key={month.value} value={month.value}>
+                      {month.label}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField id={`entity-gaap-${index}`} label="Applicable GAAP">
+                <select
+                  value={row.applicable_gaap}
+                  onChange={(event) => updateRow(index, "applicable_gaap", event.target.value as Step2EntityPayload["applicable_gaap"])}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  {GAAP_OPTIONS.map((gaap) => (
+                    <option key={gaap} value={gaap}>
+                      {gaap}
+                    </option>
+                  ))}
+                </select>
+              </FormField>
             </div>
             <button
               type="button"
@@ -200,36 +219,48 @@ export function Step2Entities({ submitting, initial, onSubmit }: Step2EntitiesPr
             </button>
             {showOptional[index] ? (
               <div className="grid gap-3 md:grid-cols-3">
-                <Input
-                  placeholder="PAN"
-                  value={row.pan ?? ""}
-                  onChange={(event) => updateRow(index, "pan", event.target.value)}
-                />
-                <Input
-                  placeholder="TAN"
-                  value={row.tan ?? ""}
-                  onChange={(event) => updateRow(index, "tan", event.target.value)}
-                />
-                <Input
-                  placeholder="CIN"
-                  value={row.cin ?? ""}
-                  onChange={(event) => updateRow(index, "cin", event.target.value)}
-                />
-                <Input
-                  placeholder="GSTIN"
-                  value={row.gstin ?? ""}
-                  onChange={(event) => updateRow(index, "gstin", event.target.value)}
-                />
-                <Input
-                  placeholder="LEI"
-                  value={row.lei ?? ""}
-                  onChange={(event) => updateRow(index, "lei", event.target.value)}
-                />
-                <Input
-                  placeholder="Incorporation no."
-                  value={row.incorporation_number ?? ""}
-                  onChange={(event) => updateRow(index, "incorporation_number", event.target.value)}
-                />
+                <FormField id={`entity-pan-${index}`} label="PAN">
+                  <Input
+                    placeholder="PAN"
+                    value={row.pan ?? ""}
+                    onChange={(event) => updateRow(index, "pan", event.target.value)}
+                  />
+                </FormField>
+                <FormField id={`entity-tan-${index}`} label="TAN">
+                  <Input
+                    placeholder="TAN"
+                    value={row.tan ?? ""}
+                    onChange={(event) => updateRow(index, "tan", event.target.value)}
+                  />
+                </FormField>
+                <FormField id={`entity-cin-${index}`} label="CIN">
+                  <Input
+                    placeholder="CIN"
+                    value={row.cin ?? ""}
+                    onChange={(event) => updateRow(index, "cin", event.target.value)}
+                  />
+                </FormField>
+                <FormField id={`entity-gstin-${index}`} label="GSTIN">
+                  <Input
+                    placeholder="GSTIN"
+                    value={row.gstin ?? ""}
+                    onChange={(event) => updateRow(index, "gstin", event.target.value)}
+                  />
+                </FormField>
+                <FormField id={`entity-lei-${index}`} label="LEI">
+                  <Input
+                    placeholder="LEI"
+                    value={row.lei ?? ""}
+                    onChange={(event) => updateRow(index, "lei", event.target.value)}
+                  />
+                </FormField>
+                <FormField id={`entity-registration-number-${index}`} label="Registration number">
+                  <Input
+                    placeholder="Incorporation no."
+                    value={row.incorporation_number ?? ""}
+                    onChange={(event) => updateRow(index, "incorporation_number", event.target.value)}
+                  />
+                </FormField>
               </div>
             ) : null}
           </div>

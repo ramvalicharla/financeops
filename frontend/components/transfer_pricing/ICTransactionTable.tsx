@@ -12,16 +12,16 @@ export function ICTransactionTable({ rows }: ICTransactionTableProps) {
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="w-full min-w-[980px] text-sm">
+      <table aria-label="Intercompany transactions" className="w-full min-w-[980px] text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Party</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Country</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Type</th>
-            <th className="px-3 py-2 text-right text-xs text-muted-foreground">Amount (INR)</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Method</th>
-            <th className="px-3 py-2 text-right text-xs text-muted-foreground">Adjustment</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Status</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Party</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Country</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Type</th>
+            <th scope="col" className="px-3 py-2 text-right text-xs text-muted-foreground">Amount (INR)</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Method</th>
+            <th scope="col" className="px-3 py-2 text-right text-xs text-muted-foreground">Adjustment</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Status</th>
           </tr>
         </thead>
         <tbody>

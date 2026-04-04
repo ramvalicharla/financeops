@@ -13,19 +13,25 @@ export function DataTable<T>({
   columns,
   rows,
   emptyMessage = "No data found.",
+  label = "Data table",
 }: {
   columns: DataTableColumn<T>[]
   rows: T[]
   emptyMessage?: string
+  label?: string
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table aria-label={label} className="min-w-full text-sm">
           <thead className="bg-background/50 text-xs uppercase tracking-[0.14em] text-muted-foreground">
             <tr>
               {columns.map((column) => (
-                <th key={column.key} className={`px-4 py-3 text-left ${column.className ?? ""}`}>
+                <th
+                  key={column.key}
+                  scope="col"
+                  className={`px-4 py-3 text-left ${column.className ?? ""}`}
+                >
                   {column.header}
                 </th>
               ))}

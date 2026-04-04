@@ -108,12 +108,12 @@ export default function PrepaidDetailPage({ params }: PrepaidDetailPageProps) {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border text-sm">
+            <table aria-label="Prepaid transactions" className="min-w-full divide-y divide-border text-sm">
               <thead className="bg-muted/30">
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2">Period</th>
-                  <th className="px-4 py-2">Amount</th>
-                  <th className="px-4 py-2">Status</th>
+                  <th scope="col" className="px-4 py-2">Period</th>
+                  <th scope="col" className="px-4 py-2">Amount</th>
+                  <th scope="col" className="px-4 py-2">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -143,12 +143,12 @@ export default function PrepaidDetailPage({ params }: PrepaidDetailPageProps) {
           <h2 className="text-lg font-medium text-foreground">Actual Entries</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
+          <table aria-label="Prepaid transactions" className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-muted/30">
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-2">Period</th>
-                <th className="px-4 py-2">Amount</th>
-                <th className="px-4 py-2">Run Reference</th>
+                <th scope="col" className="px-4 py-2">Period</th>
+                <th scope="col" className="px-4 py-2">Amount</th>
+                <th scope="col" className="px-4 py-2">Run Reference</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

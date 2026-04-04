@@ -67,7 +67,7 @@ export default async function DashboardLayout({
             userEmail={user.email ?? ""}
             userName={user.name ?? "Finance User"}
           />
-          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          <main id="main-content" className="flex-1 overflow-y-auto p-6">{children}</main>
         </SearchProvider>
       </div>
     </div>

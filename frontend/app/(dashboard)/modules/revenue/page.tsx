@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { createRevenueContract, getRevenueSchedule } from "@/lib/api/modules"
 
 type RevenueScheduleRow = {
@@ -47,7 +48,7 @@ export default function RevenueModulePage() {
   }
 
   return (
-    <main className="space-y-6 p-6">
+    <section aria-label="Revenue module" className="space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold">Revenue Recognition Module</h1>
         <p className="text-sm text-muted-foreground">
@@ -56,12 +57,12 @@ export default function RevenueModulePage() {
       </header>
 
       <section className="grid gap-3 rounded-lg border border-border bg-card p-4 md:grid-cols-3">
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Entity ID" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Customer ID" value={customerId} onChange={(e) => setCustomerId(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Contract value" value={contractValue} onChange={(e) => setContractValue(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-        <input className="rounded-md border border-border bg-background px-3 py-2" placeholder="Obligation type" value={obligationType} onChange={(e) => setObligationType(e.target.value)} />
+        <FormField id="revenue-entity-id" label="Entity ID"><input className="rounded-md border border-border bg-background px-3 py-2" value={entityId} onChange={(e) => setEntityId(e.target.value)} /></FormField>
+        <FormField id="revenue-customer-id" label="Customer ID"><input className="rounded-md border border-border bg-background px-3 py-2" value={customerId} onChange={(e) => setCustomerId(e.target.value)} /></FormField>
+        <FormField id="revenue-contract-value" label="Contract value"><input className="rounded-md border border-border bg-background px-3 py-2" value={contractValue} onChange={(e) => setContractValue(e.target.value)} inputMode="decimal" /></FormField>
+        <FormField id="revenue-start-date" label="Contract start date"><input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></FormField>
+        <FormField id="revenue-end-date" label="Contract end date"><input className="rounded-md border border-border bg-background px-3 py-2" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></FormField>
+        <FormField id="revenue-obligation-type" label="Obligation type"><input className="rounded-md border border-border bg-background px-3 py-2" value={obligationType} onChange={(e) => setObligationType(e.target.value)} /></FormField>
         <button className="rounded-md border border-border px-3 py-2 hover:bg-accent md:col-span-3" type="button" onClick={() => void submit()} disabled={loading}>
           {loading ? "Generating..." : "Create Revenue Contract"}
         </button>
@@ -98,7 +99,6 @@ export default function RevenueModulePage() {
           </table>
         </div>
       ) : null}
-    </main>
+    </section>
   )
 }
-

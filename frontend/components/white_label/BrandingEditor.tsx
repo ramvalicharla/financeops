@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import type { WhiteLabelConfig } from "@/lib/types/white-label"
 import { getWhiteLabelConfig, updateWhiteLabelConfig } from "@/lib/api/white-label"
 import { WhiteLabelPreview } from "@/components/white_label/WhiteLabelPreview"
@@ -113,36 +114,34 @@ export function BrandingEditor({ initialConfig, readOnly = false }: BrandingEdit
   return (
     <div className="space-y-4">
       <section className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
-        <label className="text-xs text-muted-foreground">
-          Brand Name
+        <FormField id="brand-name" label="Brand name">
           <input
             value={state.brand_name}
             onChange={(event) => updateField("brand_name", event.target.value)}
             disabled={readOnly}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
-        </label>
-        <label className="text-xs text-muted-foreground">
-          Logo URL
+        </FormField>
+        <FormField id="brand-logo-url" label="Logo URL">
           <input
             value={state.logo_url}
             onChange={(event) => updateField("logo_url", event.target.value)}
             disabled={readOnly}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
-        </label>
-        <label className="text-xs text-muted-foreground">
-          Favicon URL
+        </FormField>
+        <FormField id="brand-favicon-url" label="Favicon URL">
           <input
             value={state.favicon_url}
             onChange={(event) => updateField("favicon_url", event.target.value)}
             disabled={readOnly}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
-        </label>
+        </FormField>
         <label className="text-xs text-muted-foreground">
           Primary Colour
           <input
+            aria-label="Primary colour"
             value={state.primary_colour}
             onChange={(event) => updateField("primary_colour", event.target.value)}
             disabled={readOnly}
@@ -153,6 +152,7 @@ export function BrandingEditor({ initialConfig, readOnly = false }: BrandingEdit
         <label className="text-xs text-muted-foreground">
           Secondary Colour
           <input
+            aria-label="Secondary colour"
             value={state.secondary_colour}
             onChange={(event) => updateField("secondary_colour", event.target.value)}
             disabled={readOnly}
@@ -160,57 +160,61 @@ export function BrandingEditor({ initialConfig, readOnly = false }: BrandingEdit
             placeholder="#1f2937"
           />
         </label>
-        <label className="text-xs text-muted-foreground">
-          Font Family
+        <FormField id="brand-font-family" label="Font family">
           <select
             value={state.font_family}
             onChange={(event) => updateField("font_family", event.target.value)}
             disabled={readOnly}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           >
             <option value="inter">Inter</option>
             <option value="plus_jakarta">Plus Jakarta</option>
             <option value="geist">Geist</option>
             <option value="dm_sans">DM Sans</option>
           </select>
-        </label>
-        <label className="text-xs text-muted-foreground">
-          Support Email
+        </FormField>
+        <FormField id="brand-support-email" label="Support email">
           <input
             value={state.support_email}
             onChange={(event) => updateField("support_email", event.target.value)}
             disabled={readOnly}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            autoComplete="email"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
-        </label>
-        <label className="text-xs text-muted-foreground">
-          Support URL
+        </FormField>
+        <FormField
+          id="brand-support-url"
+          label="Support URL"
+          hint="Enter your custom domain e.g. app.yourcompany.com"
+        >
           <input
             value={state.support_url}
             onChange={(event) => updateField("support_url", event.target.value)}
             disabled={readOnly}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
-        </label>
-        <label className="md:col-span-2 text-xs text-muted-foreground">
-          Custom CSS (max 10,000 chars)
-          <textarea
-            value={state.custom_css}
-            onChange={(event) => updateField("custom_css", event.target.value)}
-            disabled={readOnly}
-            rows={6}
-            className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground"
-          />
-        </label>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        </FormField>
+        <div className="md:col-span-2">
+          <FormField id="brand-custom-css" label="Custom CSS" hint="Max 10,000 characters">
+            <textarea
+              value={state.custom_css}
+              onChange={(event) => updateField("custom_css", event.target.value)}
+              disabled={readOnly}
+              rows={6}
+              className="w-full rounded-md border border-border bg-background px-3 py-2 text-xs text-foreground"
+            />
+          </FormField>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <input
+            id="brand-hide-powered-by"
             type="checkbox"
             checked={state.hide_powered_by}
             onChange={(event) => updateField("hide_powered_by", event.target.checked)}
             disabled={readOnly}
           />
-          Hide Powered by FinanceOps footer
-        </label>
+          <label htmlFor="brand-hide-powered-by">Hide Powered by FinanceOps footer</label>
+        </div>
       </section>
 
       <WhiteLabelPreview

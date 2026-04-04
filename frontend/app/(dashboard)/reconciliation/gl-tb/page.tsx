@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
+import { Sheet } from "@/components/ui/Sheet"
 import { GLTBTable } from "@/components/reconciliation/GLTBTable"
 import { VarianceBadge } from "@/components/reconciliation/VarianceBadge"
 import { useConnections, useSyncRuns } from "@/hooks/useSync"
@@ -233,27 +234,16 @@ export default function GLTBReconciliationPage() {
       ) : null}
 
       {selectedAccount ? (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
-          <aside className="h-full w-full max-w-2xl overflow-y-auto border-l border-border bg-card p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Account Detail</h3>
-                <p className="text-sm text-muted-foreground">
-                  {selectedAccount.account_code}
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSelectedAccount(null)}
-              >
-                Close
-              </Button>
-            </div>
-            <div className="mb-3">
-              <VarianceBadge status={selectedAccount.status} />
-            </div>
-            <div className="overflow-x-auto rounded-md border border-border">
+        <Sheet open={Boolean(selectedAccount)} onClose={() => setSelectedAccount(null)} title="Transaction detail" width="max-w-2xl">
+          <div className="mb-4">
+            <p className="text-sm text-muted-foreground">
+              {selectedAccount.account_code}
+            </p>
+          </div>
+          <div className="mb-3">
+            <VarianceBadge status={selectedAccount.status} />
+          </div>
+          <div className="overflow-x-auto rounded-md border border-border">
               <table className="w-full min-w-[780px] text-sm">
                 <thead>
                   <tr className="bg-muted/30">
@@ -308,9 +298,8 @@ export default function GLTBReconciliationPage() {
                   ) : null}
                 </tbody>
               </table>
-            </div>
-          </aside>
-        </div>
+          </div>
+        </Sheet>
       ) : null}
     </div>
   )

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
 import { fetchAnomalyAlert, updateAnomalyStatus } from "@/lib/api/anomaly"
 import type { AnomalyAlert, AnomalyStatus } from "@/lib/types/anomaly"
 import { cn } from "@/lib/utils"
@@ -220,7 +221,7 @@ export default function AnomalyDetailPage() {
           <section className="rounded-lg border border-border bg-card p-4">
             <h2 className="mb-3 text-lg font-semibold text-foreground">Details</h2>
             <div className="overflow-x-auto rounded-md border border-border">
-              <table className="w-full text-sm">
+              <table aria-label="Anomaly details" className="w-full text-sm">
                 <tbody>
                   {detailRows.map(([label, value]) => (
                     <tr key={label} className="border-t border-border first:border-t-0">
@@ -267,63 +268,50 @@ export default function AnomalyDetailPage() {
       ) : null}
 
       {snoozeState ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-foreground">Snooze Alert</h2>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSnoozeState(null)}
-                disabled={updating}
-              >
-                Close
-              </Button>
-            </div>
-            <div className="mt-4 space-y-3">
-              <label className="space-y-1 text-sm text-foreground" htmlFor="detail-snooze-until">
-                <span>Snooze Until</span>
-                <input
-                  id="detail-snooze-until"
-                  type="date"
-                  value={snoozeState.selectedDate}
-                  onChange={(event) =>
-                    setSnoozeState((previous) =>
-                      previous ? { ...previous, selectedDate: event.target.value } : previous,
-                    )
-                  }
-                  className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                />
-              </label>
-            </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSnoozeState(null)}
-                disabled={updating}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={() => {
-                  void updateStatus("SNOOZED", snoozeState.selectedDate)
-                }}
-                disabled={updating}
-              >
-                {updating ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  "Save Snooze"
-                )}
-              </Button>
-            </div>
+        <Dialog open={Boolean(snoozeState)} onClose={() => setSnoozeState(null)} title="Snooze alert" size="sm">
+          <div className="space-y-3">
+            <label className="space-y-1 text-sm text-foreground" htmlFor="detail-snooze-until">
+              <span>Snooze Until</span>
+              <input
+                id="detail-snooze-until"
+                type="date"
+                value={snoozeState.selectedDate}
+                onChange={(event) =>
+                  setSnoozeState((previous) =>
+                    previous ? { ...previous, selectedDate: event.target.value } : previous,
+                  )
+                }
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              />
+            </label>
           </div>
-        </div>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setSnoozeState(null)}
+              disabled={updating}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                void updateStatus("SNOOZED", snoozeState.selectedDate)
+              }}
+              disabled={updating}
+            >
+              {updating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Snooze"
+              )}
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
     </div>
   )

@@ -14,13 +14,13 @@ export function CoaPreviewTable({ accounts, batches }: CoaPreviewTableProps) {
         <h2 className="text-lg font-semibold text-foreground">CoA Preview</h2>
         <p className="mt-1 text-sm text-muted-foreground">Resolved accounts (tenant override fallback applied)</p>
         <div className="mt-3 max-h-[420px] overflow-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
+          <table aria-label="Chart of accounts preview" className="min-w-full divide-y divide-border text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2">Code</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2">Type</th>
-                <th className="px-3 py-2">Version</th>
+                <th scope="col" className="px-3 py-2">Code</th>
+                <th scope="col" className="px-3 py-2">Name</th>
+                <th scope="col" className="px-3 py-2">Type</th>
+                <th scope="col" className="px-3 py-2">Version</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -41,13 +41,13 @@ export function CoaPreviewTable({ accounts, batches }: CoaPreviewTableProps) {
         <h2 className="text-lg font-semibold text-foreground">Version History</h2>
         <p className="mt-1 text-sm text-muted-foreground">Recent upload batches</p>
         <div className="mt-3 max-h-[420px] overflow-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
+          <table aria-label="Chart of accounts preview" className="min-w-full divide-y divide-border text-sm">
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-3 py-2">File</th>
-                <th className="px-3 py-2">Mode</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Created</th>
+                <th scope="col" className="px-3 py-2">File</th>
+                <th scope="col" className="px-3 py-2">Mode</th>
+                <th scope="col" className="px-3 py-2">Status</th>
+                <th scope="col" className="px-3 py-2">Created</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

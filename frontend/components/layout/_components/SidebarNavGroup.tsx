@@ -32,11 +32,14 @@ export function SidebarDisclosureGroup({
   onToggle,
 }: SidebarDisclosureGroupProps) {
   const Icon = item.icon
+  const groupId = `nav-group-${item.label.toLowerCase().replace(/\s+/g, "-")}`
 
   return (
     <div className="space-y-1">
       <button
         type="button"
+        aria-controls={groupId}
+        aria-expanded={open}
         className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm text-foreground hover:bg-accent"
         onClick={onToggle}
       >
@@ -52,7 +55,7 @@ export function SidebarDisclosureGroup({
         />
       </button>
       {open ? (
-        <div className="space-y-1 pl-6">
+        <div id={groupId} className="space-y-1 pl-6">
           {item.children.map((child) => (
             <SidebarNavItem
               key={child.href}

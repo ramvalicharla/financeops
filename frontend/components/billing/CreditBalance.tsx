@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
 import type { CreditBalance as CreditBalanceType } from "@/types/billing"
 
 interface CreditBalanceProps {
@@ -73,53 +74,50 @@ export function CreditBalance({ balance, onTopUp, isLoading }: CreditBalanceProp
       </section>
 
       {showTopUpModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-lg rounded-lg border border-border bg-card p-5">
-            <h4 className="text-lg font-semibold text-foreground">Top up credits</h4>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {[100, 500, 1000, -1].map((credits) => (
-                <button
-                  key={credits}
-                  type="button"
-                  className={`rounded border px-3 py-2 text-sm ${
-                    selectedCredits === credits
-                      ? "border-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
-                      : "border-border text-muted-foreground hover:bg-accent/30"
-                  }`}
-                  onClick={() => setSelectedCredits(credits)}
-                >
-                  {credits === -1 ? "Custom" : `${credits} Credits`}
-                </button>
-              ))}
-            </div>
-            {selectedCredits === -1 ? (
-              <input
-                className="mt-3 w-full rounded border border-border bg-background px-3 py-2 text-sm"
-                placeholder="Enter credit amount"
-                value={customCredits}
-                onChange={(event) => setCustomCredits(event.target.value)}
-              />
-            ) : null}
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
+        <Dialog open={showTopUpModal} onClose={() => setShowTopUpModal(false)} title="Add credits" size="sm">
+          <div className="grid grid-cols-2 gap-2">
+            {[100, 500, 1000, -1].map((credits) => (
+              <button
+                key={credits}
                 type="button"
-                variant="outline"
-                onClick={() => setShowTopUpModal(false)}
+                className={`rounded border px-3 py-2 text-sm ${
+                  selectedCredits === credits
+                    ? "border-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                    : "border-border text-muted-foreground hover:bg-accent/30"
+                }`}
+                onClick={() => setSelectedCredits(credits)}
               >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                disabled={resolvedCredits <= 0 || isLoading}
-                onClick={() => {
-                  void onTopUp(resolvedCredits).then(() => setShowTopUpModal(false))
-                }}
-              >
-                {isLoading ? "Processing..." : "Confirm Top-up"}
-              </Button>
-            </div>
+                {credits === -1 ? "Custom" : `${credits} Credits`}
+              </button>
+            ))}
           </div>
-        </div>
+          {selectedCredits === -1 ? (
+            <input
+              className="mt-3 w-full rounded border border-border bg-background px-3 py-2 text-sm"
+              placeholder="Enter credit amount"
+              value={customCredits}
+              onChange={(event) => setCustomCredits(event.target.value)}
+            />
+          ) : null}
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowTopUpModal(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={resolvedCredits <= 0 || isLoading}
+              onClick={() => {
+                void onTopUp(resolvedCredits).then(() => setShowTopUpModal(false))
+              }}
+            >
+              {isLoading ? "Processing..." : "Confirm Top-up"}
+            </Button>
+          </div>
+        </Dialog>
       ) : null}
     </>
   )

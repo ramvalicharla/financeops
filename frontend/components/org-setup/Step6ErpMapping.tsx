@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import {
   bulkConfirmErpMappings,
@@ -138,38 +139,44 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
       </div>
 
       <div className="grid gap-3 md:grid-cols-4">
-        <select
-          value={selectedEntityId}
-          onChange={(event) => setSelectedEntityId(event.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="">Select entity</option>
-          {entities.map((entity) => (
-            <option key={entity.id} value={entity.cp_entity_id ?? ""}>
-              {entity.display_name ?? entity.legal_name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={connectorType}
-          onChange={(event) => setConnectorType(event.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="TALLY">Tally</option>
-          <option value="ZOHO">Zoho</option>
-          <option value="QUICKBOOKS">QuickBooks</option>
-          <option value="NETSUITE">NetSuite</option>
-          <option value="MANUAL">Manual</option>
-        </select>
-        <select
-          value={viewFilter}
-          onChange={(event) => setViewFilter(event.target.value as "all" | "unmapped" | "unconfirmed")}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="all">All</option>
-          <option value="unmapped">Unmapped only</option>
-          <option value="unconfirmed">Unconfirmed only</option>
-        </select>
+        <FormField id="mapping-entity" label="Entity">
+          <select
+            value={selectedEntityId}
+            onChange={(event) => setSelectedEntityId(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="">Select entity</option>
+            {entities.map((entity) => (
+              <option key={entity.id} value={entity.cp_entity_id ?? ""}>
+                {entity.display_name ?? entity.legal_name}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField id="mapping-source" label="Source field">
+          <select
+            value={connectorType}
+            onChange={(event) => setConnectorType(event.target.value)}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="TALLY">Tally</option>
+            <option value="ZOHO">Zoho</option>
+            <option value="QUICKBOOKS">QuickBooks</option>
+            <option value="NETSUITE">NetSuite</option>
+            <option value="MANUAL">Manual</option>
+          </select>
+        </FormField>
+        <FormField id="mapping-transform" label="Transformation">
+          <select
+            value={viewFilter}
+            onChange={(event) => setViewFilter(event.target.value as "all" | "unmapped" | "unconfirmed")}
+            className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+          >
+            <option value="all">All</option>
+            <option value="unmapped">Unmapped only</option>
+            <option value="unconfirmed">Unconfirmed only</option>
+          </select>
+        </FormField>
       </div>
 
       <div className="grid gap-3 md:grid-cols-5">
@@ -217,26 +224,28 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
                     <p className="font-mono text-xs text-muted-foreground">{mapping.erp_account_code}</p>
                   </td>
                   <td className="px-3 py-2">
-                    <select
-                      value={mapping.tenant_coa_account_id ?? ""}
-                      onChange={(event) => {
-                        if (!event.target.value) {
-                          return
-                        }
-                        confirmMutation.mutate({
-                          mappingId: mapping.id,
-                          accountId: event.target.value,
-                        })
-                      }}
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                    >
-                      <option value="">Unmapped</option>
-                      {(tenantAccountsQuery.data ?? []).map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.account_code} - {account.display_name}
-                        </option>
-                      ))}
-                    </select>
+                    <FormField id={`mapping-target-${mapping.id}`} label="Target field">
+                      <select
+                        value={mapping.tenant_coa_account_id ?? ""}
+                        onChange={(event) => {
+                          if (!event.target.value) {
+                            return
+                          }
+                          confirmMutation.mutate({
+                            mappingId: mapping.id,
+                            accountId: event.target.value,
+                          })
+                        }}
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                      >
+                        <option value="">Unmapped</option>
+                        {(tenantAccountsQuery.data ?? []).map((account) => (
+                          <option key={account.id} value={account.id}>
+                            {account.account_code} - {account.display_name}
+                          </option>
+                        ))}
+                      </select>
+                    </FormField>
                   </td>
                   <td className="px-3 py-2">
                     <span className={`rounded-full px-2 py-1 text-xs ${badgeClass(confidence)}`}>

@@ -19,14 +19,14 @@ export function ARAgingTable({ rows }: ARAgingTableProps) {
     <section className="rounded-xl border border-border bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-foreground">Top Overdue AR</h3>
       <div className="overflow-x-auto">
-        <table className="min-w-full text-sm">
+        <table aria-label="Accounts receivable aging" className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted-foreground">
-              <th className="py-2">Customer</th>
-              <th className="py-2">Amount</th>
-              <th className="py-2">Days Overdue</th>
-              <th className="py-2">Probability</th>
-              <th className="py-2">Action</th>
+              <th scope="col" className="py-2">Customer</th>
+              <th scope="col" className="py-2">Amount</th>
+              <th scope="col" className="py-2">Days Overdue</th>
+              <th scope="col" className="py-2">Probability</th>
+              <th scope="col" className="py-2">Action</th>
             </tr>
           </thead>
           <tbody>

@@ -1,8 +1,9 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useMemo, useState } from "react"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
+import { FormField } from "@/components/ui/FormField"
 import { submitExpense } from "@/lib/api/expenses"
 import type { ExpenseClaim, ExpensePolicy } from "@/lib/types/expense"
 
@@ -110,6 +111,16 @@ export function ExpenseForm({ policy, onSubmitted }: ExpenseFormProps) {
     message: "Within policy.",
     violationType: null,
   })
+  const [fieldErrors, setFieldErrors] = useState<{
+    claim_date?: string
+    vendor_name?: string
+    category?: string
+    amount?: string
+    currency?: string
+    description?: string
+    receipt?: string
+    justification?: string
+  }>({})
 
   useEffect(() => {
     const handle = window.setTimeout(() => {
@@ -168,15 +179,28 @@ export function ExpenseForm({ policy, onSubmitted }: ExpenseFormProps) {
     })
 
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? "Invalid form")
+      const nextFieldErrors: typeof fieldErrors = {}
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0] as keyof typeof fieldErrors
+        if (!nextFieldErrors[key]) {
+          nextFieldErrors[key] = issue.message
+        }
+      }
+      setFieldErrors(nextFieldErrors)
+      setError(null)
       return
     }
 
     if (requiresJustification && !justification.trim()) {
-      setError("Justification is required for this policy warning.")
+      setFieldErrors((current) => ({
+        ...current,
+        justification: "Justification is required for this policy warning.",
+      }))
+      setError(null)
       return
     }
 
+    setFieldErrors({})
     setSubmitting(true)
     try {
       const claim = await submitExpense({
@@ -203,17 +227,30 @@ export function ExpenseForm({ policy, onSubmitted }: ExpenseFormProps) {
       <div className={`rounded-md border px-3 py-2 text-sm ${feedbackClass}`}>{feedback.message}</div>
 
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Date</span>
-          <input type="date" value={claimDate} onChange={(event) => setClaimDate(event.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2" />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Vendor</span>
-          <input value={vendorName} onChange={(event) => setVendorName(event.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2" />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Category</span>
-          <select value={category} onChange={(event) => setCategory(event.target.value)} className="w-full rounded-md border border-border bg-background px-3 py-2">
+        <FormField id="expense-date" label="Expense date" error={fieldErrors.claim_date} required>
+          <input
+            type="date"
+            value={claimDate}
+            onChange={(event) => setClaimDate(event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            required
+          />
+        </FormField>
+        <FormField id="expense-vendor" label="Vendor" error={fieldErrors.vendor_name} required>
+          <input
+            value={vendorName}
+            onChange={(event) => setVendorName(event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            required
+          />
+        </FormField>
+        <FormField id="expense-category" label="Category" error={fieldErrors.category} required>
+          <select
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            required
+          >
             <option value="meals">Meals</option>
             <option value="travel">Travel</option>
             <option value="accommodation">Accommodation</option>
@@ -221,19 +258,32 @@ export function ExpenseForm({ policy, onSubmitted }: ExpenseFormProps) {
             <option value="professional_fees">Professional Fees</option>
             <option value="other">Other</option>
           </select>
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Amount</span>
-          <input value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" className="w-full rounded-md border border-border bg-background px-3 py-2" />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Currency</span>
-          <input value={currency} onChange={(event) => setCurrency(event.target.value.toUpperCase())} className="w-full rounded-md border border-border bg-background px-3 py-2" />
-        </label>
-        <label className="space-y-1 text-sm md:col-span-2">
-          <span className="text-muted-foreground">Description</span>
-          <textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-[100px] w-full rounded-md border border-border bg-background px-3 py-2" />
-        </label>
+        </FormField>
+        <FormField id="expense-amount" label="Amount" error={fieldErrors.amount} required>
+          <input
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            inputMode="decimal"
+            required
+          />
+        </FormField>
+        <FormField id="expense-currency" label="Currency" error={fieldErrors.currency} required>
+          <input
+            value={currency}
+            onChange={(event) => setCurrency(event.target.value.toUpperCase())}
+            className="w-full rounded-md border border-border bg-background px-3 py-2"
+            required
+          />
+        </FormField>
+        <FormField id="expense-description" label="Description" error={fieldErrors.description} required>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="min-h-[100px] w-full rounded-md border border-border bg-background px-3 py-2 md:col-span-2"
+            required
+          />
+        </FormField>
       </div>
 
       <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -241,25 +291,27 @@ export function ExpenseForm({ policy, onSubmitted }: ExpenseFormProps) {
         Receipt available
       </label>
 
-      <div className="space-y-2">
-        <label className="block text-sm text-muted-foreground">Receipt Upload</label>
+      <FormField id="expense-receipt" label="Receipt" hint="Upload a PDF or image of the receipt">
         <input
           type="file"
           onChange={(event) => onReceiptSelected(event.target.files?.[0] ?? null)}
           className="block w-full text-sm text-muted-foreground"
         />
-        {uploadProgress > 0 ? (
-          <div className="h-2 w-full overflow-hidden rounded bg-muted">
-            <div className="h-full bg-[hsl(var(--brand-primary))] transition-all" style={{ width: `${uploadProgress}%` }} />
-          </div>
-        ) : null}
-      </div>
+      </FormField>
+      {uploadProgress > 0 ? (
+        <div className="h-2 w-full overflow-hidden rounded bg-muted">
+          <div className="h-full bg-[hsl(var(--brand-primary))] transition-all" style={{ width: `${uploadProgress}%` }} />
+        </div>
+      ) : null}
 
       {requiresJustification ? (
-        <label className="space-y-1 text-sm">
-          <span className="text-muted-foreground">Justification</span>
-          <textarea value={justification} onChange={(event) => setJustification(event.target.value)} className="min-h-[90px] w-full rounded-md border border-border bg-background px-3 py-2" />
-        </label>
+        <FormField id="expense-notes" label="Notes" error={fieldErrors.justification}>
+          <textarea
+            value={justification}
+            onChange={(event) => setJustification(event.target.value)}
+            className="min-h-[90px] w-full rounded-md border border-border bg-background px-3 py-2"
+          />
+        </FormField>
       ) : null}
 
       {error ? (

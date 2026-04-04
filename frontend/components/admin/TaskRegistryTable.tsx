@@ -15,15 +15,15 @@ const statusClass = (status: ServiceRegistryTask["last_run_status"]): string => 
 export function TaskRegistryTable({ tasks }: TaskRegistryTableProps) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="min-w-full text-sm">
+      <table aria-label="Task registry" className="min-w-full text-sm">
         <thead className="border-b border-border text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
           <tr>
-            <th className="px-3 py-2">Task Name</th>
-            <th className="px-3 py-2">Queue</th>
-            <th className="px-3 py-2">Last Run</th>
-            <th className="px-3 py-2">Status</th>
-            <th className="px-3 py-2">Avg Duration</th>
-            <th className="px-3 py-2">Success Rate</th>
+            <th scope="col" className="px-3 py-2">Task Name</th>
+            <th scope="col" className="px-3 py-2">Queue</th>
+            <th scope="col" className="px-3 py-2">Last Run</th>
+            <th scope="col" className="px-3 py-2">Status</th>
+            <th scope="col" className="px-3 py-2">Avg Duration</th>
+            <th scope="col" className="px-3 py-2">Success Rate</th>
           </tr>
         </thead>
         <tbody>
@@ -53,4 +53,3 @@ export function TaskRegistryTable({ tasks }: TaskRegistryTableProps) {
     </div>
   )
 }
-

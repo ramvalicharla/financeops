@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
 import { getTemplateHierarchy, type CoaTemplate } from "@/lib/api/coa"
 import type { OrgEntity } from "@/lib/api/orgSetup"
 
@@ -88,38 +89,30 @@ export function Step5IndustryCoA({
       </div>
 
       {previewTemplateId ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-h-[80vh] w-full max-w-4xl overflow-auto rounded-xl border border-border bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Template preview</h3>
-              <Button type="button" variant="outline" onClick={() => setPreviewTemplateId(null)}>
-                Close
-              </Button>
+        <Dialog open={Boolean(previewTemplateId)} onClose={() => setPreviewTemplateId(null)} title="Chart of accounts preview" size="lg">
+          {hierarchyQuery.isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="h-8 animate-pulse rounded-md bg-muted" />
+              ))}
             </div>
-            {hierarchyQuery.isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 8 }).map((_, index) => (
-                  <div key={index} className="h-8 animate-pulse rounded-md bg-muted" />
-                ))}
-              </div>
-            ) : hierarchyQuery.error ? (
-              <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load template hierarchy.</p>
-            ) : (
-              <div className="space-y-3 text-sm">
-                {hierarchyQuery.data?.classifications.map((classification) => (
-                  <div key={classification.id} className="rounded-lg border border-border p-3">
-                    <p className="font-medium text-foreground">{classification.name}</p>
-                    <ul className="mt-2 space-y-1 text-muted-foreground">
-                      {classification.schedules.map((schedule) => (
-                        <li key={schedule.id}>{schedule.name}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          ) : hierarchyQuery.error ? (
+            <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load template hierarchy.</p>
+          ) : (
+            <div className="space-y-3 text-sm">
+              {hierarchyQuery.data?.classifications.map((classification) => (
+                <div key={classification.id} className="rounded-lg border border-border p-3">
+                  <p className="font-medium text-foreground">{classification.name}</p>
+                  <ul className="mt-2 space-y-1 text-muted-foreground">
+                    {classification.schedules.map((schedule) => (
+                      <li key={schedule.id}>{schedule.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </Dialog>
       ) : null}
     </form>
   )

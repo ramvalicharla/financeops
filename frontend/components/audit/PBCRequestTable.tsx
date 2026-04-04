@@ -39,15 +39,15 @@ export function PBCRequestTable({ rows, onRespond }: PBCRequestTableProps) {
           </select>
         </label>
       </div>
-      <table className="w-full min-w-[980px] text-sm">
+      <table aria-label="PBC requests" className="w-full min-w-[980px] text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">PBC#</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Category</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Description</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Status</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Due Date</th>
-            <th className="px-3 py-2 text-left text-xs text-muted-foreground">Action</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">PBC#</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Category</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Description</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Status</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Due Date</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs text-muted-foreground">Action</th>
           </tr>
         </thead>
         <tbody>

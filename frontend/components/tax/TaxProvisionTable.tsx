@@ -64,7 +64,7 @@ export function TaxProvisionTable({ provision }: TaxProvisionTableProps) {
 
   return (
     <div className="rounded-xl border border-border bg-card">
-      <table className="w-full text-sm">
+      <table aria-label="Tax provision" className="w-full text-sm">
         <caption className="pb-2 pl-3 text-left text-xs text-muted-foreground">
           {scaleLabel}
         </caption>

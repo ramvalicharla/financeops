@@ -1,3 +1,7 @@
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Cookie Policy")
+
 export default function CookiesPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
@@ -7,13 +11,13 @@ export default function CookiesPage() {
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">Cookies We Use</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table aria-label="Cookie types" className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-foreground">
-                  <th className="py-2 text-left">Cookie</th>
-                  <th className="py-2 text-left">Purpose</th>
-                  <th className="py-2 text-left">Duration</th>
-                  <th className="py-2 text-left">Essential</th>
+                  <th scope="col" className="py-2 text-left">Cookie</th>
+                  <th scope="col" className="py-2 text-left">Purpose</th>
+                  <th scope="col" className="py-2 text-left">Duration</th>
+                  <th scope="col" className="py-2 text-left">Essential</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">

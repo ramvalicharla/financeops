@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { deriveConsolidationMethod } from "@/components/org-setup/constants"
@@ -93,44 +94,53 @@ export function Step3Ownership({ entities, submitting, onSubmit }: Step3Ownershi
             : "-"
           return (
             <div key={index} className="grid gap-3 rounded-lg border border-border bg-background/40 p-4 md:grid-cols-5">
-              <select
-                value={row.parent_entity_id}
-                onChange={(event) => updateRow(index, "parent_entity_id", event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                <option value="">Parent entity</option>
-                {entities.map((entity) => (
-                  <option key={entity.id} value={entity.id}>
-                    {entity.display_name ?? entity.legal_name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={row.child_entity_id}
-                onChange={(event) => updateRow(index, "child_entity_id", event.target.value)}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              >
-                <option value="">Child entity</option>
-                {entities
-                  .filter((entity) => entity.id !== row.parent_entity_id)
-                  .map((entity) => (
+              <FormField id={`ownership-parent-${index}`} label="Parent entity" required>
+                <select
+                  value={row.parent_entity_id}
+                  onChange={(event) => updateRow(index, "parent_entity_id", event.target.value)}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  <option value="">Select parent entity</option>
+                  {entities.map((entity) => (
                     <option key={entity.id} value={entity.id}>
                       {entity.display_name ?? entity.legal_name}
                     </option>
                   ))}
-              </select>
-              <Input
-                placeholder="Ownership %"
-                value={row.ownership_pct}
-                onChange={(event) => updateRow(index, "ownership_pct", event.target.value)}
-                min="0.01"
-                max="100.00"
-              />
-              <Input
-                type="date"
-                value={row.effective_from}
-                onChange={(event) => updateRow(index, "effective_from", event.target.value)}
-              />
+                </select>
+              </FormField>
+              <FormField id={`ownership-child-${index}`} label="Child entity" required>
+                <select
+                  value={row.child_entity_id}
+                  onChange={(event) => updateRow(index, "child_entity_id", event.target.value)}
+                  className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                >
+                  <option value="">Select child entity</option>
+                  {entities
+                    .filter((entity) => entity.id !== row.parent_entity_id)
+                    .map((entity) => (
+                      <option key={entity.id} value={entity.id}>
+                        {entity.display_name ?? entity.legal_name}
+                      </option>
+                    ))}
+                </select>
+              </FormField>
+              <FormField id={`ownership-pct-${index}`} label="Ownership (%)" required>
+                <Input
+                  value={row.ownership_pct}
+                  onChange={(event) => updateRow(index, "ownership_pct", event.target.value)}
+                  min="0.01"
+                  max="100.00"
+                  required
+                />
+              </FormField>
+              <FormField id={`ownership-effective-from-${index}`} label="Effective from" required>
+                <Input
+                  type="date"
+                  value={row.effective_from}
+                  onChange={(event) => updateRow(index, "effective_from", event.target.value)}
+                  required
+                />
+              </FormField>
               <div className="flex items-center justify-between gap-2">
                 <span className="rounded-full bg-muted px-2 py-1 text-xs text-foreground">{method}</span>
                 {rows.length > 1 ? (

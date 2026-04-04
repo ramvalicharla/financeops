@@ -148,8 +148,9 @@ export function ReportDefinitionSheet({
                           formState.sortField === metricKey ? "" : formState.sortField,
                       })
                     }
+                    aria-label={`Remove ${metricByKey.get(metricKey)?.label ?? metricKey}`}
                   >
-                    x
+                    <span aria-hidden="true">×</span>
                   </button>
                 </span>
               ))}
@@ -250,8 +251,9 @@ export function ReportDefinitionSheet({
                           ),
                         })
                       }
+                      aria-label={`Remove ${entityId}`}
                     >
-                      x
+                      <span aria-hidden="true">×</span>
                     </button>
                   </span>
                 ))}

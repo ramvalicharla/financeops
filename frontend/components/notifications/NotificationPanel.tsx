@@ -69,7 +69,12 @@ export function NotificationPanel({
   }
 
   return (
-    <div className="absolute right-0 z-50 mt-2 w-[28rem] max-w-[92vw] rounded-xl border border-border bg-card p-3 shadow-2xl">
+    <div
+      id="notifications-panel"
+      role="dialog"
+      aria-label="Notifications"
+      className="absolute right-0 z-50 mt-2 w-[28rem] max-w-[92vw] rounded-xl border border-border bg-card p-3 shadow-2xl"
+    >
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold text-foreground">Notifications</p>
         <button
@@ -81,7 +86,10 @@ export function NotificationPanel({
         </button>
       </div>
 
-      <div className="max-h-[26rem] space-y-2 overflow-y-auto">
+      <div
+        aria-live="polite"
+        className="max-h-[26rem] space-y-2 overflow-y-auto"
+      >
         {loading ? <p className="text-sm text-muted-foreground">Loading notifications...</p> : null}
         {!loading && rows.length === 0 ? (
           <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
@@ -101,4 +109,3 @@ export function NotificationPanel({
     </div>
   )
 }
-

@@ -76,13 +76,14 @@ export function CashFlowGrid({ weeks, onCellEdit }: CashFlowGridProps) {
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <div className="px-3 pt-2 text-xs text-muted-foreground">{scaleLabel}</div>
-      <table className="w-full min-w-[1300px] text-sm">
+      <table aria-label="Cash flow" className="w-full min-w-[1300px] text-sm">
         <thead>
           <tr className="border-b border-border">
-            <th className="px-3 py-2 text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">Line Item</th>
+            <th scope="col" className="px-3 py-2 text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">Line Item</th>
             {weeks.map((week) => (
               <th
                 key={week.week_number}
+                scope="col"
                 className="px-3 py-2 text-right text-xs text-muted-foreground"
               >
                 <div className="space-y-0.5">

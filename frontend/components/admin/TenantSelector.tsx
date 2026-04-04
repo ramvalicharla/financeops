@@ -1,5 +1,6 @@
 "use client"
 
+import { FormField } from "@/components/ui/FormField"
 import type { PlatformTenant } from "@/lib/types/platform-admin"
 
 export function TenantSelector({
@@ -7,14 +8,25 @@ export function TenantSelector({
   value,
   onChange,
   disabled = false,
+  id = "tenant-selector",
+  label,
+  error,
+  hint,
+  required = false,
 }: {
   tenants: PlatformTenant[]
   value: string
   onChange: (tenantId: string) => void
   disabled?: boolean
+  id?: string
+  label?: string
+  error?: string
+  hint?: string
+  required?: boolean
 }) {
-  return (
+  const control = (
     <select
+      aria-label={label}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       disabled={disabled}
@@ -27,5 +39,21 @@ export function TenantSelector({
         </option>
       ))}
     </select>
+  )
+
+  if (!label) {
+    return control
+  }
+
+  return (
+    <FormField
+      id={id}
+      label={label}
+      error={error}
+      hint={hint}
+      required={required}
+    >
+      {control}
+    </FormField>
   )
 }

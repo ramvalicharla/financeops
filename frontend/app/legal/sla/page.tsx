@@ -1,3 +1,7 @@
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Service Level Agreement")
+
 export default function SLAPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
@@ -7,12 +11,12 @@ export default function SLAPage() {
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">1. Uptime Commitment</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table aria-label="Service level commitments" className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-foreground">
-                  <th className="py-2 text-left">Plan</th>
-                  <th className="py-2 text-left">Monthly Uptime</th>
-                  <th className="py-2 text-left">Max Downtime/Month</th>
+                  <th scope="col" className="py-2 text-left">Plan</th>
+                  <th scope="col" className="py-2 text-left">Monthly Uptime</th>
+                  <th scope="col" className="py-2 text-left">Max Downtime/Month</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -26,12 +30,12 @@ export default function SLAPage() {
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">2. Support Response Times</h2>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table aria-label="Service level commitments" className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-foreground">
-                  <th className="py-2 text-left">Severity</th>
-                  <th className="py-2 text-left">Description</th>
-                  <th className="py-2 text-left">First Response</th>
+                  <th scope="col" className="py-2 text-left">Severity</th>
+                  <th scope="col" className="py-2 text-left">Description</th>
+                  <th scope="col" className="py-2 text-left">First Response</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
