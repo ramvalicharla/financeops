@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import traceback
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -91,7 +92,9 @@ def main() -> int:
         return 0
     except Exception as exc:
         log.error("migration run failed: %s", exc)
+        traceback.print_exc()
         print(f"Migration failed: {exc}", file=sys.stderr)
+        sys.stderr.flush()
         return 1
 
 
