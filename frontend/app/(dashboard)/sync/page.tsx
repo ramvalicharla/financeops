@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { formatDistanceToNowStrict } from "date-fns"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui"
 import { SyncRunTable } from "@/components/sync/SyncRunTable"
 import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge"
 import {
@@ -17,6 +18,8 @@ import {
 import { cn } from "@/lib/utils"
 import type { SyncRun, ValidationResult } from "@/types/sync"
 import { useUIStore } from "@/lib/store/ui"
+
+const OVERLAY_TRANSITION_MS = 200
 
 const validationCategories = [
   "REQUIRED_FIELD_PRESENCE",
@@ -78,6 +81,7 @@ export default function SyncPage() {
     searchParams?.get("connection_id") ?? null,
   )
   const [validationRun, setValidationRun] = useState<SyncRun | null>(null)
+  const [validationDialogOpen, setValidationDialogOpen] = useState(false)
   const [driftRun, setDriftRun] = useState<SyncRun | null>(null)
   const [criticalAcknowledged, setCriticalAcknowledged] = useState(false)
   const setNotificationItems = useUIStore((state) => state.setNotificationItems)
@@ -111,6 +115,18 @@ export default function SyncPage() {
     [validationRun],
   )
   const failedValidationCount = validationRows.filter((row) => !row.passed).length
+
+  useEffect(() => {
+    if (validationDialogOpen || !validationRun) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      setValidationRun(null)
+    }, OVERLAY_TRANSITION_MS)
+
+    return () => window.clearTimeout(timeout)
+  }, [validationDialogOpen, validationRun])
 
   useEffect(() => {
     const runs = syncRunsQuery.data ?? []
@@ -244,7 +260,10 @@ export default function SyncPage() {
               const publishId = run.publish_event_id ?? run.id
               void approvePublishMutation.mutateAsync(publishId)
             }}
-            onValidationReport={(run) => setValidationRun(run)}
+            onValidationReport={(run) => {
+              setValidationRun(run)
+              setValidationDialogOpen(true)
+            }}
             onViewDrift={(run) => {
               setDriftRun(run)
               setCriticalAcknowledged(false)
@@ -254,20 +273,15 @@ export default function SyncPage() {
         ) : null}
       </section>
 
-      {validationRun ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-lg border border-border bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Validation Details</h3>
-              <Button
-                onClick={() => setValidationRun(null)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                Close
-              </Button>
-            </div>
+      <Dialog
+        description="Review dataset validation categories, pass/fail results, and API messages for the selected sync run."
+        onClose={() => setValidationDialogOpen(false)}
+        open={validationDialogOpen}
+        size="lg"
+        title="Validation Details"
+      >
+        {validationRun ? (
+          <>
             <p className="mb-3 text-sm">
               {failedValidationCount === 0 ? (
                 <span className="text-[hsl(var(--brand-success))]">All checks passed.</span>
@@ -316,9 +330,9 @@ export default function SyncPage() {
                 </tbody>
               </table>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </>
+        ) : null}
+      </Dialog>
 
       {driftRun ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">

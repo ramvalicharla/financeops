@@ -1,5 +1,7 @@
 "use client"
 
+import Image from "next/image"
+
 interface WhiteLabelPreviewProps {
   brandName: string
   logoUrl: string
@@ -13,6 +15,9 @@ export function WhiteLabelPreview({
   primaryColour,
   secondaryColour,
 }: WhiteLabelPreviewProps) {
+  const safeLogoUrl =
+    typeof logoUrl === "string" && logoUrl.trim().length > 0 ? logoUrl : null
+
   return (
     <div className="overflow-hidden rounded-xl border border-border">
       <div
@@ -20,9 +25,16 @@ export function WhiteLabelPreview({
         style={{ backgroundColor: primaryColour }}
       >
         <div className="flex items-center gap-2">
-          {logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={logoUrl} alt={brandName} className="h-6 w-6 rounded object-cover" />
+          {safeLogoUrl ? (
+            <Image
+              src={safeLogoUrl}
+              alt={brandName ? `${brandName} logo` : "Brand logo"}
+              width={24}
+              height={24}
+              unoptimized
+              placeholder="empty"
+              className="h-6 w-6 rounded object-cover"
+            />
           ) : (
             <div className="h-6 w-6 rounded bg-white/20" />
           )}
@@ -50,4 +62,3 @@ export function WhiteLabelPreview({
     </div>
   )
 }
-

@@ -1,23 +1,23 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
-import {
-  CheckCircle2,
-  Database,
-  FileUp,
-  Link as LinkIcon,
-  Loader2,
-  RefreshCw,
-} from "lucide-react"
+import { CheckCircle2, Loader2, RefreshCw } from "lucide-react"
+import { ConnectorConfigForm } from "@/components/sync/_components/ConnectorConfigForm"
+import { ConnectorGrid } from "@/components/sync/_components/ConnectorGrid"
+import { ConnectorStatusBadge } from "@/components/sync/_components/ConnectorStatusBadge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { FileUploadZone } from "@/components/sync/FileUploadZone"
 import { useCreateConnection, useTestConnection, useTriggerSync } from "@/hooks/useSync"
-import type { ConnectorType, DatasetType } from "@/types/sync"
+import {
+  CONNECTORS,
+  CONNECTOR_DATASETS,
+  CONNECTOR_IDS,
+  DATASET_TYPES,
+} from "@/lib/config/connectors"
 import { cn } from "@/lib/utils"
+import type { ConnectorType, DatasetType } from "@/types/sync"
 
 type WizardStep =
   | "connector"
@@ -36,167 +36,6 @@ const stepOrder: WizardStep[] = [
   "confirm",
 ]
 
-const connectorCards: Array<{
-  connector: ConnectorType
-  label: string
-  description: string
-  oauth: boolean
-  icon: typeof Database
-}> = [
-  {
-    connector: "ZOHO",
-    label: "Zoho",
-    description: "OAuth connector",
-    oauth: true,
-    icon: LinkIcon,
-  },
-  {
-    connector: "TALLY",
-    label: "Tally",
-    description: "File/XML import",
-    oauth: false,
-    icon: FileUp,
-  },
-  {
-    connector: "BUSY",
-    label: "Busy",
-    description: "File/API key",
-    oauth: false,
-    icon: FileUp,
-  },
-  {
-    connector: "MARG",
-    label: "Marg",
-    description: "File import",
-    oauth: false,
-    icon: FileUp,
-  },
-  {
-    connector: "MUNIM",
-    label: "Munim",
-    description: "File import",
-    oauth: false,
-    icon: FileUp,
-  },
-  {
-    connector: "QUICKBOOKS",
-    label: "QuickBooks",
-    description: "OAuth connector",
-    oauth: true,
-    icon: LinkIcon,
-  },
-  {
-    connector: "XERO",
-    label: "Xero",
-    description: "OAuth connector",
-    oauth: true,
-    icon: LinkIcon,
-  },
-  {
-    connector: "GENERIC_FILE",
-    label: "Upload File",
-    description: "CSV/JSON/XML/XLSX",
-    oauth: false,
-    icon: FileUp,
-  },
-]
-
-const connectorDatasets: Record<ConnectorType, DatasetType[]> = {
-  ZOHO: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "BANK_STATEMENT",
-    "ACCOUNTS_RECEIVABLE",
-    "ACCOUNTS_PAYABLE",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-    "GST_RETURN_GSTR1",
-    "FIXED_ASSET_REGISTER",
-  ],
-  TALLY: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "BANK_STATEMENT",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-    "GST_RETURN_GSTR1",
-  ],
-  BUSY: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "BANK_STATEMENT",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-    "GST_RETURN_GSTR1",
-  ],
-  MARG: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-  ],
-  MUNIM: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-  ],
-  QUICKBOOKS: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "BANK_STATEMENT",
-    "ACCOUNTS_RECEIVABLE",
-    "ACCOUNTS_PAYABLE",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-  ],
-  XERO: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "BANK_STATEMENT",
-    "ACCOUNTS_RECEIVABLE",
-    "ACCOUNTS_PAYABLE",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-  ],
-  GENERIC_FILE: [
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "BANK_STATEMENT",
-    "ACCOUNTS_RECEIVABLE",
-    "ACCOUNTS_PAYABLE",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "PAYROLL_SUMMARY",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-    "GST_RETURN_GSTR1",
-    "FIXED_ASSET_REGISTER",
-  ],
-}
-
 const scheduleModes = ["manual", "daily", "weekly"] as const
 type ScheduleMode = (typeof scheduleModes)[number]
 
@@ -210,35 +49,12 @@ const canonicalFieldOptions = [
   "amount",
   "tax_amount",
   "currency",
-]
+] as const
 
 const formSchema = z.object({
-  connector_type: z.enum([
-    "ZOHO",
-    "TALLY",
-    "BUSY",
-    "MARG",
-    "MUNIM",
-    "QUICKBOOKS",
-    "XERO",
-    "GENERIC_FILE",
-  ]),
+  connector_type: z.enum(CONNECTOR_IDS),
   display_name: z.string().min(2, "Display name is required"),
-  datasets: z.array(z.enum([
-    "TRIAL_BALANCE",
-    "GENERAL_LEDGER",
-    "BANK_STATEMENT",
-    "ACCOUNTS_RECEIVABLE",
-    "ACCOUNTS_PAYABLE",
-    "INVOICE_REGISTER",
-    "PURCHASE_REGISTER",
-    "PAYROLL_SUMMARY",
-    "CHART_OF_ACCOUNTS",
-    "VENDOR_MASTER",
-    "CUSTOMER_MASTER",
-    "GST_RETURN_GSTR1",
-    "FIXED_ASSET_REGISTER",
-  ])).min(1, "Select at least one dataset"),
+  datasets: z.array(z.enum(DATASET_TYPES)).min(1, "Select at least one dataset"),
   schedule_mode: z.enum(scheduleModes),
   schedule_time: z.string().optional(),
   schedule_day_of_week: z.string().optional(),
@@ -268,7 +84,10 @@ const parseColumnsFromFile = async (file: File): Promise<string[]> => {
   }
   if (extension === "json") {
     try {
-      const parsed = JSON.parse(rawText) as Record<string, unknown> | Array<Record<string, unknown>>
+      const parsed =
+        JSON.parse(rawText) as
+          | Record<string, unknown>
+          | Array<Record<string, unknown>>
       if (Array.isArray(parsed)) {
         return Object.keys(parsed[0] ?? {})
       }
@@ -320,22 +139,20 @@ export function ConnectSourceForm({ onSuccess }: ConnectSourceFormProps) {
   const connectorType = watch("connector_type")
   const scheduleMode = watch("schedule_mode")
   const selectedDatasets = watch("datasets")
-  const supportedDatasets = connectorDatasets[connectorType]
-  const isOAuthConnector = connectorCards.find(
-    (card) => card.connector === connectorType,
-  )?.oauth
+  const selectedConnector = CONNECTORS.find((connector) => connector.id === connectorType)
+  const supportedDatasets = [...CONNECTOR_DATASETS[connectorType]] as DatasetType[]
+  const isOAuthConnector = selectedConnector?.category === "OAuth"
 
   useEffect(() => {
-    const nextDatasets = connectorDatasets[connectorType]
+    const nextDatasets = [...CONNECTOR_DATASETS[connectorType]] as DatasetType[]
     setValue("datasets", nextDatasets)
     if (!getValues("display_name")) {
-      const card = connectorCards.find((item) => item.connector === connectorType)
-      setValue("display_name", card?.label ?? "")
+      setValue("display_name", selectedConnector?.name ?? "")
     }
     setTestPassed(false)
     setOauthConnected(false)
     setStepError(null)
-  }, [connectorType, getValues, setValue])
+  }, [connectorType, getValues, selectedConnector, setValue])
 
   useEffect(() => {
     if (!selectedFile) {
@@ -490,136 +307,39 @@ export function ConnectSourceForm({ onSuccess }: ConnectSourceFormProps) {
 
       <div className="rounded-lg border border-border bg-card p-5">
         {currentStep === "connector" ? (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">Choose connector</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {connectorCards.map((card) => {
-                const Icon = card.icon
-                const selected = connectorType === card.connector
-                return (
-                  <button
-                    key={card.connector}
-                    className={cn(
-                      "rounded-lg border p-4 text-left transition",
-                      selected
-                        ? "border-[hsl(var(--brand-primary))] bg-[hsl(var(--brand-primary)/0.1)]"
-                        : "border-border hover:border-[hsl(var(--brand-primary)/0.5)]",
-                    )}
-                    onClick={() => setValue("connector_type", card.connector)}
-                    type="button"
-                  >
-                    <Icon className="mb-2 h-5 w-5 text-foreground" />
-                    <p className="font-medium text-foreground">{card.label}</p>
-                    <p className="text-xs text-muted-foreground">{card.description}</p>
-                  </button>
-                )
-              })}
-            </div>
-          </section>
+          <ConnectorGrid
+            selectedConnectorId={connectorType}
+            onSelect={(connectorId) => setValue("connector_type", connectorId)}
+          />
         ) : null}
 
         {currentStep === "configure" ? (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold text-foreground">Configure connection</h2>
-            <div className="space-y-2">
-              <label className="text-sm text-foreground" htmlFor="display-name">
-                Display name
-              </label>
-              <Input
-                id="display-name"
-                value={watch("display_name")}
-                onChange={(event) => setValue("display_name", event.target.value)}
-              />
-              {errors.display_name ? (
-                <p className="text-sm text-destructive">{errors.display_name.message}</p>
-              ) : null}
-            </div>
-            {isOAuthConnector ? (
-              <div className="rounded-md border border-border p-4">
-                <Button
-                  type="button"
-                  onClick={() => setOauthConnected(true)}
-                  className="gap-2"
-                >
-                  <LinkIcon className="h-4 w-4" />
-                  Connect with {connectorType}
-                </Button>
-                {oauthConnected ? (
-                  <p className="mt-2 text-sm text-[hsl(var(--brand-success))]">
-                    Connected successfully.
-                  </p>
-                ) : (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Complete OAuth authorization to continue.
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <FileUploadZone
-                  error={stepError}
-                  file={selectedFile}
-                  onFileSelected={(file) => {
-                    setSelectedFile(file)
-                    setStepError(null)
-                  }}
-                />
-                {columnMappings.length ? (
-                  <div className="overflow-x-auto rounded-md border border-border">
-                    <table className="w-full min-w-[540px] text-sm">
-                      <thead>
-                        <tr className="bg-muted/30">
-                          <th className="px-3 py-2 text-left font-medium text-foreground">
-                            Source Column
-                          </th>
-                          <th className="px-3 py-2 text-left font-medium text-foreground">
-                            Mapping
-                          </th>
-                          <th className="px-3 py-2 text-left font-medium text-foreground">
-                            Canonical Field
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {columnMappings.map((mapping, index) => (
-                          <tr key={mapping.source_column} className="border-t border-border">
-                            <td className="px-3 py-2 text-muted-foreground">
-                              {mapping.source_column}
-                            </td>
-                            <td className="px-3 py-2 text-muted-foreground">→</td>
-                            <td className="px-3 py-2">
-                              <select
-                                className="w-full rounded border border-border bg-background px-2 py-1 text-foreground"
-                                value={mapping.canonical_field}
-                                onChange={(event) => {
-                                  setColumnMappings((previous) =>
-                                    previous.map((value, mapIndex) =>
-                                      mapIndex === index
-                                        ? {
-                                            ...value,
-                                            canonical_field: event.target.value,
-                                          }
-                                        : value,
-                                    ),
-                                  )
-                                }}
-                              >
-                                {canonicalFieldOptions.map((field) => (
-                                  <option key={field} value={field}>
-                                    {field}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-              </div>
-            )}
-          </section>
+          <ConnectorConfigForm
+            canonicalFieldOptions={canonicalFieldOptions}
+            columnMappings={columnMappings}
+            displayName={watch("display_name")}
+            displayNameError={errors.display_name?.message}
+            fileError={stepError}
+            isOAuthConnector={Boolean(isOAuthConnector)}
+            oauthConnected={oauthConnected}
+            selectedConnector={selectedConnector}
+            selectedFile={selectedFile}
+            onConnectOAuth={() => setOauthConnected(true)}
+            onDisplayNameChange={(value) => setValue("display_name", value)}
+            onFileSelected={(file) => {
+              setSelectedFile(file)
+              setStepError(null)
+            }}
+            onMappingChange={(index, canonicalField) => {
+              setColumnMappings((previous) =>
+                previous.map((value, mapIndex) =>
+                  mapIndex === index
+                    ? { ...value, canonical_field: canonicalField }
+                    : value,
+                ),
+              )
+            }}
+          />
         ) : null}
 
         {currentStep === "test" ? (
@@ -639,10 +359,10 @@ export function ConnectSourceForm({ onSuccess }: ConnectSourceFormProps) {
               Test Connection
             </Button>
             {testPassed ? (
-              <p className="inline-flex items-center gap-2 text-sm text-[hsl(var(--brand-success))]">
-                <CheckCircle2 className="h-4 w-4" />
-                Connection successful
-              </p>
+              <div className="inline-flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-[hsl(var(--brand-success))]" />
+                <ConnectorStatusBadge label="Connection successful" status="success" />
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">
                 Run a connection test before continuing.
@@ -713,8 +433,8 @@ export function ConnectSourceForm({ onSuccess }: ConnectSourceFormProps) {
                   {mode === "manual"
                     ? "Manual only"
                     : mode === "daily"
-                    ? "Daily"
-                    : "Weekly"}
+                      ? "Daily"
+                      : "Weekly"}
                 </label>
               ))}
             </div>
@@ -723,8 +443,9 @@ export function ConnectSourceForm({ onSuccess }: ConnectSourceFormProps) {
                 <label className="text-sm text-foreground" htmlFor="schedule-time">
                   Time
                 </label>
-                <Input
+                <input
                   id="schedule-time"
+                  className="w-full rounded border border-border bg-background px-3 py-2 text-sm text-foreground"
                   type="time"
                   value={watch("schedule_time") ?? ""}
                   onChange={(event) => setValue("schedule_time", event.target.value)}

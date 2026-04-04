@@ -3,6 +3,9 @@
 import Link from "next/link"
 import { useState } from "react"
 import apiClient from "@/lib/api/client"
+import { FormField } from "@/components/ui"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -29,25 +32,26 @@ export default function ForgotPasswordPage() {
       </div>
       {!submitted ? (
         <div className="space-y-4">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@company.com"
-            className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white"
-          />
-          <button onClick={submit} disabled={loading} className="w-full rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700 disabled:opacity-50">
+          <FormField id="forgot-password-email" label="Email" required>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+            />
+          </FormField>
+          <Button className="w-full" disabled={loading} onClick={submit} type="button">
             {loading ? "Sending..." : "Send Reset Link"}
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="space-y-2 text-center">
-          <p className="text-white">Check your inbox</p>
-          <p className="text-sm text-gray-400">If an account exists for {email}, you&apos;ll receive a reset link shortly.</p>
+          <p className="text-foreground">Check your inbox</p>
+          <p className="text-sm text-muted-foreground">If an account exists for {email}, you&apos;ll receive a reset link shortly.</p>
         </div>
       )}
-      <p className="mt-4 text-center text-sm text-gray-400">
-        <Link href="/login" className="text-blue-400 hover:text-blue-300">
+      <p className="mt-4 text-center text-sm text-muted-foreground">
+        <Link href="/login" className="text-foreground transition hover:text-muted-foreground">
           Back to sign in
         </Link>
       </p>

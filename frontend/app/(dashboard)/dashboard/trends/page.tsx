@@ -1,10 +1,22 @@
 "use client"
 
+import dynamic from "next/dynamic"
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import type { TrendsChartDatum } from "@/components/charts"
 import { getTrends } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+
+const TrendsChart = dynamic(
+  () =>
+    import("@/components/charts/TrendsChart").then(
+      (module) => module.TrendsChart,
+    ),
+  {
+    ssr: false,
+    loading: () => <div className="h-64 w-full animate-pulse rounded-lg bg-muted" />,
+  },
+)
 
 const toAmount = (value: string | number | null | undefined) => Number(value ?? 0)
 
@@ -26,7 +38,7 @@ export default function TrendsPage() {
     enabled: Boolean(entityId),
   })
 
-  const chartData = useMemo(() => {
+  const chartData = useMemo<TrendsChartDatum[]>(() => {
     const series = trendsQuery.data?.series ?? []
     const periods = Array.from(
       new Set(series.flatMap((item) => item.points.map((point) => point.period))),
@@ -37,7 +49,7 @@ export default function TrendsPage() {
         const point = item.points.find((p) => p.period === period)
         row[item.metric_name] = toAmount(point?.value)
       }
-      return row
+      return row as TrendsChartDatum
     })
   }, [trendsQuery.data])
 
@@ -45,11 +57,16 @@ export default function TrendsPage() {
     <div className="space-y-6 p-6">
       <section className="rounded-xl border border-border bg-card p-4">
         <h1 className="text-xl font-semibold text-foreground">Trends</h1>
-        <p className="text-sm text-muted-foreground">Revenue, expense, profit, and cash trajectory over time.</p>
+        <p className="text-sm text-muted-foreground">
+          Revenue, expense, profit, and cash trajectory over time.
+        </p>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-4">
-        <label htmlFor="frequency" className="text-xs uppercase tracking-wide text-muted-foreground">
+        <label
+          htmlFor="frequency"
+          className="text-xs uppercase tracking-wide text-muted-foreground"
+        >
           Frequency
         </label>
         <select
@@ -64,23 +81,8 @@ export default function TrendsPage() {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-4">
-        <div className="h-[420px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="period" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="revenue" stroke="hsl(var(--brand-primary))" />
-              <Line type="monotone" dataKey="expenses" stroke="hsl(var(--brand-warning))" />
-              <Line type="monotone" dataKey="profit" stroke="hsl(var(--brand-success))" />
-              <Line type="monotone" dataKey="cash" stroke="hsl(var(--brand-secondary))" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        <TrendsChart data={chartData} />
       </section>
     </div>
   )
 }
-

@@ -1,5 +1,13 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import {
+  SCALE_DECIMAL_PLACES,
+  SCALE_DIVISORS,
+  SCALE_FULL_LABELS,
+  SCALE_LABELS,
+  SCALE_OPTIONS,
+  type DisplayScale,
+} from "@/lib/config/tokens"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -23,65 +31,17 @@ const sanitizeDecimalString = (value: string): string => {
 }
 
 // ============================================================
-// DISPLAY SCALE — Amount formatting for Indian and international
+// DISPLAY SCALE - Amount formatting for Indian and international
 // ============================================================
 
-export type DisplayScale =
-  | "INR"
-  | "LAKHS"
-  | "CRORES"
-  | "THOUSANDS"
-  | "MILLIONS"
-  | "BILLIONS"
-
-export const SCALE_DIVISORS: Record<DisplayScale, number> = {
-  INR: 1,
-  LAKHS: 100_000,
-  CRORES: 10_000_000,
-  THOUSANDS: 1_000,
-  MILLIONS: 1_000_000,
-  BILLIONS: 1_000_000_000,
-}
-
-export const SCALE_LABELS: Record<DisplayScale, string> = {
-  INR: "",
-  LAKHS: "L",
-  CRORES: "Cr",
-  THOUSANDS: "K",
-  MILLIONS: "M",
-  BILLIONS: "B",
-}
-
-export const SCALE_FULL_LABELS: Record<DisplayScale, string> = {
-  INR: "in ₹",
-  LAKHS: "₹ in Lakhs",
-  CRORES: "₹ in Crores",
-  THOUSANDS: "in Thousands",
-  MILLIONS: "in Millions",
-  BILLIONS: "in Billions",
-}
-
-export const SCALE_DECIMAL_PLACES: Record<DisplayScale, number> = {
-  INR: 2,
-  LAKHS: 2,
-  CRORES: 2,
-  THOUSANDS: 2,
-  MILLIONS: 2,
-  BILLIONS: 3,
-}
-
-export const SCALE_OPTIONS: {
-  value: DisplayScale
-  label: string
-  group: "Indian" | "International"
-}[] = [
-  { value: "INR", label: "₹ (Full Rupees)", group: "Indian" },
-  { value: "LAKHS", label: "₹ Lakhs", group: "Indian" },
-  { value: "CRORES", label: "₹ Crores", group: "Indian" },
-  { value: "THOUSANDS", label: "Thousands (K)", group: "International" },
-  { value: "MILLIONS", label: "Millions (M)", group: "International" },
-  { value: "BILLIONS", label: "Billions (B)", group: "International" },
-]
+export type { DisplayScale } from "@/lib/config/tokens"
+export {
+  SCALE_DECIMAL_PLACES,
+  SCALE_DIVISORS,
+  SCALE_FULL_LABELS,
+  SCALE_LABELS,
+  SCALE_OPTIONS,
+} from "@/lib/config/tokens"
 
 /**
  * Format a financial amount for display.
@@ -91,7 +51,7 @@ export const SCALE_OPTIONS: {
 export function formatAmount(
   amount: number | string | null | undefined,
   scale: DisplayScale = "LAKHS",
-  currency: string = "₹",
+  currency: string = "\u20b9",
   options: {
     showLabel?: boolean
     showCurrency?: boolean
@@ -224,7 +184,7 @@ const parseLegacyNumber = (value: string): number => {
 }
 
 export function formatINR(value: string): string {
-  return formatAmount(parseLegacyNumber(value), "INR", "₹", {
+  return formatAmount(parseLegacyNumber(value), "INR", "\u20b9", {
     showLabel: false,
     showCurrency: true,
   })
@@ -245,13 +205,13 @@ export function decimalStringToNumber(value: string): number {
 export function formatINRCompact(value: string): string {
   const absolute = Math.abs(parseLegacyNumber(value))
   if (absolute >= 10000000) {
-    return `₹${(absolute / 10000000).toFixed(1)}Cr`
+    return `\u20b9${(absolute / 10000000).toFixed(1)}Cr`
   }
   if (absolute >= 100000) {
-    return `₹${(absolute / 100000).toFixed(1)}L`
+    return `\u20b9${(absolute / 100000).toFixed(1)}L`
   }
   if (absolute >= 1000) {
-    return `₹${(absolute / 1000).toFixed(1)}K`
+    return `\u20b9${(absolute / 1000).toFixed(1)}K`
   }
   return formatINR(value)
 }

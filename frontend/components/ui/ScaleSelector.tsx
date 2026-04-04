@@ -1,9 +1,6 @@
 "use client"
 
-import {
-  SCALE_OPTIONS,
-  type DisplayScale,
-} from "@/lib/utils"
+import { SCALE_OPTIONS, type DisplayScale } from "@/lib/config/tokens"
 
 interface ScaleSelectorProps {
   value: DisplayScale

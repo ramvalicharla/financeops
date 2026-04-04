@@ -1,8 +1,12 @@
 "use client"
 
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
 import apiClient from "@/lib/api/client"
+import { FormField } from "@/components/ui"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 export default function ResetPasswordPage() {
   return (
@@ -49,25 +53,32 @@ function ResetPasswordPageContent() {
   return (
     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
       <h2 className="mb-4 text-center text-xl font-semibold text-foreground">Set new password</h2>
-      <div className="space-y-3">
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="New password (min 8 chars)"
-          className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white"
-        />
-        <input
-          type="password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          placeholder="Confirm new password"
-          className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-white"
-        />
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
-        <button onClick={reset} disabled={loading} className="w-full rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700 disabled:opacity-50">
+      <div className="space-y-4">
+        <FormField id="reset-password" label="New password" required>
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="New password (min 8 chars)"
+          />
+        </FormField>
+        <FormField id="reset-password-confirm" label="Confirm new password" required>
+          <Input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            placeholder="Confirm new password"
+          />
+        </FormField>
+        {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+        <Button className="w-full" disabled={loading} onClick={reset} type="button">
           {loading ? "Resetting..." : "Reset Password"}
-        </button>
+        </Button>
+        <p className="text-center text-sm text-muted-foreground">
+          <Link href="/login" className="text-foreground transition hover:text-muted-foreground">
+            Back to sign in
+          </Link>
+        </p>
       </div>
     </div>
   )

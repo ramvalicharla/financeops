@@ -13,7 +13,7 @@ import { Step2Preview } from "@/components/onboarding/Step2Preview"
 import { Step3Apply } from "@/components/onboarding/Step3Apply"
 import { Step4Connect } from "@/components/onboarding/Step4Connect"
 import { Step5Done } from "@/components/onboarding/Step5Done"
-import { StepIndicator } from "@/components/onboarding/StepIndicator"
+import { StepIndicator } from "@/components/ui/StepIndicator"
 import type {
   ApplyTemplateResponse,
   OnboardingIndustry,

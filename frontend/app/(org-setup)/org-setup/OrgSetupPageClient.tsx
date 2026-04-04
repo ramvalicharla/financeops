@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
-import { StepIndicator } from "@/components/org-setup/StepIndicator"
+import { StepIndicator } from "@/components/ui/StepIndicator"
 import { Step1GroupIdentity } from "@/components/org-setup/Step1GroupIdentity"
 import { Step2Entities } from "@/components/org-setup/Step2Entities"
 import { Step3Ownership } from "@/components/org-setup/Step3Ownership"

@@ -67,11 +67,11 @@ export function EntityLocationSelector() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2 overflow-hidden">
       {entityCount > 1 ? (
         <select
           aria-label="Select active entity"
-          className="max-w-[220px] rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+          className="max-w-[132px] rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground md:max-w-[220px]"
           value={activeEntityId ?? ""}
           onChange={(event) => {
             const nextEntityId = event.target.value || null
@@ -91,7 +91,7 @@ export function EntityLocationSelector() {
       {(entityCount > 1 || locationItems.length > 1) && activeEntityId ? (
         <select
           aria-label="Select active location"
-          className="max-w-[220px] rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground"
+          className="max-w-[132px] rounded-md border border-border bg-background px-2 py-1.5 text-xs text-foreground md:max-w-[220px]"
           value={activeLocationId ?? ""}
           onChange={(event) => setActiveLocation(event.target.value || null)}
         >

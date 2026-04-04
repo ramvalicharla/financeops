@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import apiClient from "@/lib/api/client"
@@ -78,8 +79,14 @@ export default function MFASetupPage() {
       {step === "verify" ? (
         <div className="space-y-3">
           <div className="flex justify-center rounded-md bg-white p-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrUrl} alt="MFA QR Code" className="h-48 w-48" />
+            <Image
+              src={qrUrl}
+              alt="QR code for MFA setup"
+              width={192}
+              height={192}
+              unoptimized
+              className="h-48 w-48"
+            />
           </div>
           <p className="text-center text-xs text-gray-400">
             Manual key: <span className="font-mono text-gray-200">{secret}</span>
