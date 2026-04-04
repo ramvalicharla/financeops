@@ -18,6 +18,10 @@ def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SECRET_KEY", "s" * 32)
 
 
+def _valid_encryption_key() -> str:
+    return base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
+
+
 @pytest.fixture(autouse=True)
 def _clear_settings_cache() -> None:
     get_settings.cache_clear()
@@ -80,3 +84,46 @@ def test_short_jwt_secret_raises_at_settings_load(
         Settings()
 
     assert "32 characters" in str(exc.value)
+
+
+def test_production_rejects_development_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", Settings._DEV_SECRET_KEY_DEFAULT)
+    monkeypatch.setenv("JWT_SECRET", "j" * 64)
+    monkeypatch.setenv("FIELD_ENCRYPTION_KEY", _valid_encryption_key())
+
+    with pytest.raises(RuntimeError) as exc:
+        Settings()
+
+    assert "SECRET_KEY" in str(exc.value)
+
+
+def test_production_rejects_placeholder_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "s" * 64)
+    monkeypatch.setenv(
+        "JWT_SECRET",
+        "replace-with-generated-jwt-secret-abcdefghijklmnopqrstuvwxyz",
+    )
+    monkeypatch.setenv("FIELD_ENCRYPTION_KEY", _valid_encryption_key())
+
+    with pytest.raises(RuntimeError) as exc:
+        Settings()
+
+    assert "JWT_SECRET appears to be a placeholder value" in str(exc.value)
+
+
+def test_production_rejects_default_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DATABASE_URL", Settings._DEV_DATABASE_URL_DEFAULT)
+    monkeypatch.setenv("SECRET_KEY", "s" * 64)
+    monkeypatch.setenv("JWT_SECRET", "j" * 64)
+    monkeypatch.setenv("FIELD_ENCRYPTION_KEY", _valid_encryption_key())
+
+    with pytest.raises(RuntimeError) as exc:
+        Settings()
+
+    assert "DATABASE_URL cannot use development default in production" in str(exc.value)

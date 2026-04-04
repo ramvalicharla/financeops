@@ -1,0 +1,57 @@
+{
+  "generated_at": "2026-04-04T07:57:25.961053+00:00",
+  "name": "migration_execution_validation",
+  "passed": false,
+  "steps": [
+    {
+      "details": {
+        "command": "C:\\Python314\\python.exe -m financeops.migrations.run",
+        "returncode": 1,
+        "stderr": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"D:\\finos\\backend\\financeops\\migrations\\run.py\", line 11, in <module>\n    from financeops.observability.logging import configure_logging\n  File \"D:\\finos\\backend\\financeops\\observability\\logging.py\", line 7, in <module>\n    from opentelemetry import trace\nModuleNotFoundError: No module named 'opentelemetry'\n",
+        "stdout": "",
+        "success": false
+      },
+      "name": "lock_safe_migration_run",
+      "status": "fail"
+    },
+    {
+      "details": {
+        "error": "unable to read Alembic head revision"
+      },
+      "name": "read_alembic_head",
+      "status": "fail"
+    },
+    {
+      "details": {
+        "error": "MIGRATION_DATABASE_URL or DATABASE_URL is required"
+      },
+      "name": "read_db_revision",
+      "status": "fail"
+    },
+    {
+      "details": {
+        "error": "BASE_URL is required",
+        "response": null,
+        "status_code": null
+      },
+      "name": "ops_migration_status_api",
+      "status": "fail"
+    },
+    {
+      "details": {
+        "alembic_head": null,
+        "api_current_revision": null,
+        "api_expected_head": null,
+        "db_current_revision": null,
+        "matched": false
+      },
+      "name": "revision_match_status",
+      "status": "fail"
+    }
+  ],
+  "summary": {
+    "current_revision": null,
+    "match_status": false,
+    "migration_head": null
+  }
+}

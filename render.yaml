@@ -6,7 +6,7 @@ services:
     plan: starter
     dockerfilePath: backend/Dockerfile
     dockerCommand: bash scripts/start.sh
-    healthCheckPath: /health
+    healthCheckPath: /ready
     envVars:
       - key: DATABASE_URL
         sync: false

@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock
 
+from financeops.main import app as fastapi_app
+
 
 @pytest.mark.asyncio
 async def test_health_root_returns_all_checks(async_client) -> None:
@@ -13,6 +15,70 @@ async def test_health_root_returns_all_checks(async_client) -> None:
     assert "checks" in data
     for key in ["database", "redis", "ai", "queues", "temporal", "workers"]:
         assert key in data["checks"], f"Missing check: {key}"
+
+
+@pytest.mark.asyncio
+async def test_healthz_alias_matches_health(async_client) -> None:
+    response = await async_client.get("/healthz")
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert "checks" in payload
+
+
+@pytest.mark.asyncio
+async def test_readyz_alias_matches_ready(async_client) -> None:
+    response = await async_client.get("/readyz")
+    assert response.status_code in {200, 503}
+    payload = response.json()["data"]
+    assert "ready" in payload
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_503_when_database_unhealthy(monkeypatch, async_client) -> None:
+    async def _db_bad():
+        return {"status": "unhealthy", "latency_ms": 1.0}
+
+    async def _redis_ok():
+        return {"status": "healthy", "latency_ms": 1.0}
+
+    fastapi_app.state.migration_state = {
+        "status": "ok",
+        "current_revision": "test",
+        "head_revision": "test",
+        "detail": None,
+    }
+    monkeypatch.setattr("financeops.api.v1.health._check_database", _db_bad)
+    monkeypatch.setattr("financeops.api.v1.health._check_redis", _redis_ok)
+
+    response = await async_client.get("/ready")
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "http_503"
+
+
+@pytest.mark.asyncio
+async def test_ready_returns_503_when_migration_not_ready(monkeypatch, async_client) -> None:
+    async def _db_ok():
+        return {"status": "healthy", "latency_ms": 1.0}
+
+    async def _redis_ok():
+        return {"status": "healthy", "latency_ms": 1.0}
+
+    fastapi_app.state.migration_state = {
+        "status": "out_of_sync",
+        "current_revision": "old",
+        "head_revision": "new",
+        "detail": "schema mismatch",
+    }
+    monkeypatch.setattr("financeops.api.v1.health._check_database", _db_ok)
+    monkeypatch.setattr("financeops.api.v1.health._check_redis", _redis_ok)
+
+    response = await async_client.get("/ready")
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "http_503"
 
 
 @pytest.mark.asyncio

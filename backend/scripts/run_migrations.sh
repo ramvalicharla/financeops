@@ -2,5 +2,5 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-alembic upgrade head
+python -m financeops.migrations.run
 echo "Migrations applied successfully"

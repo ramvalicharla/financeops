@@ -21,33 +21,9 @@ else
   fi
 fi
 
-DEBUG_VALUE="${DEBUG:-false}"
-case "${DEBUG_VALUE,,}" in
-  true|false|1|0|yes|no|on|off) ;;
-  *) DEBUG_VALUE="false" ;;
-esac
-
-ALEMBIC_CMD="/opt/venv/bin/alembic"
-if [ ! -x "${ALEMBIC_CMD}" ]; then
-  ALEMBIC_CMD="alembic"
-  if ! command -v "${ALEMBIC_CMD}" >/dev/null 2>&1; then
-    ALEMBIC_CMD=""
-  fi
-fi
-
 if ! "${PYTHON_BIN}" -c "import psycopg2; print('psycopg2 OK')"; then
   echo "psycopg2 import failed"
   exit 1
-fi
-
-echo "Running migrations..."
-if [ -d backend ] && [ -f backend/alembic.ini ]; then
-  cd backend
-fi
-if [ -n "${ALEMBIC_CMD}" ]; then
-  DEBUG="${DEBUG_VALUE}" "${ALEMBIC_CMD}" upgrade head
-else
-  DEBUG="${DEBUG_VALUE}" "${PYTHON_BIN}" -m alembic upgrade head
 fi
 
 echo "Starting application..."

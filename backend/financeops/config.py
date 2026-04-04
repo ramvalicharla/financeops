@@ -3,15 +3,36 @@ from __future__ import annotations
 import base64 as _base64
 import os
 from functools import lru_cache
+from typing import ClassVar
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator, model_validator
 from pydantic_settings import BaseSettings
+from sqlalchemy.engine import make_url
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.requests import Request
 
 
+def is_docker_environment() -> bool:
+    return os.path.exists("/.dockerenv")
+
+
 class Settings(BaseSettings):
+    _DEV_SECRET_KEY_DEFAULT: ClassVar[str] = "dev-secret-key-change-me-before-production-use-123456"
+    _DEV_JWT_SECRET_DEFAULT: ClassVar[str] = "dev-jwt-secret-change-me-before-production-use-123456"
+    _DEV_DATABASE_URL_DEFAULT: ClassVar[str] = "postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
+    _DEV_REDIS_URL_DEFAULT: ClassVar[str] = "redis://localhost:6379/0"
+    _DEV_FIELD_ENCRYPTION_KEY_DEFAULT: ClassVar[str] = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    _PLACEHOLDER_MARKERS: ClassVar[tuple[str, ...]] = (
+        "change-me",
+        "replace-with",
+        "placeholder",
+        "your_",
+        "your-",
+        "<",
+        ">",
+    )
+
     # App
     APP_NAME: str = "FinanceOps"
     APP_ENV: str = "development"  # development / staging / production
@@ -23,20 +44,18 @@ class Settings(BaseSettings):
     APP_RELEASE: str = "1.1.0"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
-    SECRET_KEY: str = "dev-secret-key-change-me-before-production-use-123456"
+    SECRET_KEY: str = _DEV_SECRET_KEY_DEFAULT
 
     # Database
-    DATABASE_URL: PostgresDsn = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/postgres"
-    )
+    DATABASE_URL: PostgresDsn = Field(default=_DEV_DATABASE_URL_DEFAULT)
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
 
     # Redis
-    REDIS_URL: RedisDsn = Field(default="redis://localhost:6379/0")
+    REDIS_URL: RedisDsn = Field(default=_DEV_REDIS_URL_DEFAULT)
 
     # JWT
-    JWT_SECRET: str = "dev-jwt-secret-change-me-before-production-use-123456"
+    JWT_SECRET: str = _DEV_JWT_SECRET_DEFAULT
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -90,7 +109,7 @@ class Settings(BaseSettings):
     CURRENT_TERMS_VERSION: str = "2026-03-01"
 
     # Encryption
-    FIELD_ENCRYPTION_KEY: str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    FIELD_ENCRYPTION_KEY: str = _DEV_FIELD_ENCRYPTION_KEY_DEFAULT
     STARTUP_FAIL_FAST: bool = False
     AUTO_MIGRATE: bool = False
     MIGRATION_FAIL_FAST: bool = False
@@ -156,12 +175,73 @@ class Settings(BaseSettings):
             return parsed or ["http://localhost:3000"]
         raise ValueError("CORS_ALLOWED_ORIGINS must be a comma-separated string or list")
 
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def validate_database_host_scope(cls, v: PostgresDsn) -> PostgresDsn:
+        try:
+            parsed = make_url(str(v))
+        except Exception:
+            return v
+
+        host = (parsed.host or "").strip().lower()
+        if host == "db" and not is_docker_environment():
+            raise ValueError("DATABASE_URL host 'db' only valid inside docker")
+        return v
+
     @model_validator(mode="after")
     def validate_cors_wildcard_for_production(self) -> Settings:
         if self.APP_ENV.lower() == "production" and "*" in self.CORS_ALLOWED_ORIGINS:
             raise RuntimeError(
                 "CORS_ALLOWED_ORIGINS cannot include '*' when APP_ENV=production."
             )
+        return self
+
+    @staticmethod
+    def _looks_placeholder(value: str) -> bool:
+        normalized = value.strip().lower()
+        if not normalized:
+            return True
+        return any(marker in normalized for marker in Settings._PLACEHOLDER_MARKERS)
+
+    @model_validator(mode="after")
+    def validate_production_security_requirements(self) -> Settings:
+        if self.APP_ENV.lower() != "production":
+            return self
+
+        required_values: dict[str, str] = {
+            "SECRET_KEY": str(self.SECRET_KEY),
+            "JWT_SECRET": str(self.JWT_SECRET),
+            "DATABASE_URL": str(self.DATABASE_URL),
+            "REDIS_URL": str(self.REDIS_URL),
+            "FIELD_ENCRYPTION_KEY": str(self.FIELD_ENCRYPTION_KEY),
+        }
+
+        missing = [name for name, value in required_values.items() if not value.strip()]
+        if missing:
+            raise RuntimeError(
+                f"Missing required production environment variables: {', '.join(missing)}"
+            )
+
+        for name, value in required_values.items():
+            if self._looks_placeholder(value):
+                raise RuntimeError(
+                    f"{name} appears to be a placeholder value. "
+                    "Set a production-secret value before startup."
+                )
+
+        if self.SECRET_KEY == self._DEV_SECRET_KEY_DEFAULT:
+            raise RuntimeError("SECRET_KEY cannot use development default in production.")
+        if self.JWT_SECRET == self._DEV_JWT_SECRET_DEFAULT:
+            raise RuntimeError("JWT_SECRET cannot use development default in production.")
+        if str(self.DATABASE_URL) == self._DEV_DATABASE_URL_DEFAULT:
+            raise RuntimeError("DATABASE_URL cannot use development default in production.")
+        if str(self.REDIS_URL) == self._DEV_REDIS_URL_DEFAULT:
+            raise RuntimeError("REDIS_URL cannot use development default in production.")
+        if self.FIELD_ENCRYPTION_KEY == self._DEV_FIELD_ENCRYPTION_KEY_DEFAULT:
+            raise RuntimeError(
+                "FIELD_ENCRYPTION_KEY cannot use development default in production."
+            )
+
         return self
 
 

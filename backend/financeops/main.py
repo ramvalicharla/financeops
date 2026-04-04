@@ -9,7 +9,7 @@ from importlib.metadata import PackageNotFoundError, version as package_version
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -101,6 +101,16 @@ try:
 except PackageNotFoundError:
     APP_VERSION = settings.APP_RELEASE
 
+DB_CONNECTIVITY_HINT = (
+    "Database connection failed.\n"
+    "Check:\n"
+    "- DATABASE_URL correctness\n"
+    "- host reachability\n"
+    "- network/firewall\n"
+    "- docker vs local mismatch"
+)
+
+
 def _masked_database_url(raw_url: str) -> str:
     """Render DATABASE_URL with password masked for safe logging."""
     try:
@@ -146,10 +156,11 @@ async def _check_database_connectivity() -> None:
             await connection.execute(text("SELECT 1"))
 
     try:
-        await asyncio.wait_for(_ping_database(), timeout=10.0)
+        await asyncio.wait_for(_ping_database(), timeout=5.0)
     except Exception as exc:
-        log.error("DB connection failed: %s", _exception_text(exc))
-        raise
+        detail = _exception_text(exc)
+        log.error("%s Detail: %s", DB_CONNECTIVITY_HINT, detail)
+        raise RuntimeError(f"{DB_CONNECTIVITY_HINT}\nDetail: {detail}") from exc
 
 
 async def _initialize_redis_pool() -> None:
@@ -192,7 +203,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     db_check_task = asyncio.create_task(_check_database_connectivity())
     redis_init_task = asyncio.create_task(_initialize_redis_pool())
 
-    db_startup_error: str | None = None
     try:
         await db_check_task
     except Exception as exc:
@@ -202,8 +212,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             f"{error_text}"
         )
         startup_errors.append(message)
-        db_startup_error = message
         log.error(message)
+        raise RuntimeError(message) from exc
     else:
         log.info("Database connectivity check passed.")
         if settings.AUTO_MIGRATE:
@@ -254,9 +264,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             log.warning("Skipping CoA seed because migration state is not OK")
 
     await redis_init_task
-
-    if db_startup_error and settings.STARTUP_FAIL_FAST:
-        raise RuntimeError(db_startup_error)
 
     yield
 
@@ -337,6 +344,7 @@ def create_app() -> FastAPI:
 
     # Health endpoint (no prefix — accessible at root)
     from financeops.api.v1.health import (
+        build_health_summary_payload,
         build_liveness_payload,
         build_readiness_payload,
         router as health_router,
@@ -352,6 +360,22 @@ def create_app() -> FastAPI:
     async def ready_root() -> JSONResponse:
         startup_errors = getattr(app.state, "startup_errors", [])
         migration_state = getattr(app.state, "migration_state", None)
+        payload, code = await build_readiness_payload(
+            startup_errors=startup_errors,
+            migration_state=migration_state,
+        )
+        return JSONResponse(content=payload, status_code=code)
+
+    @app.get("/healthz", tags=["Health"])
+    async def healthz_alias(request: Request) -> JSONResponse:
+        startup_errors = getattr(request.app.state, "startup_errors", [])
+        payload = await build_health_summary_payload(startup_errors=startup_errors)
+        return JSONResponse(content=payload, status_code=200)
+
+    @app.get("/readyz", tags=["Health"])
+    async def readyz_alias(request: Request) -> JSONResponse:
+        startup_errors = getattr(request.app.state, "startup_errors", [])
+        migration_state = getattr(request.app.state, "migration_state", None)
         payload, code = await build_readiness_payload(
             startup_errors=startup_errors,
             migration_state=migration_state,

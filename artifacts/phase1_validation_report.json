@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-04-04T07:57:26.894463+00:00",
+  "passed": false,
+  "summary": {
+    "failed": 4,
+    "passed": 0,
+    "total": 4
+  },
+  "validations": [
+    {
+      "artifact": "migration_validation.json",
+      "artifact_payload": {
+        "generated_at": "2026-04-04T07:57:25.961053+00:00",
+        "name": "migration_execution_validation",
+        "passed": false,
+        "steps": [
+          {
+            "details": {
+              "command": "C:\\Python314\\python.exe -m financeops.migrations.run",
+              "returncode": 1,
+              "stderr": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"D:\\finos\\backend\\financeops\\migrations\\run.py\", line 11, in <module>\n    from financeops.observability.logging import configure_logging\n  File \"D:\\finos\\backend\\financeops\\observability\\logging.py\", line 7, in <module>\n    from opentelemetry import trace\nModuleNotFoundError: No module named 'opentelemetry'\n",
+              "stdout": "",
+              "success": false
+            },
+            "name": "lock_safe_migration_run",
+            "status": "fail"
+          },
+          {
+            "details": {
+              "error": "unable to read Alembic head revision"
+            },
+            "name": "read_alembic_head",
+            "status": "fail"
+          },
+          {
+            "details": {
+              "error": "MIGRATION_DATABASE_URL or DATABASE_URL is required"
+            },
+            "name": "read_db_revision",
+            "status": "fail"
+          },
+          {
+            "details": {
+              "error": "BASE_URL is required",
+              "response": null,
+              "status_code": null
+            },
+            "name": "ops_migration_status_api",
+            "status": "fail"
+          },
+          {
+            "details": {
+              "alembic_head": null,
+              "api_current_revision": null,
+              "api_expected_head": null,
+              "db_current_revision": null,
+              "matched": false
+            },
+            "name": "revision_match_status",
+            "status": "fail"
+          }
+        ],
+        "summary": {
+          "current_revision": null,
+          "match_status": false,
+          "migration_head": null
+        }
+      },
+      "returncode": 1,
+      "script": "validate_migration_run.py",
+      "status": "fail",
+      "stderr": "",
+      "stdout": "{\n  \"artifact\": \"D:\\\\finos\\\\artifacts\\\\migration_validation.json\",\n  \"passed\": false\n}\n"
+    },
+    {
+      "artifact": "e2e_validation.json",
+      "artifact_payload": null,
+      "returncode": 1,
+      "script": "e2e_platform_validation.py",
+      "status": "fail",
+      "stderr": "Traceback (most recent call last):\n  File \"D:\\finos\\scripts\\e2e_platform_validation.py\", line 440, in <module>\n    raise SystemExit(asyncio.run(main()))\n                     ~~~~~~~~~~~^^^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\runners.py\", line 204, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\runners.py\", line 127, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\base_events.py\", line 719, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"D:\\finos\\scripts\\e2e_platform_validation.py\", line 101, in main\n    api_base = base_url()\n  File \"D:\\finos\\scripts\\_phase1_validation_lib.py\", line 49, in base_url\n    value = required_env(\"BASE_URL\")\n  File \"D:\\finos\\scripts\\_phase1_validation_lib.py\", line 44, in required_env\n    raise RuntimeError(f\"{name} is required\")\nRuntimeError: BASE_URL is required\n",
+      "stdout": ""
+    },
+    {
+      "artifact": "webhook_validation.json",
+      "artifact_payload": null,
+      "returncode": 1,
+      "script": "validate_webhook_flow.py",
+      "status": "fail",
+      "stderr": "Traceback (most recent call last):\n  File \"D:\\finos\\scripts\\validate_webhook_flow.py\", line 333, in <module>\n    raise SystemExit(asyncio.run(main()))\n                     ~~~~~~~~~~~^^^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\runners.py\", line 204, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\runners.py\", line 127, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\base_events.py\", line 719, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"D:\\finos\\scripts\\validate_webhook_flow.py\", line 118, in main\n    api_base = base_url()\n  File \"D:\\finos\\scripts\\_phase1_validation_lib.py\", line 49, in base_url\n    value = required_env(\"BASE_URL\")\n  File \"D:\\finos\\scripts\\_phase1_validation_lib.py\", line 44, in required_env\n    raise RuntimeError(f\"{name} is required\")\nRuntimeError: BASE_URL is required\n",
+      "stdout": ""
+    },
+    {
+      "artifact": "tenant_validation.json",
+      "artifact_payload": null,
+      "returncode": 1,
+      "script": "validate_tenant_isolation.py",
+      "status": "fail",
+      "stderr": "Traceback (most recent call last):\n  File \"D:\\finos\\scripts\\validate_tenant_isolation.py\", line 242, in <module>\n    raise SystemExit(asyncio.run(main()))\n                     ~~~~~~~~~~~^^^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\runners.py\", line 204, in run\n    return runner.run(main)\n           ~~~~~~~~~~^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\runners.py\", line 127, in run\n    return self._loop.run_until_complete(task)\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^\n  File \"C:\\Python314\\Lib\\asyncio\\base_events.py\", line 719, in run_until_complete\n    return future.result()\n           ~~~~~~~~~~~~~^^\n  File \"D:\\finos\\scripts\\validate_tenant_isolation.py\", line 90, in main\n    api_base = base_url()\n  File \"D:\\finos\\scripts\\_phase1_validation_lib.py\", line 49, in base_url\n    value = required_env(\"BASE_URL\")\n  File \"D:\\finos\\scripts\\_phase1_validation_lib.py\", line 44, in required_env\n    raise RuntimeError(f\"{name} is required\")\nRuntimeError: BASE_URL is required\n",
+      "stdout": ""
+    }
+  ]
+}
