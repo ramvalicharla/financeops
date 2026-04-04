@@ -12,17 +12,26 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 
 from financeops.config import settings
+from financeops.db.session import _normalise_database_url_and_connect_args
 
 log = logging.getLogger(__name__)
 
+_DATABASE_URL, _DATABASE_CONNECT_ARGS = _normalise_database_url_and_connect_args(
+    str(settings.DATABASE_URL)
+)
+
+if _DATABASE_CONNECT_ARGS.get("statement_cache_size") == 0:
+    log.info("Asyncpg statement cache disabled (PgBouncer mode)")
+
 engine = create_async_engine(
-    str(settings.DATABASE_URL),
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
+    _DATABASE_URL,
+    poolclass=NullPool,
     pool_pre_ping=True,
     pool_recycle=3600,
+    connect_args=_DATABASE_CONNECT_ARGS,
     echo=settings.DEBUG,
 )
 

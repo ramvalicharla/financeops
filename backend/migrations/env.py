@@ -5,6 +5,7 @@ import os
 import ssl
 from logging.config import fileConfig
 from typing import Any
+from uuid import uuid4
 
 from alembic import context
 from sqlalchemy import pool
@@ -68,6 +69,11 @@ def _is_supabase_host(host: str) -> bool:
         or host.endswith(".supabase.com")
         or host.endswith(".pooler.supabase.com")
     )
+
+
+def _prepared_statement_name() -> str:
+    """Generate unique prepared statement names for PgBouncer transaction mode."""
+    return f"__fo_stmt_{uuid4().hex}__"
 
 
 def _resolve_migration_url() -> tuple[str, str]:
@@ -169,6 +175,7 @@ def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
         "timeout": 10,
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": _prepared_statement_name,
         "server_settings": {"statement_timeout": "0"},
     }
     if (

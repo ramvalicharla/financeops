@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 from uuid import UUID
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -37,6 +38,11 @@ def _build_ssl_context() -> ssl.SSLContext:
     return ssl_context
 
 
+def _prepared_statement_name() -> str:
+    """Generate unique prepared statement names for PgBouncer transaction mode."""
+    return f"__fo_stmt_{uuid4().hex}__"
+
+
 def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[str, Any]]:
     """
     Normalize SQLAlchemy URL for asyncpg and derive connect_args.
@@ -62,6 +68,7 @@ def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[st
         "timeout": 10,
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": _prepared_statement_name,
     }
     if (
         sslmode in _SSL_REQUIRED_MODES

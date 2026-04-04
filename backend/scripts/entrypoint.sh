@@ -10,13 +10,24 @@ for i in {1..10}; do
 import asyncio, os
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy import text
+from sqlalchemy.pool import NullPool
+from uuid import uuid4
 
 DATABASE_URL = os.environ['DATABASE_URL']
 
+def _prepared_statement_name():
+    return f'__fo_stmt_{uuid4().hex}__'
+
 engine = create_async_engine(
     DATABASE_URL,
-    connect_args={'statement_cache_size': 0, 'timeout': 10},
-    pool_pre_ping=True
+    poolclass=NullPool,
+    connect_args={
+        'statement_cache_size': 0,
+        'prepared_statement_cache_size': 0,
+        'prepared_statement_name_func': _prepared_statement_name,
+        'timeout': 10,
+    },
+    pool_pre_ping=True,
 )
 
 async def main():
