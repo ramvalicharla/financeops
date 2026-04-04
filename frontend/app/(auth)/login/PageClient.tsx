@@ -28,6 +28,7 @@ type CredentialsCallbackResult = {
 
 type LoginApiPayload =
   | { requires_mfa: true; mfa_challenge_token: string }
+  | { requires_password_change: true; password_change_token: string; status?: string }
   | { requires_mfa_setup: true; setup_token: string; status?: string }
   | { access_token: string; refresh_token: string; token_type: string }
 
@@ -124,6 +125,16 @@ function LoginPageContent() {
             },
           )
           const loginData = loginResponse.data
+
+          if (
+            loginData &&
+            "requires_password_change" in loginData &&
+            loginData.requires_password_change
+          ) {
+            sessionStorage.setItem("password_change_token", loginData.password_change_token)
+            router.push("/auth/change-password")
+            return
+          }
 
           if (
             loginData &&

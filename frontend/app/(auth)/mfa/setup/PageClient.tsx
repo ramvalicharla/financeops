@@ -4,10 +4,18 @@ import * as React from "react"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { getSession, signIn } from "next-auth/react"
 import apiClient from "@/lib/api/client"
 import { FormField } from "@/components/ui/FormField"
+import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/Dialog"
+import { useTenantStore } from "@/lib/store/tenant"
 
 type Step = "generate" | "verify" | "done"
+type SessionTokens = {
+  access_token: string
+  refresh_token: string
+}
 
 function MaskedSecret({ secret }: { secret: string }) {
   const [revealed, setRevealed] = React.useState(false)
@@ -34,6 +42,7 @@ function MaskedSecret({ secret }: { secret: string }) {
 
 export default function MFASetupPage() {
   const router = useRouter()
+  const setTenant = useTenantStore((state) => state.setTenant)
   const [step, setStep] = useState<Step>("generate")
   const [secret, setSecret] = useState("")
   const [qrUrl, setQrUrl] = useState("")
@@ -44,6 +53,9 @@ export default function MFASetupPage() {
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([])
   const [recoveryCodesRevealed, setRecoveryCodesRevealed] = useState(false)
   const [copiedRecoveryCodes, setCopiedRecoveryCodes] = useState(false)
+  const [recoveryDialogOpen, setRecoveryDialogOpen] = useState(false)
+  const [recoveryCodesSaved, setRecoveryCodesSaved] = useState(false)
+  const [sessionTokens, setSessionTokens] = useState<SessionTokens | null>(null)
 
   const authHeaders = (): Record<string, string> => {
     const setupToken = sessionStorage.getItem("mfa_setup_token")
@@ -89,10 +101,21 @@ export default function MFASetupPage() {
           },
         },
       )
+      const accessToken = payload.data?.access_token
+      const refreshToken = payload.data?.refresh_token
+      if (!accessToken || !refreshToken) {
+        setError("MFA setup succeeded but session tokens were not returned. Please try signing in again.")
+        return
+      }
+      setSessionTokens({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
       setRecoveryCodes(payload.data?.recovery_codes ?? [])
+      setRecoveryCodesSaved(false)
+      setRecoveryDialogOpen(true)
       sessionStorage.removeItem("mfa_setup_token")
       setStep("done")
-      setTimeout(() => router.push("/login?registered=true"), 2000)
     } catch {
       setFieldErrors({ code: "Invalid code. Check your authenticator app and try again." })
     } finally {
@@ -111,6 +134,49 @@ export default function MFASetupPage() {
       window.setTimeout(() => setCopiedRecoveryCodes(false), 2000)
     } catch {
       setCopiedRecoveryCodes(false)
+    }
+  }
+
+  const continueToDashboard = async (): Promise<void> => {
+    if (!recoveryCodesSaved) {
+      return
+    }
+    if (!sessionTokens) {
+      setError("Session data missing. Please sign in again.")
+      return
+    }
+
+    setLoading(true)
+    try {
+      const result = await signIn("credentials", {
+        redirect: false,
+        access_token: sessionTokens.access_token,
+        refresh_token: sessionTokens.refresh_token,
+      })
+      if (!result || result.ok !== true || result.error) {
+        setError("Unable to establish session. Please sign in again.")
+        return
+      }
+
+      const session = await getSession()
+      const user = session?.user
+      if (user?.tenant_id && user.tenant_slug) {
+        setTenant({
+          tenant_id: user.tenant_id,
+          tenant_slug: user.tenant_slug,
+          org_setup_complete: user.org_setup_complete,
+          org_setup_step: user.org_setup_step,
+          entity_roles: user.entity_roles,
+          active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
+        })
+      }
+
+      setRecoveryDialogOpen(false)
+      setRecoveryCodes([])
+      setSessionTokens(null)
+      router.push("/dashboard")
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -167,32 +233,44 @@ export default function MFASetupPage() {
       {step === "done" ? (
         <div className="space-y-3 text-center">
           <p className="text-green-400">MFA enabled successfully</p>
-          {recoveryCodes.length ? (
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-left">
-              <p className="mb-2 text-xs text-amber-300">Save these one-time recovery codes now:</p>
-              <div className="space-y-2" aria-live="polite">
-                <div className="flex flex-wrap items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setRecoveryCodesRevealed((value) => !value)}
-                    className="text-xs text-amber-100 underline underline-offset-2 hover:text-white"
-                    aria-pressed={recoveryCodesRevealed}
-                  >
-                    {recoveryCodesRevealed ? "Hide recovery codes" : "Reveal recovery codes"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void copyRecoveryCodes()}
-                    className="text-xs text-amber-100 underline underline-offset-2 hover:text-white"
-                    aria-label="Copy all recovery codes"
-                  >
-                    Copy all recovery codes
-                  </button>
-                  {copiedRecoveryCodes ? (
-                    <span className="text-xs text-amber-100">Copied</span>
-                  ) : null}
-                </div>
-                {recoveryCodesRevealed ? (
+          <p className="text-sm text-gray-400">Complete recovery code acknowledgement to continue.</p>
+        </div>
+      ) : null}
+
+      <Dialog
+        open={recoveryDialogOpen}
+        onClose={() => {}}
+        title="Save your recovery codes"
+        description="These one-time codes can be used to access your account if you lose your authenticator app."
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-left">
+            <p className="mb-2 text-xs text-amber-300">Store these codes in a secure location:</p>
+            <div className="space-y-2" aria-live="polite">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRecoveryCodesRevealed((value) => !value)}
+                  className="text-xs text-amber-100 underline underline-offset-2 hover:text-white"
+                  aria-pressed={recoveryCodesRevealed}
+                >
+                  {recoveryCodesRevealed ? "Hide recovery codes" : "Reveal recovery codes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void copyRecoveryCodes()}
+                  className="text-xs text-amber-100 underline underline-offset-2 hover:text-white"
+                  aria-label="Copy all recovery codes"
+                >
+                  Copy all
+                </button>
+                {copiedRecoveryCodes ? (
+                  <span className="text-xs text-amber-100">Copied</span>
+                ) : null}
+              </div>
+              {recoveryCodes.length ? (
+                recoveryCodesRevealed ? (
                   <ul className="space-y-1 font-mono text-xs text-amber-100">
                     {recoveryCodes.map((item) => (
                       <li key={item}>{item}</li>
@@ -207,13 +285,35 @@ export default function MFASetupPage() {
                       <div key={item}>{"\u2022".repeat(item.length)}</div>
                     ))}
                   </div>
-                )}
-              </div>
+                )
+              ) : (
+                <p className="text-xs text-amber-100">
+                  Recovery codes were not returned. Continue only after confirming backup access with your admin.
+                </p>
+              )}
             </div>
-          ) : null}
-          <p className="text-sm text-gray-400">Redirecting to sign in...</p>
+          </div>
+
+          <label className="flex items-start gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={recoveryCodesSaved}
+              onChange={(event) => setRecoveryCodesSaved(event.target.checked)}
+            />
+            <span>I have saved my recovery codes</span>
+          </label>
+
+          <Button
+            type="button"
+            className="w-full"
+            disabled={!recoveryCodesSaved || loading}
+            onClick={() => void continueToDashboard()}
+          >
+            {loading ? "Finishing sign-in..." : "Continue to Dashboard"}
+          </Button>
         </div>
-      ) : null}
+      </Dialog>
     </div>
   )
 }

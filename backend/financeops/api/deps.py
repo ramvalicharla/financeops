@@ -180,6 +180,11 @@ async def get_current_user(
             status_code=403,
             detail="MFA setup required before accessing this resource. Complete MFA setup at /api/v1/auth/mfa/setup",
         )
+    if token_scope == "password_change_only":
+        raise HTTPException(
+            status_code=403,
+            detail="Password change required before accessing this resource. Complete password update at /auth/change-password",
+        )
     if user.force_mfa_setup and not user.mfa_enabled:
         raise HTTPException(
             status_code=403,

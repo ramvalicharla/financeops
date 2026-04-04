@@ -6,6 +6,7 @@ const PUBLIC_PATH_PREFIXES = [
   "/register",
   "/forgot-password",
   "/reset-password",
+  "/auth/change-password",
   "/accept-invite",
   "/mfa",
   "/mfa/setup",

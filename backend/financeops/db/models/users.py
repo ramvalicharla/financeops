@@ -50,7 +50,19 @@ class IamUser(UUIDBase):
     # AES-256-GCM encrypted TOTP secret (base64 stored)
     totp_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    is_verified: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
     mfa_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    force_password_change: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
     force_mfa_setup: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

@@ -157,16 +157,31 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Password", type: "password" },
         totp_code: { label: "TOTP Code", type: "text" },
         mfa_challenge_token: { label: "MFA Challenge Token", type: "text" },
+        access_token: { label: "Access Token", type: "text" },
+        refresh_token: { label: "Refresh Token", type: "text" },
       },
       async authorize(credentials) {
-        const email = credentials?.email
-        const password = credentials?.password
-        const totpCode = credentials?.totp_code
-        const mfaChallengeToken = credentials?.mfa_challenge_token
+        const email = typeof credentials?.email === "string" ? credentials.email : undefined
+        const password = typeof credentials?.password === "string" ? credentials.password : undefined
+        const totpCode = typeof credentials?.totp_code === "string" ? credentials.totp_code : undefined
+        const mfaChallengeToken =
+          typeof credentials?.mfa_challenge_token === "string"
+            ? credentials.mfa_challenge_token
+            : undefined
+        const accessToken =
+          typeof credentials?.access_token === "string" ? credentials.access_token : undefined
+        const refreshToken =
+          typeof credentials?.refresh_token === "string" ? credentials.refresh_token : undefined
 
         let tokenPayload: LoginTokenPayload | null = null
 
-        if (mfaChallengeToken) {
+        if (accessToken && refreshToken) {
+          tokenPayload = {
+            access_token: accessToken,
+            refresh_token: refreshToken,
+            token_type: "bearer",
+          }
+        } else if (mfaChallengeToken) {
           if (!totpCode) {
             return null
           }

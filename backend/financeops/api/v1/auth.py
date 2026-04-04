@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -97,6 +98,10 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class ChangePasswordRequest(BaseModel):
+    new_password: str
+
+
 class AcceptInviteRequest(BaseModel):
     token: str
     password: str
@@ -118,6 +123,27 @@ def generate_recovery_codes(count: int = 8) -> list[str]:
         f"{secrets.token_hex(4).upper()}-{secrets.token_hex(4).upper()}"
         for _ in range(count)
     ]
+
+
+def generate_password_change_token(user: IamUser) -> str:
+    return create_access_token(
+        user.id,
+        user.tenant_id,
+        user.role.value,
+        additional_claims={"scope": "password_change_only"},
+        expires_delta=timedelta(minutes=15),
+    )
+
+
+def validate_strong_password(password: str) -> None:
+    if len(password) < 8:
+        raise HTTPException(status_code=422, detail="Password must be at least 8 characters")
+    if not re.search(r"[A-Z]", password):
+        raise HTTPException(status_code=422, detail="Password must include at least 1 uppercase letter")
+    if not re.search(r"[0-9]", password):
+        raise HTTPException(status_code=422, detail="Password must include at least 1 number")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        raise HTTPException(status_code=422, detail="Password must include at least 1 special character")
 
 
 async def get_current_user_or_setup_token(
@@ -151,6 +177,37 @@ async def get_current_user_or_setup_token(
         return user
     if user.force_mfa_setup and not user.mfa_enabled:
         return user
+    return user
+
+
+async def get_current_user_for_password_change(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    session: AsyncSession = Depends(get_async_session),
+) -> IamUser:
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=401, detail="Missing authorization token")
+    payload = decode_token(credentials.credentials)
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    if payload.get("scope") != "password_change_only":
+        raise HTTPException(status_code=403, detail="Password change token required")
+    user_id_raw = payload.get("sub")
+    tenant_id_raw = payload.get("tenant_id")
+    if not user_id_raw or not tenant_id_raw:
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+    try:
+        user_id = uuid.UUID(str(user_id_raw))
+        tenant_id = uuid.UUID(str(tenant_id_raw))
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token payload") from exc
+    await set_tenant_context(session, tenant_id)
+    user = (
+        await session.execute(
+            select(IamUser).where(IamUser.id == user_id, IamUser.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="User not found")
     return user
 
 
@@ -261,6 +318,7 @@ async def mfa_setup(
     """
     result = await setup_totp(user, session)
     await session.flush()
+    await commit_session(session)
     return {
         "secret": result["totp_secret"],
         "qr_url": result["qr_code_url"],
@@ -296,6 +354,7 @@ async def verify_mfa_setup(
         )
 
     await session.flush()
+    await commit_session(session)
 
     billing_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
     access_token = create_access_token(
@@ -369,6 +428,13 @@ async def user_login(
         raise AuthenticationError("Invalid email or password")
     await set_tenant_context(session, user.tenant_id)
 
+    if user.force_password_change:
+        return {
+            "status": "requires_password_change",
+            "requires_password_change": True,
+            "password_change_token": generate_password_change_token(user),
+        }
+
     if user.force_mfa_setup and not user.mfa_enabled:
         setup_token = generate_mfa_setup_token(user)
         return {
@@ -402,6 +468,27 @@ async def user_login(
     )
     await session.flush()
     return tokens
+
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user_for_password_change),
+) -> dict:
+    validate_strong_password(body.new_password)
+    user.hashed_password = hash_password(body.new_password)
+    user.force_password_change = False
+    await session.flush()
+    await commit_session(session)
+    if user.force_mfa_setup and not user.mfa_enabled:
+        setup_token = generate_mfa_setup_token(user)
+        return {
+            "status": "requires_mfa_setup",
+            "requires_mfa_setup": True,
+            "setup_token": setup_token,
+        }
+    return {"status": "password_changed"}
 
 
 @router.post("/forgot-password")
