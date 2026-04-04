@@ -36,7 +36,8 @@ sys.exit(0 if m is None else 42)" \
 
 COPY . ./
 COPY scripts/start.sh /app/scripts/start.sh
-RUN chmod +x /app/scripts/start.sh
+COPY scripts/entrypoint.sh /app/scripts/entrypoint.sh
+RUN chmod +x /app/scripts/start.sh /app/scripts/entrypoint.sh
 
 RUN groupadd -g 1000 financeops \
     && useradd -g financeops -u 1000 -d /app -s /sbin/nologin financeops \
@@ -50,6 +51,6 @@ ENV CLAMAV_REQUIRED=True
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "uvicorn financeops.main:app --host 0.0.0.0 --port $PORT"]
+ENTRYPOINT ["/app/scripts/entrypoint.sh"]
 
 FROM runtime AS production
