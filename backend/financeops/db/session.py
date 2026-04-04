@@ -79,6 +79,9 @@ _DATABASE_URL, _DATABASE_CONNECT_ARGS = _normalise_database_url_and_connect_args
     str(settings.DATABASE_URL)
 )
 
+if _DATABASE_CONNECT_ARGS.get("statement_cache_size") == 0:
+    log.info("Asyncpg statement cache disabled (PgBouncer mode)")
+
 engine = create_async_engine(
     _DATABASE_URL,
     poolclass=NullPool,
