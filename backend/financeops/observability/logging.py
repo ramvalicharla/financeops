@@ -4,6 +4,7 @@ import logging
 import sys
 from typing import Any
 
+from opentelemetry import trace
 from pythonjsonlogger import jsonlogger
 
 from financeops.observability.context import (
@@ -46,6 +47,13 @@ class _RequestContextFilter(logging.Filter):
         record.correlation_id = get_correlation_id()
         record.tenant_id = get_tenant_id()
         record.org_entity_id = get_org_entity_id()
+        span_context = trace.get_current_span().get_span_context()
+        if span_context and span_context.is_valid:
+            record.trace_id = format(span_context.trace_id, "032x")
+            record.span_id = format(span_context.span_id, "016x")
+        else:
+            record.trace_id = None
+            record.span_id = None
         record.service = "financeops-backend"
         _sanitize_record(record)
         return True
@@ -73,7 +81,7 @@ def configure_logging(log_level: str = "INFO") -> None:
         fmt=(
             "%(asctime)s %(levelname)s %(name)s %(message)s %(event)s "
             "%(request_id)s %(correlation_id)s %(tenant_id)s %(org_entity_id)s "
-            "%(service)s %(module)s %(funcName)s %(lineno)d"
+            "%(trace_id)s %(span_id)s %(service)s %(module)s %(funcName)s %(lineno)d"
         ),
         datefmt="%Y-%m-%dT%H:%M:%S",
         rename_fields={

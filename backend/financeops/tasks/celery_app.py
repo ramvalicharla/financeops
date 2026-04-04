@@ -6,6 +6,7 @@ import asyncio
 from sqlalchemy import func, select
 
 from financeops.config import settings
+from financeops.observability.celery_propagation import connect_celery_correlation_signals
 from financeops.observability.celery_monitor import connect_task_failure_signal
 from financeops.db.models.users import IamSession
 from financeops.db.session import AsyncSessionLocal
@@ -113,6 +114,7 @@ celery_app.conf.update(
 )
 
 connect_task_failure_signal()
+connect_celery_correlation_signals()
 
 
 @celery_app.task(name="metrics.update_queue_depths")

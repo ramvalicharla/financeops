@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import hashlib
 import logging
-import time
 import uuid
 
 from fastapi import Request, Response
@@ -104,40 +102,12 @@ class RLSMiddleware(BaseHTTPMiddleware):
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """
-    Logs method, path, status, duration, and a hash of tenant_id.
-    Never logs raw tenant IDs or request bodies for auth routes.
+    Legacy middleware kept in chain order for compatibility.
+    Request logging is handled centrally by observability.LoggingMiddleware.
     """
-    _AUTH_PATHS = ("/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/mfa")
-
-    def __init__(self, app: ASGIApp) -> None:
-        super().__init__(app)
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        start = time.perf_counter()
-        response = await call_next(request)
-        duration_ms = round((time.perf_counter() - start) * 1000, 2)
-
-        tenant_id_raw = getattr(request.state, "tenant_id", "")
-        tenant_id_hash = (
-            hashlib.sha256(tenant_id_raw.encode()).hexdigest()[:12]
-            if tenant_id_raw
-            else "anonymous"
-        )
-        correlation_id = getattr(request.state, "correlation_id", "unknown")
-
-        log.info(
-            "request_observed",
-            extra={
-                "event": "request_observed",
-                "method": request.method,
-                "path": request.url.path,
-                "status_code": response.status_code,
-                "duration_ms": duration_ms,
-                "tenant_hash": tenant_id_hash,
-                "correlation_id": correlation_id,
-            },
-        )
-        return response
+        return await call_next(request)
 
 
 class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
