@@ -321,8 +321,9 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         version=APP_VERSION,
         description="FinanceOps — Production-grade multi-tenant financial SaaS",
-        docs_url="/docs" if settings.DEBUG else None,
-        redoc_url="/redoc" if settings.DEBUG else None,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
         lifespan=lifespan,
     )
 
