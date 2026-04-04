@@ -261,3 +261,98 @@ async def test_phase12_webhook_updates_invoice_and_payment_status(
         ).scalars()
     )
     assert any(row.payment_status == "succeeded" for row in payment_rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_phase12_webhook_duplicate_event_is_idempotent(
+    async_client: AsyncClient,
+    async_session,
+    test_user,
+    test_access_token: str,
+    mock_payment_provider,
+) -> None:
+    plan = await create_plan(
+        async_session=async_session,
+        tenant_id=test_user.tenant_id,
+        plan_tier=PlanTier.PROFESSIONAL,
+        billing_cycle=BillingCycle.MONTHLY,
+        price="50.00",
+    )
+    await create_subscription(
+        async_session=async_session,
+        tenant_id=test_user.tenant_id,
+        plan_id=plan.id,
+    )
+    await async_session.commit()
+
+    generate_resp = await async_client.post(
+        "/api/v1/billing/generate-invoice",
+        headers={
+            "Authorization": f"Bearer {test_access_token}",
+            "Idempotency-Key": "idem-phase12-gen-dup",
+        },
+        json={},
+    )
+    assert generate_resp.status_code == 200
+
+    current_invoice = (
+        await async_session.execute(
+            select(BillingInvoice)
+            .where(BillingInvoice.tenant_id == test_user.tenant_id)
+            .order_by(BillingInvoice.created_at.desc(), BillingInvoice.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+
+    event_id = f"evt_dup_{uuid.uuid4().hex[:12]}"
+    webhook_payload = {
+        "id": event_id,
+        "type": "invoice.payment_succeeded",
+        "data": {
+            "object": {
+                "id": current_invoice.provider_invoice_id,
+                "amount_paid": 5000,
+                "metadata": {"tenant_id": str(test_user.tenant_id)},
+            }
+        },
+    }
+
+    first = await async_client.post(
+        f"/api/v1/billing/webhook?provider=stripe&tenant_id={test_user.tenant_id}",
+        headers={"Stripe-Signature": "sig"},
+        json=webhook_payload,
+    )
+    second = await async_client.post(
+        f"/api/v1/billing/webhook?provider=stripe&tenant_id={test_user.tenant_id}",
+        headers={"Stripe-Signature": "sig"},
+        json=webhook_payload,
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+
+    latest_invoice = (
+        await async_session.execute(
+            select(BillingInvoice)
+            .where(
+                BillingInvoice.tenant_id == test_user.tenant_id,
+                BillingInvoice.provider_invoice_id == current_invoice.provider_invoice_id,
+            )
+            .order_by(BillingInvoice.created_at.desc(), BillingInvoice.id.desc())
+            .limit(1)
+        )
+    ).scalar_one()
+    assert latest_invoice.status == "paid"
+
+    succeeded_rows = list(
+        (
+            await async_session.execute(
+                select(BillingPayment).where(
+                    BillingPayment.tenant_id == test_user.tenant_id,
+                    BillingPayment.provider_reference == event_id,
+                    BillingPayment.payment_status == "succeeded",
+                )
+            )
+        ).scalars()
+    )
+    assert len(succeeded_rows) == 1

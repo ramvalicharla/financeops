@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from io import BytesIO
 from typing import Any, Iterable
-from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -28,10 +28,11 @@ def _normalize_xlsx_zip(raw_bytes: bytes) -> bytes:
     target = BytesIO()
     with ZipFile(source, "r") as src_zip:
         entries = [(name, src_zip.read(name)) for name in src_zip.namelist()]
-    with ZipFile(target, "w", compression=ZIP_DEFLATED) as dst_zip:
+    # Store entries uncompressed to keep byte output stable across zlib/runtime variations.
+    with ZipFile(target, "w", compression=ZIP_STORED) as dst_zip:
         for name, payload in sorted(entries, key=lambda item: item[0]):
             info = ZipInfo(filename=name, date_time=_FIXED_ZIP_TIMESTAMP)
-            info.compress_type = ZIP_DEFLATED
+            info.compress_type = ZIP_STORED
             info.external_attr = 0o600 << 16
             dst_zip.writestr(info, payload)
     return target.getvalue()

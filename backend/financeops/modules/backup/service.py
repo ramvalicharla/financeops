@@ -21,17 +21,24 @@ async def log_backup_run(
     backup_type: str,
     status: str,
     triggered_by: str,
+    started_at: datetime | None = None,
+    completed_at: datetime | None = None,
     size_bytes: int | None = None,
     backup_location: str | None = None,
     verification_passed: bool | None = None,
     error_message: str | None = None,
     retention_days: int = 30,
 ) -> BackupRunLog:
+    started = started_at or datetime.now(UTC)
+    completed = completed_at
+    if completed is None and status in {"completed", "failed", "verified"}:
+        completed = started
+
     entry = BackupRunLog(
         backup_type=backup_type,
         status=status,
-        started_at=datetime.now(UTC),
-        completed_at=datetime.now(UTC) if status in {"completed", "failed", "verified"} else None,
+        started_at=started,
+        completed_at=completed,
         size_bytes=size_bytes,
         backup_location=backup_location,
         verification_passed=verification_passed,

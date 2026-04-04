@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user, get_redis
 from financeops.core.exceptions import AuthorizationError
 from financeops.db.models.users import IamUser, UserRole
+from financeops.db.transaction import commit_session
 from financeops.modules.analytics_layer.application.alert_service import (
     create_alert,
     evaluate_alerts,
@@ -163,7 +164,7 @@ async def get_kpis_endpoint(
     )
     metrics = {row.metric_name: row.metric_value for row in payload.rows}
     alerts = await evaluate_alerts(session, tenant_id=user.tenant_id, metrics=metrics)
-    await session.commit()
+    await commit_session(session)
     return ok(
         {
             **payload.model_dump(mode="json"),
@@ -206,7 +207,7 @@ async def get_variance_endpoint(
         to_date=to_date,
         comparison=comparison,
     )
-    await session.commit()
+    await commit_session(session)
     response_payload = ok(
         payload.model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -246,7 +247,7 @@ async def get_trends_endpoint(
         to_date=to_date,
         frequency=frequency,
     )
-    await session.commit()
+    await commit_session(session)
     response_payload = ok(
         payload.model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -286,7 +287,7 @@ async def get_ratios_endpoint(
         from_date=from_date,
         to_date=to_date,
     )
-    await session.commit()
+    await commit_session(session)
     response_payload = ok(
         payload.model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -320,7 +321,7 @@ async def get_budget_variance_endpoint(
         org_entity_id=org_entity_id,
         period=period,
     )
-    await session.commit()
+    await commit_session(session)
     response_payload = ok(
         payload.model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -373,7 +374,7 @@ async def create_alert_endpoint(
         tenant_id=user.tenant_id,
         body=body,
     )
-    await session.commit()
+    await commit_session(session)
     await _bump_cache_version(redis_client, tenant_id=user.tenant_id)
     return ok(
         payload.model_dump(mode="json"),

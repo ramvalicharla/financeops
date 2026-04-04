@@ -159,7 +159,7 @@ async def financeops_error_handler(request: Request, exc: FinanceOpsError) -> JS
             "event": "financeops_error",
             "error_code": exc.error_code,
             "status_code": exc.status_code,
-            "message": exc.message,
+            "error_message": exc.message,
             "path": request.url.path,
         },
     )

@@ -521,6 +521,13 @@ async def reverse_journal(
         lines=reverse_lines_payload,
     )
     await db.flush()
+    # Ensure lines are eagerly available in async context before lifecycle actions
+    # that inspect reversal.lines, avoiding lazy-load MissingGreenlet failures.
+    reversal = await _get_journal_aggregate(
+        db,
+        tenant_id=tenant_id,
+        journal_id=reversal.id,
+    )
     await _set_approved(
         db,
         jv=reversal,
@@ -1037,8 +1044,8 @@ async def _serialize_journals(
                 narration=journal.description,
                 status=journal_status,
                 posted_at=journal.updated_at if journal_status == "POSTED" else None,
-                total_debit=journal.total_debit,
-                total_credit=journal.total_credit,
+                total_debit=_q4(journal.total_debit),
+                total_credit=_q4(journal.total_credit),
                 currency=journal.currency,
                 lines=serialised_lines,
             )
@@ -1083,3 +1090,7 @@ def _serialize_line(
         fx_rate=line.fx_rate,
         base_amount=line.base_amount or line.amount_inr,
     )
+
+
+def _q4(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.0000"))

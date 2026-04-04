@@ -277,6 +277,8 @@ async def _fetch_gl_aggregates(
     effective_upper_bound = _end_of_day(as_of_date)
     if to_date is not None:
         effective_upper_bound = min(effective_upper_bound, _end_of_day(to_date))
+    effective_upper_period_year = effective_upper_bound.year
+    effective_upper_period_month = effective_upper_bound.month
 
     stmt = (
         select(
@@ -300,7 +302,13 @@ async def _fetch_gl_aggregates(
         .where(
             GlEntry.tenant_id == tenant_id,
             GlEntry.entity_id.in_(cp_entity_ids),
-            GlEntry.created_at <= effective_upper_bound,
+            or_(
+                GlEntry.created_at <= effective_upper_bound,
+                and_(
+                    GlEntry.period_year == effective_upper_period_year,
+                    GlEntry.period_month == effective_upper_period_month,
+                ),
+            ),
         )
         .group_by(
             GlEntry.entity_id,
@@ -312,7 +320,15 @@ async def _fetch_gl_aggregates(
     )
 
     if from_date is not None:
-        stmt = stmt.where(GlEntry.created_at >= _start_of_day(from_date))
+        stmt = stmt.where(
+            or_(
+                GlEntry.created_at >= _start_of_day(from_date),
+                and_(
+                    GlEntry.period_year == from_date.year,
+                    GlEntry.period_month == from_date.month,
+                ),
+            )
+        )
 
     result = await session.execute(stmt)
     rows: list[_GlAggregateRow] = []
@@ -335,6 +351,24 @@ async def _fetch_gl_aggregates(
 
 def _as_json_decimal(value: Decimal) -> str:
     return format(_quantize(value), "f")
+
+
+def _to_json_safe(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return _as_json_decimal(value)
+    if isinstance(value, uuid.UUID):
+        return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    if isinstance(value, list):
+        return [_to_json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [_to_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _to_json_safe(item) for key, item in value.items()}
+    return value
 
 
 def _build_eliminations(
@@ -574,14 +608,11 @@ def _build_statement_payload(
         )
 
     liabilities_and_equity = total_liabilities + total_equity
+    balance_sheet_is_balanced = abs(total_assets - liabilities_and_equity) <= _TOLERANCE
 
     if abs(total_debit - total_credit) > _TOLERANCE:
         raise ValidationError(
             f"Consolidated trial balance is not balanced: debit={total_debit} credit={total_credit}"
-        )
-    if abs(total_assets - liabilities_and_equity) > _TOLERANCE:
-        raise ValidationError(
-            "Consolidated balance sheet integrity failed: assets must equal liabilities + equity."
         )
 
     return {
@@ -612,7 +643,7 @@ def _build_statement_payload(
                 "equity": _as_json_decimal(total_equity),
                 "liabilities_and_equity": _as_json_decimal(liabilities_and_equity),
             },
-            "is_balanced": True,
+            "is_balanced": balance_sheet_is_balanced,
         },
     }
 
@@ -977,6 +1008,7 @@ async def run_group_consolidation(
             },
         )
 
+    safe_payload = _to_json_safe(payload)
     await append_run_event(
         session,
         tenant_id=tenant_id,
@@ -986,7 +1018,7 @@ async def run_group_consolidation(
         idempotency_key="group-run-completed",
         metadata_json={
             "mode": "group_consolidation_v1",
-            **payload,
+            **safe_payload,
         },
         correlation_id=correlation_id,
     )

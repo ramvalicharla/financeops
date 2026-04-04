@@ -19,6 +19,7 @@ from financeops.db.models.board_pack_generator import (
 from financeops.modules.board_pack_generator.domain.pack_definition import (
     PackDefinitionSchema,
 )
+from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 
 class BoardPackRepository:
@@ -30,7 +31,23 @@ class BoardPackRepository:
         created_by: uuid.UUID,
     ) -> BoardPackGeneratorDefinition:
         section_types = [section.section_type.value for section in sorted(schema.section_configs, key=lambda row: row.order)]
+        now = datetime.now(UTC)
+        definition_id = uuid.uuid4()
+        compat_board_pack_code = f"BPG-{definition_id.hex[:12].upper()}"
+        compat_version_token = hashlib.sha256(
+            f"{tenant_id}:{definition_id}:{now.isoformat()}".encode("utf-8")
+        ).hexdigest()
+        compat_chain_hash = compute_chain_hash(
+            {
+                "tenant_id": str(tenant_id),
+                "board_pack_code": compat_board_pack_code,
+                "version_token": compat_version_token,
+                "name": schema.name,
+            },
+            GENESIS_HASH,
+        )
         row = BoardPackGeneratorDefinition(
+            id=definition_id,
             tenant_id=tenant_id,
             name=schema.name,
             description=schema.description,
@@ -39,10 +56,28 @@ class BoardPackRepository:
             period_type=schema.period_type.value,
             config=dict(schema.config or {}),
             created_by=created_by,
-            created_at=datetime.now(UTC),
-            updated_at=datetime.now(UTC),
+            created_at=now,
+            updated_at=now,
             is_active=True,
         )
+        # Compatibility with shared board_pack_definitions table used by
+        # narrative/definition models that require financial lineage fields.
+        if hasattr(row, "organisation_id"):
+            row.organisation_id = tenant_id
+        if hasattr(row, "board_pack_code"):
+            row.board_pack_code = compat_board_pack_code
+        if hasattr(row, "board_pack_name"):
+            row.board_pack_name = schema.name
+        if hasattr(row, "version_token"):
+            row.version_token = compat_version_token
+        if hasattr(row, "effective_from"):
+            row.effective_from = now.date()
+        if hasattr(row, "status"):
+            row.status = "candidate"
+        if hasattr(row, "chain_hash"):
+            row.chain_hash = compat_chain_hash
+        if hasattr(row, "previous_hash"):
+            row.previous_hash = GENESIS_HASH
         db.add(row)
         await db.flush()
         return row

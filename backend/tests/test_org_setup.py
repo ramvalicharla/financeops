@@ -15,6 +15,7 @@ from financeops.core.security import create_access_token
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.coa.models import CoaIndustryTemplate, ErpAccountMapping, TenantCoaAccount
+from financeops.modules.coa.application.tenant_coa_service import TenantCoaService
 from financeops.modules.coa.seeds.runner import run_coa_seeds
 from financeops.modules.org_setup.application.consolidation_method_service import (
     ConsolidationMethodService,
@@ -42,6 +43,13 @@ async def _software_template(async_session: AsyncSession) -> CoaIndustryTemplate
         )
     ).scalar_one()
     return row
+
+
+async def _seed_tenant_coa(async_session: AsyncSession, tenant_id: uuid.UUID) -> CoaIndustryTemplate:
+    template = await _software_template(async_session)
+    await TenantCoaService(async_session).initialise_tenant_coa(tenant_id, template.id)
+    await async_session.flush()
+    return template
 
 
 async def _setup_group_and_entity(
@@ -505,7 +513,7 @@ async def test_step5_initialises_tenant_coa(async_session: AsyncSession, test_us
     await _seed_coa(async_session)
     service = OrgSetupService(async_session)
     _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _software_template(async_session)
+    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
     await service.submit_step5(
         test_user.tenant_id,
         [{"entity_id": entity.id, "template_id": template.id}],
@@ -527,7 +535,7 @@ async def test_step5_sets_industry_template_on_entity(async_session: AsyncSessio
     await _seed_coa(async_session)
     service = OrgSetupService(async_session)
     _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _software_template(async_session)
+    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
     await service.submit_step5(
         test_user.tenant_id,
         [{"entity_id": entity.id, "template_id": template.id}],
@@ -541,7 +549,7 @@ async def test_step6_confirms_mappings(async_session: AsyncSession, test_user: I
     await _seed_coa(async_session)
     service = OrgSetupService(async_session)
     _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _software_template(async_session)
+    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
     await service.submit_step5(
         test_user.tenant_id,
         [{"entity_id": entity.id, "template_id": template.id}],
@@ -849,7 +857,7 @@ async def test_get_setup_summary(async_session: AsyncSession, test_user: IamUser
     await _seed_coa(async_session)
     service = OrgSetupService(async_session)
     _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _software_template(async_session)
+    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
     await service.submit_step5(
         test_user.tenant_id,
         [{"entity_id": entity.id, "template_id": template.id}],

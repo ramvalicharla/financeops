@@ -7,7 +7,7 @@ from logging.config import fileConfig
 from typing import Any
 
 from alembic import context
-from sqlalchemy import pool, text
+from sqlalchemy import pool
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -169,6 +169,7 @@ def get_url_and_connect_args() -> tuple[str, dict[str, Any]]:
         "timeout": 10,
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
+        "server_settings": {"statement_timeout": "0"},
     }
     if (
         sslmode in _SSL_REQUIRED_MODES or _is_supabase_host(host)
@@ -220,8 +221,6 @@ async def run_async_migrations() -> None:
         connect_args=connect_args,
     )
     async with connectable.connect() as connection:
-        # Avoid database-side statement timeout canceling long migration DDL.
-        await connection.execute(text("SET statement_timeout TO 0"))
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 

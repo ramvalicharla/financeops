@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.db.append_only import create_trigger_sql, drop_trigger_sql
 from financeops.db.models.revenue import RevenueAdjustment, RevenueContract, RevenueRun, RevenueSchedule
 from financeops.schemas.revenue import RevenueContractInput
 from financeops.services.accounting_common.accounting_errors import AccountingValidationError
@@ -291,6 +292,10 @@ async def test_apply_contract_modifications_rejects_idempotency_conflict(
         reporting_currency="USD",
         rate_mode="daily",
     )
+    # Simulate tampered persisted state for idempotency conflict validation.
+    # revenue_adjustments is append-only in production; this unit test intentionally
+    # bypasses the trigger to inject a corrupted value.
+    await async_session.execute(text(drop_trigger_sql("revenue_adjustments")))
     await async_session.execute(
         text(
             "UPDATE revenue_adjustments "
@@ -299,6 +304,7 @@ async def test_apply_contract_modifications_rejects_idempotency_conflict(
         ),
         {"run_id": str(run_id), "tenant_id": str(tenant_id)},
     )
+    await async_session.execute(text(create_trigger_sql("revenue_adjustments")))
     async_session.expire_all()
 
     with pytest.raises(AccountingValidationError) as exc:

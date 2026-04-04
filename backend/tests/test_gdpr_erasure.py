@@ -11,7 +11,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.security import create_access_token, hash_password
-from financeops.db.append_only import append_only_function_sql, create_trigger_sql
+from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.credits import CreditDirection, CreditTransaction, CreditTransactionStatus
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
@@ -210,6 +210,7 @@ async def test_erasure_log_is_append_only(async_session: AsyncSession, test_tena
     async_session.add(record)
     await async_session.flush()
     await async_session.execute(text(append_only_function_sql()))
+    await async_session.execute(text(drop_trigger_sql("erasure_log")))
     await async_session.execute(text(create_trigger_sql("erasure_log")))
     await async_session.flush()
     with pytest.raises(DBAPIError):

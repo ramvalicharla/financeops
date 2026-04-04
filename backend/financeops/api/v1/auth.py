@@ -29,6 +29,7 @@ from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken
 from financeops.db.models.tenants import TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
+from financeops.db.transaction import commit_session
 from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import welcome_email
 from financeops.services.audit_service import log_action
@@ -238,7 +239,7 @@ async def register(
         text_body="Welcome to FinanceOps. Your account is ready.",
     )
     await session.flush()
-    await session.commit()
+    await commit_session(session)
     setup_token = generate_mfa_setup_token(user)
     return {
         "user_id": str(user.id),
@@ -276,8 +277,8 @@ async def verify_mfa_setup(
         raise AuthenticationError("MFA not initialized for user")
     if body.secret:
         log.warning(
-            "Client supplied secret in /api/v1/auth/mfa/verify-setup payload; ignoring user_id=%s",
-            user.id,
+            f"Client supplied secret in /api/v1/auth/mfa/verify-setup payload; "
+            f"ignoring user_id={user.id}"
         )
     secret = decrypt_field(user.totp_secret_encrypted)
     if not verify_totp(secret, body.code):

@@ -136,9 +136,17 @@ class ReportRunService:
                 },
             )
             try:
+                # After rollback SQLAlchemy expires loaded instances; reload the
+                # persisted RUNNING row so the append-only FAILED transition can
+                # be derived without touching expired state.
+                failed_source = await self._load_run(
+                    db=db,
+                    tenant_id=tenant_id,
+                    run_id=running_run.id,
+                )
                 await self._transition_run_state(
                     db=db,
-                    source_run=running_run,
+                    source_run=failed_source,
                     to_status=ReportRunStatus.FAILED,
                     completed_at=datetime.now(UTC),
                     error_message=str(exc)[:2000],
@@ -533,4 +541,3 @@ __all__ = [
     "ReportRunError",
     "ReportRunService",
 ]
-

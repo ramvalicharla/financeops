@@ -229,7 +229,11 @@ async def test_referral_expiry_set_correctly(async_session: AsyncSession, test_u
 @pytest.mark.asyncio
 async def test_expired_referral_not_eligible_for_commission(async_session: AsyncSession, test_user: IamUser) -> None:
     partner, referral, referred_tenant_id = await _register_and_convert_referral(async_session, test_user.tenant_id)
-    referral.expires_at = datetime.now(UTC) - timedelta(days=1)
+    now = datetime.now(UTC)
+    # Keep row valid for ck_referral_tracking_expiry_gt_created while ensuring
+    # referral is already expired at commission-evaluation time.
+    referral.created_at = now - timedelta(days=2)
+    referral.expires_at = now - timedelta(days=1)
     await async_session.flush()
     row = await record_commission(
         async_session,
@@ -497,4 +501,3 @@ async def test_admin_approve_requires_platform_admin(
 def test_generate_partner_code_uniqueness_small_sample() -> None:
     codes = {_generate_partner_code(f"Test Company {idx}") for idx in range(25)}
     assert len(codes) == 25
-

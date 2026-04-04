@@ -140,8 +140,22 @@ async def test_covenant_near_breach(async_session: AsyncSession, test_user: IamU
 
 @pytest.mark.asyncio
 async def test_breach_event_append_only(async_session: AsyncSession, test_user: IamUser) -> None:
+    covenant = CovenantDefinition(
+        tenant_id=test_user.tenant_id,
+        facility_name="TL",
+        lender_name="Bank",
+        covenant_type="debt_to_ebitda",
+        covenant_label="D/E",
+        threshold_value=Decimal("5.0"),
+        threshold_direction="below",
+        measurement_frequency="monthly",
+        notification_threshold_pct=Decimal("90.00"),
+    )
+    async_session.add(covenant)
+    await async_session.flush()
+
     event = CovenantBreachEvent(
-        covenant_id=uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+        covenant_id=covenant.id,
         tenant_id=test_user.tenant_id,
         period="2026-03",
         actual_value=Decimal("5.5"),

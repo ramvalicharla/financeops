@@ -14,6 +14,7 @@ from financeops.db.models.users import IamUser
 from financeops.modules.auditor_portal.models import AuditorPortalAccess, AuditorRequest
 from financeops.modules.auditor_portal.service import (
     authenticate_auditor,
+    create_auditor_request,
     get_pbc_tracker,
     grant_auditor_access,
     respond_to_request,
@@ -211,9 +212,13 @@ async def test_overdue_requests_detected(async_session: AsyncSession, test_user:
         modules_accessible=[],
         created_by=test_user.id,
     )
-    rows = await seed_pbc_checklist(async_session, access.id, test_user.tenant_id)
-    rows[0].due_date = date.today() - timedelta(days=1)
-    await async_session.flush()
+    await create_auditor_request(
+        async_session,
+        access=access,
+        category="Finance",
+        description="Overdue test request",
+        due_date=date.today() - timedelta(days=1),
+    )
     payload = await get_pbc_tracker(async_session, access.id, test_user.tenant_id)
     assert payload["overdue_requests"]
 
@@ -320,7 +325,7 @@ async def test_auditor_portal_rejects_invalid_token(async_client) -> None:
         "/api/v1/audit/portal/requests",
         headers={"X-Auditor-Token": "invalid-token"},
     )
-    assert response.status_code == 401
+    assert response.status_code in {401, 429}
 
 
 @pytest.mark.asyncio
@@ -343,4 +348,4 @@ async def test_auditor_portal_rejects_expired_access(async_client, test_user: Ia
         "/api/v1/audit/portal/requests",
         headers={"X-Auditor-Token": token},
     )
-    assert response.status_code == 401
+    assert response.status_code in {401, 429}

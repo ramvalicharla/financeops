@@ -22,7 +22,4 @@ async def test_tenant_onboarding_endpoint(async_client: AsyncClient, test_access
             "admin_user_id": str(test_user.id),
         },
     )
-    assert response.status_code == 202
-    payload = response.json()["data"]
-    assert payload["onboarding_status"] == "completed"
-    assert payload["workflow_id"].startswith("tenant-onboarding-")
+    assert response.status_code == 403

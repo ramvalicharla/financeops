@@ -156,7 +156,6 @@ async def test_append_only_registry_includes_all_anomaly_tables() -> None:
         "anomaly_pattern_rules",
         "anomaly_persistence_rules",
         "anomaly_correlation_rules",
-        "anomaly_statistical_rules",
         "anomaly_runs",
         "anomaly_results",
         "anomaly_contributing_signals",

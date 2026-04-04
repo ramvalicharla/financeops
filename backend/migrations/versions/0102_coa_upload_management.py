@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ENUM, JSONB, UUID
 
 
 revision = "0102_coa_upload_management"
@@ -22,32 +22,55 @@ branch_labels = None
 depends_on = None
 
 
-SOURCE_TYPE_ENUM = sa.Enum(
+SOURCE_TYPE_ENUM_CREATE = ENUM(
     "SYSTEM",
     "ADMIN_TEMPLATE",
     "TENANT_CUSTOM",
     name="coa_source_type_enum",
 )
-UPLOAD_STATUS_ENUM = sa.Enum(
+UPLOAD_STATUS_ENUM_CREATE = ENUM(
     "PENDING",
     "PROCESSING",
     "SUCCESS",
     "FAILED",
     name="coa_upload_status_enum",
 )
-UPLOAD_MODE_ENUM = sa.Enum(
+UPLOAD_MODE_ENUM_CREATE = ENUM(
     "APPEND",
     "REPLACE",
     "VALIDATE_ONLY",
     name="coa_upload_mode_enum",
 )
 
+SOURCE_TYPE_ENUM = ENUM(
+    "SYSTEM",
+    "ADMIN_TEMPLATE",
+    "TENANT_CUSTOM",
+    name="coa_source_type_enum",
+    create_type=False,
+)
+UPLOAD_STATUS_ENUM = ENUM(
+    "PENDING",
+    "PROCESSING",
+    "SUCCESS",
+    "FAILED",
+    name="coa_upload_status_enum",
+    create_type=False,
+)
+UPLOAD_MODE_ENUM = ENUM(
+    "APPEND",
+    "REPLACE",
+    "VALIDATE_ONLY",
+    name="coa_upload_mode_enum",
+    create_type=False,
+)
+
 
 def upgrade() -> None:
     bind = op.get_bind()
-    SOURCE_TYPE_ENUM.create(bind, checkfirst=True)
-    UPLOAD_STATUS_ENUM.create(bind, checkfirst=True)
-    UPLOAD_MODE_ENUM.create(bind, checkfirst=True)
+    SOURCE_TYPE_ENUM_CREATE.create(bind, checkfirst=True)
+    UPLOAD_STATUS_ENUM_CREATE.create(bind, checkfirst=True)
+    UPLOAD_MODE_ENUM_CREATE.create(bind, checkfirst=True)
 
     op.add_column(
         "coa_ledger_accounts",
@@ -289,6 +312,6 @@ def downgrade() -> None:
     op.drop_column("coa_ledger_accounts", "source_type")
 
     bind = op.get_bind()
-    UPLOAD_MODE_ENUM.drop(bind, checkfirst=True)
-    UPLOAD_STATUS_ENUM.drop(bind, checkfirst=True)
-    SOURCE_TYPE_ENUM.drop(bind, checkfirst=True)
+    UPLOAD_MODE_ENUM_CREATE.drop(bind, checkfirst=True)
+    UPLOAD_STATUS_ENUM_CREATE.drop(bind, checkfirst=True)
+    SOURCE_TYPE_ENUM_CREATE.drop(bind, checkfirst=True)

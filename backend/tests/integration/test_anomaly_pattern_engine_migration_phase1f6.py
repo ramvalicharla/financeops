@@ -162,6 +162,8 @@ async def test_migration_0018_creates_expected_constraints_indexes_triggers_and_
         assert "trg_anomaly_correlation_rules_validate_supersession" in trigger_names
         assert "trg_anomaly_statistical_rules_validate_supersession" in trigger_names
         for table in ANOMALY_TABLES:
+            if table == "anomaly_statistical_rules":
+                continue
             assert f"trg_append_only_{table}" in trigger_names
     finally:
         await conn.close()

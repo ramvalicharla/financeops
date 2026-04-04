@@ -19,6 +19,7 @@ from financeops.db.models.scheduled_delivery import DeliverySchedule
 from financeops.db.rls import set_tenant_context
 from financeops.modules.secret_rotation.models import SecretRotationLog
 from financeops.modules.scheduled_delivery.application.delivery_service import DeliveryService
+from financeops.modules.payment.application.entitlement_service import EntitlementService
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
@@ -132,6 +133,16 @@ async def test_erp_secret_ref_not_stored_plaintext(
             return True
 
     monkeypatch.setattr(api_deps, "_redis_pool", _FakeRedis())
+    await set_tenant_context(async_session, test_user.tenant_id)
+    await EntitlementService(async_session).create_tenant_override_entitlement(
+        tenant_id=test_user.tenant_id,
+        feature_name="erp_integration",
+        access_type="boolean",
+        effective_limit=1,
+        actor_user_id=test_user.id,
+        metadata={"reason": "secret_encryption_test"},
+    )
+    await async_session.flush()
 
     plain_api_key = "test-api-key-sprint1-fix"
     connection_code = f"enc-{uuid.uuid4().hex[:8]}"

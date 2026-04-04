@@ -1,7 +1,7 @@
 """phase12_saas_platformization_layer
 
 Revision ID: 0109_saas_platformization_layer
-Revises: 0108_industry_modules_layer
+Revises: 0108_industry_modules
 Create Date: 2026-04-02
 """
 
@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 
 revision: str = "0109_saas_platformization_layer"
-down_revision: str | None = "0108_industry_modules_layer"
+down_revision: str | None = "0108_industry_modules"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

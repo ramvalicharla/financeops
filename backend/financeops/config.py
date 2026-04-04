@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     # Encryption
     FIELD_ENCRYPTION_KEY: str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     STARTUP_FAIL_FAST: bool = False
+    AUTO_MIGRATE: bool = False
+    MIGRATION_FAIL_FAST: bool = False
 
     # Platform
     PLATFORM_TIMEZONE: str = "UTC"

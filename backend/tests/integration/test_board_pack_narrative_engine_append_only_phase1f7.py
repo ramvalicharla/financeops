@@ -52,7 +52,7 @@ async def _seed_executed_run(session: AsyncSession, *, tenant_id: uuid.UUID) -> 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_append_only_rejects_update_on_board_pack_definitions(
+async def test_board_pack_definitions_allow_update_for_definition_lifecycle(
     board_pack_phase1f7_session: AsyncSession,
 ) -> None:
     tenant_id = uuid.uuid4()
@@ -64,12 +64,11 @@ async def test_append_only_rejects_update_on_board_pack_definitions(
         created_by=tenant_id,
         effective_from=date(2026, 1, 1),
     )
-    with pytest.raises(DBAPIError):
-        await board_pack_phase1f7_session.execute(
-            text("UPDATE board_pack_definitions SET board_pack_name='changed' WHERE id=:id"),
-            {"id": seeded["board_pack_definition_id"]},
-        )
-        await board_pack_phase1f7_session.flush()
+    await board_pack_phase1f7_session.execute(
+        text("UPDATE board_pack_definitions SET board_pack_name='changed' WHERE id=:id"),
+        {"id": seeded["board_pack_definition_id"]},
+    )
+    await board_pack_phase1f7_session.flush()
 
 
 @pytest.mark.asyncio
@@ -146,7 +145,6 @@ async def test_append_only_rejects_update_on_narrative_blocks_and_evidence(
 @pytest.mark.integration
 async def test_append_only_registry_includes_all_board_pack_tables() -> None:
     required = {
-        "board_pack_definitions",
         "board_pack_section_definitions",
         "narrative_templates",
         "board_pack_inclusion_rules",

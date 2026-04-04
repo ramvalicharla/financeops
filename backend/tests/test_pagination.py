@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.rls import set_tenant_context
+from financeops.modules.payment.application.entitlement_service import EntitlementService
 
 
 async def _insert_anomaly_run(async_session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID:
@@ -127,6 +128,25 @@ async def _insert_anomaly_alerts(
                 "created_by": str(tenant_id),
             },
         )
+    await async_session.flush()
+
+
+async def _grant_erp_integration_entitlement(
+    async_session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> None:
+    await set_tenant_context(async_session, tenant_id)
+    service = EntitlementService(async_session)
+    await service.create_tenant_override_entitlement(
+        tenant_id=tenant_id,
+        feature_name="erp_integration",
+        access_type="boolean",
+        effective_limit=1,
+        actor_user_id=actor_user_id,
+        metadata={"reason": "pagination_test"},
+    )
     await async_session.flush()
 
 
@@ -261,10 +281,18 @@ async def test_default_limit_is_20(
 )
 async def test_paginated_endpoints_return_envelope(
     async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user,
     test_access_token: str,
     endpoint: str,
 ) -> None:
     """Selected list endpoints return paginated envelope when limit/offset are provided."""
+    if endpoint.startswith("/api/v1/erp-sync/"):
+        await _grant_erp_integration_entitlement(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            actor_user_id=test_user.id,
+        )
     response = await async_client.get(
         endpoint,
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -300,10 +328,18 @@ async def test_onboarding_templates_paginated(async_client: AsyncClient) -> None
 )
 async def test_limit_upper_bound_enforced_on_paginated_endpoints(
     async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user,
     test_access_token: str,
     endpoint: str,
 ) -> None:
     """Paginated endpoints reject out-of-range limit values."""
+    if endpoint.startswith("/api/v1/erp-sync/"):
+        await _grant_erp_integration_entitlement(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            actor_user_id=test_user.id,
+        )
     response = await async_client.get(
         endpoint,
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -323,10 +359,18 @@ async def test_limit_upper_bound_enforced_on_paginated_endpoints(
 )
 async def test_default_limit_is_20_on_paginated_endpoints(
     async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user,
     test_access_token: str,
     endpoint: str,
 ) -> None:
     """Paginated endpoints default to limit=20 when limit is omitted."""
+    if endpoint.startswith("/api/v1/erp-sync/"):
+        await _grant_erp_integration_entitlement(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            actor_user_id=test_user.id,
+        )
     response = await async_client.get(
         endpoint,
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -358,10 +402,18 @@ async def test_default_limit_is_20_on_paginated_endpoints(
 )
 async def test_negative_offset_rejected_on_paginated_endpoints(
     async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user,
     test_access_token: str,
     endpoint: str,
 ) -> None:
     """Paginated endpoints reject negative offset values."""
+    if endpoint.startswith("/api/v1/erp-sync/"):
+        await _grant_erp_integration_entitlement(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            actor_user_id=test_user.id,
+        )
     response = await async_client.get(
         endpoint,
         headers={"Authorization": f"Bearer {test_access_token}"},

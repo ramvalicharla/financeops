@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -510,6 +512,68 @@ TEST_DATABASE_URL = os.getenv(
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
 
 
+def _backend_dir() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def _run_alembic_upgrade_head(database_url: str) -> None:
+    env = os.environ.copy()
+    env["MIGRATION_DATABASE_URL"] = database_url
+    env["DATABASE_URL"] = database_url
+    env["DEBUG"] = "false"
+    env.setdefault("SECRET_KEY", "test-secret-key")
+    env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
+    env.setdefault(
+        "FIELD_ENCRYPTION_KEY",
+        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    )
+    env.setdefault("REDIS_URL", TEST_REDIS_URL)
+    migration = subprocess.run(
+        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
+        cwd=str(_backend_dir()),
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    if migration.returncode != 0:
+        raise RuntimeError(
+            "alembic upgrade head failed for the shared test database.\n"
+            f"stdout:\n{migration.stdout}\n"
+            f"stderr:\n{migration.stderr}"
+        )
+
+
+async def _reset_public_schema(conn) -> None:
+    await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+    await conn.execute(text("CREATE SCHEMA public"))
+    await conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+
+
+async def _ensure_pgvector_available(conn) -> None:
+    try:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+    except Exception as exc:  # pragma: no cover - infrastructure guard
+        # Parallel test invocations can race while creating extensions; if the
+        # extension already exists, treat that as success and continue.
+        installed_after_error = await conn.execute(
+            text("SELECT 1 FROM pg_extension WHERE extname = 'vector' LIMIT 1")
+        )
+        if installed_after_error.scalar_one_or_none() != 1:
+            raise RuntimeError(
+                "pgvector extension is required by FinanceOps tests/migrations but is unavailable. "
+                "Start the test database with pgvector support (recommended: infra/docker-compose.test.yml)."
+            ) from exc
+    installed = await conn.execute(
+        text("SELECT 1 FROM pg_extension WHERE extname = 'vector' LIMIT 1")
+    )
+    if installed.scalar_one_or_none() != 1:  # pragma: no cover - safety guard
+        raise RuntimeError(
+            "pgvector extension check failed after CREATE EXTENSION. "
+            "Verify the PostgreSQL instance has pgvector installed."
+        )
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
     """Close module-level Redis pools before the event loop is torn down."""
@@ -528,58 +592,41 @@ async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
 @pytest_asyncio.fixture(scope="session")
 async def engine():
     """
-    Create test database engine and tables once per session.
-    NullPool ensures each test's session gets a fresh connection,
-    avoiding 'another operation is in progress' asyncpg errors.
+    Create a shared test engine once per session.
+    Schema bootstrap is migration-driven (alembic upgrade head) to avoid
+    enum/type duplication and metadata drift from create_all().
     """
     test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
     async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.execute(
-            text(
-                """
-                DO $$
-                DECLARE enum_rec RECORD;
-                BEGIN
-                    FOR enum_rec IN
-                        SELECT t.typname
-                        FROM pg_type t
-                        JOIN pg_namespace n ON n.oid = t.typnamespace
-                        WHERE t.typtype = 'e' AND n.nspname = 'public'
-                    LOOP
-                        EXECUTE format('DROP TYPE IF EXISTS %I CASCADE', enum_rec.typname);
-                    END LOOP;
-                END $$;
-                """
-            )
-        )
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(text("DROP TABLE IF EXISTS alembic_version"))
-        await conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
-        await conn.execute(
-            text("INSERT INTO alembic_version (version_num) VALUES ('0031_anomaly_ui_layer')")
-        )
+        await _ensure_pgvector_available(conn)
+        await _reset_public_schema(conn)
+        await _ensure_pgvector_available(conn)
+    _run_alembic_upgrade_head(TEST_DATABASE_URL)
     yield test_engine
     async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await _reset_public_schema(conn)
     await test_engine.dispose()
 
 
 @pytest_asyncio.fixture(loop_scope="session")
 async def async_session(engine) -> AsyncGenerator[AsyncSession, None]:
     """
-    Provide a transactional test session that rolls back after each test.
-    loop_scope="session" ensures setup AND teardown both run on the session
-    event loop, preventing asyncpg 'Future attached to a different loop' errors
-    that occur in pytest-asyncio 0.24.0 with function-scoped async fixtures.
+    Provide per-test isolation using an outer connection transaction.
+    Any test-level commit remains contained and is discarded at teardown.
     """
-    session_factory = async_sessionmaker(engine, expire_on_commit=False)
-    async with session_factory() as session:
-        await session.begin()
+    async with engine.connect() as connection:
+        outer_tx = await connection.begin()
+        session = AsyncSession(
+            bind=connection,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        )
         try:
             yield session
         finally:
-            await session.rollback()
+            await session.close()
+            if outer_tx.is_active:
+                await outer_tx.rollback()
 
 
 @pytest_asyncio.fixture
@@ -695,6 +742,7 @@ async def async_client(
     from financeops.main import app
 
     finance_prefix_modules = (
+        ("/api/v1/analytics", "analytics"),
         ("/api/v1/mis", "mis_manager"),
         ("/api/v1/normalization", "payroll_gl_normalization"),
         ("/api/v1/payroll-gl-reconciliation", "payroll_gl_reconciliation"),

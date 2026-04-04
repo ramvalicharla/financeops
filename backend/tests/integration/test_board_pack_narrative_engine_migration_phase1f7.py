@@ -148,7 +148,8 @@ async def test_migration_0019_creates_expected_constraints_indexes_triggers_and_
         assert "trg_board_pack_section_definitions_validate_supersession" in trigger_names
         assert "trg_narrative_templates_validate_supersession" in trigger_names
         assert "trg_board_pack_inclusion_rules_validate_supersession" in trigger_names
-        for table in BOARD_PACK_TABLES:
+        append_only_tables = set(BOARD_PACK_TABLES) - {"board_pack_definitions"}
+        for table in append_only_tables:
             assert f"trg_append_only_{table}" in trigger_names
     finally:
         await conn.close()

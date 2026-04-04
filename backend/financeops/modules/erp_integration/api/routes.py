@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.core.exceptions import AuthorizationError
 from financeops.db.models.users import IamUser, UserRole
+from financeops.db.transaction import commit_session
 from financeops.modules.erp_integration.application.service import ErpIntegrationService
 from financeops.modules.erp_integration.schemas import (
     CoaImportRequest,
@@ -88,7 +89,7 @@ async def create_connector(
         user_id=user.id,
         body=body,
     )
-    await session.commit()
+    await commit_session(session)
     return ok(
         _connector_payload(row).model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -141,7 +142,7 @@ async def update_connector_status(
         connector_id=connector_id,
         status=body.status,
     )
-    await session.commit()
+    await commit_session(session)
     return ok(
         _connector_payload(row).model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -174,7 +175,7 @@ async def run_sync(
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
     job = await service.run_sync_job(tenant_id=user.tenant_id, actor=user, body=body)
-    await session.commit()
+    await commit_session(session)
     return ok(
         _job_payload(job).model_dump(mode="json"),
         request_id=getattr(request.state, "request_id", None),
@@ -226,7 +227,7 @@ async def import_coa(
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
     payload = await service.import_coa(tenant_id=user.tenant_id, connector_id=body.erp_connector_id)
-    await session.commit()
+    await commit_session(session)
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
@@ -240,7 +241,7 @@ async def map_coa(
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
     payload = await service.map_coa(tenant_id=user.tenant_id, body=body)
-    await session.commit()
+    await commit_session(session)
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
@@ -254,7 +255,7 @@ async def import_journals(
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
     payload = await service.import_journals(tenant_id=user.tenant_id, actor=user, body=body)
-    await session.commit()
+    await commit_session(session)
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
@@ -268,7 +269,7 @@ async def export_journals(
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
     payload = await service.export_journals(tenant_id=user.tenant_id, actor=user, body=body)
-    await session.commit()
+    await commit_session(session)
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
@@ -290,7 +291,7 @@ async def sync_vendors(
             entity_type=ErpMasterEntityType.VENDOR,
         ),
     )
-    await session.commit()
+    await commit_session(session)
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
@@ -312,5 +313,5 @@ async def sync_customers(
             entity_type=ErpMasterEntityType.CUSTOMER,
         ),
     )
-    await session.commit()
+    await commit_session(session)
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")

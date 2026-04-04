@@ -88,7 +88,9 @@ from financeops.shared_kernel.response import (
     RequestIDMiddleware,
 )
 from financeops.shared_kernel.idempotency import IdempotencyMiddleware
+from financeops.core.migration_checker import enforce_migration_state
 from financeops.db.session import engine
+from financeops.migrations.run import run_migrations_to_head
 from financeops.seed.coa import seed_coa_industry_templates
 
 log = logging.getLogger(__name__)
@@ -173,11 +175,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("DATABASE_URL in use: %s", _masked_database_url(str(settings.DATABASE_URL)))
     startup_errors: list[str] = []
     app.state.startup_errors = startup_errors
+    app.state.migration_state = {
+        "status": "unknown",
+        "current_revision": None,
+        "head_revision": None,
+        "detail": "startup check pending",
+    }
     configure_sentry(
         dsn=settings.SENTRY_DSN,
         environment=settings.APP_ENVIRONMENT,
         release=settings.APP_RELEASE,
     )
+    is_production = settings.APP_ENV.lower() == "production"
+    migration_fail_fast = settings.MIGRATION_FAIL_FAST or is_production
 
     db_check_task = asyncio.create_task(_check_database_connectivity())
     redis_init_task = asyncio.create_task(_initialize_redis_pool())
@@ -196,11 +206,52 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.error(message)
     else:
         log.info("Database connectivity check passed.")
+        if settings.AUTO_MIGRATE:
+            if is_production:
+                log.warning("AUTO_MIGRATE=true ignored because APP_ENV=production")
+            else:
+                try:
+                    await asyncio.to_thread(run_migrations_to_head)
+                    log.info("AUTO_MIGRATE=true: alembic upgrade head completed")
+                except Exception as exc:
+                    message = (
+                        "Automatic migration failed during startup: "
+                        f"{_exception_text(exc)}"
+                    )
+                    startup_errors.append(message)
+                    log.critical(message)
+                    if migration_fail_fast:
+                        raise RuntimeError(message)
+
         try:
-            await seed_coa_industry_templates()
-            log.info("CoA seed completed (startup)")
+            migration_result = await enforce_migration_state(fail_fast=migration_fail_fast)
+            app.state.migration_state = migration_result.to_dict()
+            log.info(
+                "Migration state OK (current=%s, head=%s)",
+                migration_result.current_revision,
+                migration_result.head_revision,
+            )
         except Exception as exc:
-            log.error("CoA seed failed: %s", exc)
+            message = f"DB schema out of sync with code: {_exception_text(exc)}"
+            app.state.migration_state = {
+                "status": "out_of_sync",
+                "current_revision": None,
+                "head_revision": None,
+                "detail": message,
+            }
+            startup_errors.append(message)
+            log.critical(message)
+            if migration_fail_fast:
+                raise RuntimeError(message)
+
+        if app.state.migration_state.get("status") == "ok":
+            try:
+                await seed_coa_industry_templates()
+                log.info("CoA seed completed (startup)")
+            except Exception as exc:
+                log.error("CoA seed failed: %s", exc)
+        else:
+            log.warning("Skipping CoA seed because migration state is not OK")
 
     await redis_init_task
 
@@ -300,7 +351,11 @@ def create_app() -> FastAPI:
     @app.get("/ready", tags=["Health"])
     async def ready_root() -> JSONResponse:
         startup_errors = getattr(app.state, "startup_errors", [])
-        payload, code = await build_readiness_payload(startup_errors=startup_errors)
+        migration_state = getattr(app.state, "migration_state", None)
+        payload, code = await build_readiness_payload(
+            startup_errors=startup_errors,
+            migration_state=migration_state,
+        )
         return JSONResponse(content=payload, status_code=code)
 
     # API v1

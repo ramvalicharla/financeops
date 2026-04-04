@@ -27,12 +27,24 @@ _PLATFORM_ADMIN_ROLES = {
     UserRole.platform_owner,
     UserRole.platform_admin,
 }
+_TENANT_FLAG_ROLES = {
+    UserRole.finance_leader,
+    UserRole.finance_team,
+}
 
 
 def _require_platform_admin(user: IamUser) -> IamUser:
     if user.role not in _PLATFORM_ADMIN_ROLES:
         raise HTTPException(status_code=403, detail="platform_admin role required")
     return user
+
+
+def _require_flag_access(*, user: IamUser, target_tenant_id: uuid.UUID) -> IamUser:
+    if user.role in _PLATFORM_ADMIN_ROLES:
+        return user
+    if user.role in _TENANT_FLAG_ROLES and user.tenant_id == target_tenant_id:
+        return user
+    raise HTTPException(status_code=403, detail="insufficient role for feature flag access")
 
 
 class FeatureFlagUpdateRequest(BaseModel):
@@ -73,8 +85,8 @@ async def list_feature_flags_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> list[dict]:
-    _require_platform_admin(user)
     target_tenant_id = tenant_id or user.tenant_id
+    _require_flag_access(user=user, target_tenant_id=target_tenant_id)
     stmt = select(CpModuleFeatureFlag).where(
         CpModuleFeatureFlag.tenant_id == target_tenant_id
     )
@@ -99,7 +111,7 @@ async def create_feature_flag_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_admin(user)
+    _require_flag_access(user=user, target_tenant_id=tenant_id)
     row = await create_feature_flag(
         session,
         tenant_id=tenant_id,
@@ -187,7 +199,7 @@ async def evaluate_feature_flag_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_admin(user)
+    _require_flag_access(user=user, target_tenant_id=user.tenant_id)
     return await evaluate_feature_flag(
         session,
         tenant_id=user.tenant_id,

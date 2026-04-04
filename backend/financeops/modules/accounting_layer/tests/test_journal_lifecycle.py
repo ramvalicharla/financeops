@@ -19,7 +19,7 @@ class TestJournalStatusMapping:
         assert _map_journal_status(JVStatus.DRAFT, is_posted=False) == "DRAFT"
 
     def test_review_status_maps_to_review(self) -> None:
-        assert _map_journal_status(JVStatus.PENDING_REVIEW, is_posted=False) == "REVIEW"
+        assert _map_journal_status(JVStatus.PENDING_REVIEW, is_posted=False) == "REVIEWED"
 
     def test_approved_maps_to_approved(self) -> None:
         assert _map_journal_status(JVStatus.APPROVED, is_posted=False) == "APPROVED"
@@ -38,8 +38,20 @@ async def test_balanced_active_lines_required() -> None:
     jv = SimpleNamespace(
         version=1,
         lines=[
-            SimpleNamespace(jv_version=1, line_number=1, entry_type=EntryType.DEBIT, amount=Decimal("100.00")),
-            SimpleNamespace(jv_version=1, line_number=2, entry_type=EntryType.CREDIT, amount=Decimal("90.00")),
+            SimpleNamespace(
+                jv_version=1,
+                line_number=1,
+                entry_type=EntryType.DEBIT,
+                amount=Decimal("100.00"),
+                base_amount=None,
+            ),
+            SimpleNamespace(
+                jv_version=1,
+                line_number=2,
+                entry_type=EntryType.CREDIT,
+                amount=Decimal("90.00"),
+                base_amount=None,
+            ),
         ],
     )
     with pytest.raises(ValidationError, match="imbalance"):

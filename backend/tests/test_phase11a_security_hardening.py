@@ -6,6 +6,7 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.config import settings
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.users import IamUser, UserRole
 
@@ -139,12 +140,13 @@ async def test_invalid_token_response_is_safe(async_client) -> None:
 
 @pytest.mark.asyncio
 async def test_oversized_payload_is_rejected(async_client) -> None:
+    oversized_bytes = (settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024) + 1
     response = await async_client.post(
         "/api/v1/auth/login",
         content=b"{}",
         headers={
             "content-type": "application/json",
-            "content-length": str(60 * 1024 * 1024),
+            "content-length": str(oversized_bytes),
         },
     )
     assert response.status_code == 413

@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser
 from financeops.db.rls import clear_tenant_context, set_tenant_context
-from financeops.db.session import AsyncSessionLocal
 from financeops.modules.payment.application.entitlement_service import EntitlementService
 from financeops.modules.payment.application.saas_billing_service import SaaSBillingService
 from financeops.modules.payment.domain.enums import PaymentProvider
@@ -223,6 +222,7 @@ async def generic_webhook(
     body: GenericWebhookRequest | None = None,
     provider: PaymentProvider | None = None,
     tenant_id: uuid.UUID | None = None,
+    session: AsyncSession = Depends(get_async_session),
 ) -> dict:
     resolved_provider = body.provider if body and body.provider else provider
     resolved_tenant_id = body.tenant_id if body and body.tenant_id else tenant_id
@@ -236,19 +236,18 @@ async def generic_webhook(
     if not signature:
         signature = request.headers.get("X-Razorpay-Signature", "")
 
-    async with AsyncSessionLocal() as session:
-        await set_tenant_context(session, str(resolved_tenant_id))
-        try:
-            service = SaaSBillingService(session)
-            await service.process_webhook(
-                provider=resolved_provider,
-                payload=payload_bytes,
-                signature=signature,
-                tenant_id=resolved_tenant_id,
-            )
-            await session.flush()
-        finally:
-            await clear_tenant_context(session)
+    await set_tenant_context(session, str(resolved_tenant_id))
+    try:
+        service = SaaSBillingService(session)
+        await service.process_webhook(
+            provider=resolved_provider,
+            payload=payload_bytes,
+            signature=signature,
+            tenant_id=resolved_tenant_id,
+        )
+        await session.commit()
+    finally:
+        await clear_tenant_context(session)
     return ok(
         {
             "accepted": True,

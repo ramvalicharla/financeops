@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_tenant
 from financeops.core.exceptions import ValidationError
 from financeops.db.models.tenants import IamTenant
+from financeops.db.transaction import commit_session
 from financeops.modules.coa.models import ErpAccountMapping
 from financeops.modules.org_setup.api.schemas import (
     OrgEntityResponse,
@@ -57,7 +58,7 @@ async def submit_step1(
 ) -> Step1Response:
     service = OrgSetupService(session)
     group = await service.submit_step1(tenant.id, payload.model_dump())
-    await session.commit()
+    await commit_session(session)
     return Step1Response(group=OrgGroupResponse.model_validate(group, from_attributes=True))
 
 
@@ -73,7 +74,7 @@ async def submit_step2(
         payload.group_id,
         [item.model_dump() for item in payload.entities],
     )
-    await session.commit()
+    await commit_session(session)
     return Step2Response(
         entities=[OrgEntityResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -90,7 +91,7 @@ async def submit_step3(
         tenant.id,
         [item.model_dump() for item in payload.relationships],
     )
-    await session.commit()
+    await commit_session(session)
     return Step3Response(
         ownership=[OrgOwnershipResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -107,7 +108,7 @@ async def submit_step4(
         tenant.id,
         [item.model_dump() for item in payload.configs],
     )
-    await session.commit()
+    await commit_session(session)
     return Step4Response(
         configs=[OrgEntityErpConfigResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -124,7 +125,7 @@ async def submit_step5(
         tenant.id,
         [item.model_dump() for item in payload.entity_templates],
     )
-    await session.commit()
+    await commit_session(session)
     return Step5Response(
         initialised_count=len(summaries),
         entity_summaries=[
@@ -167,7 +168,7 @@ async def submit_step6(
         tenant.id,
         mapping_ids,
     )
-    await session.commit()
+    await commit_session(session)
 
     unmapped_count = int(
         (

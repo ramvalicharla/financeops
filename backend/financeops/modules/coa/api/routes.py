@@ -25,6 +25,7 @@ from financeops.api.deps import (
 from financeops.config import limiter, settings
 from financeops.core.exceptions import ValidationError
 from financeops.db.models.users import IamUser
+from financeops.db.transaction import commit_session
 from financeops.modules.coa.api.schemas import (
     CoaHierarchyResponse,
     CoaLedgerAccountResponse,
@@ -319,7 +320,7 @@ async def upload_coa(
         file_name=file.filename or "coa_upload.csv",
         file_bytes=file_bytes,
     )
-    await session.commit()
+    await commit_session(session)
     return CoaUploadResponse(
         batch_id=uuid.UUID(result["batch_id"]),
         upload_status=str(result["upload_status"]),
@@ -372,7 +373,7 @@ async def apply_coa(
         actor_tenant_id=user.tenant_id,
         is_platform_admin=_is_platform_admin(user.role),
     )
-    await session.commit()
+    await commit_session(session)
     return CoaApplyResponse(
         batch_id=uuid.UUID(result["batch_id"]),
         applied_rows=int(result["applied_rows"]),

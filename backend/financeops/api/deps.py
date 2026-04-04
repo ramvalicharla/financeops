@@ -36,6 +36,9 @@ _PUBLIC_AUTH_BYPASS_PATHS = {
     "/api/v1/auth/forgot-password",
     "/api/v1/auth/reset-password",
     "/api/v1/auth/refresh",
+    "/api/v1/billing/webhook",
+    "/api/v1/billing/webhooks/stripe",
+    "/api/v1/billing/webhooks/razorpay",
 }
 _ONBOARDING_BYPASS_PREFIXES = (
     "/api/v1/org-setup",

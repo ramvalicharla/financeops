@@ -8,6 +8,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.security import create_access_token, hash_password
+from financeops.db.models.users import IamUser, UserRole
 from financeops.db.models.reconciliation import GlEntry
 from financeops.modules.coa.models import TenantCoaAccount
 from financeops.platform.db.models.entities import CpEntity
@@ -68,6 +70,21 @@ async def test_create_list_get_journal(
         "Authorization": f"Bearer {test_access_token}",
         "X-Control-Plane-Token": _control_plane_token(test_user.tenant_id),
     }
+    approver = IamUser(
+        tenant_id=test_user.tenant_id,
+        email="approver@example.com",
+        hashed_password=hash_password("TestPass123!"),
+        full_name="Approver User",
+        role=UserRole.platform_admin,
+        is_active=True,
+        mfa_enabled=False,
+    )
+    async_session.add(approver)
+    await async_session.flush()
+    approver_headers = {
+        "Authorization": f"Bearer {create_access_token(approver.id, approver.tenant_id, approver.role.value)}",
+        "X-Control-Plane-Token": _control_plane_token(test_user.tenant_id),
+    }
     payload = {
         "org_entity_id": str(entity.id),
         "journal_date": "2026-04-01",
@@ -101,16 +118,30 @@ async def test_create_list_get_journal(
     ).scalars().all()
     assert len(pre_post_gl) == 0
 
+    submit_response = await async_client.post(
+        f"/api/v1/accounting/journals/{created['id']}/submit",
+        headers=headers,
+    )
+    assert submit_response.status_code == 200
+    assert submit_response.json()["data"]["status"] == "SUBMITTED"
+
+    review_response = await async_client.post(
+        f"/api/v1/accounting/journals/{created['id']}/review",
+        headers=headers,
+    )
+    assert review_response.status_code == 200
+    assert review_response.json()["data"]["status"] == "REVIEWED"
+
     approve_response = await async_client.post(
         f"/api/v1/accounting/journals/{created['id']}/approve",
-        headers=headers,
+        headers=approver_headers,
     )
     assert approve_response.status_code == 200
     assert approve_response.json()["data"]["status"] == "APPROVED"
 
     post_response = await async_client.post(
         f"/api/v1/accounting/journals/{created['id']}/post",
-        headers=headers,
+        headers=approver_headers,
     )
     assert post_response.status_code == 200
     assert post_response.json()["data"]["status"] == "POSTED"

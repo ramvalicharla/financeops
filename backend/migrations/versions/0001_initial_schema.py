@@ -12,6 +12,7 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import DBAPIError
 
 revision: str = "0001_initial"
 down_revision: Union[str, None] = None
@@ -20,8 +21,15 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Enable pgvector extension
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    # Enable pgvector extension with a clear infra-level failure message.
+    try:
+        op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    except DBAPIError as exc:
+        raise RuntimeError(
+            "pgvector extension is required for FinanceOps migrations. "
+            "Install/enable pgvector in the target PostgreSQL instance and retry. "
+            "For local tests, use infra/docker-compose.test.yml (db_test uses pgvector/pgvector:pg16)."
+        ) from exc
 
     # ── Enums (idempotent via exception handler — PostgreSQL has no CREATE TYPE IF NOT EXISTS) ──
     _enums = [

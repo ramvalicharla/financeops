@@ -117,9 +117,13 @@ async def test_recent_backup_rag_green(async_session: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_old_backup_rag_red(async_session: AsyncSession) -> None:
-    row = await log_backup_run(async_session, backup_type="full", status="completed", triggered_by="scheduled")
-    row.started_at = datetime.now(UTC) - timedelta(hours=60)
-    await async_session.flush()
+    await log_backup_run(
+        async_session,
+        backup_type="full",
+        status="completed",
+        triggered_by="scheduled",
+        started_at=datetime.now(UTC) - timedelta(hours=60),
+    )
     payload = await get_backup_status(async_session)
     assert payload["rag_status"] == "red"
 

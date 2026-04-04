@@ -3,9 +3,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +35,14 @@ from financeops.modules.scheduled_delivery.domain.schedule_definition import (
 )
 from financeops.modules.scheduled_delivery.infrastructure.repository import DeliveryRepository
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+
+
+def _current_alembic_head() -> str:
+    backend_root = Path(__file__).resolve().parents[2]
+    cfg = Config(str(backend_root / "alembic.ini"))
+    cfg.set_main_option("script_location", str(backend_root / "migrations"))
+    script_dir = ScriptDirectory.from_config(cfg)
+    return script_dir.get_current_head() or ""
 
 
 async def _insert_board_pack_definition(
@@ -648,7 +659,7 @@ async def test_t_407_alembic_chain_and_phase5_tables_present(
     async_session: AsyncSession,
 ) -> None:
     head = (await async_session.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-    assert head == "0031_anomaly_ui_layer"
+    assert head == _current_alembic_head()
 
     table_rows = await async_session.execute(
         text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")

@@ -11,8 +11,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
-from financeops.db.models.anomaly_pattern_engine import AnomalyResult, AnomalyStatisticalRule
+from financeops.db.models.anomaly_pattern_engine import (
+    AnomalyResult,
+    AnomalyRollforwardEvent,
+    AnomalyStatisticalRule,
+)
 from financeops.db.models.users import IamUser
+from financeops.services.audit_writer import AuditEvent, AuditWriter
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/anomalies", tags=["anomalies"])
@@ -101,7 +106,69 @@ def _extract_source_reference(row: AnomalyResult) -> tuple[str | None, str | Non
     )
 
 
-def _alert_to_response(row: AnomalyResult) -> AnomalyAlertResponse:
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _status_from_rollforward_event(
+    row: AnomalyResult,
+    event: AnomalyRollforwardEvent | None,
+) -> dict[str, Any]:
+    status_payload: dict[str, Any] = {
+        "alert_status": row.alert_status,
+        "snoozed_until": row.snoozed_until,
+        "resolved_at": row.resolved_at,
+        "escalated_at": row.escalated_at,
+        "status_note": row.status_note,
+        "status_updated_by": row.status_updated_by,
+    }
+    if event is None:
+        return status_payload
+
+    payload = event.event_payload_json or {}
+    inferred_status = str(payload.get("alert_status") or "").upper()
+    if not inferred_status:
+        if event.event_type == "resolved":
+            inferred_status = "RESOLVED"
+        elif event.event_type == "escalated":
+            inferred_status = "ESCALATED"
+        elif event.event_type == "reopened":
+            inferred_status = "OPEN"
+
+    if inferred_status:
+        status_payload["alert_status"] = inferred_status
+    if payload.get("note") is not None:
+        status_payload["status_note"] = str(payload["note"])
+    status_payload["status_updated_by"] = event.actor_user_id
+
+    if inferred_status == "SNOOZED":
+        parsed_snoozed = _parse_iso_datetime(payload.get("snoozed_until"))
+        status_payload["snoozed_until"] = parsed_snoozed
+    elif inferred_status == "RESOLVED":
+        status_payload["resolved_at"] = event.created_at
+    elif inferred_status == "ESCALATED":
+        status_payload["escalated_at"] = event.created_at
+
+    return status_payload
+
+
+def _alert_to_response(
+    row: AnomalyResult,
+    status_payload: dict[str, Any] | None = None,
+) -> AnomalyAlertResponse:
+    status_values = status_payload or {
+        "alert_status": row.alert_status,
+        "snoozed_until": row.snoozed_until,
+        "resolved_at": row.resolved_at,
+        "escalated_at": row.escalated_at,
+        "status_note": row.status_note,
+        "status_updated_by": row.status_updated_by,
+    }
     source_table, source_row_id = _extract_source_reference(row)
     return AnomalyAlertResponse(
         id=row.id,
@@ -111,12 +178,12 @@ def _alert_to_response(row: AnomalyResult) -> AnomalyAlertResponse:
         severity=row.severity.upper(),
         category=row.anomaly_domain,
         detected_at=row.created_at,
-        alert_status=row.alert_status,
-        snoozed_until=row.snoozed_until,
-        resolved_at=row.resolved_at,
-        escalated_at=row.escalated_at,
-        status_note=row.status_note,
-        status_updated_by=row.status_updated_by,
+        alert_status=str(status_values["alert_status"]),
+        snoozed_until=status_values["snoozed_until"],
+        resolved_at=status_values["resolved_at"],
+        escalated_at=status_values["escalated_at"],
+        status_note=status_values["status_note"],
+        status_updated_by=status_values["status_updated_by"],
         run_id=row.run_id,
         line_no=row.line_no,
         anomaly_code=row.anomaly_code,
@@ -134,6 +201,35 @@ def _alert_to_response(row: AnomalyResult) -> AnomalyAlertResponse:
         created_by=row.created_by,
         created_at=row.created_at,
     )
+
+
+async def _load_latest_rollforward_by_alert(
+    *,
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    alert_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, AnomalyRollforwardEvent]:
+    if not alert_ids:
+        return {}
+    result = await session.execute(
+        select(AnomalyRollforwardEvent)
+        .where(
+            AnomalyRollforwardEvent.tenant_id == tenant_id,
+            AnomalyRollforwardEvent.anomaly_result_id.in_(alert_ids),
+            AnomalyRollforwardEvent.event_type.in_(
+                ["rolled_forward", "resolved", "reopened", "escalated"]
+            ),
+        )
+        .order_by(
+            AnomalyRollforwardEvent.anomaly_result_id.asc(),
+            AnomalyRollforwardEvent.created_at.desc(),
+            AnomalyRollforwardEvent.id.desc(),
+        )
+    )
+    latest: dict[uuid.UUID, AnomalyRollforwardEvent] = {}
+    for event in result.scalars().all():
+        latest.setdefault(event.anomaly_result_id, event)
+    return latest
 
 
 @router.get("", response_model=Paginated[AnomalyAlertResponse] | list[AnomalyAlertResponse])
@@ -157,22 +253,34 @@ async def list_anomaly_alerts(
     normalized_status = status_filter.strip().upper()
     if normalized_status not in {"OPEN", "SNOOZED", "RESOLVED", "ESCALATED", "ALL"}:
         raise HTTPException(status_code=422, detail="Invalid status filter")
-    if normalized_status != "ALL":
-        stmt = stmt.where(AnomalyResult.alert_status == normalized_status)
 
-    total = (
-        await session.execute(select(func.count()).select_from(stmt.subquery()))
-    ).scalar_one()
     result = await session.execute(
         stmt.order_by(AnomalyResult.created_at.desc(), AnomalyResult.id.desc())
-        .limit(limit)
-        .offset(offset)
     )
     rows = result.scalars().all()
-    data = [_alert_to_response(row) for row in rows]
+    latest_rollforwards = await _load_latest_rollforward_by_alert(
+        session=session,
+        tenant_id=user.tenant_id,
+        alert_ids=[row.id for row in rows],
+    )
+
+    data: list[AnomalyAlertResponse] = []
+    for row in rows:
+        status_payload = _status_from_rollforward_event(
+            row,
+            latest_rollforwards.get(row.id),
+        )
+        if normalized_status != "ALL" and str(status_payload["alert_status"]).upper() != normalized_status:
+            continue
+        data.append(_alert_to_response(row, status_payload))
+
     if "limit" not in request.query_params and "offset" not in request.query_params:
-        return data
-    return Paginated[AnomalyAlertResponse](data=data, total=int(total), limit=limit, offset=offset)
+        # Keep legacy list response shape, but enforce default pagination bounds.
+        return data[offset : offset + limit]
+
+    total = len(data)
+    paged_data = data[offset : offset + limit]
+    return Paginated[AnomalyAlertResponse](data=paged_data, total=total, limit=limit, offset=offset)
 
 
 @router.get("/thresholds", response_model=Paginated[ThresholdRowResponse] | list[ThresholdRowResponse])
@@ -262,7 +370,16 @@ async def get_anomaly_alert(
     row = result.scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="Anomaly alert not found")
-    return _alert_to_response(row)
+    latest_rollforwards = await _load_latest_rollforward_by_alert(
+        session=session,
+        tenant_id=user.tenant_id,
+        alert_ids=[row.id],
+    )
+    status_payload = _status_from_rollforward_event(
+        row,
+        latest_rollforwards.get(row.id),
+    )
+    return _alert_to_response(row, status_payload)
 
 
 @router.patch("/{alert_id}/status", response_model=AnomalyAlertResponse)
@@ -283,17 +400,55 @@ async def update_anomaly_alert_status(
         raise HTTPException(status_code=404, detail="Anomaly alert not found")
 
     now = datetime.now(UTC)
-    row.alert_status = body.status
-    row.status_note = body.note
-    row.status_updated_by = user.id
-
+    event_type_map = {
+        "SNOOZED": "rolled_forward",
+        "RESOLVED": "resolved",
+        "ESCALATED": "escalated",
+    }
+    event_payload: dict[str, Any] = {
+        "alert_status": body.status,
+        "note": body.note,
+    }
     if body.status == "SNOOZED":
-        row.snoozed_until = datetime.combine(body.snoozed_until, time.min, tzinfo=UTC)
-    elif body.status == "RESOLVED":
-        row.resolved_at = now
-    elif body.status == "ESCALATED":
-        row.escalated_at = now
+        event_payload["snoozed_until"] = datetime.combine(
+            body.snoozed_until,
+            time.min,
+            tzinfo=UTC,
+        ).isoformat()
 
+    status_event = await AuditWriter.insert_financial_record(
+        session,
+        model_class=AnomalyRollforwardEvent,
+        tenant_id=row.tenant_id,
+        record_data={
+            "run_id": str(row.run_id),
+            "anomaly_result_id": str(row.id),
+            "event_type": event_type_map[body.status],
+        },
+        values={
+            "run_id": row.run_id,
+            "anomaly_result_id": row.id,
+            "event_type": event_type_map[body.status],
+            "event_payload_json": event_payload,
+            "actor_user_id": user.id,
+            "created_by": user.id,
+        },
+        audit=AuditEvent(
+            tenant_id=row.tenant_id,
+            user_id=user.id,
+            action="anomaly.alert.status.updated",
+            resource_type="anomaly_result",
+            resource_id=str(row.id),
+            new_value={
+                "status": body.status,
+                "note": body.note,
+            },
+        ),
+    )
     await session.flush()
-    await session.refresh(row)
-    return _alert_to_response(row)
+    status_payload = _status_from_rollforward_event(row, status_event)
+    if body.status == "RESOLVED":
+        status_payload["resolved_at"] = now
+    if body.status == "ESCALATED":
+        status_payload["escalated_at"] = now
+    return _alert_to_response(row, status_payload)

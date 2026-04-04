@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
@@ -35,20 +36,29 @@ class WebhookService:
 
         parsed_payload = json.loads(payload.decode("utf-8")) if payload else {}
         canonical_event_type, normalized_data = await provider_impl.parse_webhook_event(parsed_payload)
-        provider_event_id = str(normalized_data.get("provider_event_id") or parsed_payload.get("id") or "")
+        provider_event_id = str(
+            normalized_data.get("provider_event_id") or parsed_payload.get("id") or ""
+        ).strip()
+        if not provider_event_id:
+            # Deterministic fallback keeps webhook processing idempotent even when
+            # provider payloads omit an explicit event identifier.
+            payload_hash = hashlib.sha256(payload or b"").hexdigest()
+            provider_event_id = (
+                f"derived:{provider.value}:{canonical_event_type}:{payload_hash}"
+            )
+        normalized_data["provider_event_id"] = provider_event_id
 
-        if provider_event_id:
-            existing = (
-                await self._session.execute(
-                    select(WebhookEvent).where(
-                        WebhookEvent.tenant_id == tenant_id,
-                        WebhookEvent.provider == provider.value,
-                        WebhookEvent.provider_event_id == provider_event_id,
-                    )
+        existing = (
+            await self._session.execute(
+                select(WebhookEvent).where(
+                    WebhookEvent.tenant_id == tenant_id,
+                    WebhookEvent.provider == provider.value,
+                    WebhookEvent.provider_event_id == provider_event_id,
                 )
-            ).scalar_one_or_none()
-            if existing is not None:
-                return
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return
 
         processing_error: str | None = None
         try:
@@ -56,6 +66,7 @@ class WebhookService:
                 tenant_id=tenant_id,
                 canonical_event_type=canonical_event_type,
                 normalized_data=normalized_data,
+                provider_event_id=provider_event_id,
             )
         except Exception as exc:  # pragma: no cover - defensive path for webhook resilience
             processing_error = str(exc)
@@ -87,6 +98,7 @@ class WebhookService:
         tenant_id: uuid.UUID,
         canonical_event_type: str,
         normalized_data: dict[str, Any],
+        provider_event_id: str,
     ) -> None:
         if canonical_event_type in {
             "invoice.paid",
@@ -98,6 +110,7 @@ class WebhookService:
                 tenant_id=tenant_id,
                 canonical_event_type=canonical_event_type,
                 normalized_data=normalized_data,
+                provider_event_id=provider_event_id,
             )
             return
         if canonical_event_type.startswith("subscription."):
@@ -264,6 +277,7 @@ class WebhookService:
         tenant_id: uuid.UUID,
         canonical_event_type: str,
         normalized_data: dict[str, Any],
+        provider_event_id: str,
     ) -> None:
         provider_invoice_id = self._extract_invoice_id(normalized_data)
         if not provider_invoice_id:
@@ -324,10 +338,6 @@ class WebhookService:
         )
 
         amount = self._extract_amount(normalized_data, default_total=invoice.total)
-        provider_event_id = str(
-            normalized_data.get("provider_event_id")
-            or f"{provider_invoice_id}:{canonical_event_type}:{now.timestamp()}"
-        )
         await AuditWriter.insert_financial_record(
             self._session,
             model_class=BillingPayment,

@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import time
 from typing import Any
 
 import httpx
 import redis.asyncio as aioredis
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -19,6 +16,7 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.config import settings
 from financeops.db.models.users import IamUser
 from financeops.db.session import AsyncSessionLocal, engine
+from financeops.core.migration_checker import check_migration_state
 from financeops.observability.celery_monitor import get_celery_monitor
 from financeops.tasks.celery_app import celery_app
 from financeops.temporal.client import check_temporal_health
@@ -90,30 +88,13 @@ async def _check_workers() -> dict[str, Any]:
 
 async def _check_migrations() -> dict[str, Any]:
     started_at = time.perf_counter()
-    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "..", "..", "alembic.ini")
-    alembic_cfg = Config(os.path.abspath(alembic_ini))
-    script_dir = ScriptDirectory.from_config(alembic_cfg)
-    head = script_dir.get_current_head()
-
-    current: str | None = None
-    try:
-        async with engine.connect() as conn:
-            result = await asyncio.wait_for(
-                conn.execute(text("SELECT version_num FROM alembic_version LIMIT 1")),
-                timeout=1.0,
-            )
-            current = result.scalar_one_or_none()
-    except Exception:
-        return {
-            "status": "error",
-            "latency_ms": _latency_ms(started_at),
-            "current_head": head,
-        }
-
+    result = await check_migration_state(db_engine=engine)
     return {
-        "status": "ok" if current == head else "error",
+        "status": "ok" if result.status == "ok" else "error",
         "latency_ms": _latency_ms(started_at),
-        "current_head": head,
+        "current_head": result.head_revision,
+        "current_revision": result.current_revision,
+        "detail": result.detail,
     }
 
 
@@ -239,12 +220,22 @@ async def build_health_summary_payload(startup_errors: list[str] | None = None) 
     return payload
 
 
-async def build_readiness_payload(startup_errors: list[str] | None = None) -> tuple[dict[str, Any], int]:
+async def build_readiness_payload(
+    startup_errors: list[str] | None = None,
+    migration_state: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], int]:
     startup_errors = startup_errors or []
     db_check, redis_check = await asyncio.gather(_check_database(), _check_redis())
+    if migration_state is None:
+        migration_check = {"status": "unknown", "detail": "startup migration state unavailable"}
+        migration_ready = True
+    else:
+        migration_check = migration_state
+        migration_ready = migration_check.get("status") == "ok"
     ready = (
         db_check.get("status") == "healthy"
         and redis_check.get("status") == "healthy"
+        and migration_ready
     )
     payload = {
         "status": "ready" if ready else "not_ready",
@@ -252,6 +243,7 @@ async def build_readiness_payload(startup_errors: list[str] | None = None) -> tu
         "checks": {
             "database": db_check,
             "redis": redis_check,
+            "migrations": migration_check,
         },
         "startup_errors": startup_errors,
         "timestamp": utc_now_iso(),
@@ -279,7 +271,11 @@ async def health_check(request: Request) -> JSONResponse:
 @router.get("/ready")
 async def health_ready(request: Request) -> JSONResponse:
     startup_errors = getattr(request.app.state, "startup_errors", [])
-    payload, code = await build_readiness_payload(startup_errors=startup_errors)
+    migration_state = getattr(request.app.state, "migration_state", None)
+    payload, code = await build_readiness_payload(
+        startup_errors=startup_errors,
+        migration_state=migration_state,
+    )
     return JSONResponse(content=payload, status_code=code)
 
 
