@@ -17,6 +17,11 @@ def is_docker_environment() -> bool:
     return os.path.exists("/.dockerenv")
 
 
+def is_render_environment() -> bool:
+    markers = ("RENDER", "RENDER_SERVICE_ID", "RENDER_EXTERNAL_URL")
+    return any(bool(os.getenv(marker, "").strip()) for marker in markers)
+
+
 class Settings(BaseSettings):
     _DEV_SECRET_KEY_DEFAULT: ClassVar[str] = "dev-secret-key-change-me-before-production-use-123456"
     _DEV_JWT_SECRET_DEFAULT: ClassVar[str] = "dev-jwt-secret-change-me-before-production-use-123456"
@@ -193,6 +198,23 @@ class Settings(BaseSettings):
         if self.APP_ENV.lower() == "production" and "*" in self.CORS_ALLOWED_ORIGINS:
             raise RuntimeError(
                 "CORS_ALLOWED_ORIGINS cannot include '*' when APP_ENV=production."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def validate_render_environment_requirements(self) -> Settings:
+        if not is_render_environment():
+            return self
+
+        raw_app_env = os.getenv("APP_ENV")
+        if raw_app_env is None or not raw_app_env.strip():
+            raise RuntimeError(
+                "APP_ENV is required in Render environment and must be set to 'production'."
+            )
+
+        if self.APP_ENV.lower() != "production":
+            raise RuntimeError(
+                "APP_ENV must be 'production' in Render environment."
             )
         return self
 

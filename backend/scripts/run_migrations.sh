@@ -2,5 +2,6 @@
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+echo "Running DB migrations..."
 python -m financeops.migrations.run
-echo "Migrations applied successfully"
+echo "Migration completed successfully"

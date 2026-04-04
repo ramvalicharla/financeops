@@ -236,21 +236,54 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             migration_result = await enforce_migration_state(fail_fast=migration_fail_fast)
             app.state.migration_state = migration_result.to_dict()
+            if migration_result.current_revision != migration_result.head_revision:
+                mismatch_message = (
+                    f"Migration mismatch: current={migration_result.current_revision}, "
+                    f"head={migration_result.head_revision}. "
+                    "Run migrations before starting the app."
+                )
+                app.state.migration_state = {
+                    "status": "out_of_sync",
+                    "current_revision": migration_result.current_revision,
+                    "head_revision": migration_result.head_revision,
+                    "detail": mismatch_message,
+                }
+                startup_errors.append(mismatch_message)
+                log.error("Migration mismatch detected - startup aborted")
+                raise RuntimeError(mismatch_message)
+
+            if migration_result.status != "ok":
+                status_message = migration_result.detail or "Migration state unknown."
+                app.state.migration_state = {
+                    "status": migration_result.status,
+                    "current_revision": migration_result.current_revision,
+                    "head_revision": migration_result.head_revision,
+                    "detail": status_message,
+                }
+                startup_errors.append(status_message)
+                log.error("Migration mismatch detected - startup aborted")
+                raise RuntimeError(status_message)
+
             log.info(
-                "Migration state OK (current=%s, head=%s)",
-                migration_result.current_revision,
+                "Migrations verified: current == head (%s)",
                 migration_result.head_revision,
             )
         except Exception as exc:
-            message = f"DB schema out of sync with code: {_exception_text(exc)}"
-            app.state.migration_state = {
-                "status": "out_of_sync",
-                "current_revision": None,
-                "head_revision": None,
-                "detail": message,
-            }
-            startup_errors.append(message)
+            if str(exc).startswith("Migration mismatch:"):
+                message = str(exc)
+            else:
+                message = f"DB schema out of sync with code: {_exception_text(exc)}"
+                app.state.migration_state = {
+                    "status": "out_of_sync",
+                    "current_revision": None,
+                    "head_revision": None,
+                    "detail": message,
+                }
+                startup_errors.append(message)
+            log.error("Migration mismatch detected - startup aborted")
             log.critical(message)
+            if message.startswith("Migration mismatch:"):
+                raise RuntimeError(message)
             if migration_fail_fast:
                 raise RuntimeError(message)
 

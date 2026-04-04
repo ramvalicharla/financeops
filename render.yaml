@@ -5,9 +5,11 @@ services:
     region: singapore
     plan: starter
     dockerfilePath: backend/Dockerfile
-    dockerCommand: bash scripts/start.sh
+    dockerCommand: bash scripts/run_migrations.sh && uvicorn financeops.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /ready
     envVars:
+      - key: APP_ENV
+        value: production
       - key: DATABASE_URL
         sync: false
       - key: REDIS_URL
