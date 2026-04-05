@@ -22,55 +22,8 @@ from sqlalchemy.engine import make_url
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from financeops.api.v1.router import router as v1_router
 from financeops.config import limiter, settings
 from financeops.core.exceptions import FinanceOpsError, register_exception_handlers
-from financeops.modules.anomaly_pattern_engine.api.anomaly_ui_routes import (
-    router as anomaly_ui_router,
-)
-from financeops.modules.auto_trigger.api.routes import router as auto_trigger_router
-from financeops.modules.board_pack_generator.api.routes import router as board_pack_router
-from financeops.modules.custom_report_builder.api.routes import router as report_router
-from financeops.modules.scheduled_delivery.api.routes import router as scheduled_delivery_router
-from financeops.modules.secret_rotation.api.routes import router as secret_rotation_router
-from financeops.modules.template_onboarding.api.routes import router as onboarding_router
-from financeops.modules.compliance.api.routes import router as compliance_router
-from financeops.modules.closing_checklist.api.routes import router as closing_checklist_router
-from financeops.modules.working_capital.api.routes import router as working_capital_router
-from financeops.modules.expense_management.api.routes import router as expense_router
-from financeops.modules.budgeting.api.routes import router as budgeting_router
-from financeops.modules.forecasting.api.routes import router as forecasting_router
-from financeops.modules.scenario_modelling.api.routes import router as scenario_router
-from financeops.modules.backup.api.routes import router as backup_router
-from financeops.api.v1.platform_users import router as platform_users_router
-from financeops.modules.fdd.api.routes import router as fdd_router
-from financeops.modules.ppa.api.routes import router as ppa_router
-from financeops.modules.ma_workspace.api.routes import router as ma_router
-from financeops.modules.service_registry.api.routes import router as service_registry_router
-from financeops.modules.marketplace.api.routes import router as marketplace_router
-from financeops.modules.white_label.api.routes import router as white_label_router
-from financeops.modules.partner.api.routes import router as partner_router
-from financeops.modules.notifications.api.routes import router as notifications_router
-from financeops.modules.learning_engine.api.routes import router as learning_router
-from financeops.modules.search.api.routes import router as search_router
-from financeops.modules.cash_flow_forecast.api.routes import router as treasury_router
-from financeops.modules.tax_provision.api.routes import router as tax_router
-from financeops.modules.debt_covenants.api.routes import router as covenants_router
-from financeops.modules.transfer_pricing.api.routes import router as tp_router
-from financeops.modules.digital_signoff.api.routes import router as signoff_router
-from financeops.modules.statutory.api.routes import router as statutory_router
-from financeops.modules.multi_gaap.api.routes import router as gaap_router
-from financeops.modules.auditor_portal.api.routes import router as audit_router
-from financeops.modules.coa.api.routes import router as coa_router
-from financeops.modules.org_setup.api.routes import router as org_setup_router
-from financeops.modules.fixed_assets.api.routes import router as fa_router
-from financeops.modules.prepaid_expenses.api.routes import router as prepaid_router
-from financeops.modules.invoice_classifier.api.routes import router as classifier_router
-from financeops.modules.locations.api.routes import router as locations_router
-from financeops.api.v1.ai_stream import router as ai_stream_router
-from financeops.api.v1.admin_ai_providers import router as admin_ai_providers_router
-from financeops.api.v1.debug_network import router as debug_network_router
-from financeops.api.deps import require_org_setup
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     FinanceOpsCSRFMiddleware,
@@ -345,6 +298,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     """Application factory."""
+    log.info("Creating FastAPI application shell")
     app = FastAPI(
         title=settings.APP_NAME,
         version=APP_VERSION,
@@ -411,6 +365,7 @@ def create_app() -> FastAPI:
         build_readiness_payload,
         router as health_router,
     )
+    from financeops.api.v1.debug_network import router as debug_network_router
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(debug_network_router)
 
@@ -443,6 +398,60 @@ def create_app() -> FastAPI:
             migration_state=migration_state,
         )
         return JSONResponse(content=payload, status_code=code)
+
+    log.info("Loading API router graph")
+    from financeops.api.deps import require_org_setup
+    from financeops.api.v1.ai_stream import router as ai_stream_router
+    from financeops.api.v1.admin_ai_providers import router as admin_ai_providers_router
+    from financeops.api.v1.platform_users import router as platform_users_router
+    from financeops.api.v1.router import router as v1_router
+    from financeops.modules.anomaly_pattern_engine.api.anomaly_ui_routes import (
+        router as anomaly_ui_router,
+    )
+    from financeops.modules.auditor_portal.api.routes import router as audit_router
+    from financeops.modules.auto_trigger.api.routes import router as auto_trigger_router
+    from financeops.modules.backup.api.routes import router as backup_router
+    from financeops.modules.board_pack_generator.api.routes import router as board_pack_router
+    from financeops.modules.budgeting.api.routes import router as budgeting_router
+    from financeops.modules.cash_flow_forecast.api.routes import router as treasury_router
+    from financeops.modules.closing_checklist.api.routes import (
+        router as closing_checklist_router,
+    )
+    from financeops.modules.coa.api.routes import router as coa_router
+    from financeops.modules.compliance.api.routes import router as compliance_router
+    from financeops.modules.custom_report_builder.api.routes import router as report_router
+    from financeops.modules.debt_covenants.api.routes import router as covenants_router
+    from financeops.modules.digital_signoff.api.routes import router as signoff_router
+    from financeops.modules.expense_management.api.routes import router as expense_router
+    from financeops.modules.fdd.api.routes import router as fdd_router
+    from financeops.modules.fixed_assets.api.routes import router as fa_router
+    from financeops.modules.forecasting.api.routes import router as forecasting_router
+    from financeops.modules.invoice_classifier.api.routes import router as classifier_router
+    from financeops.modules.learning_engine.api.routes import router as learning_router
+    from financeops.modules.locations.api.routes import router as locations_router
+    from financeops.modules.ma_workspace.api.routes import router as ma_router
+    from financeops.modules.marketplace.api.routes import router as marketplace_router
+    from financeops.modules.multi_gaap.api.routes import router as gaap_router
+    from financeops.modules.notifications.api.routes import router as notifications_router
+    from financeops.modules.org_setup.api.routes import router as org_setup_router
+    from financeops.modules.partner.api.routes import router as partner_router
+    from financeops.modules.ppa.api.routes import router as ppa_router
+    from financeops.modules.prepaid_expenses.api.routes import router as prepaid_router
+    from financeops.modules.scheduled_delivery.api.routes import (
+        router as scheduled_delivery_router,
+    )
+    from financeops.modules.scenario_modelling.api.routes import router as scenario_router
+    from financeops.modules.search.api.routes import router as search_router
+    from financeops.modules.secret_rotation.api.routes import router as secret_rotation_router
+    from financeops.modules.service_registry.api.routes import (
+        router as service_registry_router,
+    )
+    from financeops.modules.statutory.api.routes import router as statutory_router
+    from financeops.modules.tax_provision.api.routes import router as tax_router
+    from financeops.modules.template_onboarding.api.routes import router as onboarding_router
+    from financeops.modules.transfer_pricing.api.routes import router as tp_router
+    from financeops.modules.white_label.api.routes import router as white_label_router
+    from financeops.modules.working_capital.api.routes import router as working_capital_router
 
     # API v1
     org_setup_dependency = [Depends(require_org_setup)]
@@ -489,6 +498,7 @@ def create_app() -> FastAPI:
     app.include_router(locations_router, prefix="/api/v1", tags=["locations"], dependencies=org_setup_dependency)
     app.include_router(ai_stream_router, prefix="/api/v1", dependencies=org_setup_dependency)
     app.include_router(admin_ai_providers_router, prefix="/api/v1", dependencies=org_setup_dependency)
+    log.info("API router graph registered")
 
     # OpenTelemetry instrumentation
     configure_telemetry(app=app, engine=engine, settings=settings)
