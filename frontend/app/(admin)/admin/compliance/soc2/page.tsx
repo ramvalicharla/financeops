@@ -21,14 +21,23 @@ export default function AdminSoc2Page() {
   const [selected, setSelected] = useState<ComplianceControl | null>(null)
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all")
   const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   const load = async () => {
-    const [dashboardData, controlsData] = await Promise.all([
-      getSoc2Dashboard(),
-      listSoc2Controls({ limit: 200, offset: 0 }),
-    ])
-    setDashboard(dashboardData)
-    setControls(controlsData.data)
+    setError(null)
+    try {
+      const [dashboardData, controlsData] = await Promise.all([
+        getSoc2Dashboard(),
+        listSoc2Controls({ limit: 200, offset: 0 }),
+      ])
+      setDashboard(dashboardData)
+      setControls(controlsData.data)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to load SOC2 controls")
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -52,9 +61,14 @@ export default function AdminSoc2Page() {
   }, [visible])
 
   const runAuto = async () => {
-    const result = await evaluateSoc2()
-    setMessage(`${result.passed} passed, ${result.failed} failed`)
-    await load()
+    setError(null)
+    try {
+      const result = await evaluateSoc2()
+      setMessage(`${result.passed} passed, ${result.failed} failed`)
+      await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to run SOC2 auto-evaluation")
+    }
   }
 
   const downloadEvidence = async () => {
@@ -84,6 +98,8 @@ export default function AdminSoc2Page() {
 
       {dashboard ? <ComplianceProgress summary={dashboard.summary} /> : null}
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading SOC2 controls...</p> : null}
 
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((tag) => (
@@ -99,16 +115,22 @@ export default function AdminSoc2Page() {
       </div>
 
       <section className="space-y-4">
-        {grouped.map(([category, rows]) => (
-          <div key={category} className="space-y-2">
-            <h2 className="text-sm uppercase tracking-[0.16em] text-muted-foreground">{category}</h2>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {rows.map((control) => (
-                <ControlCard key={control.control_id} control={control} isAdminView onSelect={setSelected} />
-              ))}
+        {grouped.length ? (
+          grouped.map(([category, rows]) => (
+            <div key={category} className="space-y-2">
+              <h2 className="text-sm uppercase tracking-[0.16em] text-muted-foreground">{category}</h2>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {rows.map((control) => (
+                  <ControlCard key={control.control_id} control={control} isAdminView onSelect={setSelected} />
+                ))}
+              </div>
             </div>
+          ))
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+            No SOC2 controls matched the current filter.
           </div>
-        ))}
+        )}
       </section>
 
       <EvidencePanel

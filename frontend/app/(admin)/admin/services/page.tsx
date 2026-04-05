@@ -22,13 +22,22 @@ export default function AdminServicesPage() {
   const { data: session } = useSession()
   const [dashboard, setDashboard] = useState<ServiceDashboard | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
 
   const isOwner = session?.user?.role === "platform_owner" || session?.user?.role === "super_admin"
 
   const load = async () => {
-    const payload = await getServiceDashboard()
-    setDashboard(payload)
+    setError(null)
+    try {
+      const payload = await getServiceDashboard()
+      setDashboard(payload)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to load service registry")
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -37,12 +46,15 @@ export default function AdminServicesPage() {
 
   const runChecks = async () => {
     setRunning(true)
+    setError(null)
     try {
       const payload = await runServiceHealthCheck()
       setMessage(
         `Health checks complete: ${payload.healthy} healthy, ${payload.degraded} degraded, ${payload.unhealthy} unhealthy.`,
       )
       await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Failed to run service health checks")
     } finally {
       setRunning(false)
     }
@@ -79,19 +91,27 @@ export default function AdminServicesPage() {
       </header>
 
       {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
+      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+      {loading ? <p className="text-sm text-muted-foreground">Loading service registry...</p> : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-foreground">Modules</h2>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {modules.map((module: ServiceRegistryModule) => (
-            <ServiceHealthCard
-              key={module.id}
-              module={module}
-              isOwner={Boolean(isOwner)}
-              onToggle={onToggleModule}
-            />
-          ))}
-        </div>
+        {modules.length ? (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {modules.map((module: ServiceRegistryModule) => (
+              <ServiceHealthCard
+                key={module.id}
+                module={module}
+                isOwner={Boolean(isOwner)}
+                onToggle={onToggleModule}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+            No registered services found yet.
+          </div>
+        )}
       </section>
 
       <section className="space-y-3">
@@ -101,4 +121,3 @@ export default function AdminServicesPage() {
     </div>
   )
 }
-

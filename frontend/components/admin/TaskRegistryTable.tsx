@@ -13,6 +13,14 @@ const statusClass = (status: ServiceRegistryTask["last_run_status"]): string => 
 }
 
 export function TaskRegistryTable({ tasks }: TaskRegistryTableProps) {
+  if (tasks.length === 0) {
+    return (
+      <div className="rounded-xl border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
+        No registered tasks found yet.
+      </div>
+    )
+  }
+
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card">
       <table aria-label="Task registry" className="min-w-full text-sm">

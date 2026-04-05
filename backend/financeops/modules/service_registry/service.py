@@ -23,6 +23,40 @@ _QUEUE_NAMES = (
     "notification",
     "default",
 )
+_MODULE_SEED = (
+    ("mis_manager", "/api/v1/mis", []),
+    ("reconciliation", "/api/v1/reconciliation", ["mis_manager"]),
+    ("consolidation", "/api/v1/consolidation", ["reconciliation"]),
+    ("fixed_assets", "/api/v1/fixed-assets", []),
+    ("lease", "/api/v1/leases", []),
+    ("revenue", "/api/v1/revenue", []),
+    ("payroll_gl", "/api/v1/payroll", []),
+    ("board_pack", "/api/v1/board-pack", ["mis_manager"]),
+    ("custom_reports", "/api/v1/reports", ["mis_manager"]),
+    ("scheduled_delivery", "/api/v1/delivery", ["board_pack", "custom_reports"]),
+    ("anomaly_detection", "/api/v1/anomalies", ["mis_manager"]),
+    ("erp_sync", "/api/v1/erp", []),
+    ("closing_checklist", "/api/v1/close", ["erp_sync", "reconciliation"]),
+    ("working_capital", "/api/v1/working-capital", ["mis_manager"]),
+    ("expense_management", "/api/v1/expenses", []),
+    ("budgeting", "/api/v1/budget", ["mis_manager"]),
+    ("forecasting", "/api/v1/forecast", ["budgeting"]),
+    ("scenario_modelling", "/api/v1/scenarios", ["forecasting"]),
+    ("fdd", "/api/v1/advisory/fdd", ["mis_manager", "working_capital"]),
+    ("ppa", "/api/v1/advisory/ppa", ["mis_manager"]),
+    ("ma_workspace", "/api/v1/advisory/ma", ["fdd", "ppa"]),
+    ("compliance", "/api/v1/compliance", []),
+    ("backup", "/api/v1/backup", []),
+)
+_TASK_SEED = (
+    ("auto_trigger.trigger_post_sync_pipeline", "erp_sync", "erp_sync", False),
+    ("board_pack_generator.generate", "board_pack", "report_gen", False),
+    ("scheduled_delivery.poll_due", "scheduled_delivery", "email", True),
+    ("auto_trigger.run_anomaly_detection", "anomaly_detection", "ai_inference", False),
+    ("metrics.update_queue_depths", "observability", "default", True),
+    ("metrics.update_active_tenants", "observability", "default", True),
+    ("backup.backup_postgres_daily", "backup", "default", True),
+)
 
 
 def _q2(value: Decimal) -> Decimal:
@@ -31,6 +65,39 @@ def _q2(value: Decimal) -> Decimal:
 
 def _q4(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+
+async def ensure_registry_seeded(session: AsyncSession) -> None:
+    existing_module_id = (
+        await session.execute(select(ModuleRegistry.id).limit(1))
+    ).scalar_one_or_none()
+    if existing_module_id is None:
+        for module_name, route_prefix, depends_on in _MODULE_SEED:
+            session.add(
+                ModuleRegistry(
+                    module_name=module_name,
+                    description=f"{module_name} description",
+                    route_prefix=route_prefix,
+                    depends_on=depends_on,
+                )
+            )
+
+    existing_task_id = (
+        await session.execute(select(TaskRegistry.id).limit(1))
+    ).scalar_one_or_none()
+    if existing_task_id is None:
+        for task_name, module_name, queue_name, is_scheduled in _TASK_SEED:
+            session.add(
+                TaskRegistry(
+                    task_name=task_name,
+                    module_name=module_name,
+                    queue_name=queue_name,
+                    description=f"{task_name} description",
+                    is_scheduled=is_scheduled,
+                )
+            )
+
+    await session.flush()
 
 
 async def _check_route_prefix(route_prefix: str | None) -> bool:
@@ -68,6 +135,7 @@ def _depends_on_healthy(module: ModuleRegistry, status_by_module: dict[str, str]
 
 
 async def run_health_checks(session: AsyncSession) -> dict[str, Any]:
+    await ensure_registry_seeded(session)
     rows = (
         await session.execute(select(ModuleRegistry).order_by(ModuleRegistry.module_name.asc()))
     ).scalars().all()
@@ -200,6 +268,7 @@ def _serialize_task(row: TaskRegistry) -> dict[str, Any]:
 
 
 async def get_service_dashboard(session: AsyncSession) -> dict[str, Any]:
+    await ensure_registry_seeded(session)
     modules = (
         await session.execute(select(ModuleRegistry).order_by(ModuleRegistry.module_name.asc()))
     ).scalars().all()
@@ -238,4 +307,4 @@ async def get_service_dashboard(session: AsyncSession) -> dict[str, Any]:
     }
 
 
-__all__ = ["get_service_dashboard", "run_health_checks", "update_task_stats"]
+__all__ = ["ensure_registry_seeded", "get_service_dashboard", "run_health_checks", "update_task_stats"]

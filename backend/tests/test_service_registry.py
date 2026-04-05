@@ -13,6 +13,7 @@ from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry
 from financeops.modules.service_registry.service import (
+    ensure_registry_seeded,
     get_service_dashboard,
     run_health_checks,
     update_task_stats,
@@ -145,14 +146,14 @@ async def _create_platform_user(
 
 @pytest.mark.asyncio
 async def test_module_registry_seeded(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await ensure_registry_seeded(async_session)
     rows = (await async_session.execute(select(ModuleRegistry))).scalars().all()
     assert len(rows) >= 20
 
 
 @pytest.mark.asyncio
 async def test_task_registry_seeded(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await ensure_registry_seeded(async_session)
     rows = (await async_session.execute(select(TaskRegistry))).scalars().all()
     assert len(rows) >= 7
 
@@ -166,12 +167,28 @@ async def test_module_names_unique(async_session: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_get_service_dashboard_structure(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
     payload = await get_service_dashboard(async_session)
     assert "overall_status" in payload
     assert "modules" in payload
     assert "tasks" in payload
     assert "queue_depths" in payload
+
+
+@pytest.mark.asyncio
+async def test_modules_endpoint_auto_seeds_registry(async_client, async_session: AsyncSession) -> None:
+    owner = await _create_platform_user(
+        async_session,
+        email="services.autoseed.owner@example.com",
+        role=UserRole.platform_owner,
+    )
+    response = await async_client.get(
+        "/api/v1/platform/services/modules?limit=5&offset=0",
+        headers=_auth_headers(owner),
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["total"] >= 20
+    assert payload["data"]
 
 
 @pytest.mark.asyncio

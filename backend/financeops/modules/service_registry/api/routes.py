@@ -10,7 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry
-from financeops.modules.service_registry.service import get_service_dashboard, run_health_checks
+from financeops.modules.service_registry.service import (
+    ensure_registry_seeded,
+    get_service_dashboard,
+    run_health_checks,
+)
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/platform/services", tags=["service-registry"])
@@ -100,6 +104,7 @@ async def list_modules_endpoint(
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
     _require_platform_admin(user)
+    await ensure_registry_seeded(session)
     stmt = select(ModuleRegistry)
     total = int((await session.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one())
     rows = (
@@ -125,6 +130,7 @@ async def list_tasks_endpoint(
     user: IamUser = Depends(get_current_user),
 ) -> Paginated[dict]:
     _require_platform_admin(user)
+    await ensure_registry_seeded(session)
     stmt = select(TaskRegistry)
     if queue_name:
         stmt = stmt.where(TaskRegistry.queue_name == queue_name)
@@ -152,6 +158,7 @@ async def toggle_module_endpoint(
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     _require_platform_owner(user)
+    await ensure_registry_seeded(session)
     row = (
         await session.execute(
             select(ModuleRegistry).where(ModuleRegistry.module_name == module_name)
@@ -166,4 +173,3 @@ async def toggle_module_endpoint(
 
 
 __all__ = ["router"]
-

@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { signOut } from "next-auth/react"
 import {
   ShieldCheck,
   HardDrive,
@@ -15,7 +16,9 @@ import {
   Palette,
   Handshake,
   Sparkles,
+  LogOut,
 } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -40,14 +43,14 @@ export function AdminSidebar() {
   const pathname = usePathname() ?? ""
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-border bg-card md:block">
+    <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-border bg-card md:flex md:flex-col">
       <div className="border-b border-border px-4 py-4">
         <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">FinanceOps</p>
         <span className="mt-2 inline-flex rounded-full border border-[hsl(var(--brand-danger)/0.5)] bg-[hsl(var(--brand-danger)/0.15)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--brand-danger))]">
           ADMIN
         </span>
       </div>
-      <nav aria-label="Admin navigation" className="space-y-1 p-3">
+      <nav aria-label="Admin navigation" className="flex-1 space-y-1 overflow-y-auto p-3">
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -68,7 +71,18 @@ export function AdminSidebar() {
           )
         })}
       </nav>
+      <div className="border-t border-border p-3">
+        <Button
+          className="w-full justify-start gap-2"
+          size="sm"
+          variant="outline"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          type="button"
+        >
+          <LogOut className="h-4 w-4" />
+          Sign out
+        </Button>
+      </div>
     </aside>
   )
 }
-
