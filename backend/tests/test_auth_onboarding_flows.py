@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.security import create_access_token, decode_token
 from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken
+from financeops.db.models.users import IamSession
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.user_service import create_user
 
@@ -93,6 +94,53 @@ async def test_verify_mfa_setup_enables_mfa(async_client, async_session: AsyncSe
     await async_session.refresh(test_user)
     assert test_user.mfa_enabled is True
     assert test_user.force_mfa_setup is False
+
+
+@pytest.mark.asyncio
+async def test_verify_mfa_setup_creates_persisted_session(
+    async_client,
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
+    test_user.force_mfa_setup = True
+    test_user.mfa_enabled = False
+    await async_session.flush()
+
+    login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": test_user.email, "password": "TestPass123!"},
+    )
+    setup_token = login.json()["data"]["setup_token"]
+    setup = await async_client.post(
+        "/api/v1/auth/mfa/setup",
+        headers={"Authorization": f"Bearer {setup_token}"},
+    )
+    secret = setup.json()["data"]["secret"]
+    code = pyotp.TOTP(secret).now()
+
+    before = (
+        await async_session.execute(
+            select(func.count()).select_from(IamSession).where(IamSession.user_id == test_user.id)
+        )
+    ).scalar_one()
+
+    verify = await async_client.post(
+        "/api/v1/auth/mfa/verify-setup",
+        headers={"Authorization": f"Bearer {setup_token}"},
+        json={"code": code},
+    )
+
+    assert verify.status_code == 200
+    payload = verify.json()["data"]
+    assert isinstance(payload["access_token"], str)
+    assert isinstance(payload["refresh_token"], str)
+
+    after = (
+        await async_session.execute(
+            select(func.count()).select_from(IamSession).where(IamSession.user_id == test_user.id)
+        )
+    ).scalar_one()
+    assert int(after) == int(before) + 1
 
 
 @pytest.mark.asyncio

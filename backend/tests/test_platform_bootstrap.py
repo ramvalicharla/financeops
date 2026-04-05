@@ -14,6 +14,7 @@ from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.auth_service import setup_totp, verify_totp_setup
+from financeops.seed.platform_owner import SeedAccount, seed_platform_users
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 PLATFORM_TENANT_ID = uuid.UUID(int=0)
@@ -174,6 +175,61 @@ async def test_seed_script_idempotent(async_session: AsyncSession, monkeypatch: 
 
 
 @pytest.mark.asyncio
+async def test_seed_platform_users_preserves_existing_auth_state(
+    async_session: AsyncSession,
+) -> None:
+    await _ensure_platform_tenant(async_session)
+    existing = IamUser(
+        tenant_id=PLATFORM_TENANT_ID,
+        email="seed.preserve@example.com",
+        hashed_password=hash_password("OriginalPass123!"),
+        full_name="Original Name",
+        role=UserRole.platform_admin,
+        is_active=True,
+        is_verified=True,
+        mfa_enabled=True,
+        force_password_change=False,
+        force_mfa_setup=False,
+    )
+    async_session.add(existing)
+    await async_session.flush()
+
+    original_hash = existing.hashed_password
+
+    class _SessionFactory:
+        def __call__(self):
+            class _SessionContext:
+                async def __aenter__(self_nonlocal):
+                    return async_session
+
+                async def __aexit__(self_nonlocal, exc_type, exc, tb):
+                    return False
+
+            return _SessionContext()
+
+    result = await seed_platform_users(
+        [
+            SeedAccount(
+                email="seed.preserve@example.com",
+                password="SeedPass123!",
+                full_name="Updated Name",
+                role=UserRole.platform_support,
+            )
+        ],
+        session_factory=_SessionFactory(),
+    )
+
+    assert result["status"] == "seeded"
+    await async_session.refresh(existing)
+    assert existing.hashed_password == original_hash
+    assert existing.mfa_enabled is True
+    assert existing.force_password_change is False
+    assert existing.force_mfa_setup is False
+    assert existing.full_name == "Updated Name"
+    assert existing.role == UserRole.platform_support
+
+
+@pytest.mark.asyncio
 async def test_create_platform_admin(async_client, async_session: AsyncSession) -> None:
     owner = await _create_platform_user(
         async_session,
@@ -267,6 +323,18 @@ async def test_cannot_remove_last_platform_owner(async_client, async_session: As
         email="superadmin.lastdemote@example.com",
         role=UserRole.super_admin,
     )
+    await async_session.execute(
+        text(
+            """
+            UPDATE iam_users
+            SET role = 'platform_admin'
+            WHERE role = 'platform_owner'
+              AND id <> CAST(:owner_id AS uuid)
+            """
+        ),
+        {"owner_id": str(owner.id)},
+    )
+    await async_session.flush()
     response = await async_client.patch(
         f"/api/v1/platform/users/{owner.id}/role",
         headers=_auth_headers(actor),
@@ -303,6 +371,18 @@ async def test_cannot_deactivate_last_platform_owner(async_client, async_session
         email="superadmin.lastdeactivate@example.com",
         role=UserRole.super_admin,
     )
+    await async_session.execute(
+        text(
+            """
+            UPDATE iam_users
+            SET role = 'platform_admin'
+            WHERE role = 'platform_owner'
+              AND id <> CAST(:owner_id AS uuid)
+            """
+        ),
+        {"owner_id": str(owner.id)},
+    )
+    await async_session.flush()
     response = await async_client.delete(
         f"/api/v1/platform/users/{owner.id}",
         headers=_auth_headers(actor),

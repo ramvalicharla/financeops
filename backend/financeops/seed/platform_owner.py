@@ -142,14 +142,10 @@ async def seed_platform_users(
             index_elements=["email"],
             set_={
                 "tenant_id": upsert_stmt.excluded.tenant_id,
-                "hashed_password": upsert_stmt.excluded.hashed_password,
                 "full_name": upsert_stmt.excluded.full_name,
                 "role": upsert_stmt.excluded.role,
                 "is_active": upsert_stmt.excluded.is_active,
                 "is_verified": upsert_stmt.excluded.is_verified,
-                "mfa_enabled": upsert_stmt.excluded.mfa_enabled,
-                "force_password_change": upsert_stmt.excluded.force_password_change,
-                "force_mfa_setup": upsert_stmt.excluded.force_mfa_setup,
             },
         )
         await session.execute(upsert_stmt)

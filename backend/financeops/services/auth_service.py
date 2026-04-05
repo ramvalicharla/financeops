@@ -193,6 +193,7 @@ async def verify_mfa_challenge(
     key = f"mfa_challenge:{mfa_challenge_token}"
     raw_payload = await redis_client.get(key)
     if not raw_payload:
+        log.info("MFA verify rejected: expired_challenge")
         raise AuthenticationError("MFA challenge expired")
 
     try:
@@ -200,6 +201,7 @@ async def verify_mfa_challenge(
         user_id = challenge_payload["user_id"]
         tenant_id = challenge_payload["tenant_id"]
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
+        log.warning("MFA verify rejected: invalid_challenge_payload")
         raise AuthenticationError("Invalid MFA challenge payload") from exc
 
     user_result = await session.execute(
@@ -211,8 +213,10 @@ async def verify_mfa_challenge(
     )
     user = user_result.scalar_one_or_none()
     if user is None:
+        log.info("MFA verify rejected: user_not_found_for_challenge")
         raise AuthenticationError("User not found")
     if not user.mfa_enabled or not user.totp_secret_encrypted:
+        log.info("MFA verify rejected: mfa_not_configured")
         raise AuthenticationError("MFA is not configured for this account")
 
     secret = decrypt_field(user.totp_secret_encrypted)
@@ -234,10 +238,12 @@ async def verify_mfa_challenge(
             )
         ).scalar_one_or_none()
         if recovery_row is None:
+            log.info("MFA verify rejected: invalid_recovery_code user=%s", str(user.id))
             raise AuthenticationError("Invalid recovery code")
         recovery_row.used_at = datetime.now(UTC)
     else:
         if not totp_code:
+            log.info("MFA verify rejected: missing_totp_code user=%s", str(user.id))
             raise AuthenticationError("TOTP code required")
         log.debug(
             "MFA challenge verify debug user=%s tenant=%s otp_input=%s",
@@ -246,6 +252,7 @@ async def verify_mfa_challenge(
             str(totp_code).strip(),
         )
         if not verify_totp(secret, totp_code):
+            log.info("MFA verify rejected: invalid_totp_code user=%s", str(user.id))
             raise AuthenticationError("Invalid TOTP code")
 
     await redis_client.delete(key)

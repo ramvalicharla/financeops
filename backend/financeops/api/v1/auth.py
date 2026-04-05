@@ -19,7 +19,6 @@ from financeops.config import limiter, settings
 from financeops.core.exceptions import AuthenticationError
 from financeops.core.security import (
     create_access_token,
-    create_refresh_token,
     decode_token,
     decrypt_field,
     hash_password,
@@ -35,7 +34,7 @@ from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import welcome_email
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
-    build_billing_token_claims,
+    _issue_session_tokens,
     create_mfa_challenge,
     login,
     logout,
@@ -362,19 +361,13 @@ async def verify_mfa_setup(
 
     await session.flush()
     await commit_session(session)
-
-    billing_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
-    access_token = create_access_token(
-        user.id,
-        user.tenant_id,
-        user.role.value,
-        additional_claims=billing_claims,
-    )
-    refresh_token = create_refresh_token(user.id, user.tenant_id)
+    tokens = await _issue_session_tokens(session, user=user)
+    await session.flush()
+    await commit_session(session)
     return {
         "status": "mfa_enabled",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
+        "access_token": tokens["access_token"],
+        "refresh_token": tokens["refresh_token"],
         "recovery_codes": plain_codes,
     }
 

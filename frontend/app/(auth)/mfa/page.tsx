@@ -6,6 +6,7 @@ import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { getSession, signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
+import apiClient from "@/lib/api/client"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { getSafeCallbackUrl } from "@/lib/login-flow"
@@ -73,18 +74,28 @@ function MFAPageContent() {
         payload: verifyPayload,
       })
 
-      const signInResult = await signIn("credentials", {
-        redirect: false,
-        ...verifyPayload,
-      })
-      console.debug("[mfa-page] mfa verify result", signInResult)
+      const verifyResponse = await apiClient.post<{
+        access_token?: string
+        refresh_token?: string
+      }>("/api/v1/auth/mfa/verify", verifyPayload)
+      console.debug("[mfa-page] backend mfa verify response", verifyResponse)
 
-      if (signInResult?.error) {
-        setFormError("Invalid verification code")
+      const accessToken = verifyResponse.data?.access_token
+      const refreshToken = verifyResponse.data?.refresh_token
+      if (!accessToken || !refreshToken) {
+        setFormError("Unable to verify MFA right now. Please try again.")
         return
       }
-      if (!signInResult || signInResult.ok !== true) {
-        setFormError("Unable to verify MFA right now. Please try again.")
+
+      const signInResult = await signIn("credentials", {
+        redirect: false,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      console.debug("[mfa-page] session sign-in result", signInResult)
+
+      if (signInResult?.error || !signInResult || signInResult.ok !== true) {
+        setFormError("MFA verified but session setup failed. Please sign in again.")
         return
       }
 
@@ -103,6 +114,19 @@ function MFAPageContent() {
       router.push(callbackUrl)
     } catch (error) {
       console.debug("[mfa-page] mfa verify threw", error)
+      const message = error instanceof Error ? error.message.toLowerCase() : ""
+      if (message.includes("expired")) {
+        setFormError("MFA session expired. Please sign in again.")
+        return
+      }
+      if (message.includes("invalid totp") || message.includes("verification code")) {
+        setFormError("Invalid verification code")
+        return
+      }
+      if (message.includes("mfa is not configured")) {
+        setFormError("MFA is not configured for this account. Please sign in again.")
+        return
+      }
       setFormError("Unable to verify MFA right now. Please try again.")
     } finally {
       setIsSubmitting(false)
