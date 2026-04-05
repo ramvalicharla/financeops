@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { getToken } from "next-auth/jwt"
+import { getAuthSecret } from "@/lib/auth-secret"
 
 const PUBLIC_PATH_PREFIXES = [
   "/login",
@@ -129,7 +130,7 @@ export async function middleware(request: NextRequest) {
 
   const token = await getToken({
     req: request,
-    secret: process.env.NEXTAUTH_SECRET,
+    secret: getAuthSecret(),
   })
 
   if (!token) {

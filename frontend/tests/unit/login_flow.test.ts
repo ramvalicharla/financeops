@@ -9,10 +9,10 @@ import {
 describe("login flow helpers", () => {
   it("accepts only local callback URLs", () => {
     expect(getSafeCallbackUrl("/dashboard/cfo")).toBe("/dashboard/cfo")
-    expect(getSafeCallbackUrl("https://malicious.example")).toBe("/sync")
-    expect(getSafeCallbackUrl("//malicious.example")).toBe("/sync")
-    expect(getSafeCallbackUrl("dashboard")).toBe("/sync")
-    expect(getSafeCallbackUrl(null)).toBe("/sync")
+    expect(getSafeCallbackUrl("https://malicious.example")).toBe("/dashboard")
+    expect(getSafeCallbackUrl("//malicious.example")).toBe("/dashboard")
+    expect(getSafeCallbackUrl("dashboard")).toBe("/dashboard")
+    expect(getSafeCallbackUrl(null)).toBe("/dashboard")
   })
 
   it("detects token payloads returned by backend login", () => {

@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials"
 import { CredentialsSignin } from "next-auth"
 import type { EntityRole } from "@/types/api"
 import type { BackendLoginPayload, LoginTokenPayload } from "@/lib/login-flow"
+import { getAuthSecret } from "@/lib/auth-secret"
 
 export type UserRole =
   | "super_admin"
@@ -145,6 +146,7 @@ const refreshAccessToken = async (token: {
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  secret: getAuthSecret(),
   providers: [
     Credentials({
       name: "credentials",
