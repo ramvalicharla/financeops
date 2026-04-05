@@ -4,7 +4,7 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
@@ -14,6 +14,11 @@ from financeops.services.audit_service import log_action
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
+
+
+def normalize_email(email: str) -> str:
+    """Return the canonical email form used across auth and user creation."""
+    return email.strip().lower()
 
 
 async def create_user(
@@ -26,8 +31,9 @@ async def create_user(
     role: UserRole = UserRole.read_only,
 ) -> IamUser:
     """Create a new user. Raises ValidationError if email already exists."""
+    normalized_email = normalize_email(email)
     existing = await session.execute(
-        select(IamUser).where(IamUser.email == email.lower().strip())
+        select(IamUser).where(func.lower(IamUser.email) == normalized_email)
     )
     if existing.scalar_one_or_none() is not None:
         raise ValidationError(f"Email {email} is already registered")
@@ -36,7 +42,7 @@ async def create_user(
         session,
         record=IamUser(
             tenant_id=tenant_id,
-            email=email.lower().strip(),
+            email=normalized_email,
             hashed_password=hash_password(password),
             full_name=full_name,
             role=role,
@@ -48,7 +54,7 @@ async def create_user(
             tenant_id=tenant_id,
             action="user.created",
             resource_type="user",
-            resource_name=email.lower().strip(),
+            resource_name=normalized_email,
             new_value={"role": role.value, "full_name": full_name},
         ),
     )
@@ -69,10 +75,18 @@ async def get_user_by_id(session: AsyncSession, user_id: uuid.UUID) -> IamUser:
 
 async def get_user_by_email(session: AsyncSession, email: str) -> IamUser | None:
     """Return user by email (case-insensitive), or None if not found."""
+    normalized_email = normalize_email(email)
     result = await session.execute(
-        select(IamUser).where(IamUser.email == email.lower().strip())
+        select(IamUser)
+        .where(func.lower(IamUser.email) == normalized_email)
+        .order_by(IamUser.created_at.asc(), IamUser.id.asc())
+        .limit(2)
     )
-    return result.scalar_one_or_none()
+    rows = list(result.scalars().all())
+    if len(rows) > 1:
+        log.error("Duplicate normalized emails found for %s", normalized_email)
+        return None
+    return rows[0] if rows else None
 
 
 async def list_tenant_users(

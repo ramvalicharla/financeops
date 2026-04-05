@@ -8,6 +8,7 @@ import { getSession, signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
+import { getSafeCallbackUrl } from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const mfaSchema = z.object({
@@ -34,6 +35,7 @@ function MFAPageContent() {
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const challengeToken = searchParams?.get("challenge") ?? null
+  const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
 
   const { handleSubmit, setValue, watch } = useForm<MFAVerifyForm>({
     defaultValues: { code: "" },
@@ -74,7 +76,7 @@ function MFAPageContent() {
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
       }
-      router.push("/sync")
+      router.push(callbackUrl)
     } finally {
       setIsSubmitting(false)
     }

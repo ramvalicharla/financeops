@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.security import hash_password
 from financeops.db.models.users import IamUser
 
 
@@ -100,6 +101,36 @@ async def test_login_with_wrong_password_returns_401(
         json={"email": "testuser@example.com", "password": "WrongPassword!"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_is_case_insensitive_for_existing_user_rows(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user,
+) -> None:
+    mixed_case_email = f"Invited.User.{uuid.uuid4().hex[:8]}@Example.COM"
+    invited_user = IamUser(
+        tenant_id=test_user.tenant_id,
+        email=mixed_case_email,
+        hashed_password=hash_password("InvitePass123!"),
+        full_name="Invited User",
+        role=test_user.role,
+        is_active=True,
+        mfa_enabled=False,
+    )
+    async_session.add(invited_user)
+    await async_session.flush()
+
+    response = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": mixed_case_email.lower(), "password": "InvitePass123!"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert "access_token" in data
+    assert "refresh_token" in data
 
 
 @pytest.mark.asyncio

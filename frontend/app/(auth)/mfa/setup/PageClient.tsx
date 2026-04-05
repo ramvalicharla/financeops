@@ -2,13 +2,14 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
 import { getSession, signIn } from "next-auth/react"
 import apiClient from "@/lib/api/client"
 import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/Dialog"
+import { getSafeCallbackUrl } from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
 
 type Step = "generate" | "verify" | "done"
@@ -42,7 +43,9 @@ function MaskedSecret({ secret }: { secret: string }) {
 
 export default function MFASetupPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const setTenant = useTenantStore((state) => state.setTenant)
+  const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
   const [step, setStep] = useState<Step>("generate")
   const [secret, setSecret] = useState("")
   const [qrUrl, setQrUrl] = useState("")
@@ -174,7 +177,7 @@ export default function MFASetupPage() {
       setRecoveryDialogOpen(false)
       setRecoveryCodes([])
       setSessionTokens(null)
-      router.push("/dashboard")
+      router.push(callbackUrl)
     } finally {
       setLoading(false)
     }

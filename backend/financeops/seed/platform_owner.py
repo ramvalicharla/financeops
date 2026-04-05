@@ -14,6 +14,7 @@ from financeops.core.security import hash_password
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.session import AsyncSessionLocal
+from financeops.services.user_service import normalize_email
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 PLATFORM_TENANT_ID = uuid.UUID(int=0)
@@ -28,7 +29,7 @@ class SeedAccount:
 
 
 def _normalise_email(value: str) -> str:
-    return value.strip().lower()
+    return normalize_email(value)
 
 
 def collect_seed_accounts_from_env() -> list[SeedAccount]:
@@ -123,7 +124,7 @@ async def seed_platform_users(
                 {
                     "id": uuid.uuid4(),
                     "tenant_id": PLATFORM_TENANT_ID,
-                    "email": account.email,
+                    "email": normalize_email(account.email),
                     "hashed_password": hash_password(account.password),
                     "full_name": account.full_name,
                     "role": account.role,

@@ -2,6 +2,7 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { CredentialsSignin } from "next-auth"
 import type { EntityRole } from "@/types/api"
+import type { BackendLoginPayload, LoginTokenPayload } from "@/lib/login-flow"
 
 export type UserRole =
   | "super_admin"
@@ -34,19 +35,6 @@ interface BackendEnvelope<T> {
   } | null
 }
 
-interface LoginTokenPayload {
-  access_token: string
-  refresh_token: string
-  token_type: string
-}
-
-interface LoginChallengePayload {
-  requires_mfa: true
-  mfa_challenge_token: string
-}
-
-type LoginPayload = LoginTokenPayload | LoginChallengePayload
-
 interface MePayload {
   user_id: string
   email: string
@@ -63,6 +51,14 @@ interface MePayload {
 
 class MFARequiredError extends CredentialsSignin {
   code = "mfa_required"
+}
+
+class PasswordChangeRequiredError extends CredentialsSignin {
+  code = "password_change_required"
+}
+
+class MFASetupRequiredError extends CredentialsSignin {
+  code = "mfa_setup_required"
 }
 
 const parseJwtExpMs = (token: string): number => {
@@ -185,7 +181,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!totpCode) {
             return null
           }
-          const mfaEnvelope = await fetchEnvelope<LoginPayload>(
+          const mfaEnvelope = await fetchEnvelope<LoginTokenPayload>(
             "/api/v1/auth/mfa/verify",
             {
               method: "POST",
@@ -206,7 +202,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!email || !password) {
             return null
           }
-          const loginEnvelope = await fetchEnvelope<LoginPayload>(
+          const loginEnvelope = await fetchEnvelope<BackendLoginPayload>(
             "/api/v1/auth/login",
             {
               method: "POST",
@@ -226,6 +222,18 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           }
           if ("requires_mfa" in loginEnvelope.data && loginEnvelope.data.requires_mfa) {
             throw new MFARequiredError()
+          }
+          if (
+            "requires_password_change" in loginEnvelope.data &&
+            loginEnvelope.data.requires_password_change
+          ) {
+            throw new PasswordChangeRequiredError()
+          }
+          if (
+            "requires_mfa_setup" in loginEnvelope.data &&
+            loginEnvelope.data.requires_mfa_setup
+          ) {
+            throw new MFASetupRequiredError()
           }
           if (!("access_token" in loginEnvelope.data)) {
             return null

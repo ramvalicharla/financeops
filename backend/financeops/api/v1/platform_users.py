@@ -17,6 +17,7 @@ from financeops.config import settings
 from financeops.core.security import hash_password
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.audit_service import log_action
+from financeops.services.user_service import normalize_email
 from financeops.shared_kernel.pagination import Paginated
 
 log = logging.getLogger(__name__)
@@ -164,6 +165,7 @@ async def create_platform_user(
     current_user: IamUser = Depends(get_current_user),
 ) -> dict:
     _require_platform_owner(current_user)
+    normalized_email = normalize_email(body.email)
     if _role_value(body.role) not in {
         UserRole.platform_admin.value,
         UserRole.platform_support.value,
@@ -172,7 +174,7 @@ async def create_platform_user(
 
     existing = (
         await session.execute(
-            select(IamUser).where(IamUser.email == body.email.lower().strip())
+            select(IamUser).where(IamUser.email == normalized_email)
         )
     ).scalar_one_or_none()
     if existing is not None:
@@ -181,7 +183,7 @@ async def create_platform_user(
     temp_password = secrets.token_urlsafe(12)
     user = IamUser(
         tenant_id=PLATFORM_TENANT_ID,
-        email=body.email.lower().strip(),
+        email=normalized_email,
         hashed_password=hash_password(temp_password),
         full_name=body.full_name.strip(),
         role=body.role,

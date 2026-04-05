@@ -30,6 +30,7 @@ from financeops.services.tenant_service import (
 from financeops.services.user_service import (
     deactivate_user,
     list_tenant_users,
+    normalize_email,
     update_user_role,
 )
 from financeops.utils.display_scale import (
@@ -177,7 +178,7 @@ async def invite_user(
 
     new_user = IamUser(
         tenant_id=user.tenant_id,
-        email=body.email,
+        email=normalize_email(body.email),
         full_name=body.full_name,
         role=body.role,
         hashed_password="INVITE_PENDING",

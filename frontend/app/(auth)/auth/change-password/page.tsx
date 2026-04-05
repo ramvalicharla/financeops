@@ -1,12 +1,13 @@
 "use client"
 
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
 import apiClient from "@/lib/api/client"
 import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { getSafeCallbackUrl } from "@/lib/login-flow"
 
 const PASSWORD_POLICY_HINT =
   "Minimum 8 characters, including 1 uppercase letter, 1 number, and 1 special character."
@@ -25,6 +26,8 @@ type ChangePasswordResponse =
 
 export default function ChangePasswordPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -73,11 +76,11 @@ export default function ChangePasswordPage() {
         response.data.requires_mfa_setup
       ) {
         sessionStorage.setItem("mfa_setup_token", response.data.setup_token)
-        router.push("/mfa/setup")
+        router.push(`/mfa/setup?callbackUrl=${encodeURIComponent(callbackUrl)}`)
         return
       }
 
-      router.push("/login?reset=true")
+      router.push(`/login?reset=true&callbackUrl=${encodeURIComponent(callbackUrl)}`)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to update password")
     } finally {
@@ -133,4 +136,3 @@ export default function ChangePasswordPage() {
     </div>
   )
 }
-

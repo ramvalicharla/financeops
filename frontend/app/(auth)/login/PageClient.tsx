@@ -3,13 +3,18 @@
 import { Suspense, useState } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
-import { getSession } from "next-auth/react"
+import { getSession, signIn } from "next-auth/react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import apiClient, { BASE_URL } from "@/lib/api/client"
+import {
+  getSafeCallbackUrl,
+  isLoginTokenPayload,
+  type BackendLoginPayload,
+} from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const loginSchema = z.object({
@@ -18,52 +23,7 @@ const loginSchema = z.object({
 })
 
 type LoginFormValues = z.infer<typeof loginSchema>
-type CredentialsCallbackResult = {
-  ok?: boolean
-  status?: number
-  error?: string | null
-  code?: string | null
-  url?: string | null
-}
-
-type LoginApiPayload =
-  | { requires_mfa: true; mfa_challenge_token: string }
-  | { requires_password_change: true; password_change_token: string; status?: string }
-  | { requires_mfa_setup: true; setup_token: string; status?: string }
-  | { access_token: string; refresh_token: string; token_type: string }
-
-const BACKEND_LOGIN_TIMEOUT_MS = 3000
-
-const performCredentialsSignIn = async (
-  email: string,
-  password: string,
-): Promise<CredentialsCallbackResult> => {
-  const csrfResponse = await fetch("/api/auth/csrf", {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  })
-  const csrfPayload = (await csrfResponse.json()) as { csrfToken?: string }
-  const csrfToken = csrfPayload.csrfToken
-  if (!csrfToken) {
-    throw new Error("Missing CSRF token")
-  }
-
-  const body = new URLSearchParams({
-    csrfToken,
-    email,
-    password,
-    callbackUrl: "/sync",
-    json: "true",
-  })
-
-  const response = await fetch("/api/auth/callback/credentials", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  })
-
-  return (await response.json()) as CredentialsCallbackResult
-}
+const BACKEND_LOGIN_TIMEOUT_MS = 8000
 
 export default function LoginPage() {
   return (
@@ -79,9 +39,9 @@ function LoginPageContent() {
   const setTenant = useTenantStore((state) => state.setTenant)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
-  const [mfaChallengeToken, setMfaChallengeToken] = useState<string | null>(null)
   const registered = searchParams?.get("registered")
   const reset = searchParams?.get("reset")
+  const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
 
   const { register, handleSubmit, formState } = useForm<LoginFormValues>({
     defaultValues: {
@@ -105,99 +65,72 @@ function LoginPageContent() {
         return
       }
 
-      let challengeTokenFromApi: string | null = null
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), BACKEND_LOGIN_TIMEOUT_MS)
+
       try {
-        const controller = new AbortController()
-        const timeoutId = window.setTimeout(
-          () => controller.abort(),
-          BACKEND_LOGIN_TIMEOUT_MS,
+        const loginResponse = await apiClient.post<BackendLoginPayload>(
+          "/api/v1/auth/login",
+          {
+            email: parsed.data.email,
+            password: parsed.data.password,
+          },
+          {
+            signal: controller.signal,
+            timeout: BACKEND_LOGIN_TIMEOUT_MS,
+          },
         )
-        try {
-          const loginResponse = await apiClient.post<LoginApiPayload>(
-            "/api/v1/auth/login",
-            {
-              email: parsed.data.email,
-              password: parsed.data.password,
-            },
-            {
-              signal: controller.signal,
-              timeout: BACKEND_LOGIN_TIMEOUT_MS,
-            },
-          )
-          const loginData = loginResponse.data
+        const loginData = loginResponse.data
 
-          if (
-            loginData &&
-            "requires_password_change" in loginData &&
-            loginData.requires_password_change
-          ) {
-            sessionStorage.setItem("password_change_token", loginData.password_change_token)
-            router.push("/auth/change-password")
-            return
-          }
-
-          if (
-            loginData &&
-            "requires_mfa_setup" in loginData &&
-            loginData.requires_mfa_setup
-          ) {
-            sessionStorage.setItem("mfa_setup_token", loginData.setup_token)
-            router.push("/mfa/setup")
-            return
-          }
-
-          if (
-            loginData &&
-            "requires_mfa" in loginData &&
-            loginData.requires_mfa
-          ) {
-            challengeTokenFromApi = loginData.mfa_challenge_token
-            setMfaChallengeToken(loginData.mfa_challenge_token)
-            router.push(
-              `/mfa?challenge=${encodeURIComponent(loginData.mfa_challenge_token)}`,
-            )
-            return
-          }
-        } finally {
-          window.clearTimeout(timeoutId)
-        }
-      } catch {
-        // Fall back to credentials callback flow (used by local E2E mocks).
-      }
-
-      const result = await performCredentialsSignIn(
-        parsed.data.email,
-        parsed.data.password,
-      )
-
-      const resultSignature = `${result?.code ?? ""} ${result?.error ?? ""} ${result?.url ?? ""}`.toLowerCase()
-      const requiresMFA =
-        resultSignature.includes("mfa_required") ||
-        resultSignature.includes("totp")
-
-      if (requiresMFA) {
-        const challengeToken = challengeTokenFromApi ?? mfaChallengeToken
-        if (challengeToken) {
-          router.push(`/mfa?challenge=${encodeURIComponent(challengeToken)}`)
+        if (
+          "requires_password_change" in loginData &&
+          loginData.requires_password_change
+        ) {
+          sessionStorage.setItem("password_change_token", loginData.password_change_token)
+          router.push(`/auth/change-password?callbackUrl=${encodeURIComponent(callbackUrl)}`)
           return
         }
-        router.push("/mfa")
-        return
-      }
 
-      if (
-        !result ||
-        result.ok !== true ||
-        Boolean(result.error) ||
-        (typeof result.status === "number" && result.status >= 400)
-      ) {
-        setFormError("Invalid email or password")
-        return
-      }
+        if (
+          "requires_mfa_setup" in loginData &&
+          loginData.requires_mfa_setup
+        ) {
+          sessionStorage.setItem("mfa_setup_token", loginData.setup_token)
+          router.push(`/mfa/setup?callbackUrl=${encodeURIComponent(callbackUrl)}`)
+          return
+        }
 
-      const session = await getSession()
-      const user = session?.user
-      if (user?.tenant_id && user.tenant_slug) {
+        if ("requires_mfa" in loginData && loginData.requires_mfa) {
+          const mfaUrl = new URL("/mfa", window.location.origin)
+          mfaUrl.searchParams.set("challenge", loginData.mfa_challenge_token)
+          mfaUrl.searchParams.set("callbackUrl", callbackUrl)
+          router.push(`${mfaUrl.pathname}${mfaUrl.search}`)
+          return
+        }
+
+        if (!isLoginTokenPayload(loginData)) {
+          setFormError("Unable to complete sign-in. Please try again.")
+          return
+        }
+
+        const signInResult = await signIn("credentials", {
+          redirect: false,
+          access_token: loginData.access_token,
+          refresh_token: loginData.refresh_token,
+        })
+
+        if (!signInResult || signInResult.ok !== true || signInResult.error) {
+          setFormError("Unable to establish session. Please try again.")
+          return
+        }
+
+        const session = await getSession()
+        const user = session?.user
+        if (!user?.tenant_id || !user.tenant_slug) {
+          setFormError("Sign-in completed but user context is missing. Please try again.")
+          return
+        }
+
         setTenant({
           tenant_id: user.tenant_id,
           tenant_slug: user.tenant_slug,
@@ -206,22 +139,21 @@ function LoginPageContent() {
           entity_roles: user.entity_roles,
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
-      }
-      router.push("/sync")
-    } catch (error) {
-      const message = error instanceof Error ? error.message.toLowerCase() : ""
-      if (
-        message.includes("mfa_required") ||
-        message.includes("totp")
-      ) {
-        if (mfaChallengeToken) {
-          router.push(`/mfa?challenge=${encodeURIComponent(mfaChallengeToken)}`)
+        router.push(callbackUrl)
+      } catch (error) {
+        const message = error instanceof Error ? error.message.toLowerCase() : ""
+        if (message.includes("invalid email or password")) {
+          setFormError("Invalid email or password")
           return
         }
-        router.push("/mfa")
-        return
+        if (message.includes("aborted")) {
+          setFormError("Sign-in timed out. Please try again.")
+          return
+        }
+        setFormError("Unable to sign in right now. Please try again.")
+      } finally {
+        window.clearTimeout(timeoutId)
       }
-      setFormError("Invalid email or password")
     } finally {
       setIsSubmitting(false)
     }
