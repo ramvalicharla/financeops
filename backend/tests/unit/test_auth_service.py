@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -26,6 +27,20 @@ async def test_setup_totp_returns_secret_and_uri(
     assert "qr_code_url" in result
     assert result["qr_code_url"].startswith("otpauth://")
     assert len(result["totp_secret"]) >= 16
+
+
+@pytest.mark.asyncio
+async def test_setup_totp_debug_logs_do_not_expose_secret_or_uri(
+    async_session: AsyncSession,
+    test_user,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.DEBUG, logger="financeops.services.auth_service"):
+        result = await setup_totp(test_user, async_session)
+
+    assert result["totp_secret"] not in caplog.text
+    assert result["qr_code_url"] not in caplog.text
+    assert "otpauth://" not in caplog.text
 
 
 def test_get_totp_uri_uses_canonical_google_authenticator_format() -> None:

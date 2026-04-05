@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 import pyotp
 import pytest
@@ -73,6 +74,29 @@ async def test_mfa_verify_with_valid_challenge_issues_tokens(
     assert "access_token" in data
     assert "refresh_token" in data
     assert await redis_client.get(f"mfa_challenge:{challenge_token}") is None
+
+
+@pytest.mark.asyncio
+async def test_mfa_verify_logs_do_not_expose_secret_or_code(
+    async_client: AsyncClient,
+    redis_client,
+    mfa_user,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    user, secret = mfa_user
+    challenge_token = await create_mfa_challenge(redis_client, user=user)
+    code = pyotp.TOTP(secret).now()
+
+    with caplog.at_level(logging.DEBUG, logger="financeops.services.auth_service"):
+        response = await async_client.post(
+            "/api/v1/auth/mfa/verify",
+            json={"mfa_challenge_token": challenge_token, "totp_code": code},
+        )
+
+    assert response.status_code == 200
+    assert secret not in caplog.text
+    assert code not in caplog.text
+    assert "otpauth://" not in caplog.text
 
 
 @pytest.mark.asyncio

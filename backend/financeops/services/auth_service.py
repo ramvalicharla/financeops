@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import logging
@@ -36,10 +35,6 @@ _REFRESH_TOKEN_EXPIRE_DAYS = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
 def _hash_token(token: str) -> str:
     """SHA-256 hash a token for safe storage."""
     return hashlib.sha256(token.encode()).hexdigest()
-
-
-def _mfa_uri_b64(uri: str) -> str:
-    return base64.urlsafe_b64encode(uri.encode("utf-8")).decode("ascii")
 
 
 async def login(
@@ -221,11 +216,10 @@ async def verify_mfa_challenge(
 
     secret = decrypt_field(user.totp_secret_encrypted)
     log.debug(
-        "MFA challenge verify debug user=%s tenant=%s otp_input=%s mfa_seed=%s",
+        "MFA challenge verify attempt user=%s tenant=%s method=%s",
         str(user.id),
         str(user.tenant_id),
-        str(totp_code).strip(),
-        secret,
+        "recovery_code" if recovery_code else "totp_code",
     )
     if recovery_code:
         recovery_hash = hashlib.sha256(recovery_code.strip().upper().encode("utf-8")).hexdigest()
@@ -245,12 +239,6 @@ async def verify_mfa_challenge(
         if not totp_code:
             log.info("MFA verify rejected: missing_totp_code user=%s", str(user.id))
             raise AuthenticationError("TOTP code required")
-        log.debug(
-            "MFA challenge verify debug user=%s tenant=%s otp_input=%s",
-            str(user.id),
-            str(user.tenant_id),
-            str(totp_code).strip(),
-        )
         if not verify_totp(secret, totp_code):
             log.info("MFA verify rejected: invalid_totp_code user=%s", str(user.id))
             raise AuthenticationError("Invalid TOTP code")
@@ -463,12 +451,10 @@ async def setup_totp(user: IamUser, session: AsyncSession) -> dict:
     )
     uri = get_totp_uri(secret, user.email)
     log.debug(
-        "MFA setup debug user=%s tenant=%s issuer=FinanceOps account=%s mfa_seed=%s mfa_uri_b64=%s",
+        "MFA setup generated user=%s tenant=%s issuer=FinanceOps account=%s",
         str(user.id),
         str(user.tenant_id),
         user.email.strip().lower(),
-        secret,
-        _mfa_uri_b64(uri),
     )
     return {
         "totp_secret": secret,
