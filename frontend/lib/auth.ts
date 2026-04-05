@@ -310,6 +310,10 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         }
       }
 
+      if (token.error === "RefreshAccessTokenError") {
+        return token
+      }
+
       if (Date.now() < (token.access_token_expires_at ?? 0)) {
         return token
       }

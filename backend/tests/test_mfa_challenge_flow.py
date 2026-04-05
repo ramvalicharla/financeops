@@ -8,6 +8,7 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+from unittest.mock import AsyncMock
 
 from financeops.core.security import encrypt_field, generate_totp_secret
 from financeops.services.auth_service import create_mfa_challenge
@@ -72,6 +73,28 @@ async def test_mfa_verify_with_valid_challenge_issues_tokens(
     assert "access_token" in data
     assert "refresh_token" in data
     assert await redis_client.get(f"mfa_challenge:{challenge_token}") is None
+
+
+@pytest.mark.asyncio
+async def test_mfa_verify_commits_session_when_tokens_issued(
+    async_client: AsyncClient,
+    redis_client,
+    mfa_user,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user, secret = mfa_user
+    challenge_token = await create_mfa_challenge(redis_client, user=user)
+    code = pyotp.TOTP(secret).now()
+    commit_spy = AsyncMock()
+    monkeypatch.setattr("financeops.api.v1.auth.commit_session", commit_spy)
+
+    response = await async_client.post(
+        "/api/v1/auth/mfa/verify",
+        json={"mfa_challenge_token": challenge_token, "totp_code": code},
+    )
+
+    assert response.status_code == 200
+    assert commit_spy.await_count == 1
 
 
 @pytest.mark.asyncio

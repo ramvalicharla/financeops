@@ -93,6 +93,24 @@ async def test_login_with_correct_credentials_returns_tokens(
 
 
 @pytest.mark.asyncio
+async def test_login_commits_session_when_tokens_issued(
+    async_client: AsyncClient,
+    test_user,
+    monkeypatch,
+) -> None:
+    commit_spy = AsyncMock()
+    monkeypatch.setattr("financeops.api.v1.auth.commit_session", commit_spy)
+
+    response = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "testuser@example.com", "password": "TestPass123!"},
+    )
+
+    assert response.status_code == 200
+    assert commit_spy.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_login_with_wrong_password_returns_401(
     async_client: AsyncClient, test_user
 ):
@@ -184,6 +202,31 @@ async def test_refresh_token_rotation(
         json={"refresh_token": initial_refresh},
     )
     assert old_refresh_resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_refresh_commits_rotated_session(
+    async_client: AsyncClient,
+    test_user,
+    monkeypatch,
+) -> None:
+    login_resp = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": "testuser@example.com", "password": "TestPass123!"},
+    )
+    assert login_resp.status_code == 200
+    initial_refresh = login_resp.json()["data"]["refresh_token"]
+
+    commit_spy = AsyncMock()
+    monkeypatch.setattr("financeops.api.v1.auth.commit_session", commit_spy)
+
+    refresh_resp = await async_client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": initial_refresh},
+    )
+
+    assert refresh_resp.status_code == 200
+    assert commit_spy.await_count == 1
 
 
 @pytest.mark.asyncio

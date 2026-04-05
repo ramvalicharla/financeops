@@ -411,6 +411,7 @@ async def mfa_verify(
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
+    await commit_session(session)
     return tokens
 
 
@@ -474,6 +475,7 @@ async def user_login(
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
+    await commit_session(session)
     return tokens
 
 
@@ -591,6 +593,7 @@ async def token_refresh(
     await _set_refresh_tenant_context(session, body.refresh_token)
     tokens = await refresh_tokens(session, body.refresh_token)
     await session.flush()
+    await commit_session(session)
     return tokens
 
 
@@ -606,6 +609,7 @@ async def user_logout(
     await _set_refresh_tenant_context(session, body.refresh_token)
     await logout(session, body.refresh_token)
     await session.flush()
+    await commit_session(session)
     return {"logged_out": True}
 
 
