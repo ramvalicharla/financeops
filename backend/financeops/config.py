@@ -118,6 +118,7 @@ class Settings(BaseSettings):
     STARTUP_FAIL_FAST: bool = False
     AUTO_MIGRATE: bool = False
     MIGRATION_FAIL_FAST: bool = False
+    SEED_ON_STARTUP: bool = False
 
     # Platform
     PLATFORM_TIMEZONE: str = "UTC"

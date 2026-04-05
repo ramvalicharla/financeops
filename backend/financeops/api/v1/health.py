@@ -30,14 +30,25 @@ def _latency_ms(started_at: float) -> float:
     return round((time.perf_counter() - started_at) * 1000, 2)
 
 
+def _error_detail(exc: Exception) -> str:
+    detail = str(exc).strip()
+    if detail:
+        return f"{exc.__class__.__name__}: {detail}"
+    return exc.__class__.__name__
+
+
 async def _check_database() -> dict[str, Any]:
     started_at = time.perf_counter()
     try:
         async with AsyncSessionLocal() as session:
-            await asyncio.wait_for(session.execute(text("SELECT 1")), timeout=2.0)
+            await asyncio.wait_for(session.execute(text("SELECT 1")), timeout=5.0)
         return {"status": "healthy", "latency_ms": _latency_ms(started_at)}
-    except Exception:
-        return {"status": "unhealthy", "latency_ms": _latency_ms(started_at)}
+    except Exception as exc:
+        return {
+            "status": "unhealthy",
+            "latency_ms": _latency_ms(started_at),
+            "error": _error_detail(exc),
+        }
 
 
 async def _check_redis() -> dict[str, Any]:
@@ -49,40 +60,50 @@ async def _check_redis() -> dict[str, Any]:
             encoding="utf-8",
             decode_responses=True,
         )
-        await asyncio.wait_for(client.ping(), timeout=1.0)
+        await asyncio.wait_for(client.ping(), timeout=3.0)
         return {"status": "healthy", "latency_ms": _latency_ms(started_at)}
-    except Exception:
-        return {"status": "unhealthy", "latency_ms": _latency_ms(started_at)}
+    except Exception as exc:
+        return {
+            "status": "unhealthy",
+            "latency_ms": _latency_ms(started_at),
+            "error": _error_detail(exc),
+        }
     finally:
         if client is not None:
             await client.aclose()
 
 
-def _inspect_active_workers() -> int:
+def _inspect_active_workers() -> tuple[str, int]:
     inspector = celery_app.control.inspect(timeout=1.0)
-    ping = inspector.ping() if inspector is not None else None
-    if not ping:
-        return 0
-    return len(ping)
+    if inspector is None:
+        return ("broker_unreachable", 0)
+    ping = inspector.ping()
+    if ping is None:
+        return ("broker_unreachable", 0)
+    workers = len(ping)
+    if workers == 0:
+        return ("no_workers", 0)
+    return ("healthy", workers)
 
 
 async def _check_workers() -> dict[str, Any]:
     started_at = time.perf_counter()
     try:
-        workers = await asyncio.wait_for(
+        worker_status, workers = await asyncio.wait_for(
             asyncio.to_thread(_inspect_active_workers),
             timeout=1.5,
         )
         return {
-            "status": "healthy" if workers > 0 else "no_workers",
+            "status": worker_status,
             "active_workers": workers,
             "latency_ms": _latency_ms(started_at),
         }
-    except Exception:
+    except Exception as exc:
         return {
-            "status": "no_workers",
+            "status": "broker_unreachable",
             "active_workers": 0,
             "latency_ms": _latency_ms(started_at),
+            "error": _error_detail(exc),
         }
 
 
@@ -133,7 +154,14 @@ async def _check_ai() -> dict[str, Any]:
 
 async def _check_queues() -> dict[str, Any]:
     monitor = get_celery_monitor()
-    depths = await monitor.get_queue_depths()
+    try:
+        depths = await monitor.get_queue_depths()
+    except Exception as exc:
+        return {
+            "status": "unhealthy",
+            "queues": {},
+            "error": _error_detail(exc),
+        }
     response: dict[str, dict[str, Any]] = {}
     any_backlog = False
     for queue_name in ("file_scan", "erp_sync", "report_gen", "ai_inference"):
@@ -158,14 +186,25 @@ async def _check_temporal() -> dict[str, str]:
 
 
 async def _build_health_payload() -> dict[str, Any]:
-    db_check, redis_check, ai_check, queue_check, temporal_check, workers_check, migration_check = await asyncio.gather(
-        _check_database(),
+    # Run DB first, then migration state check to avoid connection contention.
+    db_check = await _check_database()
+    if db_check["status"] == "healthy":
+        migration_check = await _check_migrations()
+    else:
+        migration_check = {
+            "status": "error",
+            "latency_ms": 0.0,
+            "current_head": None,
+            "current_revision": None,
+            "detail": "Skipped because database check is unhealthy.",
+        }
+
+    redis_check, ai_check, queue_check, temporal_check, workers_check = await asyncio.gather(
         _check_redis(),
         _check_ai(),
         _check_queues(),
         _check_temporal(),
         _check_workers(),
-        _check_migrations(),
     )
 
     checks = {
@@ -184,7 +223,13 @@ async def _build_health_payload() -> dict[str, Any]:
     if settings.APP_ENVIRONMENT.lower() != "production":
         overall = "healthy" if checks["database"] == "healthy" and checks["redis"] == "healthy" else "degraded"
     else:
-        if checks["database"] == "unhealthy" or checks["redis"] == "unhealthy" or checks["ai"] == "unhealthy":
+        if (
+            checks["database"] == "unhealthy"
+            or checks["redis"] == "unhealthy"
+            or checks["ai"] == "unhealthy"
+            or checks["queues"] == "unhealthy"
+            or checks["workers"] == "broker_unreachable"
+        ):
             overall = "unhealthy"
         elif checks["ai"] == "degraded" or checks["queues"] == "degraded" or checks["workers"] == "no_workers":
             overall = "degraded"
@@ -197,6 +242,13 @@ async def _build_health_payload() -> dict[str, Any]:
         "status": legacy_status,
         "health_status": overall,
         "checks": checks,
+        "check_details": {
+            "database": db_check,
+            "redis": redis_check,
+            "queues": queue_check,
+            "workers": workers_check,
+            "migrations": migration_check,
+        },
         "ai": ai_check,
         "queues": queue_check["queues"],
         "temporal": temporal_check,

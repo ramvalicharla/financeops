@@ -40,8 +40,9 @@ class CeleryMonitor:
                 queue_name: int(results[index])
                 for index, queue_name in enumerate(self.QUEUE_KEYS.keys())
             }
-        except Exception:
-            return {queue_name: 0 for queue_name in self.QUEUE_KEYS.keys()}
+        except Exception as exc:
+            log.error("celery_queue_depth_probe_failed", extra={"error": str(exc)})
+            raise RuntimeError(f"Redis queue depth probe failed: {exc}") from exc
         finally:
             await client.aclose()
 
@@ -118,4 +119,3 @@ def connect_task_failure_signal() -> None:
             kwargs=kwargs,
             **extra,
         )
-

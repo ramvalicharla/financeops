@@ -92,6 +92,7 @@ from financeops.core.migration_checker import enforce_migration_state
 from financeops.db.session import engine
 from financeops.migrations.run import run_migrations_to_head
 from financeops.seed.coa import seed_coa_industry_templates
+from financeops.seed.platform_owner import seed_platform_users_from_env
 
 log = logging.getLogger(__name__)
 configure_logging(log_level=settings.LOG_LEVEL)
@@ -293,6 +294,33 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 log.info("CoA seed completed (startup)")
             except Exception as exc:
                 log.error("CoA seed failed: %s", exc)
+
+            if settings.SEED_ON_STARTUP:
+                try:
+                    seed_result = await seed_platform_users_from_env()
+                    if seed_result.get("status") == "seeded":
+                        if int(seed_result.get("inserted", 0)) > 0:
+                            log.info(
+                                "Platform users seeded (inserted=%s existing=%s total=%s)",
+                                seed_result.get("inserted"),
+                                seed_result.get("existing"),
+                                seed_result.get("upserted"),
+                            )
+                        else:
+                            log.info(
+                                "Platform users already exist (existing=%s total=%s)",
+                                seed_result.get("existing"),
+                                seed_result.get("upserted"),
+                            )
+                    else:
+                        log.info(
+                            "Platform user seeding skipped (%s)",
+                            seed_result.get("reason", "unknown"),
+                        )
+                except Exception as exc:
+                    log.error("Platform user seed failed: %s", exc)
+            else:
+                log.info("SEED_ON_STARTUP disabled; skipping platform user seed")
         else:
             log.warning("Skipping CoA seed because migration state is not OK")
 
