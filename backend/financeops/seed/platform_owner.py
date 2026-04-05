@@ -86,8 +86,13 @@ async def _ensure_platform_tenant(session: AsyncSession) -> None:
             "timezone": "UTC",
             "status": TenantStatus.active.value,
             "is_platform_tenant": True,
+            "org_setup_complete": True,
+            "org_setup_step": 1,
         }
-    ).on_conflict_do_nothing(index_elements=["id"])
+    ).on_conflict_do_update(
+        index_elements=["id"],
+        set_={"org_setup_complete": True, "org_setup_step": 1},
+    )
     await session.execute(tenant_stmt)
     await session.flush()
 

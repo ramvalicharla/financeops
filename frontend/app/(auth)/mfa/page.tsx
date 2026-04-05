@@ -4,11 +4,12 @@ import Link from "next/link"
 import { Suspense, useState } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
-import { getSession, signIn } from "next-auth/react"
+import { signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import apiClient from "@/lib/api/client"
 import { Button } from "@/components/ui/button"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
+import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { getSafeCallbackUrl } from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -99,7 +100,7 @@ function MFAPageContent() {
         return
       }
 
-      const session = await getSession()
+      const session = await waitForEstablishedSession()
       const user = session?.user
       if (user?.tenant_id && user.tenant_slug) {
         setTenant({
@@ -111,7 +112,7 @@ function MFAPageContent() {
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
       }
-      router.push(callbackUrl)
+      navigateAfterAuth(callbackUrl)
     } catch (error) {
       console.debug("[mfa-page] mfa verify threw", error)
       const message = error instanceof Error ? error.message.toLowerCase() : ""

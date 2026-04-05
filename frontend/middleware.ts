@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { getToken } from "next-auth/jwt"
-import { getAuthSecret } from "@/lib/auth-secret"
+import type { Session } from "next-auth"
+import { auth } from "@/lib/auth"
 
 const PUBLIC_PATH_PREFIXES = [
   "/login",
@@ -101,7 +101,11 @@ const extractTenantSlug = (
   return headerFallback ?? "dev"
 }
 
-export async function middleware(request: NextRequest) {
+type AuthenticatedRequest = NextRequest & {
+  auth: Session | null
+}
+
+export default auth(async function middleware(request: AuthenticatedRequest) {
   const pathname = request.nextUrl.pathname
   const requestHeaders = new Headers(request.headers)
   const isE2EBypass =
@@ -128,12 +132,9 @@ export async function middleware(request: NextRequest) {
     return nextResponse()
   }
 
-  const token = await getToken({
-    req: request,
-    secret: getAuthSecret(),
-  })
+  const session = request.auth
 
-  if (!token) {
+  if (!session?.user) {
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set(
       "callbackUrl",
@@ -143,8 +144,8 @@ export async function middleware(request: NextRequest) {
   }
 
   const orgSetupComplete =
-    typeof token.org_setup_complete === "boolean"
-      ? token.org_setup_complete
+    typeof session.user.org_setup_complete === "boolean"
+      ? session.user.org_setup_complete
       : true
   if (!orgSetupComplete) {
     const isOrgSetupPath =
@@ -175,7 +176,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (request.nextUrl.pathname.startsWith("/admin")) {
-    const role = String(token.role ?? "")
+    const role = String(session.user.role ?? "")
     if (!["platform_owner", "platform_admin", "super_admin", "admin"].includes(role)) {
       return applySecurityHeaders(
         NextResponse.redirect(new URL("/dashboard", request.url)),
@@ -184,7 +185,7 @@ export async function middleware(request: NextRequest) {
     }
   }
   if (request.nextUrl.pathname.startsWith("/trust")) {
-    const role = String(token.role ?? "")
+    const role = String(session.user.role ?? "")
     if (role !== "finance_leader") {
       return applySecurityHeaders(
         NextResponse.redirect(new URL("/dashboard", request.url)),
@@ -194,7 +195,7 @@ export async function middleware(request: NextRequest) {
   }
 
   return nextResponse()
-}
+})
 
 export const config = {
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],

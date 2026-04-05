@@ -1,6 +1,4 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
-import { auth } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { createMetadata } from "@/lib/metadata"
 
@@ -36,12 +34,7 @@ export const metadata = createMetadata(
   "The financial operations platform built for 1B+ USD entities",
 )
 
-export default async function LandingPage() {
-  const session = await auth()
-  if (session) {
-    redirect("/dashboard")
-  }
-
+export default function LandingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <nav className="border-b border-border px-4 py-5 sm:px-6 lg:px-8">

@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
-import { getSession, signIn } from "next-auth/react"
+import { signIn } from "next-auth/react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { FormField } from "@/components/ui/FormField"
@@ -15,6 +15,7 @@ import {
   isLoginTokenPayload,
   type BackendLoginPayload,
 } from "@/lib/login-flow"
+import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const loginSchema = z.object({
@@ -124,7 +125,7 @@ function LoginPageContent() {
           return
         }
 
-        const session = await getSession()
+        const session = await waitForEstablishedSession()
         const user = session?.user
         if (!user?.tenant_id || !user.tenant_slug) {
           setFormError("Sign-in completed but user context is missing. Please try again.")
@@ -139,7 +140,7 @@ function LoginPageContent() {
           entity_roles: user.entity_roles,
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
-        router.push(callbackUrl)
+        navigateAfterAuth(callbackUrl)
       } catch (error) {
         const message = error instanceof Error ? error.message.toLowerCase() : ""
         if (message.includes("invalid email or password")) {

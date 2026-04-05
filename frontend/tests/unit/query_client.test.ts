@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { queryRetryDelay, shouldRetryQuery } from "../../app/providers"
+import { queryRetryDelay, shouldRetryQuery } from "../../lib/query-client"
 
 describe("query retry policy", () => {
   it("401 errors are not retried - auth failure is intentional.", () => {

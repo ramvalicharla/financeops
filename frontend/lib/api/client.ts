@@ -7,6 +7,7 @@ import { ZodError, type ZodType } from "zod"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
 import { useUIStore } from "@/lib/store/ui"
+import { shouldSignOutOnUnauthorized } from "@/lib/api/auth-unauthorized"
 import type { ApiResponse } from "@/types/api"
 
 type ApiErrorPayload = {
@@ -130,7 +131,7 @@ apiClient.interceptors.response.use(
     const status = error.response?.status
     const envelopeError = error.response?.data?.error
 
-    if (status === 401) {
+    if (shouldSignOutOnUnauthorized(error, BASE_URL)) {
       await signOut({ callbackUrl: "/login" })
       return Promise.reject(error)
     }

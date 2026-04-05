@@ -3,12 +3,13 @@
 import * as React from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
-import { getSession, signIn } from "next-auth/react"
+import { signIn } from "next-auth/react"
 import QRCode from "react-qr-code"
 import apiClient from "@/lib/api/client"
 import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/Dialog"
+import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { getSafeCallbackUrl } from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -166,7 +167,7 @@ export default function MFASetupPage() {
         return
       }
 
-      const session = await getSession()
+      const session = await waitForEstablishedSession()
       const user = session?.user
       if (user?.tenant_id && user.tenant_slug) {
         setTenant({
@@ -182,7 +183,7 @@ export default function MFASetupPage() {
       setRecoveryDialogOpen(false)
       setRecoveryCodes([])
       setSessionTokens(null)
-      router.push(callbackUrl)
+      navigateAfterAuth(callbackUrl)
     } finally {
       setLoading(false)
     }

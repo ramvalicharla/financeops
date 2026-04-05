@@ -102,6 +102,7 @@ services:
     env_file: ../.env
     environment:
       TEMPORAL_ADDRESS: temporal:7233
+      PORT: "8000"
     depends_on:
       db:
         condition: service_healthy

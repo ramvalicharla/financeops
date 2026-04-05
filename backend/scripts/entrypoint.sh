@@ -58,4 +58,4 @@ fi
 echo "========== MIGRATION SUCCESS =========="
 
 echo "Starting application..."
-exec uvicorn financeops.main:app --host 0.0.0.0 --port ${PORT}
+exec uvicorn financeops.main:app --host 0.0.0.0 --port ${PORT:-8000}

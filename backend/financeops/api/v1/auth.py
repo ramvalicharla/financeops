@@ -45,7 +45,7 @@ from financeops.services.auth_service import (
 )
 from financeops.services.credit_service import add_credits
 from financeops.services.tenant_service import create_default_workspace, create_tenant
-from financeops.services.user_service import create_user, get_user_by_email
+from financeops.services.user_service import create_user, get_user_by_email, normalize_email
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -420,12 +420,20 @@ async def user_login(
     POST /api/v1/auth/login
     Authenticate user, verify MFA if enabled, return token pair.
     """
+    normalized_email = normalize_email(str(body.email))
     user = await get_user_by_email(session, body.email)
-    if (
-        user is None
-        or not user.is_active
-        or not verify_password(body.password, user.hashed_password)
-    ):
+    if user is None:
+        log.info(f"Login rejected: user_missing email={normalized_email}")
+        raise AuthenticationError("Invalid email or password")
+    if not user.is_active:
+        log.info(
+            f"Login rejected: inactive_user email={normalized_email} user={user.id}"
+        )
+        raise AuthenticationError("Invalid email or password")
+    if not verify_password(body.password, user.hashed_password):
+        log.info(
+            f"Login rejected: password_mismatch email={normalized_email} user={user.id}"
+        )
         raise AuthenticationError("Invalid email or password")
     await set_tenant_context(session, user.tenant_id)
 
