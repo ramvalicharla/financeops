@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import hashlib
+from urllib.parse import quote
 
 import pyotp
 import pytest
@@ -86,12 +87,42 @@ async def test_verify_mfa_setup_enables_mfa(async_client, async_session: AsyncSe
     verify = await async_client.post(
         "/api/v1/auth/mfa/verify-setup",
         headers={"Authorization": f"Bearer {setup_token}"},
-        json={"secret": secret, "code": code},
+        json={"code": code},
     )
     assert verify.status_code == 200
     await async_session.refresh(test_user)
     assert test_user.mfa_enabled is True
     assert test_user.force_mfa_setup is False
+
+
+@pytest.mark.asyncio
+async def test_mfa_setup_returns_canonical_otpauth_uri(
+    async_client,
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
+    test_user.force_mfa_setup = True
+    test_user.mfa_enabled = False
+    await async_session.flush()
+    login = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": test_user.email, "password": "TestPass123!"},
+    )
+    setup_token = login.json()["data"]["setup_token"]
+
+    setup = await async_client.post(
+        "/api/v1/auth/mfa/setup",
+        headers={"Authorization": f"Bearer {setup_token}"},
+    )
+
+    assert setup.status_code == 200
+    payload = setup.json()["data"]
+    secret = payload["secret"]
+    expected_qr = (
+        f"otpauth://totp/FinanceOps:{quote(test_user.email.strip().lower(), safe='')}"
+        f"?secret={secret}&issuer=FinanceOps"
+    )
+    assert payload["qr_url"] == expected_qr
 
 
 @pytest.mark.asyncio

@@ -6,6 +6,7 @@ import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import bcrypt as _bcrypt
 import pyotp
@@ -18,6 +19,7 @@ from financeops.core.exceptions import AuthenticationError
 log = logging.getLogger(__name__)
 
 _NONCE_SIZE = 12  # 96-bit nonce for AES-256-GCM
+_TOTP_ISSUER = "FinanceOps"
 
 
 def _normalize_password(password: str) -> bytes:
@@ -94,20 +96,30 @@ def decode_token(token: str) -> dict:
 
 
 def generate_totp_secret() -> str:
-    """Generate a new TOTP secret using pyotp."""
-    return pyotp.random_base32()
+    """Generate a base32 TOTP secret compatible with common authenticator apps."""
+    return pyotp.random_base32().strip().replace(" ", "").upper()
 
 
 def verify_totp(secret: str, code: str) -> bool:
     """Verify a TOTP code against a secret. Allows 1-step drift."""
-    totp = pyotp.TOTP(secret)
-    return totp.verify(code, valid_window=1)
+    normalized_secret = str(secret).strip().replace(" ", "").upper()
+    normalized_code = "".join(ch for ch in str(code).strip() if ch.isdigit())
+    if not normalized_secret or len(normalized_code) != 6:
+        return False
+    totp = pyotp.TOTP(normalized_secret)
+    return totp.verify(normalized_code, valid_window=1)
 
 
 def get_totp_uri(secret: str, email: str) -> str:
-    """Return the otpauth:// URI for QR code generation."""
-    totp = pyotp.TOTP(secret)
-    return totp.provisioning_uri(name=email, issuer_name=settings.APP_NAME)
+    """Return the canonical otpauth:// URI for QR code generation."""
+    normalized_secret = str(secret).strip().replace(" ", "").upper()
+    normalized_email = str(email).strip().lower()
+    encoded_issuer = quote(_TOTP_ISSUER, safe="")
+    encoded_email = quote(normalized_email, safe="")
+    return (
+        f"otpauth://totp/{encoded_issuer}:{encoded_email}"
+        f"?secret={normalized_secret}&issuer={encoded_issuer}"
+    )
 
 
 def _get_aes_key() -> bytes:

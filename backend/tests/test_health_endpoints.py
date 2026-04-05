@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock
 
@@ -156,6 +158,36 @@ async def test_health_root_includes_timestamp(async_client) -> None:
     response = await async_client.get("/health")
     data = response.json()["data"]
     assert "timestamp" in data
+
+
+@pytest.mark.asyncio
+async def test_health_root_marks_ai_timeout_unhealthy(monkeypatch, async_client) -> None:
+    async def _timed_out_ai():
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr("financeops.api.v1.health._check_ai", _timed_out_ai)
+
+    response = await async_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["checks"]["ai"] == "unhealthy"
+    assert data["ai"]["status"] == "unhealthy"
+
+
+@pytest.mark.asyncio
+async def test_health_root_returns_partial_payload_when_builder_times_out(monkeypatch, async_client) -> None:
+    async def _timed_out_payload():
+        raise asyncio.TimeoutError()
+
+    monkeypatch.setattr("financeops.api.v1.health._build_health_payload", _timed_out_payload)
+
+    response = await async_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["health_status"] == "degraded"
+    assert "checks" in data
+    assert data["checks"]["database"] == "unknown"
+    assert data["checks"]["migrations"]["status"] == "unknown"
 
 
 @pytest.mark.asyncio

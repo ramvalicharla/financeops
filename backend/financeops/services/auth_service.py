@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
@@ -35,6 +36,10 @@ _REFRESH_TOKEN_EXPIRE_DAYS = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
 def _hash_token(token: str) -> str:
     """SHA-256 hash a token for safe storage."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _mfa_uri_b64(uri: str) -> str:
+    return base64.urlsafe_b64encode(uri.encode("utf-8")).decode("ascii")
 
 
 async def login(
@@ -211,6 +216,13 @@ async def verify_mfa_challenge(
         raise AuthenticationError("MFA is not configured for this account")
 
     secret = decrypt_field(user.totp_secret_encrypted)
+    log.debug(
+        "MFA challenge verify debug user=%s tenant=%s otp_input=%s mfa_seed=%s",
+        str(user.id),
+        str(user.tenant_id),
+        str(totp_code).strip(),
+        secret,
+    )
     if recovery_code:
         recovery_hash = hashlib.sha256(recovery_code.strip().upper().encode("utf-8")).hexdigest()
         recovery_row = (
@@ -227,6 +239,12 @@ async def verify_mfa_challenge(
     else:
         if not totp_code:
             raise AuthenticationError("TOTP code required")
+        log.debug(
+            "MFA challenge verify debug user=%s tenant=%s otp_input=%s",
+            str(user.id),
+            str(user.tenant_id),
+            str(totp_code).strip(),
+        )
         if not verify_totp(secret, totp_code):
             raise AuthenticationError("Invalid TOTP code")
 
@@ -436,9 +454,18 @@ async def setup_totp(user: IamUser, session: AsyncSession) -> dict:
             new_value={"mfa_enabled": user.mfa_enabled},
         ),
     )
+    uri = get_totp_uri(secret, user.email)
+    log.debug(
+        "MFA setup debug user=%s tenant=%s issuer=FinanceOps account=%s mfa_seed=%s mfa_uri_b64=%s",
+        str(user.id),
+        str(user.tenant_id),
+        user.email.strip().lower(),
+        secret,
+        _mfa_uri_b64(uri),
+    )
     return {
         "totp_secret": secret,
-        "qr_code_url": get_totp_uri(secret, user.email),
+        "qr_code_url": uri,
     }
 
 

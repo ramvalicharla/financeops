@@ -339,6 +339,13 @@ async def verify_mfa_setup(
             f"ignoring user_id={user.id}"
         )
     secret = decrypt_field(user.totp_secret_encrypted)
+    log.debug(
+        "MFA setup endpoint verify debug user=%s tenant=%s otp_input=%s mfa_seed=%s",
+        str(user.id),
+        str(user.tenant_id),
+        str(body.code).strip(),
+        secret,
+    )
     if not verify_totp(secret, body.code):
         raise HTTPException(status_code=400, detail="Invalid verification code")
     user.mfa_enabled = True

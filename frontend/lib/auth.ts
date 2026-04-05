@@ -181,16 +181,22 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!totpCode) {
             return null
           }
+          const verifyPayload = {
+            mfa_challenge_token: mfaChallengeToken,
+            totp_code: totpCode,
+          }
+          console.debug("[nextauth] mfa verify request", {
+            hasMfaToken: Boolean(mfaChallengeToken),
+            payload: verifyPayload,
+          })
           const mfaEnvelope = await fetchEnvelope<LoginTokenPayload>(
             "/api/v1/auth/mfa/verify",
             {
               method: "POST",
-              body: JSON.stringify({
-                mfa_challenge_token: mfaChallengeToken,
-                totp_code: totpCode,
-              }),
+              body: JSON.stringify(verifyPayload),
             },
           )
+          console.debug("[nextauth] mfa verify response", mfaEnvelope)
           if (!mfaEnvelope.data || mfaEnvelope.error) {
             return null
           }

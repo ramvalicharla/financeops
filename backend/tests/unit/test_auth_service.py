@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import AuthenticationError
-from financeops.core.security import hash_password, verify_password
+from financeops.core.security import get_totp_uri, hash_password, verify_password, verify_totp
 from financeops.services.audit_writer import AuditWriter
 from financeops.services.auth_service import (
     login,
@@ -26,6 +26,24 @@ async def test_setup_totp_returns_secret_and_uri(
     assert "qr_code_url" in result
     assert result["qr_code_url"].startswith("otpauth://")
     assert len(result["totp_secret"]) >= 16
+
+
+def test_get_totp_uri_uses_canonical_google_authenticator_format() -> None:
+    secret = "JBSWY3DPEHPK3PXP"
+    uri = get_totp_uri(secret, "Mfa.User+Ops@example.com")
+    assert (
+        uri
+        == "otpauth://totp/FinanceOps:mfa.user%2Bops%40example.com"
+        "?secret=JBSWY3DPEHPK3PXP&issuer=FinanceOps"
+    )
+
+
+def test_verify_totp_normalizes_secret_and_code() -> None:
+    import pyotp
+
+    secret = "JBSWY3DPEHPK3PXP"
+    code = pyotp.TOTP(secret).now()
+    assert verify_totp(f" {secret.lower()} ", f" {code} ") is True
 
 
 @pytest.mark.asyncio

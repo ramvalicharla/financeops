@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Awaitable
 
 import httpx
 import redis.asyncio as aioredis
@@ -35,6 +35,108 @@ def _error_detail(exc: Exception) -> str:
     if detail:
         return f"{exc.__class__.__name__}: {detail}"
     return exc.__class__.__name__
+
+
+def _timeout_detail(timeout: float) -> str:
+    return f"TimeoutError: exceeded {timeout:.1f}s"
+
+
+async def _run_check_with_timeout(
+    check: Awaitable[dict[str, Any]],
+    *,
+    timeout: float,
+    timeout_response: dict[str, Any],
+    error_response: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    started_at = time.perf_counter()
+    try:
+        return await asyncio.wait_for(check, timeout=timeout)
+    except asyncio.TimeoutError:
+        response = dict(timeout_response)
+        response.setdefault("latency_ms", _latency_ms(started_at))
+        response.setdefault("error", _timeout_detail(timeout))
+        return response
+    except Exception as exc:
+        response = dict(error_response or timeout_response)
+        response.setdefault("latency_ms", _latency_ms(started_at))
+        response.setdefault("error", _error_detail(exc))
+        return response
+
+
+def _build_partial_health_payload(build_error: str) -> dict[str, Any]:
+    migration_check = {
+        "status": "unknown",
+        "latency_ms": 0.0,
+        "current_head": None,
+        "current_revision": None,
+        "detail": "Health payload incomplete.",
+        "error": build_error,
+    }
+    workers_check = {
+        "status": "unhealthy",
+        "active_workers": 0,
+        "latency_ms": 0.0,
+        "error": build_error,
+    }
+    queue_check = {
+        "status": "unhealthy",
+        "queues": {},
+        "error": build_error,
+    }
+    return {
+        "status": "degraded",
+        "health_status": "degraded",
+        "checks": {
+            "database": "unknown",
+            "redis": "unknown",
+            "ai": "unknown",
+            "queues": queue_check["status"],
+            "temporal": "unknown",
+            "workers": workers_check["status"],
+            "db": {"status": "error"},
+            "celery": {"status": "error"},
+            "migrations": migration_check,
+        },
+        "check_details": {
+            "database": {"status": "unknown", "latency_ms": 0.0, "error": build_error},
+            "redis": {"status": "unknown", "latency_ms": 0.0, "error": build_error},
+            "queues": queue_check,
+            "workers": workers_check,
+            "migrations": migration_check,
+        },
+        "ai": {
+            "status": "unknown",
+            "ollama": "unknown",
+            "anthropic": "unknown",
+            "openai": "unknown",
+            "fallback_available": False,
+            "error": build_error,
+        },
+        "queues": {},
+        "temporal": {
+            "status": "unknown",
+            "address": settings.TEMPORAL_ADDRESS,
+            "namespace": settings.TEMPORAL_NAMESPACE,
+            "error": build_error,
+        },
+        "workers": {
+            "status": workers_check["status"],
+            "active_workers": workers_check["active_workers"],
+        },
+        "version": settings.APP_RELEASE,
+        "environment": settings.APP_ENVIRONMENT,
+        "timestamp": utc_now_iso(),
+    }
+
+
+async def _safe_build_health_payload(timeout: float = 10.0) -> dict[str, Any]:
+    try:
+        return await asyncio.wait_for(_build_health_payload(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return _build_partial_health_payload(_timeout_detail(timeout))
+    except Exception as exc:
+        log.exception("Health payload build failed")
+        return _build_partial_health_payload(_error_detail(exc))
 
 
 async def _check_database() -> dict[str, Any]:
@@ -187,9 +289,28 @@ async def _check_temporal() -> dict[str, str]:
 
 async def _build_health_payload() -> dict[str, Any]:
     # Run DB first, then migration state check to avoid connection contention.
-    db_check = await _check_database()
+    db_check = await _run_check_with_timeout(
+        _check_database(),
+        timeout=5.0,
+        timeout_response={"status": "unhealthy"},
+    )
     if db_check["status"] == "healthy":
-        migration_check = await _check_migrations()
+        migration_check = await _run_check_with_timeout(
+            _check_migrations(),
+            timeout=5.0,
+            timeout_response={
+                "status": "unhealthy",
+                "current_head": None,
+                "current_revision": None,
+                "detail": "Migration check timed out.",
+            },
+            error_response={
+                "status": "error",
+                "current_head": None,
+                "current_revision": None,
+                "detail": "Migration check failed.",
+            },
+        )
     else:
         migration_check = {
             "status": "error",
@@ -200,11 +321,41 @@ async def _build_health_payload() -> dict[str, Any]:
         }
 
     redis_check, ai_check, queue_check, temporal_check, workers_check = await asyncio.gather(
-        _check_redis(),
-        _check_ai(),
-        _check_queues(),
-        _check_temporal(),
-        _check_workers(),
+        _run_check_with_timeout(
+            _check_redis(),
+            timeout=3.0,
+            timeout_response={"status": "unhealthy"},
+        ),
+        _run_check_with_timeout(
+            _check_ai(),
+            timeout=2.0,
+            timeout_response={
+                "status": "unhealthy",
+                "ollama": "unknown",
+                "anthropic": "unknown",
+                "openai": "unknown",
+                "fallback_available": False,
+            },
+        ),
+        _run_check_with_timeout(
+            _check_queues(),
+            timeout=3.0,
+            timeout_response={"status": "unhealthy", "queues": {}},
+        ),
+        _run_check_with_timeout(
+            _check_temporal(),
+            timeout=3.0,
+            timeout_response={
+                "status": "down",
+                "address": settings.TEMPORAL_ADDRESS,
+                "namespace": settings.TEMPORAL_NAMESPACE,
+            },
+        ),
+        _run_check_with_timeout(
+            _check_workers(),
+            timeout=3.0,
+            timeout_response={"status": "unhealthy", "active_workers": 0},
+        ),
     )
 
     checks = {
@@ -228,6 +379,7 @@ async def _build_health_payload() -> dict[str, Any]:
             or checks["redis"] == "unhealthy"
             or checks["ai"] == "unhealthy"
             or checks["queues"] == "unhealthy"
+            or checks["workers"] == "unhealthy"
             or checks["workers"] == "broker_unreachable"
         ):
             overall = "unhealthy"
@@ -264,7 +416,7 @@ async def _build_health_payload() -> dict[str, Any]:
 
 async def build_health_summary_payload(startup_errors: list[str] | None = None) -> dict[str, Any]:
     startup_errors = startup_errors or []
-    payload = await asyncio.wait_for(_build_health_payload(), timeout=5.0)
+    payload = await _safe_build_health_payload(timeout=10.0)
     payload["startup_errors"] = startup_errors
     if startup_errors and payload["health_status"] == "healthy":
         payload["health_status"] = "degraded"
@@ -342,7 +494,7 @@ async def deep_health_check(
     user: IamUser = Depends(get_current_user),
 ) -> JSONResponse:
     del session, user
-    payload = await asyncio.wait_for(_build_health_payload(), timeout=5.0)
+    payload = await _safe_build_health_payload(timeout=10.0)
     return JSONResponse(content=payload, status_code=status.HTTP_200_OK)
 
 

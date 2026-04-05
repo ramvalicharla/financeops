@@ -1,10 +1,10 @@
 "use client"
 
 import * as React from "react"
-import Image from "next/image"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useState } from "react"
 import { getSession, signIn } from "next-auth/react"
+import QRCode from "react-qr-code"
 import apiClient from "@/lib/api/client"
 import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
@@ -48,7 +48,7 @@ export default function MFASetupPage() {
   const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
   const [step, setStep] = useState<Step>("generate")
   const [secret, setSecret] = useState("")
-  const [qrUrl, setQrUrl] = useState("")
+  const [otpauthUri, setOtpauthUri] = useState("")
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<{ code?: string }>({})
@@ -75,8 +75,13 @@ export default function MFASetupPage() {
         {},
         { headers: authHeaders() },
       )
-      setSecret(payload.data?.secret ?? "")
-      setQrUrl(payload.data?.qr_url ?? "")
+      const nextSecret = (payload.data?.secret ?? "").replace(/\s+/g, "").toUpperCase()
+      const nextOtpauthUri = (payload.data?.qr_url ?? "").trim()
+      if (!nextSecret || !nextOtpauthUri) {
+        throw new Error("MFA setup payload was incomplete")
+      }
+      setSecret(nextSecret)
+      setOtpauthUri(nextOtpauthUri)
       setStep("verify")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to initialise MFA setup")
@@ -97,7 +102,7 @@ export default function MFASetupPage() {
     try {
       const payload = await apiClient.post<{ access_token?: string; refresh_token?: string; recovery_codes?: string[] }>(
         "/api/v1/auth/mfa/verify-setup",
-        { code, secret },
+        { code },
         {
           headers: {
             ...authHeaders(),
@@ -197,18 +202,27 @@ export default function MFASetupPage() {
       {step === "verify" ? (
         <div className="space-y-3">
           <div className="flex justify-center rounded-md bg-white p-3">
-            <Image
-              src={qrUrl}
-              alt="QR code for MFA setup"
-              width={192}
-              height={192}
-              unoptimized
-              className="h-48 w-48"
-            />
+            {otpauthUri ? (
+              <QRCode
+                value={otpauthUri}
+                size={192}
+                bgColor="#FFFFFF"
+                fgColor="#111827"
+                level="M"
+                className="h-48 w-48"
+              />
+            ) : (
+              <div className="flex h-48 w-48 items-center justify-center text-center text-sm text-muted-foreground">
+                QR code unavailable. Use the manual key below.
+              </div>
+            )}
           </div>
           <div className="space-y-2">
             <p className="text-center text-xs text-gray-400">Manual key</p>
             <MaskedSecret secret={secret} />
+            <p className="text-center text-xs text-muted-foreground">
+              Enter this exact base32 key in your authenticator app with no extra spaces.
+            </p>
           </div>
           <FormField
             id="otp-code"
@@ -219,7 +233,7 @@ export default function MFASetupPage() {
           >
             <input
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               maxLength={6}
               autoComplete="one-time-code"
               inputMode="numeric"

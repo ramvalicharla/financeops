@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { Suspense, useEffect, useState } from "react"
+import { Suspense, useState } from "react"
 import { z } from "zod"
 import { useForm } from "react-hook-form"
 import { getSession, signIn } from "next-auth/react"
@@ -34,7 +34,7 @@ function MFAPageContent() {
   const setTenant = useTenantStore((state) => state.setTenant)
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const challengeToken = searchParams?.get("challenge") ?? null
+  const challengeToken = searchParams?.get("challenge")?.trim() ?? null
   const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
 
   const { handleSubmit, setValue, watch } = useForm<MFAVerifyForm>({
@@ -44,23 +44,47 @@ function MFAPageContent() {
   const code = watch("code")
 
   const verify = handleSubmit(async (values) => {
+    if (isSubmitting) {
+      return
+    }
+
     setFormError(null)
     const parsed = mfaSchema.safeParse(values)
     if (!parsed.success) {
       setFormError(parsed.error.issues[0]?.message ?? "Invalid verification code")
       return
     }
+    if (!challengeToken) {
+      setFormError("MFA session expired or missing. Please sign in again.")
+      console.debug("[mfa-page] missing mfa token", {
+        hasMfaToken: false,
+      })
+      return
+    }
 
     setIsSubmitting(true)
     try {
+      const verifyPayload = {
+        mfa_challenge_token: challengeToken,
+        totp_code: parsed.data.code,
+      }
+      console.debug("[mfa-page] submitting mfa verify", {
+        hasMfaToken: Boolean(challengeToken),
+        payload: verifyPayload,
+      })
+
       const signInResult = await signIn("credentials", {
         redirect: false,
-        totp_code: parsed.data.code,
-        ...(challengeToken ? { mfa_challenge_token: challengeToken } : {}),
+        ...verifyPayload,
       })
+      console.debug("[mfa-page] mfa verify result", signInResult)
 
       if (signInResult?.error) {
         setFormError("Invalid verification code")
+        return
+      }
+      if (!signInResult || signInResult.ok !== true) {
+        setFormError("Unable to verify MFA right now. Please try again.")
         return
       }
 
@@ -77,20 +101,13 @@ function MFAPageContent() {
         })
       }
       router.push(callbackUrl)
+    } catch (error) {
+      console.debug("[mfa-page] mfa verify threw", error)
+      setFormError("Unable to verify MFA right now. Please try again.")
     } finally {
       setIsSubmitting(false)
     }
   })
-
-  useEffect(() => {
-    if (code.length === 6 && !isSubmitting) {
-      const timer = window.setTimeout(() => {
-        void verify()
-      }, 400)
-      return () => window.clearTimeout(timer)
-    }
-    return undefined
-  }, [code, isSubmitting, verify])
 
   return (
     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
@@ -108,7 +125,7 @@ function MFAPageContent() {
           <InputOTP
             maxLength={6}
             value={code}
-            onChange={(value) => setValue("code", value)}
+            onChange={(value) => setValue("code", value.replace(/\D/g, "").slice(0, 6))}
           >
             <InputOTPGroup>
               <InputOTPSlot index={0} />
