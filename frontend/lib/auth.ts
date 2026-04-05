@@ -81,6 +81,21 @@ const normalizeTenantSlug = (displayName: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "dev"
 
+const readTokenString = (value: unknown): string =>
+  typeof value === "string" ? value : ""
+
+const readTokenNumber = (value: unknown): number =>
+  typeof value === "number" ? value : 0
+
+const readUserRole = (value: unknown): UserRole =>
+  typeof value === "string" ? (value as UserRole) : "read_only"
+
+const readEntityRoles = (value: unknown): EntityRole[] =>
+  Array.isArray(value) ? (value as EntityRole[]) : []
+
+const readBoolean = (value: unknown): boolean =>
+  typeof value === "boolean" ? value : false
+
 const fetchEnvelope = async <T>(
   path: string,
   init: RequestInit,
@@ -316,14 +331,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         return token
       }
 
-      if (Date.now() < (token.access_token_expires_at ?? 0)) {
+      const accessTokenExpiresAt = readTokenNumber(token.access_token_expires_at)
+      if (Date.now() < accessTokenExpiresAt) {
         return token
       }
 
+      const refreshToken = readTokenString(token.refresh_token)
+      const accessToken = readTokenString(token.access_token)
+      if (!refreshToken || !accessToken) {
+        return {
+          ...token,
+          error: "RefreshAccessTokenError" as const,
+        }
+      }
+
       return refreshAccessToken({
-        refresh_token: token.refresh_token,
-        access_token: token.access_token,
-        access_token_expires_at: token.access_token_expires_at,
+        refresh_token: refreshToken,
+        access_token: accessToken,
+        access_token_expires_at: accessTokenExpiresAt,
       }).then((refreshed) => ({
         ...token,
         ...refreshed,
@@ -332,19 +357,19 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     async session({ session, token }) {
       session.user = {
         ...session.user,
-        id: token.sub,
-        email: token.email,
-        name: token.name,
-        role: token.role,
-        tenant_id: token.tenant_id,
-        tenant_slug: token.tenant_slug,
-        org_setup_complete: token.org_setup_complete,
-        org_setup_step: token.org_setup_step,
-        entity_roles: token.entity_roles ?? [],
+        id: readTokenString(token.sub),
+        email: readTokenString(token.email),
+        name: readTokenString(token.name),
+        role: readUserRole(token.role),
+        tenant_id: readTokenString(token.tenant_id),
+        tenant_slug: readTokenString(token.tenant_slug),
+        org_setup_complete: readBoolean(token.org_setup_complete),
+        org_setup_step: readTokenNumber(token.org_setup_step),
+        entity_roles: readEntityRoles(token.entity_roles),
       }
-      session.access_token = token.access_token
-      session.refresh_token = token.refresh_token
-      session.access_token_expires_at = token.access_token_expires_at
+      session.access_token = readTokenString(token.access_token)
+      session.refresh_token = readTokenString(token.refresh_token)
+      session.access_token_expires_at = readTokenNumber(token.access_token_expires_at)
       return session
     },
   },
