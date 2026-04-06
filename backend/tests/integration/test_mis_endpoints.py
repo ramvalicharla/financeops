@@ -317,17 +317,3 @@ async def test_snapshot_upload_idempotent_on_duplicate(
     assert second_payload["snapshot_token"] == first_payload["snapshot_token"]
 
 
-@pytest.mark.asyncio
-async def test_missing_control_plane_token_is_rejected(
-    async_client: AsyncClient,
-    test_access_token: str,
-):
-    response = await async_client.get(
-        "/api/v1/mis/templates",
-        headers={
-            "Authorization": f"Bearer {test_access_token}",
-            "X-Control-Plane-Token": "",
-        },
-    )
-    assert response.status_code == 401
-

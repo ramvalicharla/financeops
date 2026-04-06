@@ -93,7 +93,7 @@ dist/
 
 # Project-local runtime data
 volumes/
-.claude
+.claude/settings.local.json
 *.env.prod
 railway.env.production
 finos_backup_*/

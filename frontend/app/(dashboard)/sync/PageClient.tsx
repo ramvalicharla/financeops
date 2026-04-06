@@ -115,6 +115,8 @@ export default function SyncPage() {
     [validationRun],
   )
   const failedValidationCount = validationRows.filter((row) => !row.passed).length
+  const connectionsErrorMessage = connectionsQuery.error?.message ?? null
+  const syncRunsErrorMessage = syncRunsQuery.error?.message ?? null
 
   useEffect(() => {
     if (validationDialogOpen || !validationRun) {
@@ -176,7 +178,7 @@ export default function SyncPage() {
 
         {connectionsQuery.isError ? (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-4 text-sm text-destructive">
-            Failed to load connected sources.
+            {connectionsErrorMessage ?? "Failed to load connected sources."}
           </p>
         ) : null}
 
@@ -249,7 +251,7 @@ export default function SyncPage() {
 
         {selectedConnectionId && syncRunsQuery.isError ? (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-4 text-sm text-destructive">
-            Failed to load sync run history.
+            {syncRunsErrorMessage ?? "Failed to load sync run history."}
           </p>
         ) : null}
 

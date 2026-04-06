@@ -43,6 +43,11 @@ export default function ErpSyncPage() {
   })
 
   const canRun = useMemo(() => Boolean(connectorId), [connectorId])
+  const pageErrorMessage =
+    connectorsQuery.error?.message ??
+    jobsQuery.error?.message ??
+    runSyncMutation.error?.message ??
+    null
 
   return (
     <div className="space-y-6 p-6">
@@ -52,6 +57,12 @@ export default function ErpSyncPage() {
           Trigger import/export jobs and monitor execution status with retry count and error traces.
         </p>
       </section>
+
+      {pageErrorMessage ? (
+        <section className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{pageErrorMessage}</p>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-4">
@@ -125,6 +136,13 @@ export default function ErpSyncPage() {
                   </td>
                 </tr>
               ))}
+              {!jobsQuery.isLoading && !jobsQuery.data?.length && !pageErrorMessage ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
+                    No ERP sync jobs available.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

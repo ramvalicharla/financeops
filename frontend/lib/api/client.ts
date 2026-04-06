@@ -16,11 +16,35 @@ type ApiErrorPayload = {
   details?: unknown
 }
 
+type ApiClientError = Error & {
+  payload?: ApiErrorPayload
+  details?: unknown
+  response?: {
+    status?: number
+  }
+}
+
 export class ApiValidationError extends Error {
   constructor(message: string) {
     super(message)
     this.name = "ApiValidationError"
   }
+}
+
+const createApiClientError = (
+  message: string,
+  status?: number,
+  payload?: ApiErrorPayload,
+): ApiClientError => {
+  const error = new Error(message) as ApiClientError
+  if (status) {
+    error.response = { status }
+  }
+  if (payload) {
+    error.payload = payload
+    error.details = payload.details
+  }
+  return error
 }
 
 export const parseWithSchema = <T>(
@@ -168,23 +192,38 @@ apiClient.interceptors.response.use(
         }
         return Promise.reject(new Error("ORG_SETUP_REQUIRED"))
       }
-      return Promise.reject(new Error("Permission denied"))
+      return Promise.reject(
+        createApiClientError(
+          envelopeError?.message ?? "Permission denied",
+          status,
+          envelopeError ?? undefined,
+        ),
+      )
     }
 
     if (status === 422) {
-      const validationError = new Error(
+      const validationError = createApiClientError(
         envelopeError?.message ?? "Validation error",
-      ) as Error & { details?: unknown }
-      validationError.details = envelopeError?.details
+        status,
+        envelopeError ?? undefined,
+      )
       return Promise.reject(validationError)
     }
 
     if (status && status >= 500) {
-      return Promise.reject(new Error("Server error, please try again"))
+      return Promise.reject(
+        createApiClientError(
+          "Server error, please try again",
+          status,
+          envelopeError ?? undefined,
+        ),
+      )
     }
 
     if (envelopeError?.message) {
-      return Promise.reject(new Error(envelopeError.message))
+      return Promise.reject(
+        createApiClientError(envelopeError.message, status, envelopeError),
+      )
     }
 
     return Promise.reject(error)

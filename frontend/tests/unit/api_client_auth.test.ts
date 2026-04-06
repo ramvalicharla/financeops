@@ -38,4 +38,24 @@ describe("api client auth handling", () => {
       }, ""),
     ).toBe(true)
   })
+
+  it("does not sign out on control-plane token 401 responses", () => {
+    expect(
+      shouldSignOutOnUnauthorized({
+        config: {
+          url: "/api/v1/erp/connectors",
+          headers: { Authorization: "Bearer test-token" },
+        },
+        response: {
+          status: 401,
+          data: {
+            error: {
+              code: "authentication_error",
+              message: "CONTROL_PLANE_CONTEXT_REQUIRED",
+            },
+          },
+        },
+      }, ""),
+    ).toBe(false)
+  })
 })

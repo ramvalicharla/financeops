@@ -63,6 +63,16 @@ export default function ErpMappingsPage() {
     mutationFn: () => syncErpCustomers({ erp_connector_id: connectorId }),
     onSuccess: (payload) => setResultPayload(payload),
   })
+  const pageErrorMessage =
+    connectorsQuery.error?.message ??
+    accountsQuery.error?.message ??
+    coaImportMutation.error?.message ??
+    coaMapMutation.error?.message ??
+    importJournalsMutation.error?.message ??
+    exportJournalsMutation.error?.message ??
+    vendorsMutation.error?.message ??
+    customersMutation.error?.message ??
+    null
 
   return (
     <div className="space-y-6 p-6">
@@ -72,6 +82,12 @@ export default function ErpMappingsPage() {
           Import and map ERP chart-of-accounts, then trigger journal/vendor/customer sync actions.
         </p>
       </section>
+
+      {pageErrorMessage ? (
+        <section className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{pageErrorMessage}</p>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-3">

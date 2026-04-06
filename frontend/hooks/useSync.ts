@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
   approvPublish,
   createConnection,
@@ -11,7 +12,7 @@ import {
   testConnection,
   triggerSync,
 } from "@/lib/api/sync"
-import { useAsyncAction, useFetch, usePolling } from "@/hooks"
+import { useAsyncAction, usePolling } from "@/hooks"
 import type {
   CreateConnectionInput,
   DatasetType,
@@ -63,7 +64,10 @@ const useResourceVersion = (key: SyncResourceKey) => {
 
 export const useConnections = () => {
   const version = useResourceVersion("connections")
-  const query = useFetch(getConnections, [version])
+  const query = useQuery({
+    queryKey: ["sync-connections", version],
+    queryFn: getConnections,
+  })
 
   return {
     data: query.data,
@@ -76,10 +80,11 @@ export const useConnections = () => {
 
 export const useSyncRuns = (connectionId: string | null) => {
   const version = useResourceVersion("sync-runs")
-  const query = useFetch(
-    () => getSyncRuns(connectionId ?? ""),
-    [connectionId, version],
-  )
+  const query = useQuery({
+    queryKey: ["sync-runs", connectionId, version],
+    queryFn: () => getSyncRuns(connectionId ?? ""),
+    enabled: Boolean(connectionId),
+  })
   const hasActiveRun =
     query.data?.some(
       (run) => run.status === "RUNNING" || run.status === "PENDING",
@@ -107,7 +112,11 @@ export const useSyncRuns = (connectionId: string | null) => {
 
 export const useSyncRun = (id: string | null) => {
   const version = useResourceVersion("sync-run")
-  const query = useFetch(() => getSyncRun(id ?? ""), [id, version])
+  const query = useQuery({
+    queryKey: ["sync-run", id, version],
+    queryFn: () => getSyncRun(id ?? ""),
+    enabled: Boolean(id),
+  })
 
   return {
     data: query.data,
@@ -158,7 +167,11 @@ export const useApprovePublish = () => {
 
 export const useDriftReport = (syncRunId: string | null) => {
   const version = useResourceVersion("drift")
-  const query = useFetch(() => getDriftReport(syncRunId ?? ""), [syncRunId, version])
+  const query = useQuery({
+    queryKey: ["sync-drift", syncRunId, version],
+    queryFn: () => getDriftReport(syncRunId ?? ""),
+    enabled: Boolean(syncRunId),
+  })
 
   return {
     data: query.data,

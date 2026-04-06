@@ -57,6 +57,8 @@ export default function PayrollReconciliationPage() {
     selectedCostCentre?.cost_centre_id ?? null,
     selectedPeriod,
   )
+  const selectionErrorMessage =
+    connectionsQuery.error?.message ?? syncRunsQuery.error?.message ?? null
 
   const filtersReady = Boolean(selectedEntityId && selectedPeriod && selectedRunId)
   const summary = reconQuery.data
@@ -120,8 +122,14 @@ export default function PayrollReconciliationPage() {
       </section>
 
       {!filtersReady ? (
-        <p className="rounded-md border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-          Select entity, period and sync run to view results.
+        <p
+          className={`rounded-md px-4 py-6 text-sm ${
+            selectionErrorMessage
+              ? "border border-destructive/30 bg-destructive/10 text-destructive"
+              : "border border-border bg-card text-muted-foreground"
+          }`}
+        >
+          {selectionErrorMessage ?? "Select entity, period and sync run to view results."}
         </p>
       ) : null}
 
@@ -129,7 +137,7 @@ export default function PayrollReconciliationPage() {
         <>
           {reconQuery.isError ? (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              Failed to load payroll reconciliation results.
+              {reconQuery.error?.message ?? "Failed to load payroll reconciliation results."}
             </p>
           ) : null}
           <section className="grid gap-4 md:grid-cols-3">

@@ -67,6 +67,12 @@ export default function ErpConnectorsPage() {
   })
 
   const canCreate = useMemo(() => Boolean(orgEntityId), [orgEntityId])
+  const pageErrorMessage =
+    connectorsQuery.error?.message ??
+    createMutation.error?.message ??
+    testMutation.error?.message ??
+    statusMutation.error?.message ??
+    null
 
   return (
     <div className="space-y-6 p-6">
@@ -76,6 +82,12 @@ export default function ErpConnectorsPage() {
           Configure connector credentials, test connectivity, and manage activation state.
         </p>
       </section>
+
+      {pageErrorMessage ? (
+        <section className="rounded-xl border border-destructive/30 bg-destructive/10 p-4">
+          <p className="text-sm text-destructive">{pageErrorMessage}</p>
+        </section>
+      ) : null}
 
       <section className="rounded-xl border border-border bg-card p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -178,6 +190,13 @@ export default function ErpConnectorsPage() {
                   </td>
                 </tr>
               ))}
+              {!connectorsQuery.isLoading && !connectorsQuery.data?.length && !pageErrorMessage ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
+                    No ERP connectors configured yet.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

@@ -57,6 +57,8 @@ export default function GLTBReconciliationPage() {
     selectedPeriod,
   )
   const exportMutation = useExportGLTB()
+  const selectionErrorMessage =
+    connectionsQuery.error?.message ?? syncRunsQuery.error?.message ?? null
 
   const filteredAccounts = useMemo(() => {
     const accounts = resultQuery.data?.accounts ?? []
@@ -144,8 +146,14 @@ export default function GLTBReconciliationPage() {
       </section>
 
       {!filtersReady ? (
-        <p className="rounded-md border border-border bg-card px-4 py-6 text-sm text-muted-foreground">
-          Select entity, period and sync run to view results.
+        <p
+          className={`rounded-md px-4 py-6 text-sm ${
+            selectionErrorMessage
+              ? "border border-destructive/30 bg-destructive/10 text-destructive"
+              : "border border-border bg-card text-muted-foreground"
+          }`}
+        >
+          {selectionErrorMessage ?? "Select entity, period and sync run to view results."}
         </p>
       ) : null}
 
@@ -153,7 +161,7 @@ export default function GLTBReconciliationPage() {
         <>
           {resultQuery.isError ? (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              Failed to load GL/TB reconciliation results.
+              {resultQuery.error?.message ?? "Failed to load GL/TB reconciliation results."}
             </p>
           ) : null}
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">

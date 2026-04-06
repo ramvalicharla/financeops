@@ -5,18 +5,14 @@ from collections.abc import Callable
 from fastapi import Depends
 
 from financeops.platform.services.enforcement.interceptors import (
-    control_plane_guard,
-    require_valid_context_token,
+    ensure_control_plane_access,
 )
 
 
 def board_pack_control_plane_dependency(*, action: str, resource_type: str) -> Callable:
     async def _dependency(
-        _: dict = Depends(
-            require_valid_context_token(module_code="board_pack_narrative_engine")
-        ),
-        __: dict = Depends(
-            control_plane_guard(
+        decision: dict = Depends(
+            ensure_control_plane_access(
                 module_code="board_pack_narrative_engine",
                 resource_type=resource_type,
                 action=action,
@@ -24,6 +20,6 @@ def board_pack_control_plane_dependency(*, action: str, resource_type: str) -> C
             )
         ),
     ) -> dict:
-        return __
+        return decision
 
     return _dependency

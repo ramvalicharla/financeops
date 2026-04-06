@@ -5,6 +5,12 @@ type UnauthorizedRequest = {
   }
   response?: {
     status?: number
+    data?: {
+      error?: {
+        code?: unknown
+        message?: unknown
+      } | null
+    } | null
   }
 }
 
@@ -52,6 +58,21 @@ export const shouldSignOutOnUnauthorized = (
 
   const requestPath = getRequestPath(error.config?.url, baseUrl)
   if (requestPath.startsWith("/api/v1/auth/")) {
+    return false
+  }
+
+  const responseError = error.response?.data?.error
+  const responseCode =
+    typeof responseError?.code === "string" ? responseError.code : ""
+  const responseMessage =
+    typeof responseError?.message === "string" ? responseError.message : ""
+  if (
+    responseCode === "authentication_error" &&
+    (
+      responseMessage.includes("CONTROL_PLANE_CONTEXT_REQUIRED") ||
+      responseMessage.includes("Control-plane token")
+    )
+  ) {
     return false
   }
 
