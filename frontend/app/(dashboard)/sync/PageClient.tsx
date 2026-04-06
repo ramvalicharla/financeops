@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react"
 import { formatDistanceToNowStrict } from "date-fns"
 import { useRouter, useSearchParams } from "next/navigation"
+import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui"
 import { SyncRunTable } from "@/components/sync/SyncRunTable"
 import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge"
+import { useCurrentEntitlements } from "@/hooks/useBilling"
 import {
   useAllDatasetTypes,
   useApprovePublish,
@@ -15,6 +17,10 @@ import {
   useSyncRuns,
   useTriggerSync,
 } from "@/hooks/useSync"
+import {
+  canPerformAction,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 import { cn } from "@/lib/utils"
 import type { SyncRun, ValidationResult } from "@/types/sync"
 import { useUIStore } from "@/lib/store/ui"
@@ -75,6 +81,7 @@ const mergeValidationResults = (
   })
 
 export default function SyncPage() {
+  const { data: session } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(
@@ -85,6 +92,19 @@ export default function SyncPage() {
   const [driftRun, setDriftRun] = useState<SyncRun | null>(null)
   const [criticalAcknowledged, setCriticalAcknowledged] = useState(false)
   const setNotificationItems = useUIStore((state) => state.setNotificationItems)
+  const entitlementsQuery = useCurrentEntitlements({
+    enabled: Boolean(session?.user?.tenant_id),
+  })
+  const accessContext = {
+    role: session?.user?.role,
+    entitlements: entitlementsQuery.data,
+  }
+  const canCreateConnector = canPerformAction(
+    "erp.connectors.create",
+    accessContext,
+  )
+  const canRunSync = canPerformAction("erp.sync.run", accessContext)
+  const canApprovePublish = canPerformAction("workflow.approve", accessContext)
 
   const connectionsQuery = useConnections()
   const syncRunsQuery = useSyncRuns(selectedConnectionId)
@@ -154,7 +174,13 @@ export default function SyncPage() {
       <section className="rounded-lg border border-border bg-card p-4">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground">Connected Sources</h2>
-          <Button size="sm" onClick={() => router.push("/sync/connect")} type="button">
+          <Button
+            size="sm"
+            onClick={() => router.push("/sync/connect")}
+            disabled={!canCreateConnector}
+            title={!canCreateConnector ? getPermissionDeniedMessage("erp.connectors.create") : undefined}
+            type="button"
+          >
             Add Source
           </Button>
         </div>
@@ -217,7 +243,8 @@ export default function SyncPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold text-foreground">Sync History</h2>
           <Button
-            disabled={!selectedConnectionId || triggerSyncMutation.isPending}
+            disabled={!selectedConnectionId || triggerSyncMutation.isPending || !canRunSync}
+            title={!canRunSync ? getPermissionDeniedMessage("erp.sync.run") : undefined}
             onClick={() => {
               if (!selectedConnectionId) {
                 return
@@ -257,6 +284,8 @@ export default function SyncPage() {
 
         {selectedConnectionId && syncRunsQuery.data?.length ? (
           <SyncRunTable
+            approvePublishTitle={getPermissionDeniedMessage("workflow.approve")}
+            canApprovePublish={canApprovePublish}
             isApproving={approvePublishMutation.isPending}
             onApprovePublish={(run) => {
               const publishId = run.publish_event_id ?? run.id
@@ -352,15 +381,17 @@ export default function SyncPage() {
             >
               {(driftQuery.data?.severity ?? driftRun.drift_severity ?? "NONE").toString()}
             </span>
-            {driftQuery.data?.severity === "CRITICAL" ? (
-              <Button
-                size="sm"
-                type="button"
-                variant="secondary"
-                onClick={() => setCriticalAcknowledged(true)}
-              >
-                Acknowledge
-              </Button>
+          {driftQuery.data?.severity === "CRITICAL" ? (
+            <Button
+              size="sm"
+              type="button"
+              variant="secondary"
+              onClick={() => setCriticalAcknowledged(true)}
+              disabled={!canApprovePublish}
+              title={!canApprovePublish ? getPermissionDeniedMessage("workflow.approve") : undefined}
+            >
+              Acknowledge
+            </Button>
             ) : null}
           </div>
           {criticalAcknowledged ? (

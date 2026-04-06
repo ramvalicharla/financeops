@@ -13,6 +13,10 @@ import {
   submitJournal,
 } from "@/lib/api/accounting-journals"
 import { useTenantStore } from "@/lib/store/tenant"
+import {
+  canPerformAction,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 
 const fmt = (value: string): string =>
@@ -21,16 +25,10 @@ const fmt = (value: string): string =>
     maximumFractionDigits: 2,
   })
 
-const roleCanReview = (role: string): boolean =>
-  ["finance_reviewer", "finance_team", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-const roleCanApprove = (role: string): boolean =>
-  ["finance_approver", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-const roleCanPost = (role: string): boolean =>
-  ["finance_poster", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-
 export default function JournalsPage() {
   const { data: session } = useSession()
   const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
+  const canCreateJournal = canPerformAction("journal.create", userRole)
   const queryClient = useQueryClient()
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const query = useQuery({
@@ -77,9 +75,18 @@ export default function JournalsPage() {
           <Link href="/accounting/trial-balance">
             <Button variant="outline">Trial Balance</Button>
           </Link>
-          <Link href="/accounting/journals/new">
-            <Button>Create Journal</Button>
-          </Link>
+          {canCreateJournal ? (
+            <Link href="/accounting/journals/new">
+              <Button>Create Journal</Button>
+            </Link>
+          ) : (
+            <Button
+              disabled
+              title={getPermissionDeniedMessage("journal.create")}
+            >
+              Create Journal
+            </Button>
+          )}
         </div>
       </header>
 
@@ -141,12 +148,13 @@ export default function JournalsPage() {
                           <Button
                             variant="outline"
                             onClick={() => submitMutation.mutate(journal.id)}
-                            disabled={submitMutation.isPending || !userRole}
+                            disabled={submitMutation.isPending || !canPerformAction("journal.submit", userRole)}
+                            title={!canPerformAction("journal.submit", userRole) ? getPermissionDeniedMessage("journal.submit") : undefined}
                           >
                             Submit
                           </Button>
                         ) : null}
-                        {journal.status === "SUBMITTED" && roleCanReview(userRole) ? (
+                        {journal.status === "SUBMITTED" && canPerformAction("journal.review", userRole) ? (
                           <Button
                             variant="outline"
                             onClick={() => reviewMutation.mutate(journal.id)}
@@ -155,7 +163,7 @@ export default function JournalsPage() {
                             Review
                           </Button>
                         ) : null}
-                        {journal.status === "REVIEWED" && roleCanApprove(userRole) ? (
+                        {journal.status === "REVIEWED" && canPerformAction("journal.approve", userRole) ? (
                           <Button
                             variant="outline"
                             onClick={() => approveMutation.mutate(journal.id)}
@@ -164,7 +172,7 @@ export default function JournalsPage() {
                             Approve
                           </Button>
                         ) : null}
-                        {journal.status === "APPROVED" && roleCanPost(userRole) ? (
+                        {journal.status === "APPROVED" && canPerformAction("journal.post", userRole) ? (
                           <Button
                             variant="outline"
                             onClick={() => postMutation.mutate(journal.id)}
@@ -173,7 +181,7 @@ export default function JournalsPage() {
                             Post
                           </Button>
                         ) : null}
-                        {journal.status === "POSTED" && roleCanPost(userRole) ? (
+                        {journal.status === "POSTED" && canPerformAction("journal.reverse", userRole) ? (
                           <Button
                             variant="outline"
                             onClick={() => reverseMutation.mutate(journal.id)}

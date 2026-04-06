@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
+import { useCurrentEntitlements } from "@/hooks/useBilling"
 import {
   listErpConnectors,
   listErpSyncJobs,
@@ -11,7 +12,11 @@ import {
   type ErpSyncModule,
   type ErpSyncType,
 } from "@/lib/api/erp"
-import { canPerformAction, getAccessErrorMessage } from "@/lib/ui-access"
+import {
+  canPerformAction,
+  getAccessErrorMessage,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 
 const MODULES: ErpSyncModule[] = ["COA", "JOURNALS", "VENDORS", "CUSTOMERS"]
@@ -19,8 +24,14 @@ const TYPES: ErpSyncType[] = ["IMPORT", "EXPORT"]
 
 export default function ErpSyncPage() {
   const { data: session } = useSession()
-  const canRunSync = canPerformAction("tenant.sync.manage", session?.user?.role)
   const queryClient = useQueryClient()
+  const entitlementsQuery = useCurrentEntitlements({
+    enabled: Boolean(session?.user?.tenant_id),
+  })
+  const canRunSync = canPerformAction("erp.sync.run", {
+    role: session?.user?.role,
+    entitlements: entitlementsQuery.data,
+  })
   const [connectorId, setConnectorId] = useState("")
   const [syncType, setSyncType] = useState<ErpSyncType>("IMPORT")
   const [moduleName, setModuleName] = useState<ErpSyncModule>("COA")
@@ -128,6 +139,7 @@ export default function ErpSyncPage() {
           <Button
             onClick={() => runSyncMutation.mutate()}
             disabled={!canRun || runSyncMutation.isPending || !canRunSync}
+            title={!canRunSync ? getPermissionDeniedMessage("erp.sync.run") : undefined}
             type="button"
           >
             {runSyncMutation.isPending ? "Running..." : "Run Sync"}

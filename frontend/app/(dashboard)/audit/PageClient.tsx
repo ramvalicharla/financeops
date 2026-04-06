@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSession } from "next-auth/react"
 import { AuditorAccessPanel } from "@/components/audit/AuditorAccessPanel"
 import { FormField } from "@/components/ui/FormField"
 import { Button } from "@/components/ui/button"
@@ -10,9 +11,19 @@ import {
   listAuditorAccess,
   revokeAuditorAccess,
 } from "@/lib/api/sprint11"
+import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { type AuditorPortalAccess } from "@/lib/types/sprint11"
 
 export default function AuditPage() {
+  const { data: session } = useSession()
+  const canGrantAuditorAccess = canPerformAction(
+    "audit.access.grant",
+    session?.user?.role,
+  )
+  const canRevokeAuditorAccess = canPerformAction(
+    "audit.access.revoke",
+    session?.user?.role,
+  )
   const [rows, setRows] = useState<AuditorPortalAccess[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -114,7 +125,13 @@ export default function AuditPage() {
             <Input type="date" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} />
           </FormField>
         </div>
-        <Button className="mt-3" variant="outline" onClick={() => void grant()}>
+        <Button
+          className="mt-3"
+          variant="outline"
+          onClick={() => void grant()}
+          disabled={!canGrantAuditorAccess}
+          title={!canGrantAuditorAccess ? getPermissionDeniedMessage("audit.access.grant") : undefined}
+        >
           Grant Auditor Access
         </Button>
       </section>
@@ -128,6 +145,8 @@ export default function AuditPage() {
             key={row.id}
             access={row}
             plainToken={plainTokenMap[row.id]}
+            canRevoke={canRevokeAuditorAccess}
+            revokeTitle={getPermissionDeniedMessage("audit.access.revoke")}
             onRevoke={() => revoke(row.id)}
           />
         ))}

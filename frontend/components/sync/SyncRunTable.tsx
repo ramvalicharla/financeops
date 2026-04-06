@@ -23,6 +23,8 @@ interface SyncRunTableProps {
   onApprovePublish: (run: SyncRun) => void
   onViewDrift: (run: SyncRun) => void
   isApproving: boolean
+  canApprovePublish: boolean
+  approvePublishTitle?: string
 }
 
 const formatRelative = (value: string): string =>
@@ -47,6 +49,8 @@ export function SyncRunTable({
   onApprovePublish,
   onViewDrift,
   isApproving,
+  canApprovePublish,
+  approvePublishTitle,
 }: SyncRunTableProps) {
   const [sorting, setSorting] = useState<SortingState>([
     { id: "started_at", desc: true },
@@ -115,7 +119,8 @@ export function SyncRunTable({
                 <Button
                   size="sm"
                   variant="secondary"
-                  disabled={isApproving}
+                  disabled={isApproving || !canApprovePublish}
+                  title={!canApprovePublish ? approvePublishTitle : undefined}
                   onClick={() => onApprovePublish(run)}
                   type="button"
                 >

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSession } from "next-auth/react"
 import { DataTable } from "@/components/admin/DataTable"
 import { FormField } from "@/components/ui/FormField"
 import {
@@ -13,6 +14,7 @@ import {
   listRbacRolePermissions,
   listRbacRoles,
 } from "@/lib/api/platform-admin"
+import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import type {
   PlatformUser,
   RbacAssignment,
@@ -24,6 +26,8 @@ import type {
 const nowIso = () => new Date().toISOString()
 
 export default function AdminRbacPage() {
+  const { data: session } = useSession()
+  const canManageRbac = canPerformAction("platform.rbac.manage", session?.user?.role)
   const [roles, setRoles] = useState<RbacRole[]>([])
   const [permissions, setPermissions] = useState<RbacPermission[]>([])
   const [rolePermissions, setRolePermissions] = useState<RbacRolePermission[]>([])
@@ -181,6 +185,11 @@ export default function AdminRbacPage() {
         <p className="text-sm text-muted-foreground">
           Manage roles, role-permission grants, and user-role mappings.
         </p>
+        {!canManageRbac ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Only platform owners can mutate RBAC definitions and assignments.
+          </p>
+        ) : null}
       </header>
 
       {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
@@ -193,6 +202,7 @@ export default function AdminRbacPage() {
             <input
               value={newRoleCode}
               onChange={(event) => setNewRoleCode(event.target.value)}
+              disabled={!canManageRbac}
               placeholder="ROLE_CODE"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             />
@@ -201,6 +211,7 @@ export default function AdminRbacPage() {
             <input
               value={newRoleScope}
               onChange={(event) => setNewRoleScope(event.target.value)}
+              disabled={!canManageRbac}
               placeholder="role_scope"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             />
@@ -208,6 +219,8 @@ export default function AdminRbacPage() {
           <button
             type="button"
             onClick={() => void onCreateRole()}
+            disabled={!canManageRbac}
+            title={!canManageRbac ? getPermissionDeniedMessage("platform.rbac.manage") : undefined}
             className="rounded-md border border-border px-3 py-2 text-sm text-foreground"
           >
             Create Role
@@ -220,6 +233,7 @@ export default function AdminRbacPage() {
             <select
               value={selectedRoleId}
               onChange={(event) => setSelectedRoleId(event.target.value)}
+              disabled={!canManageRbac}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select role</option>
@@ -234,6 +248,7 @@ export default function AdminRbacPage() {
             <select
               value={selectedPermissionId}
               onChange={(event) => setSelectedPermissionId(event.target.value)}
+              disabled={!canManageRbac}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select permission</option>
@@ -247,6 +262,8 @@ export default function AdminRbacPage() {
           <button
             type="button"
             onClick={() => void onGrantPermission()}
+            disabled={!canManageRbac}
+            title={!canManageRbac ? getPermissionDeniedMessage("platform.rbac.manage") : undefined}
             className="rounded-md border border-border px-3 py-2 text-sm text-foreground"
           >
             Grant Permission
@@ -259,6 +276,7 @@ export default function AdminRbacPage() {
             <select
               value={selectedUserId}
               onChange={(event) => setSelectedUserId(event.target.value)}
+              disabled={!canManageRbac}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select user</option>
@@ -273,6 +291,7 @@ export default function AdminRbacPage() {
             <select
               value={selectedAssignRoleId}
               onChange={(event) => setSelectedAssignRoleId(event.target.value)}
+              disabled={!canManageRbac}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select role</option>
@@ -286,6 +305,8 @@ export default function AdminRbacPage() {
           <button
             type="button"
             onClick={() => void onAssignRole()}
+            disabled={!canManageRbac}
+            title={!canManageRbac ? getPermissionDeniedMessage("platform.rbac.manage") : undefined}
             className="rounded-md border border-border px-3 py-2 text-sm text-foreground"
           >
             Assign Role

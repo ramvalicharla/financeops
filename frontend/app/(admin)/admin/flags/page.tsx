@@ -16,16 +16,15 @@ import {
 } from "@/lib/api/platform-admin"
 import type { PlatformFeatureFlag, PlatformTenant } from "@/lib/types/platform-admin"
 import type { ServiceRegistryModule } from "@/lib/types/service-registry"
-import { canPerformAction } from "@/lib/ui-access"
+import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 
 const nowIso = () => new Date().toISOString()
 
 export default function AdminFlagsPage() {
   const { data: session } = useSession()
-  const canManageFlags = canPerformAction(
-    "platform.flags.manage",
-    session?.user?.role,
-  )
+  const canCreateFlags = canPerformAction("platform.flags.create", session?.user?.role)
+  const canUpdateFlags = canPerformAction("platform.flags.update", session?.user?.role)
+  const canDeleteFlags = canPerformAction("platform.flags.delete", session?.user?.role)
   const [rows, setRows] = useState<PlatformFeatureFlag[]>([])
   const [tenants, setTenants] = useState<PlatformTenant[]>([])
   const [modules, setModules] = useState<ServiceRegistryModule[]>([])
@@ -156,7 +155,7 @@ export default function AdminFlagsPage() {
         <p className="text-sm text-muted-foreground">
           Manage global and scoped feature flags without redeploy.
         </p>
-        {!canManageFlags ? (
+        {!canUpdateFlags ? (
           <p className="mt-2 text-sm text-muted-foreground">
             Only platform owners can create, toggle, or delete feature flags.
           </p>
@@ -180,7 +179,7 @@ export default function AdminFlagsPage() {
           <select
             value={selectedModule}
             onChange={(event) => setSelectedModule(event.target.value)}
-            disabled={!canManageFlags}
+            disabled={!canCreateFlags}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           >
             <option value="">Select module</option>
@@ -195,7 +194,7 @@ export default function AdminFlagsPage() {
           <select
             value={scopeType}
             onChange={(event) => setScopeType(event.target.value as "tenant" | "user" | "entity" | "canary")}
-            disabled={!canManageFlags}
+            disabled={!canCreateFlags}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           >
             <option value="tenant">tenant</option>
@@ -209,14 +208,14 @@ export default function AdminFlagsPage() {
             value={flagKey}
             onChange={(event) => setFlagKey(event.target.value)}
             placeholder="flag key"
-            disabled={!canManageFlags}
+            disabled={!canCreateFlags}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           />
         </FormField>
         <button
           type="button"
           onClick={() => void onCreate()}
-          disabled={!canManageFlags}
+          disabled={!canCreateFlags}
           className="rounded-md border border-border px-3 py-2 text-sm text-foreground md:col-span-4"
         >
           Create Flag
@@ -244,7 +243,8 @@ export default function AdminFlagsPage() {
                 onChange={(next) => {
                   void onToggle(row, next)
                 }}
-                disabled={!canManageFlags}
+                disabled={!canUpdateFlags}
+                title={!canUpdateFlags ? getPermissionDeniedMessage("platform.flags.update") : undefined}
               />
             ),
           },
@@ -257,7 +257,8 @@ export default function AdminFlagsPage() {
                 onClick={() => {
                   void onDelete(row)
                 }}
-                disabled={!canManageFlags}
+                disabled={!canDeleteFlags}
+                title={!canDeleteFlags ? getPermissionDeniedMessage("platform.flags.delete") : undefined}
                 className="rounded-md border border-[hsl(var(--brand-danger)/0.5)] px-2 py-1 text-xs text-[hsl(var(--brand-danger))]"
               >
                 Delete

@@ -6,14 +6,11 @@ import { DataTable } from "@/components/admin/DataTable"
 import { ToggleSwitch } from "@/components/admin/ToggleSwitch"
 import { listPlatformModules, togglePlatformModule } from "@/lib/api/platform-admin"
 import type { ServiceRegistryModule } from "@/lib/types/service-registry"
-import { canPerformAction } from "@/lib/ui-access"
+import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 
 export default function AdminModulesPage() {
   const { data: session } = useSession()
-  const canManageModules = canPerformAction(
-    "platform.modules.manage",
-    session?.user?.role,
-  )
+  const canManageModules = canPerformAction("platform.modules.enable", session?.user?.role)
   const [rows, setRows] = useState<ServiceRegistryModule[]>([])
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -95,6 +92,7 @@ export default function AdminModulesPage() {
                   void onToggle(row, next)
                 }}
                 disabled={!canManageModules}
+                title={!canManageModules ? getPermissionDeniedMessage("platform.modules.enable") : undefined}
                 onLabel="Enabled"
                 offLabel="Disabled"
               />

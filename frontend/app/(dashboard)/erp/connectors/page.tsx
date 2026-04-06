@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
+import { useCurrentEntitlements } from "@/hooks/useBilling"
 import {
   createErpConnector,
   listErpConnectors,
@@ -13,7 +14,11 @@ import {
   updateErpConnectorStatus,
 } from "@/lib/api/erp"
 import { useTenantStore } from "@/lib/store/tenant"
-import { canPerformAction, getAccessErrorMessage } from "@/lib/ui-access"
+import {
+  canPerformAction,
+  getAccessErrorMessage,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 
 const ERP_TYPES = ["TALLY", "ZOHO", "QUICKBOOKS", "SAP", "ORACLE", "MANUAL"] as const
@@ -21,13 +26,24 @@ const AUTH_TYPES: ErpAuthType[] = ["API_KEY", "OAUTH", "BASIC"]
 
 export default function ErpConnectorsPage() {
   const { data: session } = useSession()
-  const canManageConnectors = canPerformAction(
-    "tenant.erp.manage",
-    session?.user?.role,
-  )
   const queryClient = useQueryClient()
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const defaultEntityId = entityRoles.at(0)?.entity_id ?? ""
+  const entitlementsQuery = useCurrentEntitlements({
+    enabled: Boolean(session?.user?.tenant_id),
+  })
+  const accessContext = {
+    role: session?.user?.role,
+    entitlements: entitlementsQuery.data,
+  }
+  const canCreateConnector = canPerformAction(
+    "erp.connectors.create",
+    accessContext,
+  )
+  const canUpdateConnector = canPerformAction(
+    "erp.connectors.update",
+    accessContext,
+  )
 
   const [orgEntityId, setOrgEntityId] = useState(defaultEntityId)
   const [erpType, setErpType] = useState<(typeof ERP_TYPES)[number]>("TALLY")
@@ -108,7 +124,7 @@ export default function ErpConnectorsPage() {
         <p className="text-sm text-muted-foreground">
           Configure connector credentials, test connectivity, and manage activation state.
         </p>
-        {!canManageConnectors ? (
+        {!canCreateConnector ? (
           <p className="mt-2 text-sm text-muted-foreground">
             Only tenant administrators can create or modify ERP connectors.
           </p>
@@ -129,7 +145,7 @@ export default function ErpConnectorsPage() {
           <select
             value={orgEntityId}
             onChange={(event) => setOrgEntityId(event.target.value)}
-            disabled={!canManageConnectors}
+            disabled={!canCreateConnector}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             <option value="">Select entity</option>
@@ -142,7 +158,7 @@ export default function ErpConnectorsPage() {
           <select
             value={erpType}
             onChange={(event) => setErpType(event.target.value as (typeof ERP_TYPES)[number])}
-            disabled={!canManageConnectors}
+            disabled={!canCreateConnector}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             {ERP_TYPES.map((type) => (
@@ -154,7 +170,7 @@ export default function ErpConnectorsPage() {
           <select
             value={authType}
             onChange={(event) => setAuthType(event.target.value as ErpAuthType)}
-            disabled={!canManageConnectors}
+            disabled={!canCreateConnector}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             {AUTH_TYPES.map((type) => (
@@ -168,12 +184,13 @@ export default function ErpConnectorsPage() {
           value={credentialsJson}
           onChange={(event) => setCredentialsJson(event.target.value)}
           rows={7}
-          disabled={!canManageConnectors}
+          disabled={!canCreateConnector}
           className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs"
         />
         <div className="mt-3">
           <Button
-            disabled={!canCreate || createMutation.isPending || !canManageConnectors}
+            disabled={!canCreate || createMutation.isPending || !canCreateConnector}
+            title={!canCreateConnector ? getPermissionDeniedMessage("erp.connectors.create") : undefined}
             onClick={() => createMutation.mutate()}
             type="button"
           >
@@ -206,7 +223,8 @@ export default function ErpConnectorsPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => testMutation.mutate(connector.id)}
-                      disabled={!canManageConnectors}
+                      disabled={!canUpdateConnector}
+                      title={!canUpdateConnector ? getPermissionDeniedMessage("erp.connectors.update") : undefined}
                       type="button"
                     >
                       Test
@@ -220,7 +238,8 @@ export default function ErpConnectorsPage() {
                           status: connector.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
                         })
                       }
-                      disabled={!canManageConnectors}
+                      disabled={!canUpdateConnector}
+                      title={!canUpdateConnector ? getPermissionDeniedMessage("erp.connectors.update") : undefined}
                       type="button"
                     >
                       {connector.status === "ACTIVE" ? "Deactivate" : "Activate"}

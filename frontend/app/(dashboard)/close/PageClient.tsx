@@ -12,6 +12,10 @@ import {
   unlockPeriod,
 } from "@/lib/api/close-governance"
 import { useTenantStore } from "@/lib/store/tenant"
+import {
+  canPerformAction,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 import { LockReasonDialog } from "./_components/LockReasonDialog"
 
@@ -25,11 +29,6 @@ const toPeriodParts = (value: string): { fiscalYear: number; periodNumber: numbe
   }
 }
 
-const roleCanLock = (role: string): boolean =>
-  ["finance_approver", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-const roleCanUnlock = (role: string): boolean =>
-  ["finance_approver", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-
 type PendingDialogAction =
   | { action: "lock"; lockType: "SOFT_CLOSED" | "HARD_CLOSED" }
   | { action: "unlock" }
@@ -39,6 +38,8 @@ export default function ClosePage() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
+  const canLock = canPerformAction("close.lock", userRole)
+  const canUnlock = canPerformAction("close.unlock", userRole)
   const queryClient = useQueryClient()
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const initialPeriod = searchParams?.get("period") ?? new Date().toISOString().slice(0, 7)
@@ -173,7 +174,7 @@ export default function ClosePage() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              {roleCanLock(userRole) ? (
+              {canLock ? (
                 <>
                   <Button
                     variant="outline"
@@ -201,7 +202,7 @@ export default function ClosePage() {
                   </Button>
                 </>
               ) : null}
-              {roleCanUnlock(userRole) ? (
+              {canUnlock ? (
                 <Button
                   variant="outline"
                   onClick={() => setPendingDialogAction({ action: "unlock" })}

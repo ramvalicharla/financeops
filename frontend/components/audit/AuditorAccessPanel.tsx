@@ -8,6 +8,8 @@ export type AuditorAccessPanelProps = {
   access: AuditorPortalAccess
   plainToken?: string
   completionPct?: string
+  canRevoke?: boolean
+  revokeTitle?: string
   onRevoke: () => Promise<void>
 }
 
@@ -15,6 +17,8 @@ export function AuditorAccessPanel({
   access,
   plainToken,
   completionPct,
+  canRevoke = true,
+  revokeTitle,
   onRevoke,
 }: AuditorAccessPanelProps) {
   return (
@@ -46,7 +50,13 @@ export function AuditorAccessPanel({
         >
           View PBC Tracker
         </Link>
-        <Button variant="outline" size="sm" onClick={() => void onRevoke()}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void onRevoke()}
+          disabled={!canRevoke}
+          title={!canRevoke ? revokeTitle : undefined}
+        >
           Revoke Access
         </Button>
       </div>

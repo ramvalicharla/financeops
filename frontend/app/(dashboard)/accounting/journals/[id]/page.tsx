@@ -12,6 +12,10 @@ import {
   reverseJournal,
   submitJournal,
 } from "@/lib/api/accounting-journals"
+import {
+  canPerformAction,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 
 interface JournalDetailPageProps {
@@ -19,13 +23,6 @@ interface JournalDetailPageProps {
     id: string
   }
 }
-
-const roleCanReview = (role: string): boolean =>
-  ["finance_reviewer", "finance_team", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-const roleCanApprove = (role: string): boolean =>
-  ["finance_approver", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
-const roleCanPost = (role: string): boolean =>
-  ["finance_poster", "finance_leader", "super_admin", "platform_owner", "platform_admin"].includes(role)
 
 const formatAmount = (value: string): string =>
   Number(value).toLocaleString(undefined, {
@@ -79,10 +76,10 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
     reverseMutation.isPending
 
   const canSubmit = status === "DRAFT"
-  const canReview = status === "SUBMITTED" && roleCanReview(userRole)
-  const canApprove = status === "REVIEWED" && roleCanApprove(userRole)
-  const canPost = status === "APPROVED" && roleCanPost(userRole)
-  const canReverse = status === "POSTED" && roleCanPost(userRole)
+  const canReview = status === "SUBMITTED" && canPerformAction("journal.review", userRole)
+  const canApprove = status === "REVIEWED" && canPerformAction("journal.approve", userRole)
+  const canPost = status === "APPROVED" && canPerformAction("journal.post", userRole)
+  const canReverse = status === "POSTED" && canPerformAction("journal.reverse", userRole)
 
   const totals = useMemo(
     () => ({
@@ -140,7 +137,12 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
             <p className="mt-3 text-sm text-muted-foreground">{journal.narration ?? "-"}</p>
             <div className="mt-4 flex flex-wrap gap-2">
               {canSubmit ? (
-                <Button variant="outline" onClick={() => submitMutation.mutate()} disabled={actionsDisabled}>
+                <Button
+                  variant="outline"
+                  onClick={() => submitMutation.mutate()}
+                  disabled={actionsDisabled || !canPerformAction("journal.submit", userRole)}
+                  title={!canPerformAction("journal.submit", userRole) ? getPermissionDeniedMessage("journal.submit") : undefined}
+                >
                   Submit
                 </Button>
               ) : null}

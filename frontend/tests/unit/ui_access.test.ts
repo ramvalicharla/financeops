@@ -27,8 +27,23 @@ describe("ui access helpers", () => {
   })
 
   it("limits owner-only actions to platform owners", () => {
-    expect(canPerformAction("platform.users.manage", "platform_owner")).toBe(true)
-    expect(canPerformAction("platform.users.manage", "platform_admin")).toBe(false)
+    expect(canPerformAction("platform.users.update", "platform_owner")).toBe(true)
+    expect(canPerformAction("platform.users.update", "platform_admin")).toBe(false)
+  })
+
+  it("requires module entitlement for entitled user-plane actions", () => {
+    expect(
+      canPerformAction("erp.sync.run", {
+        role: "finance_leader",
+        entitlements,
+      }),
+    ).toBe(true)
+    expect(
+      canPerformAction("erp.sync.run", {
+        role: "finance_leader",
+        entitlements: [],
+      }),
+    ).toBe(false)
   })
 
   it("filters entitlement-gated navigation items", () => {

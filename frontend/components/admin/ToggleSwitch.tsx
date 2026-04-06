@@ -8,12 +8,14 @@ export function ToggleSwitch({
   disabled = false,
   onLabel = "On",
   offLabel = "Off",
+  title,
 }: {
   checked: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
   onLabel?: string
   offLabel?: string
+  title?: string
 }) {
   return (
     <button
@@ -21,6 +23,7 @@ export function ToggleSwitch({
       role="switch"
       aria-checked={checked}
       disabled={disabled}
+      title={title}
       onClick={() => onChange(!checked)}
       className={cn(
         "inline-flex min-w-16 items-center justify-center rounded-full border px-2 py-1 text-xs transition",

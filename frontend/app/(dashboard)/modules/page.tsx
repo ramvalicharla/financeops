@@ -3,16 +3,27 @@
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
+import { useCurrentEntitlements } from "@/hooks/useBilling"
 import { listFinanceModules, setFinanceModuleStatus, type FinanceModuleRow } from "@/lib/api/modules"
-import { getAccessErrorMessage, canPerformAction } from "@/lib/ui-access"
+import {
+  getAccessErrorMessage,
+  canPerformAction,
+  getPermissionDeniedMessage,
+} from "@/lib/ui-access"
 
 const MODULES = ["LEASE", "REVENUE", "ASSETS", "PREPAID", "ACCRUAL", "SUBSCRIPTION"] as const
 
 export default function ModulesPage() {
   const { data: session } = useSession()
+  const entitlementsQuery = useCurrentEntitlements({
+    enabled: Boolean(session?.user?.tenant_id),
+  })
   const canManageModules = canPerformAction(
-    "tenant.modules.manage",
-    session?.user?.role,
+    "tenant.modules.update",
+    {
+      role: session?.user?.role,
+      entitlements: entitlementsQuery.data,
+    },
   )
   const [rows, setRows] = useState<FinanceModuleRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -101,6 +112,7 @@ export default function ModulesPage() {
                       type="button"
                       onClick={() => void toggle(moduleName, !enabled)}
                       disabled={!canManageModules}
+                      title={!canManageModules ? getPermissionDeniedMessage("tenant.modules.update") : undefined}
                       className="rounded-md border border-border px-3 py-1.5 hover:bg-accent"
                     >
                       {enabled ? "Disable" : "Enable"}

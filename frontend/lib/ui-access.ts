@@ -6,7 +6,11 @@ import type {
 } from "@/lib/config/navigation"
 import type { BillingEntitlement } from "@/types/billing"
 
-type KnownUserRole = UserRole | "admin" | null | undefined
+type KnownUserRole =
+  | UserRole
+  | string
+  | null
+  | undefined
 
 const PLATFORM_OWNER_ROLES = new Set<KnownUserRole>([
   "super_admin",
@@ -94,22 +98,202 @@ export const isTenantAdmin = (role: KnownUserRole): boolean =>
 export const isTenantManager = (role: KnownUserRole): boolean =>
   TENANT_MANAGER_ROLES.has(role)
 
+const TENANT_MEMBER_ROLES = new Set<KnownUserRole>([
+  "super_admin",
+  "platform_owner",
+  "platform_admin",
+  "finance_leader",
+  "finance_team",
+  "director",
+  "hr_manager",
+  "employee",
+  "entity_user",
+  "finance_reviewer",
+  "finance_approver",
+  "finance_poster",
+])
+
+type PermissionRule = {
+  featureKeys?: readonly string[]
+  allows: (role: KnownUserRole) => boolean
+}
+
+type ActionAccessContext = {
+  role: KnownUserRole
+  entitlements?: BillingEntitlement[]
+}
+
+const allowsTenantMember = (role: KnownUserRole): boolean =>
+  TENANT_MEMBER_ROLES.has(role)
+
+const allowsJournalReview = (role: KnownUserRole): boolean =>
+  [
+    "finance_reviewer",
+    "finance_team",
+    "finance_leader",
+    "super_admin",
+    "platform_owner",
+    "platform_admin",
+  ].includes(String(role))
+
+const allowsJournalApproval = (role: KnownUserRole): boolean =>
+  [
+    "finance_approver",
+    "finance_leader",
+    "super_admin",
+    "platform_owner",
+    "platform_admin",
+  ].includes(String(role))
+
+const allowsJournalPosting = (role: KnownUserRole): boolean =>
+  [
+    "finance_poster",
+    "finance_leader",
+    "super_admin",
+    "platform_owner",
+    "platform_admin",
+  ].includes(String(role))
+
+const PERMISSION_RULES: Record<string, PermissionRule> = {
+  "erp.connectors.create": {
+    featureKeys: ["erp_integration"],
+    allows: isTenantAdmin,
+  },
+  "erp.connectors.update": {
+    featureKeys: ["erp_integration"],
+    allows: isTenantAdmin,
+  },
+  "erp.connectors.delete": {
+    featureKeys: ["erp_integration"],
+    allows: isTenantAdmin,
+  },
+  "erp.sync.run": {
+    featureKeys: ["erp_integration"],
+    allows: isTenantAdmin,
+  },
+  "recon.execute": {
+    featureKeys: ["reconciliation", "reconciliation_bridge", "payroll_gl_reconciliation"],
+    allows: isTenantAdmin,
+  },
+  "recon.approve": {
+    featureKeys: ["reconciliation", "reconciliation_bridge", "payroll_gl_reconciliation"],
+    allows: isTenantManager,
+  },
+  "mis.generate": {
+    featureKeys: ["mis_manager"],
+    allows: isTenantManager,
+  },
+  "workflow.approve": {
+    allows: isTenantManager,
+  },
+  "workflow.reject": {
+    allows: isTenantManager,
+  },
+  "close.lock": {
+    allows: allowsJournalApproval,
+  },
+  "close.unlock": {
+    allows: allowsJournalApproval,
+  },
+  "journal.create": {
+    allows: allowsTenantMember,
+  },
+  "journal.submit": {
+    allows: allowsTenantMember,
+  },
+  "journal.review": {
+    allows: allowsJournalReview,
+  },
+  "journal.approve": {
+    allows: allowsJournalApproval,
+  },
+  "journal.post": {
+    allows: allowsJournalPosting,
+  },
+  "journal.reverse": {
+    allows: allowsJournalPosting,
+  },
+  "platform.users.create": {
+    allows: isPlatformOwner,
+  },
+  "platform.users.update": {
+    allows: isPlatformOwner,
+  },
+  "platform.users.delete": {
+    allows: isPlatformOwner,
+  },
+  "platform.flags.create": {
+    allows: isPlatformOwner,
+  },
+  "platform.flags.update": {
+    allows: isPlatformOwner,
+  },
+  "platform.flags.delete": {
+    allows: isPlatformOwner,
+  },
+  "platform.modules.enable": {
+    allows: isPlatformOwner,
+  },
+  "platform.modules.update": {
+    allows: isPlatformOwner,
+  },
+  "platform.rbac.manage": {
+    allows: isPlatformOwner,
+  },
+  "tenant.modules.update": {
+    featureKeys: ["industry_modules"],
+    allows: isTenantAdmin,
+  },
+  "audit.access.grant": {
+    allows: isTenantManager,
+  },
+  "audit.access.revoke": {
+    allows: isTenantManager,
+  },
+}
+
+const normalizeActionContext = (
+  roleOrContext: KnownUserRole | ActionAccessContext,
+): ActionAccessContext =>
+  roleOrContext && typeof roleOrContext === "object" && "role" in roleOrContext
+    ? roleOrContext
+    : { role: roleOrContext as KnownUserRole }
+
 export const canPerformAction = (
   permission: string,
-  role: KnownUserRole,
+  roleOrContext: KnownUserRole | ActionAccessContext,
 ): boolean => {
-  switch (permission) {
-    case "platform.users.manage":
-    case "platform.flags.manage":
-    case "platform.modules.manage":
-      return isPlatformOwner(role)
-    case "tenant.modules.manage":
-    case "tenant.erp.manage":
-    case "tenant.sync.manage":
-      return isTenantAdmin(role)
-    default:
-      return false
+  const rule = PERMISSION_RULES[permission]
+  if (!rule) {
+    return false
   }
+
+  const context = normalizeActionContext(roleOrContext)
+  if (!rule.allows(context.role)) {
+    return false
+  }
+
+  if (!rule.featureKeys?.length) {
+    return true
+  }
+
+  return hasEntitlement(context.entitlements, rule.featureKeys)
+}
+
+export const getPermissionDeniedMessage = (permission: string): string => {
+  if (permission.startsWith("platform.")) {
+    return "You do not have permission."
+  }
+  if (permission.startsWith("erp.") || permission.startsWith("tenant.")) {
+    return "You do not have permission."
+  }
+  if (permission.startsWith("journal.") || permission.startsWith("close.")) {
+    return "You do not have permission."
+  }
+  if (permission.startsWith("workflow.")) {
+    return "You do not have permission."
+  }
+  return "You do not have permission."
 }
 
 export const hasEntitlement = (

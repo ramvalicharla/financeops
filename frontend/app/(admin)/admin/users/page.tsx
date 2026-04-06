@@ -21,10 +21,8 @@ const editableRoles: PlatformUserRole[] = [
 
 export default function AdminUsersPage() {
   const { data: session } = useSession()
-  const canManageUsers = canPerformAction(
-    "platform.users.manage",
-    session?.user?.role,
-  )
+  const canUpdateUsers = canPerformAction("platform.users.update", session?.user?.role)
+  const canDeleteUsers = canPerformAction("platform.users.delete", session?.user?.role)
   const [rows, setRows] = useState<PlatformUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -86,7 +84,7 @@ export default function AdminUsersPage() {
         <p className="mt-2 text-xs text-muted-foreground">
           Active users: {activeCount} / {rows.length}
         </p>
-        {!canManageUsers ? (
+        {!canUpdateUsers ? (
           <p className="mt-2 text-sm text-muted-foreground">
             Only platform owners can change platform-user roles or deactivate accounts.
           </p>
@@ -121,7 +119,7 @@ export default function AdminUsersPage() {
                 onChange={(next) => {
                   void changeRole(row, next)
                 }}
-                disabled={!row.is_active || !canManageUsers}
+                disabled={!row.is_active || !canUpdateUsers}
               />
             ),
           },
@@ -148,7 +146,7 @@ export default function AdminUsersPage() {
             header: "Actions",
             render: (row) => (
               <div className="flex items-center gap-2">
-                {canManageUsers && row.role !== "platform_admin" ? (
+                {canUpdateUsers && row.role !== "platform_admin" ? (
                   <button
                     type="button"
                     className="rounded-md border border-border px-2 py-1 text-xs text-foreground"
@@ -160,7 +158,7 @@ export default function AdminUsersPage() {
                     Promote to admin
                   </button>
                 ) : null}
-                {canManageUsers ? (
+                {canDeleteUsers ? (
                   <button
                     type="button"
                     className="rounded-md border border-[hsl(var(--brand-danger)/0.5)] px-2 py-1 text-xs text-[hsl(var(--brand-danger))]"
