@@ -19,6 +19,7 @@ from financeops.db.models.users import IamUser, UserRole
 from financeops.services.audit_service import log_action
 from financeops.services.user_service import normalize_email
 from financeops.shared_kernel.pagination import Paginated
+from financeops.platform.services.rbac.permission_engine import require_permission
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +33,10 @@ _PLATFORM_ROLES = {
     UserRole.platform_support,
     UserRole.super_admin,
 }
+platform_user_create_guard = require_permission("platform.users.create")
+platform_user_update_guard = require_permission("platform.users.update")
+platform_user_delete_guard = require_permission("platform.users.delete")
+platform_user_view_guard = require_permission("platform.users.view")
 
 
 def _role_value(role: UserRole | str) -> str:
@@ -163,6 +168,7 @@ async def create_platform_user(
     body: CreatePlatformUserRequest,
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(get_current_user),
+    _: IamUser = Depends(platform_user_create_guard),
 ) -> dict:
     _require_platform_owner(current_user)
     normalized_email = normalize_email(body.email)
@@ -231,6 +237,7 @@ async def list_platform_users(
     offset: int = Query(default=0, ge=0),
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(get_current_user),
+    _: IamUser = Depends(platform_user_view_guard),
 ) -> Paginated[dict]:
     _require_platform_owner(current_user)
     base_stmt = select(IamUser).where(IamUser.tenant_id == PLATFORM_TENANT_ID)
@@ -269,6 +276,7 @@ async def update_platform_role(
     body: UpdatePlatformRoleRequest,
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(get_current_user),
+    _: IamUser = Depends(platform_user_update_guard),
 ) -> dict:
     _require_platform_owner(current_user)
     if user_id == current_user.id:
@@ -308,6 +316,7 @@ async def deactivate_platform_user(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     current_user: IamUser = Depends(get_current_user),
+    _: IamUser = Depends(platform_user_delete_guard),
 ) -> dict:
     _require_platform_owner(current_user)
     if user_id == current_user.id:

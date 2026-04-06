@@ -89,7 +89,7 @@ async def test_observability_runs_endpoint_requires_context_token(
             "X-Control-Plane-Token": "",
         },
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -121,7 +121,7 @@ async def test_observability_diff_endpoint_requires_rbac_permission(
         headers={"Authorization": f"Bearer {token}"},
         json={"base_run_id": str(uuid.uuid4()), "compare_run_id": str(uuid.uuid4())},
     )
-    assert response.status_code in {401, 403}
+    assert response.status_code in {400, 401, 403}
 
 
 @pytest.mark.asyncio

@@ -42,6 +42,7 @@ from financeops.platform.services.rbac.permission_service import create_permissi
 from financeops.platform.services.rbac.role_service import assign_user_role, create_role
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from tests.integration.anomaly_pattern_phase1f6_helpers import (
     build_anomaly_service,
     seed_active_anomaly_configuration,
@@ -328,6 +329,12 @@ async def seed_control_plane_for_board_pack(
             correlation_id="board-pack-phase1f7",
             effective_from=now,
             effective_to=None,
+        )
+        await grant_boolean_entitlement(
+            session,
+            tenant_id=tenant_id,
+            feature_name="board_pack_narrative_engine",
+            actor_user_id=user_id,
         )
     await assign_quota_to_tenant(
         session,

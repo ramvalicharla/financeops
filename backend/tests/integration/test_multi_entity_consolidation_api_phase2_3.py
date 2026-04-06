@@ -28,5 +28,5 @@ async def test_hierarchy_endpoint_requires_context_token(
             "nodes": [],
         },
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
 

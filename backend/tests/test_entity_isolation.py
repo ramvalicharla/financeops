@@ -12,11 +12,23 @@ from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+async def _grant_entity_isolation_entitlements(async_session: AsyncSession, test_user: IamUser) -> None:
+    for feature_name in ("bank_reconciliation", "gst"):
+        await grant_boolean_entitlement(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            feature_name=feature_name,
+            actor_user_id=test_user.id,
+        )
 
 
 async def _create_entity(async_client, user: IamUser, *, code: str, name: str) -> str:

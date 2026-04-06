@@ -26,9 +26,15 @@ from financeops.modules.erp_integration.schemas import (
 )
 from financeops.db.models.erp_integration import ErpMasterEntityType
 from financeops.shared_kernel.response import ok
+from financeops.platform.services.rbac.permission_engine import require_permission
 
 
 router = APIRouter(prefix="/erp", tags=["ERP Integration"])
+
+erp_create_connector_guard = require_permission("erp.connectors.create")
+erp_update_connector_guard = require_permission("erp.connectors.update")
+erp_run_sync_guard = require_permission("erp.sync.run")
+erp_view_guard = require_permission("erp.view")
 
 _ERP_ALLOWED_ROLES = {
     UserRole.super_admin,
@@ -80,7 +86,7 @@ async def create_connector(
     request: Request,
     body: ConnectorCreateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_create_connector_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -100,7 +106,7 @@ async def create_connector(
 async def list_connectors(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_view_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -116,7 +122,7 @@ async def get_connector(
     request: Request,
     connector_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_view_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -133,7 +139,7 @@ async def update_connector_status(
     connector_id: uuid.UUID,
     body: ConnectorStatusUpdateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_update_connector_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -154,7 +160,7 @@ async def test_connector(
     request: Request,
     connector_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_update_connector_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -170,7 +176,7 @@ async def run_sync(
     request: Request,
     body: SyncRunRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_run_sync_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -187,7 +193,7 @@ async def list_sync_jobs(
     request: Request,
     erp_connector_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_view_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)
@@ -206,7 +212,7 @@ async def get_sync_job(
     request: Request,
     job_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(erp_view_guard),
 ) -> dict[str, Any]:
     _assert_erp_access(user)
     service = ErpIntegrationService(session)

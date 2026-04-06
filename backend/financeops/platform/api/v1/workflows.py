@@ -17,6 +17,7 @@ from financeops.platform.schemas.workflows import (
     WorkflowTemplateCreate,
     WorkflowTemplateVersionCreate,
 )
+from financeops.platform.services.rbac.permission_engine import require_permission
 from financeops.platform.services.workflows.approval_service import submit_approval
 from financeops.platform.services.workflows.instance_service import create_workflow_instance, get_workflow_status
 from financeops.platform.services.workflows.template_service import create_template, create_template_version
@@ -45,6 +46,8 @@ workflow_approve_guard = require_user_plane_permission(
     },
     fallback_error_message="finance_approver role required",
 )
+workflow_approve_matrix_guard = require_permission("workflow.approve")
+workflow_manage_matrix_guard = require_permission("workflow.view")
 
 
 @router.post("/templates")
@@ -53,6 +56,7 @@ async def create_template_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(workflow_manage_guard),
+    _: IamUser = Depends(workflow_manage_matrix_guard),
 ) -> dict:
     template = await create_template(
         session,
@@ -72,6 +76,7 @@ async def create_template_version_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(workflow_manage_guard),
+    _: IamUser = Depends(workflow_manage_matrix_guard),
 ) -> dict:
     version = await create_template_version(
         session,
@@ -94,6 +99,7 @@ async def create_instance_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(workflow_manage_guard),
+    _: IamUser = Depends(workflow_manage_matrix_guard),
 ) -> dict:
     instance = await create_workflow_instance(
         session,
@@ -116,6 +122,7 @@ async def submit_approval_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(workflow_approve_guard),
+    _: IamUser = Depends(workflow_approve_matrix_guard),
 ) -> dict:
     result = await submit_approval(
         session,
@@ -139,6 +146,7 @@ async def get_workflow_status_endpoint(
     workflow_instance_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
+    _: IamUser = Depends(workflow_manage_matrix_guard),
 ) -> dict:
     return await get_workflow_status(
         session,

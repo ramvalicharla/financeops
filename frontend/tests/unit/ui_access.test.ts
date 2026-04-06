@@ -31,6 +31,12 @@ describe("ui access helpers", () => {
     expect(canPerformAction("platform.users.update", "platform_admin")).toBe(false)
   })
 
+  it("keeps runtime reviewer and approver actions aligned", () => {
+    expect(canPerformAction("journal.review", "finance_reviewer")).toBe(true)
+    expect(canPerformAction("journal.approve", "finance_approver")).toBe(true)
+    expect(canPerformAction("journal.post", "finance_poster")).toBe(true)
+  })
+
   it("requires module entitlement for entitled user-plane actions", () => {
     expect(
       canPerformAction("erp.sync.run", {

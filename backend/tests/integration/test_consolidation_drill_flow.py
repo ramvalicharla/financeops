@@ -1,10 +1,22 @@
 from __future__ import annotations
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from tests.utils.consolidation_seed import seed_consolidation_drill_dataset
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _grant_consolidation_entitlement(async_session, test_user) -> None:
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        feature_name="consolidation",
+        actor_user_id=test_user.id,
+    )
 
 
 @pytest.mark.asyncio

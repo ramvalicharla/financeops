@@ -27,6 +27,7 @@ from financeops.platform.services.rbac.permission_service import (
 from financeops.platform.services.rbac.role_service import assign_user_role, create_role
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 
 DEFAULT_TEST_DATABASE_URL = (
     "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test"
@@ -187,6 +188,12 @@ async def seed_control_plane_for_observability(
             correlation_id="observability-phase3",
             effective_from=now,
             effective_to=None,
+        )
+        await grant_boolean_entitlement(
+            session,
+            tenant_id=tenant_id,
+            feature_name="observability_engine",
+            actor_user_id=user_id,
         )
     await assign_quota_to_tenant(
         session,

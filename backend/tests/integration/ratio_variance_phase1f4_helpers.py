@@ -46,6 +46,7 @@ from financeops.platform.services.rbac.permission_service import (
 from financeops.platform.services.rbac.role_service import assign_user_role, create_role
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers import (
     seed_finalized_normalization_pair,
     seed_identity_user,
@@ -243,6 +244,12 @@ async def seed_control_plane_for_ratio_variance(
             correlation_id="ratio-phase1f4",
             effective_from=now,
             effective_to=None,
+        )
+        await grant_boolean_entitlement(
+            session,
+            tenant_id=tenant_id,
+            feature_name="ratio_variance_engine",
+            actor_user_id=user_id,
         )
     await assign_quota_to_tenant(
         session,

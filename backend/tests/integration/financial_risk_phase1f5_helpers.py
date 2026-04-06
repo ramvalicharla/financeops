@@ -41,6 +41,7 @@ from financeops.platform.services.rbac.permission_service import (
 from financeops.platform.services.rbac.role_service import assign_user_role, create_role
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers import seed_identity_user
 from tests.integration.ratio_variance_phase1f4_helpers import (
     build_ratio_variance_service,
@@ -237,6 +238,12 @@ async def seed_control_plane_for_financial_risk(
             correlation_id="risk-phase1f5",
             effective_from=now,
             effective_to=None,
+        )
+        await grant_boolean_entitlement(
+            session,
+            tenant_id=tenant_id,
+            feature_name="financial_risk_engine",
+            actor_user_id=user_id,
         )
     await assign_quota_to_tenant(
         session,

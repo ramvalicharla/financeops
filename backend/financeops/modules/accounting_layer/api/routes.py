@@ -36,6 +36,7 @@ from financeops.modules.accounting_layer.application.journal_service import (
 from financeops.modules.accounting_layer.application.revaluation_service import (
     run_fx_revaluation,
 )
+from financeops.platform.services.rbac.permission_engine import require_permission
 from financeops.modules.accounting_layer.application.trial_balance_service import (
     get_trial_balance,
 )
@@ -78,6 +79,14 @@ from financeops.observability.workflow_signals import (
 jv_router = APIRouter(prefix="/jv", tags=["Accounting JV"])
 journals_router = APIRouter(prefix="/journals", tags=["Accounting Journals"])
 router = APIRouter()
+
+journal_create_guard = require_permission("journal.create")
+journal_view_guard = require_permission("journal.view")
+journal_submit_guard = require_permission("journal.submit")
+journal_review_guard = require_permission("journal.review")
+journal_approve_guard = require_permission("journal.approve")
+journal_post_guard = require_permission("journal.post")
+journal_reverse_guard = require_permission("journal.reverse")
 
 
 def _is_admin(user: IamUser) -> bool:
@@ -318,7 +327,7 @@ async def create_journal_endpoint(
     request: Request,
     body: JournalCreate,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_create_guard),
 ) -> dict[str, Any]:
     journal = await create_journal_draft(
         session,
@@ -337,7 +346,7 @@ async def create_journal_endpoint(
 async def list_journals_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_view_guard),
     org_entity_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
@@ -362,7 +371,7 @@ async def approve_journal_endpoint(
     request: Request,
     journal_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_approve_guard),
 ) -> dict[str, Any]:
     if not _can_approve(user):
         raise AuthorizationError("finance approver role required")
@@ -386,7 +395,7 @@ async def post_journal_endpoint(
     request: Request,
     journal_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_post_guard),
 ) -> dict[str, Any]:
     if not _can_post(user):
         raise AuthorizationError("finance poster role required")
@@ -414,7 +423,7 @@ async def reverse_journal_endpoint(
     request: Request,
     journal_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_reverse_guard),
 ) -> dict[str, Any]:
     if not _can_post(user):
         raise AuthorizationError("finance poster role required")
@@ -437,7 +446,7 @@ async def submit_journal_endpoint(
     request: Request,
     journal_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_submit_guard),
 ) -> dict[str, Any]:
     result = await submit_journal(
         session,
@@ -459,7 +468,7 @@ async def review_journal_endpoint(
     request: Request,
     journal_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_review_guard),
 ) -> dict[str, Any]:
     if not _can_review(user):
         raise AuthorizationError("finance reviewer role required")
@@ -483,7 +492,7 @@ async def get_journal_endpoint(
     request: Request,
     journal_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(journal_view_guard),
 ) -> dict[str, Any]:
     journal = await get_journal(
         session,

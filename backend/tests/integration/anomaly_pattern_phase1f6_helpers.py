@@ -47,6 +47,7 @@ from financeops.platform.services.rbac.permission_service import create_permissi
 from financeops.platform.services.rbac.role_service import assign_user_role, create_role
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from tests.integration.financial_risk_phase1f5_helpers import (
     build_financial_risk_service,
     seed_active_risk_configuration,
@@ -209,6 +210,12 @@ async def seed_control_plane_for_anomaly(
     now = datetime.now(UTC)
     if enable_module:
         await set_module_enablement(session, tenant_id=tenant_id, module_id=module.id, enabled=True, enablement_source="test", actor_user_id=user_id, correlation_id="anomaly-phase1f6", effective_from=now, effective_to=None)
+        await grant_boolean_entitlement(
+            session,
+            tenant_id=tenant_id,
+            feature_name="anomaly_pattern_engine",
+            actor_user_id=user_id,
+        )
     await assign_quota_to_tenant(session, tenant_id=tenant_id, quota_type="api_requests", window_type="sliding", window_seconds=60, max_value=1000, enforcement_mode="reject", effective_from=now, effective_to=None, actor_user_id=user_id, correlation_id="anomaly-phase1f6")
     await create_isolation_route(session, tenant_id=tenant_id, isolation_tier="tier1", db_cluster="shared-primary", schema_name="public", worker_pool="shared-workers", region="us-east-1", migration_state="active", route_version=1, effective_from=now, effective_to=None, actor_user_id=user_id, correlation_id="anomaly-phase1f6")
     if not grant_permissions:

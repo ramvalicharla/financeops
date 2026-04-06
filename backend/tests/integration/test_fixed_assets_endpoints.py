@@ -4,9 +4,21 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
 
 from financeops.platform.services.enforcement.context_token import issue_context_token
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _grant_fixed_assets_entitlement(async_session, test_user) -> None:
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        feature_name="fixed_assets",
+        actor_user_id=test_user.id,
+    )
 
 
 class _StubTemporalClient:

@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _grant_gst_entitlement(async_session, test_user) -> None:
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        feature_name="gst",
+        actor_user_id=test_user.id,
+    )
 
 
 @pytest.mark.asyncio

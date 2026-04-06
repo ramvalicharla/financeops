@@ -3,7 +3,20 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from httpx import AsyncClient
+
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _grant_revenue_entitlement(async_session, test_user) -> None:
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        feature_name="revenue",
+        actor_user_id=test_user.id,
+    )
 
 
 class _StubTemporalClient:

@@ -13,7 +13,18 @@ from financeops.db.models.consolidation import ConsolidationLineItem
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from tests.utils.consolidation_seed import seed_consolidation_drill_dataset
+
+
+@pytest.fixture(autouse=True)
+async def _grant_consolidation_entitlement(async_session: AsyncSession, test_user: IamUser) -> None:
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        feature_name="consolidation",
+        actor_user_id=test_user.id,
+    )
 
 
 async def _create_other_tenant_user_token(async_session: AsyncSession) -> str:
@@ -52,6 +63,12 @@ async def _create_other_tenant_user_token(async_session: AsyncSession) -> str:
     )
     async_session.add(user)
     await async_session.flush()
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=tenant.id,
+        feature_name="consolidation",
+        actor_user_id=user.id,
+    )
     return create_access_token(user.id, tenant.id, user.role.value)
 
 

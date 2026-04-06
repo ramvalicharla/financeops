@@ -4,6 +4,7 @@ import type {
   NavigationItem,
   NavigationLeafItem,
 } from "@/lib/config/navigation"
+import { PERMISSIONS, ROLE_ALIASES } from "./permission-matrix"
 import type { BillingEntitlement } from "@/types/billing"
 
 type KnownUserRole =
@@ -11,33 +12,6 @@ type KnownUserRole =
   | string
   | null
   | undefined
-
-const PLATFORM_OWNER_ROLES = new Set<KnownUserRole>([
-  "super_admin",
-  "platform_owner",
-])
-
-const PLATFORM_ADMIN_ROLES = new Set<KnownUserRole>([
-  "super_admin",
-  "platform_owner",
-  "platform_admin",
-])
-
-const TENANT_ADMIN_ROLES = new Set<KnownUserRole>([
-  "super_admin",
-  "platform_owner",
-  "platform_admin",
-  "finance_leader",
-])
-
-const TENANT_MANAGER_ROLES = new Set<KnownUserRole>([
-  "super_admin",
-  "platform_owner",
-  "platform_admin",
-  "finance_leader",
-  "director",
-  "hr_manager",
-])
 
 const ROUTE_FEATURES: Record<string, readonly string[]> = {
   "/dashboard/cfo": ["analytics"],
@@ -86,170 +60,32 @@ const ENTITLEMENT_ERROR_CODES = new Set<string>([
 
 const normalize = (value: string): string => value.trim().toLowerCase()
 
+const resolveCanonicalRoles = (role: KnownUserRole): Set<string> => {
+  const normalizedRole = normalize(String(role ?? ""))
+  const resolved = new Set<string>()
+  for (const [canonicalRole, aliases] of Object.entries(ROLE_ALIASES)) {
+    if (aliases.some((alias) => normalize(alias) === normalizedRole)) {
+      resolved.add(canonicalRole)
+    }
+  }
+  return resolved
+}
+
 export const isPlatformOwner = (role: KnownUserRole): boolean =>
-  PLATFORM_OWNER_ROLES.has(role)
+  resolveCanonicalRoles(role).has("platform_owner")
 
 export const isPlatformAdmin = (role: KnownUserRole): boolean =>
-  PLATFORM_ADMIN_ROLES.has(role)
+  resolveCanonicalRoles(role).has("platform_admin") || isPlatformOwner(role)
 
 export const isTenantAdmin = (role: KnownUserRole): boolean =>
-  TENANT_ADMIN_ROLES.has(role)
+  resolveCanonicalRoles(role).has("tenant_admin") || resolveCanonicalRoles(role).has("tenant_owner")
 
 export const isTenantManager = (role: KnownUserRole): boolean =>
-  TENANT_MANAGER_ROLES.has(role)
-
-const TENANT_MEMBER_ROLES = new Set<KnownUserRole>([
-  "super_admin",
-  "platform_owner",
-  "platform_admin",
-  "finance_leader",
-  "finance_team",
-  "director",
-  "hr_manager",
-  "employee",
-  "entity_user",
-  "finance_reviewer",
-  "finance_approver",
-  "finance_poster",
-])
-
-type PermissionRule = {
-  featureKeys?: readonly string[]
-  allows: (role: KnownUserRole) => boolean
-}
+  resolveCanonicalRoles(role).has("tenant_manager") || isTenantAdmin(role)
 
 type ActionAccessContext = {
   role: KnownUserRole
   entitlements?: BillingEntitlement[]
-}
-
-const allowsTenantMember = (role: KnownUserRole): boolean =>
-  TENANT_MEMBER_ROLES.has(role)
-
-const allowsJournalReview = (role: KnownUserRole): boolean =>
-  [
-    "finance_reviewer",
-    "finance_team",
-    "finance_leader",
-    "super_admin",
-    "platform_owner",
-    "platform_admin",
-  ].includes(String(role))
-
-const allowsJournalApproval = (role: KnownUserRole): boolean =>
-  [
-    "finance_approver",
-    "finance_leader",
-    "super_admin",
-    "platform_owner",
-    "platform_admin",
-  ].includes(String(role))
-
-const allowsJournalPosting = (role: KnownUserRole): boolean =>
-  [
-    "finance_poster",
-    "finance_leader",
-    "super_admin",
-    "platform_owner",
-    "platform_admin",
-  ].includes(String(role))
-
-const PERMISSION_RULES: Record<string, PermissionRule> = {
-  "erp.connectors.create": {
-    featureKeys: ["erp_integration"],
-    allows: isTenantAdmin,
-  },
-  "erp.connectors.update": {
-    featureKeys: ["erp_integration"],
-    allows: isTenantAdmin,
-  },
-  "erp.connectors.delete": {
-    featureKeys: ["erp_integration"],
-    allows: isTenantAdmin,
-  },
-  "erp.sync.run": {
-    featureKeys: ["erp_integration"],
-    allows: isTenantAdmin,
-  },
-  "recon.execute": {
-    featureKeys: ["reconciliation", "reconciliation_bridge", "payroll_gl_reconciliation"],
-    allows: isTenantAdmin,
-  },
-  "recon.approve": {
-    featureKeys: ["reconciliation", "reconciliation_bridge", "payroll_gl_reconciliation"],
-    allows: isTenantManager,
-  },
-  "mis.generate": {
-    featureKeys: ["mis_manager"],
-    allows: isTenantManager,
-  },
-  "workflow.approve": {
-    allows: isTenantManager,
-  },
-  "workflow.reject": {
-    allows: isTenantManager,
-  },
-  "close.lock": {
-    allows: allowsJournalApproval,
-  },
-  "close.unlock": {
-    allows: allowsJournalApproval,
-  },
-  "journal.create": {
-    allows: allowsTenantMember,
-  },
-  "journal.submit": {
-    allows: allowsTenantMember,
-  },
-  "journal.review": {
-    allows: allowsJournalReview,
-  },
-  "journal.approve": {
-    allows: allowsJournalApproval,
-  },
-  "journal.post": {
-    allows: allowsJournalPosting,
-  },
-  "journal.reverse": {
-    allows: allowsJournalPosting,
-  },
-  "platform.users.create": {
-    allows: isPlatformOwner,
-  },
-  "platform.users.update": {
-    allows: isPlatformOwner,
-  },
-  "platform.users.delete": {
-    allows: isPlatformOwner,
-  },
-  "platform.flags.create": {
-    allows: isPlatformOwner,
-  },
-  "platform.flags.update": {
-    allows: isPlatformOwner,
-  },
-  "platform.flags.delete": {
-    allows: isPlatformOwner,
-  },
-  "platform.modules.enable": {
-    allows: isPlatformOwner,
-  },
-  "platform.modules.update": {
-    allows: isPlatformOwner,
-  },
-  "platform.rbac.manage": {
-    allows: isPlatformOwner,
-  },
-  "tenant.modules.update": {
-    featureKeys: ["industry_modules"],
-    allows: isTenantAdmin,
-  },
-  "audit.access.grant": {
-    allows: isTenantManager,
-  },
-  "audit.access.revoke": {
-    allows: isTenantManager,
-  },
 }
 
 const normalizeActionContext = (
@@ -263,21 +99,27 @@ export const canPerformAction = (
   permission: string,
   roleOrContext: KnownUserRole | ActionAccessContext,
 ): boolean => {
-  const rule = PERMISSION_RULES[permission]
-  if (!rule) {
+  const entry = PERMISSIONS[permission as keyof typeof PERMISSIONS]
+  if (!entry) {
     return false
   }
 
   const context = normalizeActionContext(roleOrContext)
-  if (!rule.allows(context.role)) {
+  const runtimeRole = normalize(String(context.role ?? ""))
+  const canonicalRoles = resolveCanonicalRoles(context.role)
+  const roleAllowed =
+    entry.runtime_roles.some((allowedRole) => normalize(allowedRole) === runtimeRole) ||
+    entry.roles.some((allowedRole) => canonicalRoles.has(allowedRole))
+
+  if (!roleAllowed) {
     return false
   }
 
-  if (!rule.featureKeys?.length) {
+  if (!entry.entitlement_keys.length) {
     return true
   }
 
-  return hasEntitlement(context.entitlements, rule.featureKeys)
+  return hasEntitlement(context.entitlements, entry.entitlement_keys)
 }
 
 export const getPermissionDeniedMessage = (permission: string): string => {

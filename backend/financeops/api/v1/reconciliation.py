@@ -24,9 +24,13 @@ from financeops.services.reconciliation_service import (
     list_tb_rows,
     run_gl_tb_reconciliation,
 )
+from financeops.platform.services.rbac.permission_engine import require_permission
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+recon_execute_guard = require_permission("recon.execute")
+recon_view_guard = require_permission("recon.view")
 
 
 # ── Schemas ────────────────────────────────────────────────────────────────
@@ -208,7 +212,7 @@ async def list_tb_rows_endpoint(
 async def run_reconciliation(
     body: RunReconRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_team),
+    user: IamUser = Depends(recon_execute_guard),
 ) -> dict:
     """
     Run GL/TB reconciliation for the given period and entity.
@@ -258,7 +262,7 @@ async def list_reconciliation_items(
     limit: int = 100,
     offset: int = 0,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(recon_view_guard),
 ) -> dict:
     """List reconciliation break items."""
     items = await list_recon_items(

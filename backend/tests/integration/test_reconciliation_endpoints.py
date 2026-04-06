@@ -3,6 +3,18 @@ from __future__ import annotations
 import pytest
 from httpx import AsyncClient
 
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
+
+
+@pytest.fixture(autouse=True)
+async def _grant_reconciliation_entitlement(async_session, test_user) -> None:
+    await grant_boolean_entitlement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        feature_name="reconciliation",
+        actor_user_id=test_user.id,
+    )
+
 
 @pytest.mark.asyncio
 async def test_import_gl_entry(

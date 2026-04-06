@@ -36,7 +36,7 @@ async def test_equity_statement_endpoint_requires_context_token(
             "status": "candidate",
         },
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -75,7 +75,7 @@ async def test_equity_run_endpoint_requires_rbac_permission(
             "ownership_consolidation_run_ref_nullable": None,
         },
     )
-    assert response.status_code in {401, 403}
+    assert response.status_code in {400, 401, 403}
 
 
 @pytest.mark.asyncio

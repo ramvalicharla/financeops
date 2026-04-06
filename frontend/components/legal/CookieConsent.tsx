@@ -23,7 +23,7 @@ export function CookieConsent() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-700 bg-gray-900 p-4">
+    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-700 bg-gray-900 p-4 md:left-60">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-6">
         <p className="text-sm text-gray-300">
           We use essential cookies only for authentication and security. No tracking or advertising cookies.{" "}

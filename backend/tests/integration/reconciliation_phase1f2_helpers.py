@@ -54,6 +54,7 @@ from financeops.platform.services.rbac.role_service import (
 )
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
+from tests.integration.entitlement_helpers import grant_boolean_entitlement
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 DEFAULT_TEST_DATABASE_URL = (
@@ -302,6 +303,12 @@ async def seed_control_plane_for_reconciliation_bridge(
             correlation_id="recon-phase1f2",
             effective_from=now,
             effective_to=None,
+        )
+        await grant_boolean_entitlement(
+            session,
+            tenant_id=tenant_id,
+            feature_name="reconciliation_bridge",
+            actor_user_id=user_id,
         )
 
     await assign_quota_to_tenant(

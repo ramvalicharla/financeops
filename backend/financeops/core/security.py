@@ -34,7 +34,11 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     """Verify a plaintext password against a bcrypt hash."""
-    return _bcrypt.checkpw(_normalize_password(plain), hashed.encode("utf-8"))
+    try:
+        return _bcrypt.checkpw(_normalize_password(plain), hashed.encode("utf-8"))
+    except ValueError:
+        log.warning("Stored password hash is invalid and could not be verified")
+        return False
 
 
 def _make_token(payload: dict, expires_delta: timedelta) -> str:

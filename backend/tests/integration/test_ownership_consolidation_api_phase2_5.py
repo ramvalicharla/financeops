@@ -28,4 +28,4 @@ async def test_ownership_structure_endpoint_requires_context_token(
             "status": "candidate",
         },
     )
-    assert response.status_code == 401
+    assert response.status_code == 403

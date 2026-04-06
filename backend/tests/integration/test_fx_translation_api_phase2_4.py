@@ -28,5 +28,5 @@ async def test_reporting_currency_endpoint_requires_context_token(
             "status": "candidate",
         },
     )
-    assert response.status_code == 401
+    assert response.status_code == 403
 

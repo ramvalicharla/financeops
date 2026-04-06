@@ -122,6 +122,32 @@ async def test_login_with_wrong_password_returns_401(
 
 
 @pytest.mark.asyncio
+async def test_login_with_malformed_hash_returns_401(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user,
+) -> None:
+    malformed_user = IamUser(
+        tenant_id=test_user.tenant_id,
+        email=f"bad-hash-{uuid.uuid4().hex[:8]}@example.com",
+        hashed_password="not-a-valid-bcrypt-hash",
+        full_name="Bad Hash User",
+        role=test_user.role,
+        is_active=True,
+        mfa_enabled=False,
+    )
+    async_session.add(malformed_user)
+    await async_session.flush()
+
+    response = await async_client.post(
+        "/api/v1/auth/login",
+        json={"email": malformed_user.email, "password": "AnyPassword123!"},
+    )
+
+    assert response.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_login_is_case_insensitive_for_existing_user_rows(
     async_client: AsyncClient,
     async_session: AsyncSession,
