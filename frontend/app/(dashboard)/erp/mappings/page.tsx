@@ -89,6 +89,16 @@ export default function ErpMappingsPage() {
         </section>
       ) : null}
 
+      {!accountsQuery.isLoading &&
+      !accountsQuery.isError &&
+      (accountsQuery.data?.length ?? 0) === 0 ? (
+        <section className="rounded-xl border border-border bg-card p-4">
+          <p className="text-sm text-muted-foreground">
+            No chart of accounts is available yet. Upload it later or connect your ERP before creating internal mappings.
+          </p>
+        </section>
+      ) : null}
+
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <select

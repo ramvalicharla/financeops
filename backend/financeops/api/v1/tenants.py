@@ -21,6 +21,7 @@ from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import user_invited_email
+from financeops.modules.org_setup.application.org_setup_service import OrgSetupService
 from financeops.platform.db.models.user_membership import CpUserEntityAssignment
 from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
 from financeops.services.credit_service import get_balance
@@ -98,6 +99,7 @@ async def get_my_tenant(
 ) -> dict:
     tenant = await get_tenant(session, user.tenant_id)
     workspaces = await list_workspaces(session, user.tenant_id)
+    org_setup_service = OrgSetupService(session)
     return {
         "tenant_id": str(tenant.id),
         "display_name": tenant.display_name,
@@ -110,6 +112,8 @@ async def get_my_tenant(
         "status": tenant.status.value,
         "org_setup_complete": tenant.org_setup_complete,
         "org_setup_step": tenant.org_setup_step,
+        "coa_status": await org_setup_service.get_coa_status(user.tenant_id),
+        "onboarding_score": await org_setup_service.get_onboarding_score(user.tenant_id),
         "created_at": tenant.created_at.isoformat(),
         "workspaces": [
             {

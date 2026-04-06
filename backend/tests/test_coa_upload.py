@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import uuid
 
 import pytest
+from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -42,6 +44,30 @@ async def test_validate_only_detects_duplicate_ledger_code(async_session: AsyncS
     assert result["total_rows"] == 2
     assert result["invalid_rows"] == 1
     assert "duplicate ledger_code in upload" in result["errors"][0]["errors"]
+
+
+@pytest.mark.asyncio
+async def test_parse_normalized_dataframe_accepts_xlsx_alias_columns(async_session: AsyncSession) -> None:
+    service = CoaUploadService(async_session)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([" Particulars ", " Dr ", " CR "])
+    sheet.append([" Cash ", "1,250.50", ""])
+    sheet.append(["", "", ""])
+    sheet.append([" Revenue ", "", "(250.25)"])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+
+    dataframe = service.parse_normalized_dataframe(
+        file_name="trial_balance.xlsx",
+        file_bytes=buffer.getvalue(),
+    )
+
+    assert list(dataframe.columns) == ["account", "debit", "credit"]
+    assert dataframe.to_dict(orient="records") == [
+        {"account": "Cash", "debit": 1250.5, "credit": 0.0},
+        {"account": "Revenue", "debit": 0.0, "credit": -250.25},
+    ]
 
 
 @pytest.mark.asyncio

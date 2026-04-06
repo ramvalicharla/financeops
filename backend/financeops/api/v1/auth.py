@@ -655,6 +655,7 @@ async def get_me(
     from financeops.db.models.payment import BillingPlan, TenantSubscription
 
     tenant = await get_tenant(session, user.tenant_id)
+    from financeops.modules.org_setup.application.org_setup_service import OrgSetupService
     subscription = (
         await session.execute(
             select(TenantSubscription)
@@ -682,6 +683,7 @@ async def get_me(
                 "price": str(plan.price) if plan.price is not None else None,
                 "currency": plan.currency,
             }
+    org_setup_service = OrgSetupService(session)
     return {
         "user_id": str(user.id),
         "email": user.email,
@@ -700,6 +702,8 @@ async def get_me(
             "status": tenant.status.value,
             "org_setup_complete": tenant.org_setup_complete,
             "org_setup_step": tenant.org_setup_step,
+            "coa_status": await org_setup_service.get_coa_status(user.tenant_id),
+            "onboarding_score": await org_setup_service.get_onboarding_score(user.tenant_id),
         },
         "billing": None
         if subscription is None

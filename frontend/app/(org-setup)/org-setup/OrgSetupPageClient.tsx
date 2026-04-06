@@ -11,7 +11,6 @@ import { Step4AccountingTools } from "@/components/org-setup/Step4AccountingTool
 import { Step5IndustryCoA } from "@/components/org-setup/Step5IndustryCoA"
 import { Step6ErpMapping } from "@/components/org-setup/Step6ErpMapping"
 import { SetupComplete } from "@/components/org-setup/SetupComplete"
-import { Button } from "@/components/ui/button"
 import {
   getOrgSetupProgress,
   getOrgSetupSummary,
@@ -38,7 +37,6 @@ export default function OrgSetupPageClient() {
   const [groupId, setGroupId] = useState<string | null>(null)
   const [step2Draft, setStep2Draft] = useState<Step2EntityPayload[]>([])
   const [setupComplete, setSetupComplete] = useState(false)
-  const [step5GateMessage, setStep5GateMessage] = useState<string | null>(null)
 
   const progressQuery = useQuery({
     queryKey: ["org-setup-progress"],
@@ -48,38 +46,38 @@ export default function OrgSetupPageClient() {
   const entitiesQuery = useQuery({
     queryKey: ["org-setup-entities"],
     queryFn: listOrgEntities,
+    enabled: setupComplete || currentStep >= 3,
   })
 
   const templatesQuery = useQuery({
     queryKey: ["org-setup-templates"],
     queryFn: getCoaTemplates,
+    enabled: currentStep >= 5,
   })
 
   const summaryQuery = useQuery({
     queryKey: ["org-setup-summary"],
     queryFn: getOrgSetupSummary,
-    enabled: setupComplete,
-  })
-
-  const step5ReadinessQuery = useQuery({
-    queryKey: ["org-setup-step5-readiness"],
-    queryFn: getOrgSetupSummary,
-    enabled: !setupComplete && currentStep === 5,
+    enabled: setupComplete || currentStep === 5,
   })
 
   useEffect(() => {
     if (!progressQuery.data) {
       return
     }
-    if (progressQuery.data.step1_data && typeof progressQuery.data.step1_data.group_id === "string") {
-      setGroupId(progressQuery.data.step1_data.group_id)
+    const nextGroupId =
+      progressQuery.data.step1_data && typeof progressQuery.data.step1_data.group_id === "string"
+        ? progressQuery.data.step1_data.group_id
+        : null
+    if (nextGroupId) {
+      setGroupId((previous) => previous ?? nextGroupId)
     }
     if (progressQuery.data.completed_at) {
-      setSetupComplete(true)
+      setSetupComplete((previous) => previous || true)
       return
     }
     const nextStep = Math.min(Math.max(progressQuery.data.current_step || 1, 1), 6)
-    setCurrentStep(nextStep)
+    setCurrentStep((previous) => (previous === nextStep ? previous : nextStep))
   }, [progressQuery.data])
 
   const step1Mutation = useMutation({
@@ -123,15 +121,10 @@ export default function OrgSetupPageClient() {
   const step5Mutation = useMutation({
     mutationFn: submitOrgSetupStep5,
     onSuccess: () => {
-      setStep5GateMessage(null)
       setCurrentStep(6)
       void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
       void queryClient.invalidateQueries({ queryKey: ["org-setup-entities"] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-step5-readiness"] })
-    },
-    onError: (cause) => {
-      const message = cause instanceof Error ? cause.message : "Upload Chart of Accounts to continue"
-      setStep5GateMessage(message)
+      void queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
@@ -181,8 +174,6 @@ export default function OrgSetupPageClient() {
   }
 
   const entities = entitiesQuery.data ?? []
-  const coaAccountCount = step5ReadinessQuery.data?.coa_account_count ?? 0
-  const isStep5Blocked = currentStep === 5 && coaAccountCount <= 0
 
   if (setupComplete) {
     return (
@@ -240,46 +231,14 @@ export default function OrgSetupPageClient() {
       ) : null}
 
       {currentStep === 5 ? (
-        isStep5Blocked ? (
-          <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-            <h2 className="text-lg font-semibold text-foreground">Industry and chart of accounts</h2>
-            <p className="text-sm text-muted-foreground">
-              Upload Chart of Accounts to continue.
-            </p>
-            {step5GateMessage ? (
-              <p className="text-sm text-[hsl(var(--brand-danger))]">{step5GateMessage}</p>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => {
-                  router.push("/setup/coa?next=/org-setup")
-                }}
-              >
-                Go to CoA Upload
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  void step5ReadinessQuery.refetch()
-                }}
-                disabled={step5ReadinessQuery.isFetching}
-              >
-                {step5ReadinessQuery.isFetching ? "Checking..." : "Retry Step5"}
-              </Button>
-            </div>
-          </section>
-        ) : (
-          <Step5IndustryCoA
-            entities={entities}
-            templates={templatesQuery.data ?? []}
-            submitting={step5Mutation.isPending}
-            onSubmit={async (entityTemplates) => {
-              await step5Mutation.mutateAsync({ entity_templates: entityTemplates })
-            }}
-          />
-        )
+        <Step5IndustryCoA
+          entities={entities}
+          templates={templatesQuery.data ?? []}
+          submitting={step5Mutation.isPending}
+          onSubmit={async (entityTemplates) => {
+            await step5Mutation.mutateAsync({ entity_templates: entityTemplates })
+          }}
+        />
       ) : null}
 
       {currentStep === 6 ? (

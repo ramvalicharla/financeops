@@ -1,13 +1,14 @@
 "use client"
 
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios"
-import { getSession, signOut } from "next-auth/react"
+import { signOut } from "next-auth/react"
 import * as Sentry from "@sentry/nextjs"
 import { ZodError, type ZodType } from "zod"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
 import { useUIStore } from "@/lib/store/ui"
 import { shouldSignOutOnUnauthorized } from "@/lib/api/auth-unauthorized"
+import { readSessionForApi } from "@/lib/api/session-cache"
 import type { ApiResponse } from "@/types/api"
 
 type ApiErrorPayload = {
@@ -89,7 +90,7 @@ const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
   if (!BASE_URL) {
     throw new Error("NEXT_PUBLIC_API_URL is required")
   }
-  const session = await getSession()
+  const session = await readSessionForApi()
   const token = session?.access_token
   const state = useTenantStore.getState()
   const locationState = useLocationStore.getState()

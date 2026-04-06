@@ -47,7 +47,24 @@ async def get_progress(
 ) -> OrgSetupProgressResponse:
     service = OrgSetupService(session)
     progress = await service.get_or_create_progress(tenant.id)
-    return OrgSetupProgressResponse.model_validate(progress, from_attributes=True)
+    coa_status = await service.get_coa_status(tenant.id)
+    onboarding_score = await service.get_onboarding_score(tenant.id)
+    return OrgSetupProgressResponse(
+        id=progress.id,
+        tenant_id=progress.tenant_id,
+        current_step=progress.current_step,
+        step1_data=progress.step1_data,
+        step2_data=progress.step2_data,
+        step3_data=progress.step3_data,
+        step4_data=progress.step4_data,
+        step5_data=progress.step5_data,
+        step6_data=progress.step6_data,
+        coa_status=coa_status,
+        onboarding_score=onboarding_score,
+        completed_at=progress.completed_at,
+        created_at=progress.created_at,
+        updated_at=progress.updated_at,
+    )
 
 
 @router.post("/step1", response_model=Step1Response)
@@ -59,6 +76,7 @@ async def submit_step1(
     service = OrgSetupService(session)
     group = await service.submit_step1(tenant.id, payload.model_dump())
     await commit_session(session)
+    await session.refresh(group)
     return Step1Response(group=OrgGroupResponse.model_validate(group, from_attributes=True))
 
 
@@ -75,6 +93,8 @@ async def submit_step2(
         [item.model_dump() for item in payload.entities],
     )
     await commit_session(session)
+    for item in rows:
+        await session.refresh(item)
     return Step2Response(
         entities=[OrgEntityResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -92,6 +112,8 @@ async def submit_step3(
         [item.model_dump() for item in payload.relationships],
     )
     await commit_session(session)
+    for item in rows:
+        await session.refresh(item)
     return Step3Response(
         ownership=[OrgOwnershipResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -109,6 +131,8 @@ async def submit_step4(
         [item.model_dump() for item in payload.configs],
     )
     await commit_session(session)
+    for item in rows:
+        await session.refresh(item)
     return Step4Response(
         configs=[OrgEntityErpConfigResponse.model_validate(item, from_attributes=True) for item in rows]
     )
@@ -136,6 +160,8 @@ async def submit_step5(
             )
             for item in summaries
         ],
+        coa_status=await service.get_coa_status(tenant.id),
+        onboarding_score=await service.get_onboarding_score(tenant.id),
     )
 
 
@@ -190,6 +216,8 @@ async def submit_step6(
         confirmed_count=confirmed_count,
         unmapped_count=unmapped_count,
         setup_complete=True,
+        coa_status=await service.get_coa_status(tenant.id),
+        onboarding_score=await service.get_onboarding_score(tenant.id),
     )
 
 
@@ -214,6 +242,8 @@ async def get_setup_summary(
             for item in payload["erp_configs"]
         ],
         coa_account_count=int(payload["coa_account_count"]),
+        coa_status=str(payload["coa_status"]),
+        onboarding_score=int(payload["onboarding_score"]),
         mapping_summary=payload["mapping_summary"],
     )
 

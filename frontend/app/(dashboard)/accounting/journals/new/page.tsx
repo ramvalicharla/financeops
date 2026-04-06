@@ -46,6 +46,7 @@ export default function NewJournalPage() {
       new Map((accountsQuery.data ?? []).map((account) => [account.id, account])),
     [accountsQuery.data],
   )
+  const hasAccounts = (accountsQuery.data?.length ?? 0) > 0
 
   const totalDebit = useMemo(
     () => lines.reduce((acc, line) => acc + asNumber(line.debit), 0),
@@ -186,126 +187,134 @@ export default function NewJournalPage() {
       </section>
 
       <section className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-muted/30">
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-2">Account</th>
-                <th className="px-4 py-2">Debit</th>
-                <th className="px-4 py-2">Credit</th>
-                <th className="px-4 py-2">Memo</th>
-                <th className="px-4 py-2">Txn Currency</th>
-                <th className="px-4 py-2">FX Rate</th>
-                <th className="px-4 py-2">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {lines.map((line, index) => (
-                <tr key={`line-${index}`}>
-                  <td className="px-4 py-2">
-                    <select
-                      value={line.tenant_coa_account_id}
-                      onChange={(event) =>
-                        updateLine(index, {
-                          tenant_coa_account_id: event.target.value,
-                        })
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                    >
-                      <option value="">Select account</option>
-                      {(accountsQuery.data ?? []).map((account) => (
-                        <option key={account.id} value={account.id}>
-                          {account.account_code} - {account.display_name}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="number"
-                      step="0.0001"
-                      min="0"
-                      value={line.debit}
-                      onChange={(event) =>
-                        updateLine(index, { debit: event.target.value })
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="number"
-                      step="0.0001"
-                      min="0"
-                      value={line.credit}
-                      onChange={(event) =>
-                        updateLine(index, { credit: event.target.value })
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="text"
-                      value={line.memo}
-                      onChange={(event) =>
-                        updateLine(index, { memo: event.target.value })
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="text"
-                      maxLength={3}
-                      value={line.transaction_currency}
-                      onChange={(event) =>
-                        updateLine(index, { transaction_currency: event.target.value })
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                      placeholder="USD"
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    <input
-                      type="number"
-                      step="0.00000001"
-                      min="0"
-                      value={line.fx_rate}
-                      onChange={(event) =>
-                        updateLine(index, { fx_rate: event.target.value })
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                      placeholder="Spot rate"
-                    />
-                  </td>
-                  <td className="px-4 py-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => removeLine(index)}
-                      disabled={lines.length <= 2}
-                    >
-                      Remove
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4">
-          <Button type="button" variant="outline" onClick={addLine}>
-            Add Line
-          </Button>
-          <div className="text-sm text-muted-foreground">
-            <span className="mr-4">Debit: {totalDebit.toFixed(2)}</span>
-            <span className="mr-4">Credit: {totalCredit.toFixed(2)}</span>
-            <span className={isBalanced ? "text-emerald-300" : "text-rose-300"}>
-              {isBalanced ? "Balanced" : "Not Balanced"}
-            </span>
+        {!accountsQuery.isLoading && !accountsQuery.isError && !hasAccounts ? (
+          <div className="p-6 text-sm text-muted-foreground">
+            No chart of accounts is available yet. Upload or initialise it first, then return to create journals.
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-border text-sm">
+                <thead className="bg-muted/30">
+                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="px-4 py-2">Account</th>
+                    <th className="px-4 py-2">Debit</th>
+                    <th className="px-4 py-2">Credit</th>
+                    <th className="px-4 py-2">Memo</th>
+                    <th className="px-4 py-2">Txn Currency</th>
+                    <th className="px-4 py-2">FX Rate</th>
+                    <th className="px-4 py-2">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {lines.map((line, index) => (
+                    <tr key={`line-${index}`}>
+                      <td className="px-4 py-2">
+                        <select
+                          value={line.tenant_coa_account_id}
+                          onChange={(event) =>
+                            updateLine(index, {
+                              tenant_coa_account_id: event.target.value,
+                            })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                        >
+                          <option value="">Select account</option>
+                          {(accountsQuery.data ?? []).map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.account_code} - {account.display_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          step="0.0001"
+                          min="0"
+                          value={line.debit}
+                          onChange={(event) =>
+                            updateLine(index, { debit: event.target.value })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          step="0.0001"
+                          min="0"
+                          value={line.credit}
+                          onChange={(event) =>
+                            updateLine(index, { credit: event.target.value })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={line.memo}
+                          onChange={(event) =>
+                            updateLine(index, { memo: event.target.value })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          maxLength={3}
+                          value={line.transaction_currency}
+                          onChange={(event) =>
+                            updateLine(index, { transaction_currency: event.target.value })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                          placeholder="USD"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          step="0.00000001"
+                          min="0"
+                          value={line.fx_rate}
+                          onChange={(event) =>
+                            updateLine(index, { fx_rate: event.target.value })
+                          }
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                          placeholder="Spot rate"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => removeLine(index)}
+                          disabled={lines.length <= 2}
+                        >
+                          Remove
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4">
+              <Button type="button" variant="outline" onClick={addLine}>
+                Add Line
+              </Button>
+              <div className="text-sm text-muted-foreground">
+                <span className="mr-4">Debit: {totalDebit.toFixed(2)}</span>
+                <span className="mr-4">Credit: {totalCredit.toFixed(2)}</span>
+                <span className={isBalanced ? "text-emerald-300" : "text-rose-300"}>
+                  {isBalanced ? "Balanced" : "Not Balanced"}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </section>
 
       {error ? (
@@ -318,7 +327,7 @@ export default function NewJournalPage() {
         <Button
           type="button"
           onClick={() => void submit()}
-          disabled={createMutation.isPending || accountsQuery.isLoading}
+          disabled={createMutation.isPending || accountsQuery.isLoading || !hasAccounts}
         >
           {createMutation.isPending ? "Creating..." : "Create Draft"}
         </Button>

@@ -130,6 +130,8 @@ export default function ErpMappingPage() {
 
   const accountOptions = tenantAccountsQuery.data ?? []
   const isLoading = mappingsQuery.isLoading || summaryQuery.isLoading
+  const hasAccounts = accountOptions.length > 0
+  const hasMappings = filteredMappings.length > 0
 
   return (
     <div className="space-y-6 p-6">
@@ -225,6 +227,14 @@ export default function ErpMappingPage() {
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="h-10 animate-pulse rounded-md bg-muted" />
             ))}
+          </div>
+        ) : !hasAccounts ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            No chart of accounts is available yet. Upload it later or connect your ERP, then return here to confirm mappings.
+          </div>
+        ) : !hasMappings ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            No ERP mappings are available yet for this entity. Run sync later and return when you have data to map.
           </div>
         ) : mappingsQuery.error ? (
           <div className="p-4 text-sm text-[hsl(var(--brand-danger))]">

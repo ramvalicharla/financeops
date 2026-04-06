@@ -3,6 +3,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import type { UserRole } from "@/lib/auth"
+import { DataActivationReminder } from "@/components/layout/DataActivationReminder"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { DisplayPreferenceBootstrap } from "@/components/layout/DisplayPreferenceBootstrap"
 import { Topbar } from "@/components/layout/Topbar"
@@ -32,6 +33,8 @@ export default async function DashboardLayout({
         tenant_slug: "acme",
         org_setup_complete: true,
         org_setup_step: 7,
+        coa_status: "uploaded" as const,
+        onboarding_score: 100,
         entity_roles: [
           { entity_id: "entity-001", entity_name: "Acme Ltd", role: "admin" as const },
           {
@@ -72,7 +75,13 @@ export default async function DashboardLayout({
             userEmail={user.email ?? ""}
             userName={user.name ?? "Finance User"}
           />
-          <main id="main-content" className="flex-1 overflow-y-auto p-6">{children}</main>
+          <main id="main-content" className="flex-1 overflow-y-auto p-6">
+            <DataActivationReminder
+              initialCoaStatus={user.coa_status}
+              initialOnboardingScore={user.onboarding_score}
+            />
+            {children}
+          </main>
         </SearchProvider>
       </div>
     </div>

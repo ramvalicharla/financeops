@@ -7,10 +7,18 @@ from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.db.models.erp_integration import (
+    ErpConnector,
+    ErpConnectorStatus,
+    ErpSyncJob,
+    ErpSyncModule,
+    ErpSyncStatus,
+)
+from financeops.db.models.erp_sync import ExternalSyncRun
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser
 from financeops.modules.coa.application.erp_mapping_service import ErpMappingService
@@ -28,7 +36,9 @@ from financeops.modules.org_setup.models import (
 )
 from financeops.modules.fixed_assets.application.seeds import seed_standard_indian_asset_classes
 from financeops.platform.db.models.entities import CpEntity
+from financeops.platform.db.models.modules import CpModuleRegistry
 from financeops.platform.db.models.organisations import CpOrganisation
+from financeops.platform.db.models.tenant_module_enablement import CpTenantModuleEnablement
 from financeops.services.audit_writer import AuditWriter
 from financeops.utils.gstin import extract_state_code, validate_gstin, validate_pan, validate_tan
 
@@ -60,6 +70,210 @@ class OrgSetupService:
         self._consolidation = ConsolidationMethodService()
         self._tenant_coa = TenantCoaService(session)
         self._erp_mapping = ErpMappingService(session)
+
+    async def _count_tenant_coa_accounts(self, tenant_id: uuid.UUID) -> int:
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(TenantCoaAccount)
+                    .where(TenantCoaAccount.tenant_id == tenant_id)
+                )
+            ).scalar_one()
+        )
+
+    async def _count_active_erp_configs(self, tenant_id: uuid.UUID) -> int:
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(OrgEntityErpConfig)
+                    .where(
+                        OrgEntityErpConfig.tenant_id == tenant_id,
+                        OrgEntityErpConfig.is_active.is_(True),
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def _count_active_users(self, tenant_id: uuid.UUID) -> int:
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(IamUser)
+                    .where(
+                        IamUser.tenant_id == tenant_id,
+                        IamUser.is_active.is_(True),
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def _count_enabled_modules(self, tenant_id: uuid.UUID) -> int:
+        now = datetime.now(UTC)
+        return int(
+            (
+                await self._session.execute(
+                    select(func.count(func.distinct(CpTenantModuleEnablement.module_id)))
+                    .select_from(CpTenantModuleEnablement)
+                    .join(
+                        CpModuleRegistry,
+                        CpModuleRegistry.id == CpTenantModuleEnablement.module_id,
+                    )
+                    .where(
+                        CpTenantModuleEnablement.tenant_id == tenant_id,
+                        CpTenantModuleEnablement.enabled.is_(True),
+                        CpTenantModuleEnablement.effective_from <= now,
+                        or_(
+                            CpTenantModuleEnablement.effective_to.is_(None),
+                            CpTenantModuleEnablement.effective_to > now,
+                        ),
+                        CpModuleRegistry.is_active.is_(True),
+                    )
+                )
+            ).scalar_one()
+        )
+
+    async def _has_usable_erp_financial_data(self, tenant_id: uuid.UUID) -> bool:
+        if await self._count_active_erp_configs(tenant_id) == 0:
+            return False
+
+        mapping_count = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(ErpAccountMapping)
+                    .where(ErpAccountMapping.tenant_id == tenant_id)
+                )
+            ).scalar_one()
+        )
+        if mapping_count > 0:
+            return True
+
+        synced_connector_count = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(ErpConnector)
+                    .where(
+                        ErpConnector.tenant_id == tenant_id,
+                        ErpConnector.status == ErpConnectorStatus.ACTIVE,
+                        ErpConnector.last_sync_at.is_not(None),
+                    )
+                )
+            ).scalar_one()
+        )
+        if synced_connector_count > 0:
+            return True
+
+        successful_coa_sync_count = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(ErpSyncJob)
+                    .where(
+                        ErpSyncJob.tenant_id == tenant_id,
+                        ErpSyncJob.module == ErpSyncModule.COA,
+                        ErpSyncJob.status == ErpSyncStatus.SUCCESS,
+                    )
+                )
+            ).scalar_one()
+        )
+        if successful_coa_sync_count > 0:
+            return True
+
+        completed_external_sync_count = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(ExternalSyncRun)
+                    .where(
+                        ExternalSyncRun.tenant_id == tenant_id,
+                        ExternalSyncRun.run_status.in_(("completed", "published")),
+                        ExternalSyncRun.extraction_fetched_records > 0,
+                    )
+                )
+            ).scalar_one()
+        )
+        return completed_external_sync_count > 0
+
+    async def get_coa_status(self, tenant_id: uuid.UUID) -> str:
+        progress = await self.get_or_create_progress(tenant_id)
+        step5_data = progress.step5_data or {}
+        explicit_status = str(step5_data.get("coa_status") or "").lower()
+
+        if await self._count_tenant_coa_accounts(tenant_id) > 0:
+            return "uploaded"
+        if await self._has_usable_erp_financial_data(tenant_id):
+            return "erp_connected"
+        if explicit_status == "skipped":
+            return "skipped"
+        return "pending"
+
+    async def get_onboarding_score(self, tenant_id: uuid.UUID) -> int:
+        group_exists = (
+            await self._session.execute(
+                select(OrgGroup.id).where(OrgGroup.tenant_id == tenant_id).limit(1)
+            )
+        ).scalar_one_or_none() is not None
+        entity_count = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(OrgEntity)
+                    .where(OrgEntity.tenant_id == tenant_id)
+                )
+            ).scalar_one()
+        )
+        ownership_count = int(
+            (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(OrgOwnership)
+                    .where(OrgOwnership.tenant_id == tenant_id)
+                )
+            ).scalar_one()
+        )
+        active_erp_config_count = await self._count_active_erp_configs(tenant_id)
+
+        org_setup_score = 0
+        if group_exists:
+            org_setup_score += 5
+        if entity_count > 0:
+            org_setup_score += 10
+        if ownership_count > 0 or active_erp_config_count > 0:
+            org_setup_score += 5
+
+        coa_status = await self.get_coa_status(tenant_id)
+        coa_score = 0
+        if coa_status in {"uploaded", "erp_connected"}:
+            coa_score = 30
+        elif coa_status == "skipped":
+            coa_score = 10
+
+        active_user_count = await self._count_active_users(tenant_id)
+        user_score = 20 if active_user_count >= 2 else 10 if active_user_count == 1 else 0
+
+        enabled_module_count = await self._count_enabled_modules(tenant_id)
+        module_score = 30 if enabled_module_count >= 3 else 20 if enabled_module_count == 2 else 10 if enabled_module_count == 1 else 0
+
+        return org_setup_score + coa_score + user_score + module_score
+
+    async def mark_coa_skipped(self, tenant_id: uuid.UUID) -> OrgSetupProgress:
+        progress = await self.get_or_create_progress(tenant_id)
+        current_data = dict(progress.step5_data or {})
+        current_data["coa_status"] = "skipped"
+        progress.step5_data = current_data
+        if progress.current_step < 5:
+            progress.current_step = 5
+
+        tenant = await self._get_tenant(tenant_id)
+        if tenant.org_setup_step < 5 and not tenant.org_setup_complete:
+            tenant.org_setup_step = 5
+
+        await self._session.flush()
+        return progress
 
     async def _get_tenant(self, tenant_id: uuid.UUID) -> IamTenant:
         tenant = (
@@ -539,8 +753,6 @@ class OrgSetupService:
         )
         summaries: list[dict[str, Any]] = []
         template_ids: set[uuid.UUID] = set()
-        if not await self._tenant_coa.has_tenant_accounts(tenant_id):
-            raise ValidationError("CoA must be uploaded or seeded before Step5")
         for item in entity_templates:
             entity_id = uuid.UUID(str(item["entity_id"]))
             template_id = uuid.UUID(str(item["template_id"]))
@@ -563,15 +775,7 @@ class OrgSetupService:
                     tenant_id=tenant_id,
                     entity_id=entity.cp_entity_id,
                 )
-            account_count = int(
-                (
-                    await self._session.execute(
-                        select(func.count())
-                        .select_from(TenantCoaAccount)
-                        .where(TenantCoaAccount.tenant_id == tenant_id)
-                    )
-                ).scalar_one()
-            )
+            account_count = await self._count_tenant_coa_accounts(tenant_id)
 
             template_code = (
                 await self._session.execute(
@@ -587,6 +791,7 @@ class OrgSetupService:
             )
 
         await self._session.flush()
+        coa_status = await self.get_coa_status(tenant_id)
         await self.save_step(
             tenant_id,
             5,
@@ -596,6 +801,7 @@ class OrgSetupService:
                     for item in entity_templates
                 ],
                 "template_count": len(template_ids),
+                "coa_status": coa_status,
             },
         )
         return summaries
@@ -644,10 +850,18 @@ class OrgSetupService:
         return confirmed_count
 
     async def complete_setup(self, tenant_id: uuid.UUID) -> None:
+        coa_status = await self.get_coa_status(tenant_id)
+        if coa_status not in {"uploaded", "skipped", "erp_connected"}:
+            raise ValidationError(
+                "Chart of accounts must be uploaded, skipped, or connected via ERP before completing setup"
+            )
         tenant = await self._get_tenant(tenant_id)
         progress = await self.get_or_create_progress(tenant_id)
         tenant.org_setup_complete = True
         tenant.org_setup_step = 7
+        current_step5 = dict(progress.step5_data or {})
+        current_step5["coa_status"] = coa_status
+        progress.step5_data = current_step5
         progress.completed_at = datetime.now(UTC)
         if progress.current_step < 6:
             progress.current_step = 6
@@ -719,15 +933,9 @@ class OrgSetupService:
             )
         ).scalar_one_or_none()
 
-        account_count = int(
-            (
-                await self._session.execute(
-                    select(func.count())
-                    .select_from(TenantCoaAccount)
-                    .where(TenantCoaAccount.tenant_id == tenant_id)
-                )
-            ).scalar_one()
-        )
+        account_count = await self._count_tenant_coa_accounts(tenant_id)
+        coa_status = await self.get_coa_status(tenant_id)
+        onboarding_score = await self.get_onboarding_score(tenant_id)
 
         return {
             "group": group,
@@ -735,6 +943,8 @@ class OrgSetupService:
             "ownership": list(ownership),
             "erp_configs": list(erp_configs),
             "coa_account_count": account_count,
+            "coa_status": coa_status,
+            "onboarding_score": onboarding_score,
             "mapping_summary": {
                 "total": total_mappings,
                 "mapped": mapped_mappings,

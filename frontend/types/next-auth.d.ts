@@ -1,5 +1,5 @@
 import type { DefaultSession } from "next-auth"
-import type { EntityRole } from "@/types/api"
+import type { CoaStatus, EntityRole } from "@/types/api"
 import type { UserRole } from "@/lib/auth"
 
 declare module "next-auth" {
@@ -14,6 +14,8 @@ declare module "next-auth" {
       tenant_slug: string
       org_setup_complete: boolean
       org_setup_step: number
+      coa_status: CoaStatus
+      onboarding_score: number
       entity_roles: EntityRole[]
     }
   }
@@ -27,6 +29,8 @@ declare module "next-auth" {
     tenant_slug: string
     org_setup_complete: boolean
     org_setup_step: number
+    coa_status: CoaStatus
+    onboarding_score: number
     entity_roles: EntityRole[]
     access_token: string
     refresh_token: string
@@ -44,6 +48,8 @@ declare module "next-auth/jwt" {
     tenant_slug: string
     org_setup_complete: boolean
     org_setup_step: number
+    coa_status: CoaStatus
+    onboarding_score: number
     entity_roles: EntityRole[]
     access_token: string
     refresh_token: string

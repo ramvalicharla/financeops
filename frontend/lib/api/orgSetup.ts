@@ -1,5 +1,7 @@
 import apiClient from "@/lib/api/client"
 
+export type CoaStatus = "pending" | "uploaded" | "skipped" | "erp_connected"
+
 export interface OrgSetupProgress {
   id: string
   tenant_id: string
@@ -10,6 +12,8 @@ export interface OrgSetupProgress {
   step4_data: Record<string, unknown> | null
   step5_data: Record<string, unknown> | null
   step6_data: Record<string, unknown> | null
+  coa_status: CoaStatus
+  onboarding_score: number
   completed_at: string | null
   created_at: string
   updated_at: string | null
@@ -124,12 +128,16 @@ export interface EntityTemplateSummary {
 export interface Step5Response {
   initialised_count: number
   entity_summaries: EntityTemplateSummary[]
+  coa_status: CoaStatus
+  onboarding_score: number
 }
 
 export interface Step6Response {
   confirmed_count: number
   unmapped_count: number
   setup_complete: boolean
+  coa_status: CoaStatus
+  onboarding_score: number
 }
 
 export interface OwnershipTreeNode {
@@ -154,6 +162,8 @@ export interface OrgSetupSummary {
   ownership: OrgOwnership[]
   erp_configs: OrgEntityErpConfig[]
   coa_account_count: number
+  coa_status: CoaStatus
+  onboarding_score: number
   mapping_summary: {
     total: number
     mapped: number

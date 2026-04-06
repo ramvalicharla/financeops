@@ -39,6 +39,8 @@ ErpTypeLiteral = Literal[
     "MANUAL",
 ]
 
+CoaStatusLiteral = Literal["pending", "uploaded", "skipped", "erp_connected"]
+
 ConsolidationMethodLiteral = Literal[
     "FULL_CONSOLIDATION",
     "EQUITY_METHOD",
@@ -221,6 +223,8 @@ class Step5EntitySummary(BaseModel):
 class Step5Response(BaseModel):
     initialised_count: int
     entity_summaries: list[Step5EntitySummary]
+    coa_status: CoaStatusLiteral = "pending"
+    onboarding_score: int = Field(default=0, ge=0, le=100)
 
 
 class Step6Request(BaseModel):
@@ -232,6 +236,8 @@ class Step6Response(BaseModel):
     confirmed_count: int
     unmapped_count: int
     setup_complete: bool
+    coa_status: CoaStatusLiteral = "pending"
+    onboarding_score: int = Field(default=0, ge=0, le=100)
 
 
 class OrgSetupProgressResponse(BaseModel):
@@ -246,6 +252,8 @@ class OrgSetupProgressResponse(BaseModel):
     step4_data: dict[str, object] | None = None
     step5_data: dict[str, object] | None = None
     step6_data: dict[str, object] | None = None
+    coa_status: CoaStatusLiteral = "pending"
+    onboarding_score: int = Field(default=0, ge=0, le=100)
     completed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None
@@ -257,6 +265,8 @@ class OrgSetupSummaryResponse(BaseModel):
     ownership: list[OrgOwnershipResponse]
     erp_configs: list[OrgEntityErpConfigResponse]
     coa_account_count: int
+    coa_status: CoaStatusLiteral = "pending"
+    onboarding_score: int = Field(default=0, ge=0, le=100)
     mapping_summary: dict[str, int | Decimal]
 
 

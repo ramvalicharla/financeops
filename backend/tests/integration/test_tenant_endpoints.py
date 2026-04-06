@@ -62,6 +62,8 @@ async def test_get_tenant_me(
     data = response.json()["data"]
     assert data["tenant_id"] == str(test_tenant.id)
     assert data["display_name"] == "Test Tenant"
+    assert "coa_status" in data
+    assert "onboarding_score" in data
 
 
 @pytest.mark.asyncio

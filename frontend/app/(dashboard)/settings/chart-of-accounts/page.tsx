@@ -264,6 +264,25 @@ export default function ChartOfAccountsSettingsPage() {
         </div>
       </section>
 
+      {!tenantAccountsQuery.isLoading &&
+      !tenantAccountsQuery.isError &&
+      (tenantAccountsQuery.data?.length ?? 0) === 0 ? (
+        <section className="rounded-xl border border-border bg-card p-6">
+          <h2 className="text-lg font-semibold text-foreground">No chart of accounts yet</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Upload your chart of accounts later or initialise a template when you are ready.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              onClick={() => templateId && initialiseMutation.mutate(templateId)}
+              disabled={!templateId || initialiseMutation.isPending}
+            >
+              Initialise CoA
+            </Button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="space-y-3">
         {Object.entries(groupedAccounts).map(([classification, accounts]) => {
           const collapsed = collapsedSections[classification] ?? false

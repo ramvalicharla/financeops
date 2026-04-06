@@ -1,8 +1,28 @@
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { shouldSignOutOnUnauthorized } from "../../lib/api/auth-unauthorized"
+import {
+  readSessionForApi,
+  resetApiSessionCacheForTests,
+} from "../../lib/api/session-cache"
+
+const getSessionMock = vi.fn()
+
+vi.mock("next-auth/react", async () => {
+  const actual = await vi.importActual<typeof import("next-auth/react")>("next-auth/react")
+  return {
+    ...actual,
+    getSession: (...args: unknown[]) => getSessionMock(...args),
+    signOut: vi.fn(),
+  }
+})
 
 describe("api client auth handling", () => {
+  beforeEach(() => {
+    resetApiSessionCacheForTests()
+    getSessionMock.mockReset()
+  })
+
   it("does not sign out on auth bootstrap 401 responses", () => {
     expect(
       shouldSignOutOnUnauthorized({
@@ -57,5 +77,25 @@ describe("api client auth handling", () => {
         },
       }, ""),
     ).toBe(false)
+  })
+
+  it("deduplicates concurrent session reads for API calls", async () => {
+    getSessionMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => resolve({ access_token: "token-1" }), 10)
+        }),
+    )
+
+    const [first, second, third] = await Promise.all([
+      readSessionForApi(),
+      readSessionForApi(),
+      readSessionForApi(),
+    ])
+
+    expect(first).toEqual({ access_token: "token-1" })
+    expect(second).toEqual({ access_token: "token-1" })
+    expect(third).toEqual({ access_token: "token-1" })
+    expect(getSessionMock).toHaveBeenCalledTimes(1)
   })
 })

@@ -117,6 +117,10 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
   }, [mappingQuery.data])
 
   const unmappedCount = summaryQuery.data?.unmapped ?? 0
+  const hasTenantAccounts = (tenantAccountsQuery.data?.length ?? 0) > 0
+  const hasMappings = filteredMappings.length > 0
+  const hasMappingError =
+    tenantAccountsQuery.isError || mappingQuery.isError || summaryQuery.isError
 
   const handleComplete = async () => {
     await onSubmit({
@@ -205,61 +209,75 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
       </div>
 
       <div className="overflow-hidden rounded-lg border border-border">
-        <table className="min-w-full divide-y divide-border text-sm">
-          <thead className="bg-muted/30">
-            <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-3 py-2">ERP account</th>
-              <th className="px-3 py-2">Platform account</th>
-              <th className="px-3 py-2">Confidence</th>
-              <th className="px-3 py-2">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {filteredMappings.map((mapping: ErpMapping) => {
-              const confidence = confidencePercent(mapping.mapping_confidence)
-              return (
-                <tr key={mapping.id}>
-                  <td className="px-3 py-2">
-                    <p className="text-foreground">{mapping.erp_account_name}</p>
-                    <p className="font-mono text-xs text-muted-foreground">{mapping.erp_account_code}</p>
-                  </td>
-                  <td className="px-3 py-2">
-                    <FormField id={`mapping-target-${mapping.id}`} label="Target field">
-                      <select
-                        value={mapping.tenant_coa_account_id ?? ""}
-                        onChange={(event) => {
-                          if (!event.target.value) {
-                            return
-                          }
-                          confirmMutation.mutate({
-                            mappingId: mapping.id,
-                            accountId: event.target.value,
-                          })
-                        }}
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-                      >
-                        <option value="">Unmapped</option>
-                        {(tenantAccountsQuery.data ?? []).map((account) => (
-                          <option key={account.id} value={account.id}>
-                            {account.account_code} - {account.display_name}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className={`rounded-full px-2 py-1 text-xs ${badgeClass(confidence)}`}>
-                      {Math.round(confidence)}%
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    {mapping.is_confirmed ? "Confirmed" : mapping.tenant_coa_account_id ? "Unconfirmed" : "Unmapped"}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        {hasMappingError ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            Mapping details will appear after you upload a chart of accounts or sync ERP data. You can finish setup now and return later.
+          </div>
+        ) : !hasTenantAccounts ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            No chart of accounts is available yet. Upload it later or connect your ERP, then return here to confirm mappings.
+          </div>
+        ) : !hasMappings ? (
+          <div className="p-4 text-sm text-muted-foreground">
+            No ERP mappings were found yet. You can complete setup now and review mappings later from settings.
+          </div>
+        ) : (
+          <table className="min-w-full divide-y divide-border text-sm">
+            <thead className="bg-muted/30">
+              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-3 py-2">ERP account</th>
+                <th className="px-3 py-2">Platform account</th>
+                <th className="px-3 py-2">Confidence</th>
+                <th className="px-3 py-2">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {filteredMappings.map((mapping: ErpMapping) => {
+                const confidence = confidencePercent(mapping.mapping_confidence)
+                return (
+                  <tr key={mapping.id}>
+                    <td className="px-3 py-2">
+                      <p className="text-foreground">{mapping.erp_account_name}</p>
+                      <p className="font-mono text-xs text-muted-foreground">{mapping.erp_account_code}</p>
+                    </td>
+                    <td className="px-3 py-2">
+                      <FormField id={`mapping-target-${mapping.id}`} label="Target field">
+                        <select
+                          value={mapping.tenant_coa_account_id ?? ""}
+                          onChange={(event) => {
+                            if (!event.target.value) {
+                              return
+                            }
+                            confirmMutation.mutate({
+                              mappingId: mapping.id,
+                              accountId: event.target.value,
+                            })
+                          }}
+                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+                        >
+                          <option value="">Unmapped</option>
+                          {(tenantAccountsQuery.data ?? []).map((account) => (
+                            <option key={account.id} value={account.id}>
+                              {account.account_code} - {account.display_name}
+                            </option>
+                          ))}
+                        </select>
+                      </FormField>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-1 text-xs ${badgeClass(confidence)}`}>
+                        {Math.round(confidence)}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {mapping.is_confirmed ? "Confirmed" : mapping.tenant_coa_account_id ? "Unconfirmed" : "Unmapped"}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {unmappedCount > 0 ? (

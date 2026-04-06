@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { CoaUploader } from "@/components/settings/CoaUploader"
 import { ValidationPanel } from "@/components/settings/ValidationPanel"
@@ -10,6 +10,7 @@ import {
   applyCoaBatch,
   getCoaTemplates,
   listCoaUploadBatches,
+  skipCoaSetup,
   uploadCoaFile,
   validateCoaFile,
   type CoaUploadMode,
@@ -19,8 +20,9 @@ import { getOrgSetupSummary } from "@/lib/api/orgSetup"
 
 const DEFAULT_MODE: CoaUploadMode = "APPEND"
 
-export default function SetupCoaPage() {
+function SetupCoaPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
 
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
@@ -30,7 +32,6 @@ export default function SetupCoaPage() {
   const [validationResult, setValidationResult] = useState<CoaUploadResult | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [nextPath, setNextPath] = useState("/org-setup")
 
   const templatesQuery = useQuery({
     queryKey: ["coa-templates"],
@@ -101,6 +102,21 @@ export default function SetupCoaPage() {
     },
   })
 
+  const skipMutation = useMutation({
+    mutationFn: skipCoaSetup,
+    onSuccess: async () => {
+      setError(null)
+      setMessage(null)
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      router.push(nextPath)
+    },
+    onError: (cause) => {
+      setError(cause instanceof Error ? cause.message : "Unable to skip CoA setup right now")
+      setMessage(null)
+    },
+  })
+
   const latestBatchId = useMemo(() => {
     if (lastUpload?.batch_id) {
       return lastUpload.batch_id
@@ -109,20 +125,27 @@ export default function SetupCoaPage() {
   }, [batchesQuery.data, lastUpload?.batch_id])
 
   const coaAccountCount = summaryQuery.data?.coa_account_count ?? 0
-  const canContinue = coaAccountCount > 0
-  useEffect(() => {
-    const next = new URLSearchParams(window.location.search).get("next")
+  const coaStatus = summaryQuery.data?.coa_status ?? "pending"
+  const nextPath = useMemo(() => {
+    const next = searchParams?.get("next")
     if (next && next.startsWith("/")) {
-      setNextPath(next)
+      return next
     }
-  }, [])
+    return "/org-setup"
+  }, [searchParams])
 
   return (
     <div className="space-y-6 p-2">
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold text-foreground">Upload Chart of Accounts</h1>
         <p className="text-sm text-muted-foreground">
-          Step5 is blocked until at least one CoA account is available for your tenant.
+          Uploading CoA is optional during onboarding.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          You can upload later or connect your ERP.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Current CoA status: <span className="font-semibold capitalize text-foreground">{coaStatus.replace("_", " ")}</span>
         </p>
         <p className="text-sm text-muted-foreground">
           Current CoA account count: <span className="font-semibold text-foreground">{coaAccountCount}</span>
@@ -174,12 +197,20 @@ export default function SetupCoaPage() {
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
-          variant={canContinue ? "default" : "outline"}
+          variant="default"
           onClick={() => {
             router.push(nextPath)
           }}
         >
-          {canContinue ? "Return to Step5" : "Back to Onboarding"}
+          Back to Onboarding
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => skipMutation.mutate()}
+          disabled={skipMutation.isPending}
+        >
+          {skipMutation.isPending ? "Skipping..." : "Skip for now"}
         </Button>
         <Button
           type="button"
@@ -193,5 +224,13 @@ export default function SetupCoaPage() {
         </Button>
       </div>
     </div>
+  )
+}
+
+export default function SetupCoaPage() {
+  return (
+    <Suspense fallback={<div className="p-2 text-sm text-muted-foreground">Loading CoA setup...</div>}>
+      <SetupCoaPageContent />
+    </Suspense>
   )
 }

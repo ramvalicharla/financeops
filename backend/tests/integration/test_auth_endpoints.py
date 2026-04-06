@@ -197,6 +197,8 @@ async def test_get_me_with_valid_token(
     data = response.json()["data"]
     assert data["email"] == test_user.email
     assert "tenant" in data
+    assert "coa_status" in data["tenant"]
+    assert "onboarding_score" in data["tenant"]
 
 
 @pytest.mark.asyncio

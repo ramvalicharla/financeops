@@ -1,7 +1,7 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { CredentialsSignin } from "next-auth"
-import type { EntityRole } from "@/types/api"
+import type { CoaStatus, EntityRole } from "@/types/api"
 import type { BackendLoginPayload, LoginTokenPayload } from "@/lib/login-flow"
 import { getAuthSecret } from "@/lib/auth-secret"
 
@@ -47,6 +47,8 @@ interface MePayload {
     slug?: string
     org_setup_complete?: boolean
     org_setup_step?: number
+    coa_status?: CoaStatus
+    onboarding_score?: number
   }
 }
 
@@ -95,6 +97,11 @@ const readEntityRoles = (value: unknown): EntityRole[] =>
 
 const readBoolean = (value: unknown): boolean =>
   typeof value === "boolean" ? value : false
+
+const readCoaStatus = (value: unknown): CoaStatus =>
+  value === "uploaded" || value === "skipped" || value === "erp_connected"
+    ? value
+    : "pending"
 
 const fetchEnvelope = async <T>(
   path: string,
@@ -299,6 +306,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             typeof meEnvelope.data.tenant.org_setup_step === "number"
               ? meEnvelope.data.tenant.org_setup_step
               : 0,
+          coa_status: readCoaStatus(meEnvelope.data.tenant.coa_status),
+          onboarding_score:
+            typeof meEnvelope.data.tenant.onboarding_score === "number"
+              ? meEnvelope.data.tenant.onboarding_score
+              : 0,
           entity_roles: entityRoles,
           access_token: tokenPayload.access_token,
           refresh_token: tokenPayload.refresh_token,
@@ -320,6 +332,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           tenant_slug: user.tenant_slug,
           org_setup_complete: user.org_setup_complete,
           org_setup_step: user.org_setup_step,
+          coa_status: user.coa_status,
+          onboarding_score: user.onboarding_score,
           entity_roles: user.entity_roles,
           access_token: user.access_token,
           refresh_token: user.refresh_token,
@@ -365,6 +379,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         tenant_slug: readTokenString(token.tenant_slug),
         org_setup_complete: readBoolean(token.org_setup_complete),
         org_setup_step: readTokenNumber(token.org_setup_step),
+        coa_status: readCoaStatus(token.coa_status),
+        onboarding_score: readTokenNumber(token.onboarding_score),
         entity_roles: readEntityRoles(token.entity_roles),
       }
       session.access_token = readTokenString(token.access_token)

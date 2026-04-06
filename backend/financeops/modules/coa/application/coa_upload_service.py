@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
+import pandas as pd
 from openpyxl import load_workbook
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -38,12 +39,101 @@ _REQUIRED_COLUMNS = (
 )
 _ALLOWED_LEDGER_TYPES = {"ASSET", "LIABILITY", "INCOME", "EXPENSE"}
 _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+_ACCOUNT_ALIASES = ("account", "particulars", "ledger", "name")
+_DEBIT_ALIASES = ("debit", "dr")
+_CREDIT_ALIASES = ("credit", "cr")
 log = logging.getLogger(__name__)
 
 
 class CoaUploadService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    @staticmethod
+    def _normalise_header(value: Any) -> str:
+        return str(value or "").strip().lower()
+
+    @staticmethod
+    def _read_dataframe(*, file_name: str, file_bytes: bytes) -> pd.DataFrame:
+        lower_name = file_name.lower()
+        if lower_name.endswith(".csv"):
+            return pd.read_csv(io.BytesIO(file_bytes), dtype=str, keep_default_na=False)
+        if lower_name.endswith(".xlsx"):
+            return pd.read_excel(io.BytesIO(file_bytes), dtype=str)
+        raise ValidationError("Only .csv or .xlsx files are supported")
+
+    @classmethod
+    def _match_alias(cls, columns: list[str], aliases: tuple[str, ...]) -> str | None:
+        alias_set = {alias.lower() for alias in aliases}
+        for column in columns:
+            if cls._normalise_header(column) in alias_set:
+                return column
+        return None
+
+    @staticmethod
+    def _clean_numeric_series(series: pd.Series) -> pd.Series:
+        cleaned = (
+            series.fillna("")
+            .astype(str)
+            .str.strip()
+            .str.replace(",", "", regex=False)
+            .str.replace(r"^\((.*)\)$", r"-\1", regex=True)
+        )
+        numeric = pd.to_numeric(cleaned.replace("", pd.NA), errors="coerce")
+        return numeric
+
+    def parse_normalized_dataframe(self, *, file_name: str, file_bytes: bytes) -> pd.DataFrame:
+        if len(file_bytes) > _MAX_UPLOAD_BYTES:
+            raise ValidationError("File size exceeds 5MB limit")
+
+        dataframe = self._read_dataframe(file_name=file_name, file_bytes=file_bytes).copy()
+        dataframe.columns = [str(column or "").strip() for column in dataframe.columns]
+        original_columns = list(dataframe.columns)
+        normalized_columns = [self._normalise_header(column) for column in original_columns]
+        if not any(normalized_columns):
+            raise ValidationError("Uploaded file has no usable columns")
+
+        if set(_REQUIRED_COLUMNS).issubset(set(normalized_columns)):
+            dataframe.columns = normalized_columns
+            for column in dataframe.columns:
+                if dataframe[column].dtype == object:
+                    dataframe[column] = dataframe[column].fillna("").astype(str).str.strip()
+            dataframe = dataframe.replace("", pd.NA).dropna(how="all").fillna("")
+            return dataframe.reset_index(drop=True)
+
+        account_column = self._match_alias(original_columns, _ACCOUNT_ALIASES)
+        debit_column = self._match_alias(original_columns, _DEBIT_ALIASES)
+        credit_column = self._match_alias(original_columns, _CREDIT_ALIASES)
+
+        if account_column is None:
+            raise ValidationError("account column is required")
+        if debit_column is None and credit_column is None:
+            raise ValidationError("at least one of debit or credit columns is required")
+
+        normalized = pd.DataFrame()
+        normalized["account"] = (
+            dataframe[account_column].fillna("").astype(str).str.strip()
+        )
+        if debit_column is not None:
+            normalized["debit"] = self._clean_numeric_series(dataframe[debit_column])
+        if credit_column is not None:
+            normalized["credit"] = self._clean_numeric_series(dataframe[credit_column])
+
+        if "debit" not in normalized.columns:
+            normalized["debit"] = 0.0
+        if "credit" not in normalized.columns:
+            normalized["credit"] = 0.0
+
+        normalized = normalized.loc[
+            ~(
+                normalized["account"].eq("")
+                & normalized["debit"].fillna(0).eq(0)
+                & normalized["credit"].fillna(0).eq(0)
+            )
+        ]
+        normalized["debit"] = normalized["debit"].fillna(0)
+        normalized["credit"] = normalized["credit"].fillna(0)
+        return normalized.reset_index(drop=True)
 
     @staticmethod
     def _normalise_bool(value: Any) -> bool:
@@ -156,7 +246,19 @@ class CoaUploadService:
         file_name: str,
         file_bytes: bytes,
     ) -> dict[str, Any]:
-        rows = self.parse_file(file_name=file_name, file_bytes=file_bytes)
+        try:
+            rows = self.parse_file(file_name=file_name, file_bytes=file_bytes)
+        except ValidationError:
+            normalized_df = self.parse_normalized_dataframe(
+                file_name=file_name,
+                file_bytes=file_bytes,
+            )
+            return {
+                "total_rows": int(len(normalized_df.index)),
+                "valid_rows": int(len(normalized_df.index)),
+                "invalid_rows": 0,
+                "errors": [],
+            }
         errors = self.validate_structure(rows)
         return {
             "total_rows": len(rows),

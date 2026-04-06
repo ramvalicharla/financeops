@@ -68,6 +68,12 @@ class CoaApplyResponse(BaseModel):
     source_type: str
 
 
+class CoaSkipResponse(BaseModel):
+    coa_status: Literal["pending", "uploaded", "skipped", "erp_connected"]
+    next_step: int
+    onboarding_score: int
+
+
 class CoaUploadModeRequest(BaseModel):
     mode: Literal["APPEND", "REPLACE", "VALIDATE_ONLY"] = "APPEND"
 

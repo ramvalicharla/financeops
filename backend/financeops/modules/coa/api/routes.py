@@ -6,6 +6,7 @@ import io
 import json
 import uuid
 from decimal import Decimal
+from pathlib import PurePath
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -31,6 +32,7 @@ from financeops.modules.coa.api.schemas import (
     CoaLedgerAccountResponse,
     CoaApplyRequest,
     CoaApplyResponse,
+    CoaSkipResponse,
     CoaTemplateResponse,
     CoaUploadBatchResponse,
     CoaUploadResponse,
@@ -59,6 +61,8 @@ from financeops.modules.coa.application.global_tb_service import (
 from financeops.modules.coa.application.tenant_coa_resolver import TenantCoaResolver
 from financeops.modules.coa.application.template_service import CoaTemplateService
 from financeops.modules.coa.application.tenant_coa_service import TenantCoaService
+from financeops.modules.org_setup.application.org_setup_service import OrgSetupService
+from financeops.services.audit_service import log_action
 from financeops.modules.coa.models import (
     CoaSourceType,
     CoaUploadMode,
@@ -70,10 +74,9 @@ from financeops.modules.coa.models import (
     CoaUploadBatch,
 )
 from financeops.db.models.users import UserRole
-from financeops.security.file_validation import FileValidationError, validate_file
-
 router = APIRouter(prefix="/coa", tags=["chart-of-accounts"])
 _COA_CACHE_TTL_SECONDS = 120
+_COA_UPLOAD_EXTENSIONS = {".csv", ".xlsx"}
 
 
 def _is_platform_admin(role: UserRole) -> bool:
@@ -273,14 +276,13 @@ async def get_effective_accounts(
 
 def _validate_upload_file(*, file: UploadFile, file_bytes: bytes) -> None:
     filename = file.filename or "coa_upload.csv"
-    try:
-        validate_file(
-            filename=filename,
-            content=file_bytes,
-            max_size=5 * 1024 * 1024,  # strict CoA upload cap
-        )
-    except FileValidationError as exc:
-        raise ValidationError(f"file_validation_failed:{exc.reason}") from exc
+    if filename != PurePath(filename).name or any(separator in filename for separator in ("/", "\\")):
+        raise ValidationError("file_validation_failed: invalid file name")
+    lower_name = filename.lower()
+    if not any(lower_name.endswith(extension) for extension in _COA_UPLOAD_EXTENSIONS):
+        raise ValidationError("file_validation_failed: only .csv or .xlsx files are supported")
+    if len(file_bytes) > 5 * 1024 * 1024:
+        raise ValidationError("file_validation_failed: file size exceeds 5MB limit")
 
 
 @limiter.limit(settings.UPLOAD_RATE_LIMIT)
@@ -379,6 +381,34 @@ async def apply_coa(
         applied_rows=int(result["applied_rows"]),
         template_id=uuid.UUID(result["template_id"]),
         source_type=str(result["source_type"]),
+    )
+
+
+@router.post("/skip", response_model=CoaSkipResponse)
+async def skip_coa_for_now(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> CoaSkipResponse:
+    service = OrgSetupService(session)
+    progress = await service.mark_coa_skipped(user.tenant_id)
+    await log_action(
+        session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        action="tenant.coa.skip",
+        resource_type="org_setup",
+        resource_id=str(user.tenant_id),
+        resource_name="chart_of_accounts",
+        new_value={"coa_status": "skipped"},
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    await commit_session(session)
+    return CoaSkipResponse(
+        coa_status="skipped",
+        next_step=max(progress.current_step, 5),
+        onboarding_score=await service.get_onboarding_score(user.tenant_id),
     )
 
 

@@ -114,6 +114,12 @@ export interface CoaApplyResult {
   source_type: string
 }
 
+export interface CoaSkipResult {
+  coa_status: "pending" | "uploaded" | "skipped" | "erp_connected"
+  next_step: number
+  onboarding_score: number
+}
+
 export interface CoaUploadBatch {
   id: string
   tenant_id: string | null
@@ -300,6 +306,11 @@ export const validateCoaFile = async (file: File): Promise<CoaValidationResult> 
 
 export const applyCoaBatch = async (batch_id: string): Promise<CoaApplyResult> => {
   const response = await apiClient.post<CoaApplyResult>("/api/v1/coa/apply", { batch_id })
+  return response.data
+}
+
+export const skipCoaSetup = async (): Promise<CoaSkipResult> => {
+  const response = await apiClient.post<CoaSkipResult>("/api/v1/coa/skip")
   return response.data
 }
 
