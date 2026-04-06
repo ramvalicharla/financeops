@@ -107,7 +107,6 @@ function SetupCoaPageContent() {
     onSuccess: async () => {
       setError(null)
       setMessage(null)
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
       await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
       router.push(nextPath)
     },

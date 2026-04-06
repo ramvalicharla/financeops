@@ -241,6 +241,8 @@ async def get_setup_summary(
             OrgEntityErpConfigResponse.model_validate(item, from_attributes=True)
             for item in payload["erp_configs"]
         ],
+        current_step=int(payload["current_step"]),
+        completed_at=payload["completed_at"],
         coa_account_count=int(payload["coa_account_count"]),
         coa_status=str(payload["coa_status"]),
         onboarding_score=int(payload["onboarding_score"]),

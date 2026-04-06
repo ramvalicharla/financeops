@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRouter, useSearchParams } from "next/navigation"
 import { StepIndicator } from "@/components/ui/StepIndicator"
@@ -12,9 +12,7 @@ import { Step5IndustryCoA } from "@/components/org-setup/Step5IndustryCoA"
 import { Step6ErpMapping } from "@/components/org-setup/Step6ErpMapping"
 import { SetupComplete } from "@/components/org-setup/SetupComplete"
 import {
-  getOrgSetupProgress,
   getOrgSetupSummary,
-  listOrgEntities,
   submitOrgSetupStep1,
   submitOrgSetupStep2,
   submitOrgSetupStep3,
@@ -23,6 +21,7 @@ import {
   submitOrgSetupStep6,
   type Step2EntityPayload,
 } from "@/lib/api/orgSetup"
+import { skipCoaSetup } from "@/lib/api/coa"
 import { getCoaTemplates } from "@/lib/api/coa"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -33,59 +32,32 @@ export default function OrgSetupPageClient() {
   const setTenant = useTenantStore((state) => state.setTenant)
   const tenantState = useTenantStore((state) => state)
 
-  const [currentStep, setCurrentStep] = useState(1)
-  const [groupId, setGroupId] = useState<string | null>(null)
   const [step2Draft, setStep2Draft] = useState<Step2EntityPayload[]>([])
-  const [setupComplete, setSetupComplete] = useState(false)
-
-  const progressQuery = useQuery({
-    queryKey: ["org-setup-progress"],
-    queryFn: getOrgSetupProgress,
+  const summaryQuery = useQuery({
+    queryKey: ["org-setup-summary"],
+    queryFn: getOrgSetupSummary,
   })
 
-  const entitiesQuery = useQuery({
-    queryKey: ["org-setup-entities"],
-    queryFn: listOrgEntities,
-    enabled: setupComplete || currentStep >= 3,
-  })
+  const currentStep = useMemo(() => {
+    const nextStep = summaryQuery.data?.current_step ?? 1
+    return Math.min(Math.max(nextStep, 1), 6)
+  }, [summaryQuery.data?.current_step])
+
+  const setupComplete = Boolean(summaryQuery.data?.completed_at)
+  const groupId = summaryQuery.data?.group?.id ?? null
+  const entities = summaryQuery.data?.entities ?? []
+  const coaStatus = summaryQuery.data?.coa_status ?? "pending"
 
   const templatesQuery = useQuery({
     queryKey: ["org-setup-templates"],
     queryFn: getCoaTemplates,
-    enabled: currentStep >= 5,
+    enabled: currentStep === 5,
   })
-
-  const summaryQuery = useQuery({
-    queryKey: ["org-setup-summary"],
-    queryFn: getOrgSetupSummary,
-    enabled: setupComplete || currentStep === 5,
-  })
-
-  useEffect(() => {
-    if (!progressQuery.data) {
-      return
-    }
-    const nextGroupId =
-      progressQuery.data.step1_data && typeof progressQuery.data.step1_data.group_id === "string"
-        ? progressQuery.data.step1_data.group_id
-        : null
-    if (nextGroupId) {
-      setGroupId((previous) => previous ?? nextGroupId)
-    }
-    if (progressQuery.data.completed_at) {
-      setSetupComplete((previous) => previous || true)
-      return
-    }
-    const nextStep = Math.min(Math.max(progressQuery.data.current_step || 1, 1), 6)
-    setCurrentStep((previous) => (previous === nextStep ? previous : nextStep))
-  }, [progressQuery.data])
 
   const step1Mutation = useMutation({
     mutationFn: submitOrgSetupStep1,
-    onSuccess: (group) => {
-      setGroupId(group.id)
-      setCurrentStep(2)
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
@@ -95,43 +67,42 @@ export default function OrgSetupPageClient() {
         group_id: groupId ?? "",
         entities: payload,
       }),
-    onSuccess: () => {
-      setCurrentStep(3)
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-entities"] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
   const step3Mutation = useMutation({
     mutationFn: submitOrgSetupStep3,
-    onSuccess: () => {
-      setCurrentStep(4)
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
   const step4Mutation = useMutation({
     mutationFn: submitOrgSetupStep4,
-    onSuccess: () => {
-      setCurrentStep(5)
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
   const step5Mutation = useMutation({
     mutationFn: submitOrgSetupStep5,
-    onSuccess: () => {
-      setCurrentStep(6)
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-entities"] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+    },
+  })
+
+  const skipCoaMutation = useMutation({
+    mutationFn: skipCoaSetup,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
   const step6Mutation = useMutation({
     mutationFn: submitOrgSetupStep6,
-    onSuccess: () => {
-      setSetupComplete(true)
+    onSuccess: async () => {
       if (tenantState.tenant_id && tenantState.tenant_slug) {
         setTenant({
           tenant_id: tenantState.tenant_id,
@@ -142,8 +113,7 @@ export default function OrgSetupPageClient() {
           active_entity_id: tenantState.active_entity_id,
         })
       }
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-progress"] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
     },
   })
 
@@ -155,7 +125,7 @@ export default function OrgSetupPageClient() {
     return "/dashboard"
   }, [searchParams])
 
-  if (progressQuery.isLoading) {
+  if (summaryQuery.isLoading) {
     return (
       <div className="space-y-3">
         {Array.from({ length: 5 }).map((_, index) => (
@@ -165,15 +135,13 @@ export default function OrgSetupPageClient() {
     )
   }
 
-  if (progressQuery.error) {
+  if (summaryQuery.error) {
     return (
       <div className="rounded-xl border border-[hsl(var(--brand-danger)/0.4)] bg-[hsl(var(--brand-danger)/0.12)] p-4 text-sm text-[hsl(var(--brand-danger))]">
-        Failed to load organisation setup progress.
+        Failed to load organisation setup.
       </div>
     )
   }
-
-  const entities = entitiesQuery.data ?? []
 
   if (setupComplete) {
     return (
@@ -234,9 +202,16 @@ export default function OrgSetupPageClient() {
         <Step5IndustryCoA
           entities={entities}
           templates={templatesQuery.data ?? []}
+          templatesLoading={templatesQuery.isLoading}
+          templatesError={templatesQuery.isError}
+          coaStatus={coaStatus}
           submitting={step5Mutation.isPending}
+          skipping={skipCoaMutation.isPending}
           onSubmit={async (entityTemplates) => {
             await step5Mutation.mutateAsync({ entity_templates: entityTemplates })
+          }}
+          onSkip={async () => {
+            await skipCoaMutation.mutateAsync()
           }}
         />
       ) : null}

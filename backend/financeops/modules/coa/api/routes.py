@@ -411,7 +411,7 @@ async def skip_coa_for_now(
     await commit_session(session)
     return CoaSkipResponse(
         coa_status="skipped",
-        next_step=max(progress.current_step, 5),
+        next_step=progress.current_step,
         onboarding_score=await service.get_onboarding_score(user.tenant_id),
     )
 

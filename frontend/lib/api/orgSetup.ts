@@ -161,6 +161,8 @@ export interface OrgSetupSummary {
   entities: OrgEntity[]
   ownership: OrgOwnership[]
   erp_configs: OrgEntityErpConfig[]
+  current_step: number
+  completed_at: string | null
   coa_account_count: number
   coa_status: CoaStatus
   onboarding_score: number

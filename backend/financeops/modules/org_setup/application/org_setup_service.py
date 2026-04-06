@@ -265,12 +265,12 @@ class OrgSetupService:
         current_data = dict(progress.step5_data or {})
         current_data["coa_status"] = "skipped"
         progress.step5_data = current_data
-        if progress.current_step < 5:
-            progress.current_step = 5
+        if progress.current_step < 6:
+            progress.current_step = 6
 
         tenant = await self._get_tenant(tenant_id)
-        if tenant.org_setup_step < 5 and not tenant.org_setup_complete:
-            tenant.org_setup_step = 5
+        if tenant.org_setup_step < 6 and not tenant.org_setup_complete:
+            tenant.org_setup_step = 6
 
         await self._session.flush()
         return progress
@@ -301,12 +301,13 @@ class OrgSetupService:
             raise ValidationError("step must be between 1 and 6")
         progress = await self.get_or_create_progress(tenant_id)
         setattr(progress, f"step{step}_data", data)
-        if step > progress.current_step:
-            progress.current_step = step
+        next_step = 6 if step >= 6 else step + 1
+        if next_step > progress.current_step:
+            progress.current_step = next_step
 
         tenant = await self._get_tenant(tenant_id)
-        if step > tenant.org_setup_step and not tenant.org_setup_complete:
-            tenant.org_setup_step = step
+        if next_step > tenant.org_setup_step and not tenant.org_setup_complete:
+            tenant.org_setup_step = next_step
 
         await self._session.flush()
         return progress
@@ -868,6 +869,7 @@ class OrgSetupService:
         await self._session.flush()
 
     async def get_setup_summary(self, tenant_id: uuid.UUID) -> dict[str, Any]:
+        progress = await self.get_or_create_progress(tenant_id)
         group = (
             await self._session.execute(
                 select(OrgGroup).where(OrgGroup.tenant_id == tenant_id)
@@ -942,6 +944,8 @@ class OrgSetupService:
             "entities": list(entities),
             "ownership": list(ownership),
             "erp_configs": list(erp_configs),
+            "current_step": progress.current_step,
+            "completed_at": progress.completed_at,
             "coa_account_count": account_count,
             "coa_status": coa_status,
             "onboarding_score": onboarding_score,
