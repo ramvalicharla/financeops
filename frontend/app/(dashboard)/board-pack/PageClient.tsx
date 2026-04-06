@@ -1,5 +1,6 @@
 "use client"
 
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { BoardPackEditSheet } from "./_components/BoardPackEditSheet"
 import { BoardPackFilters } from "./_components/BoardPackFilters"
 import { BoardPackList } from "./_components/BoardPackList"
@@ -7,6 +8,7 @@ import { BoardPackRunDialog } from "./_components/BoardPackRunDialog"
 import { useBoardPack } from "./_hooks/useBoardPack"
 import { ConfirmDialog } from "@/components/ui"
 import { Button } from "@/components/ui/button"
+import { getAccessErrorMessage } from "@/lib/ui-access"
 
 export default function BoardPackPage() {
   const {
@@ -45,6 +47,14 @@ export default function BoardPackPage() {
     toggleSectionType,
     removeEntityId,
   } = useBoardPack()
+  const accessErrorMessage = getAccessErrorMessage(
+    definitionError ?? runError,
+    "Board Packs",
+  )
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   return (
     <div className="space-y-6">

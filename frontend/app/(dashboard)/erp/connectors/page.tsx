@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import {
   createErpConnector,
   listErpConnectors,
@@ -11,12 +13,18 @@ import {
   updateErpConnectorStatus,
 } from "@/lib/api/erp"
 import { useTenantStore } from "@/lib/store/tenant"
+import { canPerformAction, getAccessErrorMessage } from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 
 const ERP_TYPES = ["TALLY", "ZOHO", "QUICKBOOKS", "SAP", "ORACLE", "MANUAL"] as const
 const AUTH_TYPES: ErpAuthType[] = ["API_KEY", "OAUTH", "BASIC"]
 
 export default function ErpConnectorsPage() {
+  const { data: session } = useSession()
+  const canManageConnectors = canPerformAction(
+    "tenant.erp.manage",
+    session?.user?.role,
+  )
   const queryClient = useQueryClient()
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const defaultEntityId = entityRoles.at(0)?.entity_id ?? ""
@@ -73,6 +81,25 @@ export default function ErpConnectorsPage() {
     testMutation.error?.message ??
     statusMutation.error?.message ??
     null
+  const accessErrorMessage = getAccessErrorMessage(
+    connectorsQuery.error ??
+      createMutation.error ??
+      testMutation.error ??
+      statusMutation.error ??
+      null,
+    "ERP Connectors",
+  )
+
+  if (accessErrorMessage) {
+    return (
+      <div className="space-y-6 p-6">
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h1 className="text-xl font-semibold text-foreground">ERP Connectors</h1>
+        </section>
+        <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -81,6 +108,11 @@ export default function ErpConnectorsPage() {
         <p className="text-sm text-muted-foreground">
           Configure connector credentials, test connectivity, and manage activation state.
         </p>
+        {!canManageConnectors ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Only tenant administrators can create or modify ERP connectors.
+          </p>
+        ) : null}
       </section>
 
       {pageErrorMessage ? (
@@ -97,6 +129,7 @@ export default function ErpConnectorsPage() {
           <select
             value={orgEntityId}
             onChange={(event) => setOrgEntityId(event.target.value)}
+            disabled={!canManageConnectors}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             <option value="">Select entity</option>
@@ -109,6 +142,7 @@ export default function ErpConnectorsPage() {
           <select
             value={erpType}
             onChange={(event) => setErpType(event.target.value as (typeof ERP_TYPES)[number])}
+            disabled={!canManageConnectors}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             {ERP_TYPES.map((type) => (
@@ -120,6 +154,7 @@ export default function ErpConnectorsPage() {
           <select
             value={authType}
             onChange={(event) => setAuthType(event.target.value as ErpAuthType)}
+            disabled={!canManageConnectors}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm"
           >
             {AUTH_TYPES.map((type) => (
@@ -133,11 +168,12 @@ export default function ErpConnectorsPage() {
           value={credentialsJson}
           onChange={(event) => setCredentialsJson(event.target.value)}
           rows={7}
+          disabled={!canManageConnectors}
           className="mt-3 w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs"
         />
         <div className="mt-3">
           <Button
-            disabled={!canCreate || createMutation.isPending}
+            disabled={!canCreate || createMutation.isPending || !canManageConnectors}
             onClick={() => createMutation.mutate()}
             type="button"
           >
@@ -170,6 +206,7 @@ export default function ErpConnectorsPage() {
                       size="sm"
                       variant="outline"
                       onClick={() => testMutation.mutate(connector.id)}
+                      disabled={!canManageConnectors}
                       type="button"
                     >
                       Test
@@ -183,6 +220,7 @@ export default function ErpConnectorsPage() {
                           status: connector.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
                         })
                       }
+                      disabled={!canManageConnectors}
                       type="button"
                     >
                       {connector.status === "ACTIVE" ? "Deactivate" : "Activate"}

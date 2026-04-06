@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/Dialog"
 import { PayrollReconTable } from "@/components/reconciliation/PayrollReconTable"
@@ -10,6 +11,7 @@ import {
   usePayrollCostCentreDetail,
   usePayrollRecon,
 } from "@/hooks/useReconciliation"
+import { getAccessErrorMessage } from "@/lib/ui-access"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { PayrollCostCentre } from "@/types/reconciliation"
 
@@ -59,6 +61,14 @@ export default function PayrollReconciliationPage() {
   )
   const selectionErrorMessage =
     connectionsQuery.error?.message ?? syncRunsQuery.error?.message ?? null
+  const accessErrorMessage = getAccessErrorMessage(
+    connectionsQuery.error ?? syncRunsQuery.error ?? reconQuery.error ?? null,
+    "Reconciliation",
+  )
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   const filtersReady = Boolean(selectedEntityId && selectedPeriod && selectedRunId)
   const summary = reconQuery.data

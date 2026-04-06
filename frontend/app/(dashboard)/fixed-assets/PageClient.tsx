@@ -17,9 +17,11 @@ import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { Button } from "@/components/ui/button"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Dialog } from "@/components/ui/Dialog"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
+import { getAccessErrorMessage } from "@/lib/ui-access"
 
 const toCsv = (rows: FaRegisterLine[]): string => {
   const header = [
@@ -224,6 +226,21 @@ export default function FixedAssetsPage() {
 
   const locationRows = locationsQuery.data?.items ?? []
   const costCentreRows = costCentresQuery.data?.items ?? []
+  const accessErrorMessage = getAccessErrorMessage(
+    locationsQuery.error ??
+      costCentresQuery.error ??
+      classQuery.error ??
+      assetsQuery.error ??
+      registerQuery.error ??
+      createAssetMutation.error ??
+      runPeriodMutation.error ??
+      null,
+    "Fixed Assets",
+  )
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   const handleCreateAsset = () => {
     const nextFieldErrors: typeof fieldErrors = {}

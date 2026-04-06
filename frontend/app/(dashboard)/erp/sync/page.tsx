@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useSession } from "next-auth/react"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import {
   listErpConnectors,
   listErpSyncJobs,
@@ -9,12 +11,15 @@ import {
   type ErpSyncModule,
   type ErpSyncType,
 } from "@/lib/api/erp"
+import { canPerformAction, getAccessErrorMessage } from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
 
 const MODULES: ErpSyncModule[] = ["COA", "JOURNALS", "VENDORS", "CUSTOMERS"]
 const TYPES: ErpSyncType[] = ["IMPORT", "EXPORT"]
 
 export default function ErpSyncPage() {
+  const { data: session } = useSession()
+  const canRunSync = canPerformAction("tenant.sync.manage", session?.user?.role)
   const queryClient = useQueryClient()
   const [connectorId, setConnectorId] = useState("")
   const [syncType, setSyncType] = useState<ErpSyncType>("IMPORT")
@@ -48,6 +53,21 @@ export default function ErpSyncPage() {
     jobsQuery.error?.message ??
     runSyncMutation.error?.message ??
     null
+  const accessErrorMessage = getAccessErrorMessage(
+    connectorsQuery.error ?? jobsQuery.error ?? runSyncMutation.error ?? null,
+    "ERP Sync",
+  )
+
+  if (accessErrorMessage) {
+    return (
+      <div className="space-y-6 p-6">
+        <section className="rounded-xl border border-border bg-card p-4">
+          <h1 className="text-xl font-semibold text-foreground">ERP Sync Dashboard</h1>
+        </section>
+        <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -56,6 +76,11 @@ export default function ErpSyncPage() {
         <p className="text-sm text-muted-foreground">
           Trigger import/export jobs and monitor execution status with retry count and error traces.
         </p>
+        {!canRunSync ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Only tenant administrators can trigger ERP sync runs.
+          </p>
+        ) : null}
       </section>
 
       {pageErrorMessage ? (
@@ -102,7 +127,7 @@ export default function ErpSyncPage() {
           </select>
           <Button
             onClick={() => runSyncMutation.mutate()}
-            disabled={!canRun || runSyncMutation.isPending}
+            disabled={!canRun || runSyncMutation.isPending || !canRunSync}
             type="button"
           >
             {runSyncMutation.isPending ? "Running..." : "Run Sync"}

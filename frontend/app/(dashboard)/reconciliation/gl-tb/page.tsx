@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/Sheet"
 import { GLTBTable } from "@/components/reconciliation/GLTBTable"
@@ -12,6 +13,7 @@ import {
   useGLTBAccountEntries,
   useGLTBResult,
 } from "@/hooks/useReconciliation"
+import { getAccessErrorMessage } from "@/lib/ui-access"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { GLTBAccount } from "@/types/reconciliation"
 
@@ -59,6 +61,14 @@ export default function GLTBReconciliationPage() {
   const exportMutation = useExportGLTB()
   const selectionErrorMessage =
     connectionsQuery.error?.message ?? syncRunsQuery.error?.message ?? null
+  const accessErrorMessage = getAccessErrorMessage(
+    connectionsQuery.error ?? syncRunsQuery.error ?? resultQuery.error ?? null,
+    "Reconciliation",
+  )
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   const filteredAccounts = useMemo(() => {
     const accounts = resultQuery.data?.accounts ?? []

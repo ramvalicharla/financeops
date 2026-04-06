@@ -49,10 +49,11 @@ export const useInvoices = () =>
     queryFn: getInvoices,
   })
 
-export const useCurrentEntitlements = () =>
+export const useCurrentEntitlements = (options?: { enabled?: boolean }) =>
   useQuery({
     queryKey: ["billing-entitlements"],
     queryFn: getCurrentEntitlements,
+    enabled: options?.enabled ?? true,
   })
 
 export const useUsageAggregates = (params?: { period_start?: string; period_end?: string }) =>

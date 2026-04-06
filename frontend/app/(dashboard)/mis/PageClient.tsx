@@ -16,6 +16,8 @@ import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { SortableHeader } from "@/components/ui/SortableHeader"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { useMISDashboard, useMISPeriods } from "@/hooks/useMIS"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
+import { getAccessErrorMessage } from "@/lib/ui-access"
 import { useDisplayScale } from "@/lib/store/displayScale"
 import { isZeroDecimal } from "@/lib/utils"
 import type { MISLineItem } from "@/types/mis"
@@ -46,6 +48,14 @@ export default function MISPage() {
 
   const periodsQuery = useMISPeriods(selectedEntityId)
   const dashboardQuery = useMISDashboard(selectedEntityId, selectedPeriod)
+  const accessErrorMessage = getAccessErrorMessage(
+    periodsQuery.error ?? dashboardQuery.error ?? null,
+    "MIS",
+  )
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   const columns = useMemo<ColumnDef<MISLineItem>[]>(
     () => [

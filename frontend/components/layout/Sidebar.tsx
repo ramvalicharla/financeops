@@ -7,6 +7,7 @@ import type { EntityRole } from "@/types/api"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
 import { Button } from "@/components/ui/button"
+import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import {
   ADMIN_NAV_ITEMS,
@@ -18,6 +19,7 @@ import {
   SETTINGS_NAV_ITEMS,
   TRUST_NAV_ITEMS,
 } from "@/lib/config/navigation"
+import { filterNavigationItems } from "@/lib/ui-access"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
 import { cn } from "@/lib/utils"
@@ -82,6 +84,11 @@ export function Sidebar({
     "admin",
   ].includes(String(userRole))
   const isDirector = userRole === "director"
+  const entitlementsQuery = useCurrentEntitlements({
+    enabled: Boolean(tenantId),
+  })
+  const entitlementsLoaded =
+    !entitlementsQuery.isPending && !entitlementsQuery.isLoading
 
   const directorNavLabels = useMemo<Set<string>>(
     () => new Set(DIRECTOR_NAV_LABELS),
@@ -89,15 +96,33 @@ export function Sidebar({
   )
 
   const visibleNavItems = useMemo(() => {
+    const filteredItems = filterNavigationItems(
+      NAV_ITEMS,
+      userRole,
+      entitlementsQuery.data,
+      entitlementsLoaded,
+    )
     if (userRole !== "director") {
-      return NAV_ITEMS
+      return filteredItems
     }
-    return NAV_ITEMS.filter((item) => directorNavLabels.has(item.label))
-  }, [directorNavLabels, userRole])
+    return filteredItems.filter((item) => directorNavLabels.has(item.label))
+  }, [
+    directorNavLabels,
+    entitlementsLoaded,
+    entitlementsQuery.data,
+    userRole,
+  ])
 
   const visibleSettingsItems = useMemo(
     () =>
-      SETTINGS_NAV_ITEMS.filter((item) => {
+      filterNavigationItems(
+        SETTINGS_NAV_ITEMS,
+        userRole,
+        entitlementsQuery.data,
+        entitlementsLoaded,
+      )
+        .filter((item): item is NavigationLeafItem => !("children" in item))
+        .filter((item) => {
         if (!showTrust && item.href === "/settings/white-label") {
           return false
         }
@@ -109,8 +134,14 @@ export function Sidebar({
           return false
         }
         return true
-      }),
-    [isDirector, showTrust],
+        }),
+    [
+      entitlementsLoaded,
+      entitlementsQuery.data,
+      isDirector,
+      showTrust,
+      userRole,
+    ],
   )
 
   const primaryNavItems = visibleNavItems.filter(

@@ -14,9 +14,11 @@ import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { Button } from "@/components/ui/button"
+import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Dialog } from "@/components/ui/Dialog"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
+import { getAccessErrorMessage } from "@/lib/ui-access"
 
 export default function PrepaidExpensesPage() {
   const queryClient = useQueryClient()
@@ -137,6 +139,19 @@ export default function PrepaidExpensesPage() {
   const rows = schedulesQuery.data?.items ?? []
   const locationRows = locationsQuery.data?.items ?? []
   const costCentreRows = costCentresQuery.data?.items ?? []
+  const accessErrorMessage = getAccessErrorMessage(
+    locationsQuery.error ??
+      costCentresQuery.error ??
+      schedulesQuery.error ??
+      createMutation.error ??
+      runPeriodMutation.error ??
+      null,
+    "Prepaid Expenses",
+  )
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   const handleCreate = () => {
     const nextFieldErrors: typeof fieldErrors = {}

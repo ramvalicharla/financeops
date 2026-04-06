@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useSession } from "next-auth/react"
 import { DataTable } from "@/components/admin/DataTable"
 import { RoleSelector } from "@/components/admin/RoleSelector"
 import {
@@ -9,6 +10,7 @@ import {
   updatePlatformUserRole,
 } from "@/lib/api/platform-admin"
 import type { PlatformUser, PlatformUserRole } from "@/lib/types/platform-admin"
+import { canPerformAction } from "@/lib/ui-access"
 
 const editableRoles: PlatformUserRole[] = [
   "platform_owner",
@@ -18,6 +20,11 @@ const editableRoles: PlatformUserRole[] = [
 ]
 
 export default function AdminUsersPage() {
+  const { data: session } = useSession()
+  const canManageUsers = canPerformAction(
+    "platform.users.manage",
+    session?.user?.role,
+  )
   const [rows, setRows] = useState<PlatformUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -79,6 +86,11 @@ export default function AdminUsersPage() {
         <p className="mt-2 text-xs text-muted-foreground">
           Active users: {activeCount} / {rows.length}
         </p>
+        {!canManageUsers ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Only platform owners can change platform-user roles or deactivate accounts.
+          </p>
+        ) : null}
       </header>
 
       {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
@@ -109,7 +121,7 @@ export default function AdminUsersPage() {
                 onChange={(next) => {
                   void changeRole(row, next)
                 }}
-                disabled={!row.is_active}
+                disabled={!row.is_active || !canManageUsers}
               />
             ),
           },
@@ -136,7 +148,7 @@ export default function AdminUsersPage() {
             header: "Actions",
             render: (row) => (
               <div className="flex items-center gap-2">
-                {row.role !== "platform_admin" ? (
+                {canManageUsers && row.role !== "platform_admin" ? (
                   <button
                     type="button"
                     className="rounded-md border border-border px-2 py-1 text-xs text-foreground"
@@ -148,16 +160,18 @@ export default function AdminUsersPage() {
                     Promote to admin
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  className="rounded-md border border-[hsl(var(--brand-danger)/0.5)] px-2 py-1 text-xs text-[hsl(var(--brand-danger))]"
-                  onClick={() => {
-                    void deactivate(row)
-                  }}
-                  disabled={!row.is_active}
-                >
-                  Deactivate
-                </button>
+                {canManageUsers ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-[hsl(var(--brand-danger)/0.5)] px-2 py-1 text-xs text-[hsl(var(--brand-danger))]"
+                    onClick={() => {
+                      void deactivate(row)
+                    }}
+                    disabled={!row.is_active}
+                  >
+                    Deactivate
+                  </button>
+                ) : null}
               </div>
             ),
           },
