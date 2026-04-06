@@ -12,10 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import FinanceOpsError, NotFoundError, ValidationError
 from financeops.db.models.erp_sync import (
     ExternalConnection,
+    ExternalConnectionVersion,
     ExternalRawSnapshot,
     ExternalSyncDefinition,
     ExternalSyncDefinitionVersion,
     ExternalSyncRun,
+)
+from financeops.modules.erp_sync.application.connection_service import (
+    get_latest_connection_version,
+    merge_connection_runtime_snapshot,
 )
 from financeops.modules.erp_sync.application.mapping_service import MappingService
 from financeops.modules.erp_sync.application.normalization_service import NormalizationService
@@ -79,6 +84,16 @@ class SyncService:
 
         connector = get_connector(ConnectorType(connection.connector_type))
         extraction_input = dict(extraction_kwargs or {})
+        resolved_secret_ref = await self._resolve_active_secret_ref(
+            tenant_id=tenant_id,
+            connection=connection,
+        )
+        connection_runtime = await self._resolve_connection_runtime_state(
+            tenant_id=tenant_id,
+            connection=connection,
+        )
+        if resolved_secret_ref and not extraction_input.get("credentials"):
+            extraction_input.setdefault("secret_ref", resolved_secret_ref)
         extracted = await connector.extract(dataset_type, **extraction_input)
         raw_snapshot_payload_hash = sha256_hex_text(canonical_json_dumps(self._json_safe(extracted)))
 
@@ -95,7 +110,11 @@ class SyncService:
             entity_id=entity_id,
             dataset_type=dataset_type,
             connector_type=ConnectorType(connection.connector_type),
-            connector_version=connection.pinned_connector_version or connector.connector_version,
+            connector_version=str(
+                connection_runtime.get("pinned_connector_version")
+                or connection.pinned_connector_version
+                or connector.connector_version
+            ),
             source_system_instance_id=connection.source_system_instance_id,
             sync_definition_id=sync_definition_id,
             sync_definition_version=version.version_no,
@@ -361,6 +380,41 @@ class SyncService:
         if version is None:
             raise NotFoundError("Sync definition version not found")
         return connection, definition, version
+
+    async def _resolve_active_secret_ref(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        connection: ExternalConnection,
+    ) -> str | None:
+        latest_version = (
+            await get_latest_connection_version(
+                self._session,
+                tenant_id=tenant_id,
+                connection_id=connection.id,
+            )
+        )
+        snapshot = merge_connection_runtime_snapshot(connection, latest_version)
+        resolved_secret_ref = str(
+            snapshot.get("oauth_secret_ref")
+            or snapshot.get("secret_ref")
+            or connection.secret_ref
+            or ""
+        ).strip()
+        return resolved_secret_ref or None
+
+    async def _resolve_connection_runtime_state(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        connection: ExternalConnection,
+    ) -> dict[str, Any]:
+        latest_version = await get_latest_connection_version(
+            self._session,
+            tenant_id=tenant_id,
+            connection_id=connection.id,
+        )
+        return merge_connection_runtime_snapshot(connection, latest_version)
 
     async def _build_sync_token(
         self,

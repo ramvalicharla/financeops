@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_team
 from financeops.config import limiter, settings
-from financeops.config import get_settings
-from financeops.core.exceptions import FeatureNotImplementedError
+from financeops.core.exceptions import ValidationError
 from financeops.db.models.erp_sync import ExternalConnection, ExternalConnectionVersion
 from financeops.db.models.users import IamUser
+from financeops.modules.erp_sync.application.connection_service import ConnectionService
+from financeops.modules.erp_sync.application.connection_service import resolve_connection_runtime_state
 from financeops.modules.erp_sync.domain.enums import ConnectorType
 from financeops.modules.erp_sync.infrastructure.connectors.registry import get_connector
 from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
@@ -28,6 +29,8 @@ async def _build_secret_ref(body: dict[str, Any]) -> str | None:
         "client_id": body.get("client_id"),
         "client_secret": body.get("client_secret"),
         "realm_id": body.get("realm_id"),
+        "organization_id": body.get("organization_id"),
+        "use_sandbox": body.get("use_sandbox"),
     }
     legacy_secret = str(body.get("secret_ref") or "").strip()
     if legacy_secret:
@@ -85,6 +88,7 @@ async def create_connection(
     _: str = Depends(require_erp_sync_idempotency_key),
 ) -> dict[str, Any]:
     connector_type = ConnectorType(body["connector_type"])
+    credentials_ref = await _build_secret_ref(body)
     row = await AuditWriter.insert_financial_record(
         session,
         model_class=ExternalConnection,
@@ -107,7 +111,7 @@ async def create_connection(
             "consent_reference": body.get("consent_reference"),
             "pinned_connector_version": body.get("pinned_connector_version"),
             "connection_status": str(body.get("connection_status", "draft")),
-            "secret_ref": await _build_secret_ref(body),
+            "secret_ref": credentials_ref,
             "created_by": user.id,
         },
     )
@@ -153,10 +157,12 @@ async def list_connections(
             "connection_code": row.connection_code,
             "connection_name": row.connection_name,
             "connector_type": row.connector_type,
-            "connection_status": row.connection_status,
         }
         for row in rows
     ]
+    for item, row in zip(items, rows, strict=False):
+        _, runtime_state = await resolve_connection_runtime_state(session, connection=row)
+        item["connection_status"] = str(runtime_state.get("connection_status") or row.connection_status)
     payload: dict[str, Any]
     if pagination_requested:
         payload = {"data": items, "total": int(total), "limit": limit, "offset": offset}
@@ -180,13 +186,14 @@ async def get_connection(
             )
         )
     ).scalar_one()
+    _, runtime_state = await resolve_connection_runtime_state(session, connection=row)
     return ok(
         {
             "id": str(row.id),
             "connection_code": row.connection_code,
             "connection_name": row.connection_name,
             "connector_type": row.connector_type,
-            "connection_status": row.connection_status,
+            "connection_status": str(runtime_state.get("connection_status") or row.connection_status),
             "source_system_instance_id": row.source_system_instance_id,
         },
         request_id=getattr(request.state, "request_id", None),
@@ -225,6 +232,12 @@ async def test_connection(
                 {key: value for key, value in secret_payload.items() if value is not None}
             )
             credentials["secret_ref"] = resolved_secret_ref
+    if str(row.connector_type).lower() == "zoho":
+        organization_id = str(credentials.get("organization_id") or "").strip()
+        if not organization_id:
+            raise ValidationError(
+                "Zoho organization_id is required in persisted connection credentials"
+            )
     result = await connector.test_connection(credentials)
     return ok(
         {"connection_id": str(row.id), "ok": True, "result": result},
@@ -237,13 +250,17 @@ async def test_connection(
 async def activate_connection(
     request: Request,
     id: str,
+    session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
-    _ = user
-    return ok(
-        {"id": id, "status": "accepted", "note": "append-only model; status transitions are event-driven"},
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    service = ConnectionService(session)
+    result = await service.set_connection_status(
+        tenant_id=user.tenant_id,
+        connection_id=uuid.UUID(id),
+        new_status="active",
+        actor_user_id=user.id,
+    )
+    return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
 @limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
@@ -251,13 +268,17 @@ async def activate_connection(
 async def suspend_connection(
     request: Request,
     id: str,
+    session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
-    _ = user
-    return ok(
-        {"id": id, "status": "accepted", "note": "append-only model; status transitions are event-driven"},
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    service = ConnectionService(session)
+    result = await service.set_connection_status(
+        tenant_id=user.tenant_id,
+        connection_id=uuid.UUID(id),
+        new_status="suspended",
+        actor_user_id=user.id,
+    )
+    return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
 @limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
@@ -265,13 +286,17 @@ async def suspend_connection(
 async def revoke_connection(
     request: Request,
     id: str,
+    session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
-    _ = user
-    return ok(
-        {"id": id, "status": "accepted", "note": "append-only model; status transitions are event-driven"},
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    service = ConnectionService(session)
+    result = await service.set_connection_status(
+        tenant_id=user.tenant_id,
+        connection_id=uuid.UUID(id),
+        new_status="revoked",
+        actor_user_id=user.id,
+    )
+    return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
 @limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
@@ -279,15 +304,18 @@ async def revoke_connection(
 async def rotate_credentials(
     request: Request,
     id: str,
+    body: dict[str, Any] | None = None,
+    session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
-    _ = user
-    if not get_settings().ERP_CONNECTION_SERVICE_ENABLED:
-        raise FeatureNotImplementedError("erp_connection_credential_rotation")
-    return ok(
-        {"id": id, "rotated": True},
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    service = ConnectionService(session)
+    result = await service.rotate_credentials(
+        tenant_id=user.tenant_id,
+        connection_id=uuid.UUID(id),
+        actor_user_id=user.id,
+        credential_updates=dict(body or {}),
+    )
+    return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
 @limiter.limit(settings.ERP_SYNC_WRITE_RATE_LIMIT)
@@ -295,15 +323,19 @@ async def rotate_credentials(
 async def upgrade_connector_version(
     request: Request,
     id: str,
+    body: dict[str, Any] | None = None,
+    session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
-    _ = user
-    if not get_settings().ERP_CONNECTOR_VERSIONING_ENABLED:
-        raise FeatureNotImplementedError("erp_connector_versioning")
-    return ok(
-        {"id": id, "upgraded": True},
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    payload = body or {}
+    service = ConnectionService(session)
+    result = await service.upgrade_connector_version(
+        tenant_id=user.tenant_id,
+        connection_id=uuid.UUID(id),
+        actor_user_id=user.id,
+        pinned_connector_version=str(payload.get("pinned_connector_version") or ""),
+    )
+    return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
 @router.get("/connections/{id}/versions")

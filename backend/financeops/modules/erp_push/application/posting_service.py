@@ -21,6 +21,11 @@ from financeops.db.models.erp_push import (
     PushStatus,
 )
 from financeops.db.models.erp_sync import ErpAccountExternalRef, ExternalConnection
+from financeops.modules.erp_sync.application.connection_service import (
+    resolve_connection_runtime_state,
+)
+from financeops.modules.erp_sync.application.oauth_service import get_decrypted_access_token
+from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
 from financeops.modules.accounting_layer.application.push_gate import (
     GateFailure,
     run_all_push_gates,
@@ -277,9 +282,6 @@ async def _dispatch_to_connector(
     connector_type: str,
     simulation: bool,
 ) -> PushResult:
-    from financeops.modules.erp_sync.application.oauth_service import get_decrypted_access_token
-    from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
-
     connection = (
         await db.execute(
             select(ExternalConnection).where(
@@ -291,7 +293,17 @@ async def _dispatch_to_connector(
     if connection is None:
         raise NotFoundError(f"Connection {connection_id} not found")
 
-    creds = await secret_store.get_secret(str(connection.secret_ref or ""))
+    _, runtime_state = await resolve_connection_runtime_state(
+        db,
+        connection=connection,
+    )
+    resolved_secret_ref = str(
+        runtime_state.get("oauth_secret_ref")
+        or runtime_state.get("secret_ref")
+        or connection.secret_ref
+        or ""
+    ).strip()
+    creds = await secret_store.get_secret(resolved_secret_ref)
     normalized = connector_type.lower()
 
     if normalized == "zoho":
@@ -303,6 +315,10 @@ async def _dispatch_to_connector(
             connection_id=connection_id,
         )
         organization_id = str(creds.get("organization_id") or "").strip()
+        if not organization_id:
+            raise ValidationError(
+                "Zoho organization_id missing from persisted connection credentials"
+            )
         return await push_journal_to_zoho(
             packet,
             access_token=token,
@@ -319,6 +335,10 @@ async def _dispatch_to_connector(
             connection_id=connection_id,
         )
         realm_id = str(creds.get("realm_id") or "").strip()
+        if not realm_id:
+            raise ValidationError(
+                "QuickBooks realm_id missing from persisted connection credentials"
+            )
         return await push_journal_to_qbo(
             packet,
             access_token=token,
@@ -355,9 +375,6 @@ async def _poll_erp_for_status(
     if not external_journal_id:
         return {"found": False, "status_code": 0, "data": {}}
 
-    from financeops.modules.erp_sync.application.oauth_service import get_decrypted_access_token
-    from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
-
     connection = (
         await db.execute(
             select(ExternalConnection).where(
@@ -369,7 +386,17 @@ async def _poll_erp_for_status(
     if connection is None:
         return {"found": False, "status_code": 404, "data": {}}
 
-    creds = await secret_store.get_secret(str(connection.secret_ref or ""))
+    _, runtime_state = await resolve_connection_runtime_state(
+        db,
+        connection=connection,
+    )
+    resolved_secret_ref = str(
+        runtime_state.get("oauth_secret_ref")
+        or runtime_state.get("secret_ref")
+        or connection.secret_ref
+        or ""
+    ).strip()
+    creds = await secret_store.get_secret(resolved_secret_ref)
     normalized = connector_type.lower()
 
     if normalized == "zoho":
@@ -380,10 +407,15 @@ async def _poll_erp_for_status(
             tenant_id=tenant_id,
             connection_id=connection_id,
         )
+        organization_id = str(creds.get("organization_id") or "").strip()
+        if not organization_id:
+            raise ValidationError(
+                "Zoho organization_id missing from persisted connection credentials"
+            )
         return await get_zoho_journal_status(
             external_journal_id,
             access_token=token,
-            organization_id=str(creds.get("organization_id") or "").strip(),
+            organization_id=organization_id,
         )
 
     if normalized in {"qbo", "quickbooks"}:
@@ -394,10 +426,15 @@ async def _poll_erp_for_status(
             tenant_id=tenant_id,
             connection_id=connection_id,
         )
+        realm_id = str(creds.get("realm_id") or "").strip()
+        if not realm_id:
+            raise ValidationError(
+                "QuickBooks realm_id missing from persisted connection credentials"
+            )
         return await get_qbo_journal_status(
             external_journal_id,
             access_token=token,
-            realm_id=str(creds.get("realm_id") or "").strip(),
+            realm_id=realm_id,
         )
 
     return {"found": False, "status_code": 0, "data": {}}

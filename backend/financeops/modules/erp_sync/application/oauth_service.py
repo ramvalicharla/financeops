@@ -16,6 +16,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError, ValidationError
 from financeops.core.security import decrypt_field, encrypt_field
 from financeops.db.models.erp_sync import ErpOAuthSession, ExternalConnection, ExternalConnectionVersion
+from financeops.modules.erp_sync.application.connection_service import (
+    get_latest_connection_version,
+    merge_connection_runtime_snapshot,
+)
 from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
 from financeops.services.audit_writer import AuditWriter
 
@@ -103,21 +107,11 @@ async def _latest_connection_version(
     tenant_id: uuid.UUID,
     connection_id: uuid.UUID,
 ) -> ExternalConnectionVersion | None:
-    return (
-        await session.execute(
-            select(ExternalConnectionVersion)
-            .where(
-                ExternalConnectionVersion.tenant_id == tenant_id,
-                ExternalConnectionVersion.connection_id == connection_id,
-            )
-            .order_by(
-                ExternalConnectionVersion.version_no.desc(),
-                ExternalConnectionVersion.created_at.desc(),
-                ExternalConnectionVersion.id.desc(),
-            )
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    return await get_latest_connection_version(
+        session,
+        tenant_id=tenant_id,
+        connection_id=connection_id,
+    )
 
 
 async def _resolve_active_secret_ref(
@@ -130,10 +124,7 @@ async def _resolve_active_secret_ref(
         tenant_id=connection.tenant_id,
         connection_id=connection.id,
     )
-    if latest_version is None:
-        return connection.secret_ref, None
-
-    snapshot = dict(latest_version.config_snapshot_json or {})
+    snapshot = merge_connection_runtime_snapshot(connection, latest_version)
     resolved = str(
         snapshot.get("oauth_secret_ref")
         or snapshot.get("secret_ref")
@@ -183,13 +174,14 @@ async def _append_connection_secret_version(
     next_version_no = int(max_version_no or 0) + 1
     version_token = uuid.uuid4().hex
 
-    snapshot = dict((latest_version.config_snapshot_json if latest_version else {}) or {})
+    snapshot = merge_connection_runtime_snapshot(connection, latest_version)
     snapshot["oauth_secret_ref"] = secret_ref
     snapshot["secret_ref"] = secret_ref
     if scopes is not None:
         snapshot["oauth_scopes"] = scopes
     if token_expires_at is not None:
         snapshot["token_expires_at"] = token_expires_at.isoformat()
+        snapshot["token_refreshed_at"] = _utcnow().isoformat()
 
     return await AuditWriter.insert_financial_record(
         session,
@@ -302,6 +294,7 @@ async def consume_oauth_callback(
     code: str,
     initiated_by_user_id: uuid.UUID | None,
     realm_id: str | None = None,
+    organization_id: str | None = None,
 ) -> dict[str, Any]:
     oauth_session = (
         await session.execute(
@@ -379,6 +372,12 @@ async def consume_oauth_callback(
             "refresh_token": refresh_token,
             "token_expires_at": token_expires_at.isoformat(),
             "realm_id": realm_id or credentials.get("realm_id"),
+            "organization_id": (
+                token_data.get("organization_id")
+                or organization_id
+                or credentials.get("organization_id")
+            ),
+            "use_sandbox": credentials.get("use_sandbox"),
         },
     )
     await _append_connection_secret_version(
@@ -456,9 +455,11 @@ async def refresh_connection_token(
             "access_token": access_token,
             "refresh_token": new_refresh,
             "token_expires_at": token_expires_at.isoformat(),
+            "realm_id": credentials.get("realm_id"),
+            "organization_id": credentials.get("organization_id"),
+            "use_sandbox": credentials.get("use_sandbox"),
         },
     )
-
     await _append_connection_secret_version(
         session,
         connection=connection,

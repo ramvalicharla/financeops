@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 import logging
+import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
@@ -10,7 +13,7 @@ from typing import Any
 
 import pandas as pd
 from openpyxl import load_workbook
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,11 +24,13 @@ from financeops.modules.coa.models import (
     CoaIndustryTemplate,
     CoaLedgerAccount,
     CoaSourceType,
+    TenantCoaAccount,
     CoaUploadBatch,
     CoaUploadMode,
     CoaUploadStagingRow,
     CoaUploadStatus,
 )
+from financeops.modules.coa.application.tenant_coa_service import TenantCoaService
 
 _REQUIRED_COLUMNS = (
     "group_code",
@@ -42,6 +47,7 @@ _MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 _ACCOUNT_ALIASES = ("account", "particulars", "ledger", "name")
 _DEBIT_ALIASES = ("debit", "dr")
 _CREDIT_ALIASES = ("credit", "cr")
+_FLEXIBLE_UPLOAD_KIND = "FLEXIBLE_TB"
 log = logging.getLogger(__name__)
 
 
@@ -267,6 +273,240 @@ class CoaUploadService:
             "errors": errors,
         }
 
+    @staticmethod
+    def _normalize_match_key(value: str) -> str:
+        return " ".join(str(value or "").strip().lower().split())
+
+    @classmethod
+    def _derive_account_code(cls, account_name: str, *, used_codes: set[str]) -> str:
+        base = re.sub(r"[^A-Z0-9]+", "_", str(account_name or "").upper()).strip("_")
+        base = base[:42] or f"TB_{uuid.uuid4().hex[:8].upper()}"
+        candidate = base
+        suffix = 1
+        while candidate in used_codes:
+            candidate = f"{base[:38]}_{suffix:02d}"[:50]
+            suffix += 1
+        return candidate[:50]
+
+    @staticmethod
+    def _hash_normalized_rows(rows: list[dict[str, Any]]) -> str:
+        payload = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    async def _find_duplicate_flexible_batch(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        template_id: uuid.UUID,
+        payload_hash: str,
+    ) -> CoaUploadBatch | None:
+        rows = (
+            await self._session.execute(
+                select(CoaUploadBatch)
+                .where(
+                    CoaUploadBatch.tenant_id == tenant_id,
+                    CoaUploadBatch.template_id == template_id,
+                )
+                .order_by(CoaUploadBatch.created_at.desc())
+                .limit(50)
+            )
+        ).scalars().all()
+        for row in rows:
+            metadata = dict(row.error_log or {})
+            if metadata.get("upload_kind") != _FLEXIBLE_UPLOAD_KIND:
+                continue
+            if str(metadata.get("normalized_hash") or "") == payload_hash:
+                return row
+        return None
+
+    async def _build_flexible_activation_plan(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        template_id: uuid.UUID,
+        normalized_rows: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        tenant_accounts = (
+            await self._session.execute(
+                select(TenantCoaAccount).where(
+                    TenantCoaAccount.tenant_id == tenant_id,
+                    TenantCoaAccount.is_active.is_(True),
+                )
+            )
+        ).scalars().all()
+        source_ledgers = (
+            await self._session.execute(
+                select(CoaLedgerAccount).where(
+                    CoaLedgerAccount.industry_template_id == template_id,
+                    CoaLedgerAccount.is_active.is_(True),
+                    or_(
+                        CoaLedgerAccount.tenant_id == tenant_id,
+                        CoaLedgerAccount.tenant_id.is_(None),
+                    ),
+                )
+            )
+        ).scalars().all()
+
+        tenant_by_code = {str(row.account_code or "").strip().upper(): row for row in tenant_accounts}
+        tenant_by_name = {
+            self._normalize_match_key(row.display_name): row for row in tenant_accounts if row.display_name
+        }
+        ledger_by_code = {str(row.code or "").strip().upper(): row for row in source_ledgers}
+        ledger_by_name = {
+            self._normalize_match_key(row.name): row for row in source_ledgers if row.name
+        }
+
+        used_codes = set(tenant_by_code.keys()) | set(ledger_by_code.keys())
+        plan: list[dict[str, Any]] = []
+        mapped_count = 0
+        auto_create_count = 0
+        review_count = 0
+
+        for row_number, row in enumerate(normalized_rows, start=1):
+            account = str(row.get("account") or "").strip()
+            normalized_name = self._normalize_match_key(account)
+            exact_code = str(account).strip().upper()
+            existing = tenant_by_code.get(exact_code) or tenant_by_name.get(normalized_name)
+            if existing is not None:
+                mapped_count += 1
+                plan.append(
+                    {
+                        "row_number": row_number,
+                        "account": account,
+                        "debit": float(row.get("debit") or 0),
+                        "credit": float(row.get("credit") or 0),
+                        "status": "mapped_existing",
+                        "tenant_coa_account_id": str(existing.id),
+                        "account_code": existing.account_code,
+                    }
+                )
+                continue
+
+            ledger = ledger_by_code.get(exact_code) or ledger_by_name.get(normalized_name)
+            if ledger is not None:
+                auto_create_count += 1
+                used_codes.add(ledger.code)
+                plan.append(
+                    {
+                        "row_number": row_number,
+                        "account": account,
+                        "debit": float(row.get("debit") or 0),
+                        "credit": float(row.get("credit") or 0),
+                        "status": "auto_create",
+                        "ledger_account_id": str(ledger.id),
+                        "parent_subgroup_id": str(ledger.account_subgroup_id),
+                        "account_code": ledger.code,
+                        "display_name": ledger.name,
+                    }
+                )
+                continue
+
+            review_count += 1
+            generated_code = self._derive_account_code(account, used_codes=used_codes)
+            used_codes.add(generated_code)
+            plan.append(
+                {
+                    "row_number": row_number,
+                    "account": account,
+                    "debit": float(row.get("debit") or 0),
+                    "credit": float(row.get("credit") or 0),
+                    "status": "review",
+                    "account_code": generated_code,
+                }
+            )
+
+        return {
+            "upload_kind": _FLEXIBLE_UPLOAD_KIND,
+            "normalized_rows": normalized_rows,
+            "normalized_hash": self._hash_normalized_rows(normalized_rows),
+            "activation_plan": plan,
+            "activation_summary": {
+                "mapped_existing": mapped_count,
+                "auto_create": auto_create_count,
+                "needs_review": review_count,
+                "total_rows": len(normalized_rows),
+            },
+            "errors": [],
+            "total_rows": len(normalized_rows),
+            "valid_rows": len(normalized_rows),
+            "invalid_rows": 0,
+        }
+
+    async def _apply_flexible_batch(
+        self,
+        *,
+        batch: CoaUploadBatch,
+        actor_tenant_id: uuid.UUID,
+    ) -> dict[str, Any]:
+        if batch.tenant_id is None:
+            raise ValidationError("Flexible activation requires tenant-scoped batch")
+        if batch.tenant_id != actor_tenant_id:
+            raise AuthorizationError("Cannot apply another tenant's CoA batch")
+
+        metadata = dict(batch.error_log or {})
+        if metadata.get("upload_kind") != _FLEXIBLE_UPLOAD_KIND:
+            raise ValidationError("Batch is not a flexible trial balance activation batch")
+        if metadata.get("activation_applied") is True:
+            summary = dict(metadata.get("activation_summary") or {})
+            return {
+                "batch_id": str(batch.id),
+                "applied_rows": int(summary.get("mapped_existing", 0)) + int(summary.get("auto_create", 0)),
+                "template_id": str(batch.template_id),
+                "source_type": batch.source_type.value,
+            }
+
+        tenant_service = TenantCoaService(self._session)
+        if batch.template_id is None:
+            raise ValidationError("Flexible activation batch missing template_id")
+        if not await tenant_service.has_tenant_accounts(batch.tenant_id):
+            await tenant_service.initialise_tenant_coa(batch.tenant_id, batch.template_id)
+
+        existing_accounts = (
+            await self._session.execute(
+                select(TenantCoaAccount).where(
+                    TenantCoaAccount.tenant_id == batch.tenant_id,
+                )
+            )
+        ).scalars().all()
+        existing_by_code = {row.account_code: row for row in existing_accounts}
+        created = 0
+        for item in list(metadata.get("activation_plan") or []):
+            if item.get("status") != "auto_create":
+                continue
+            account_code = str(item.get("account_code") or "").strip().upper()
+            if not account_code or account_code in existing_by_code:
+                continue
+            ledger_id = uuid.UUID(str(item["ledger_account_id"]))
+            parent_subgroup_id = uuid.UUID(str(item["parent_subgroup_id"]))
+            row = TenantCoaAccount(
+                tenant_id=batch.tenant_id,
+                ledger_account_id=ledger_id,
+                parent_subgroup_id=parent_subgroup_id,
+                account_code=account_code,
+                display_name=str(item.get("display_name") or item.get("account") or account_code),
+                is_custom=False,
+                is_active=True,
+            )
+            self._session.add(row)
+            await self._session.flush()
+            existing_by_code[account_code] = row
+            created += 1
+
+        summary = dict(metadata.get("activation_summary") or {})
+        summary["auto_created_applied"] = created
+        metadata["activation_summary"] = summary
+        metadata["activation_applied"] = True
+        batch.error_log = metadata
+        batch.processed_at = datetime.now(UTC)
+        batch.upload_status = CoaUploadStatus.SUCCESS
+        await self._session.flush()
+        return {
+            "batch_id": str(batch.id),
+            "applied_rows": int(summary.get("mapped_existing", 0)) + created,
+            "template_id": str(batch.template_id),
+            "source_type": batch.source_type.value,
+        }
+
     async def upload(
         self,
         *,
@@ -286,6 +526,43 @@ class CoaUploadService:
         if template is None:
             raise NotFoundError("Industry template not found")
 
+        normalized_df = self.parse_normalized_dataframe(
+            file_name=file_name,
+            file_bytes=file_bytes,
+        )
+        is_canonical_upload = set(_REQUIRED_COLUMNS).issubset(set(normalized_df.columns))
+        flexible_rows = (
+            normalized_df[["account", "debit", "credit"]].to_dict(orient="records")
+            if not is_canonical_upload
+            else []
+        )
+        if not is_canonical_upload:
+            if tenant_id is None:
+                raise ValidationError(
+                    "Flexible trial balance activation is only supported for tenant-scoped uploads"
+                )
+            normalized_hash = self._hash_normalized_rows(flexible_rows)
+            duplicate = await self._find_duplicate_flexible_batch(
+                tenant_id=tenant_id,
+                template_id=template_id,
+                payload_hash=normalized_hash,
+            )
+            if duplicate is not None:
+                metadata = dict(duplicate.error_log or {})
+                summary = dict(metadata.get("activation_summary") or {})
+                return {
+                    "batch_id": str(duplicate.id),
+                    "upload_status": duplicate.upload_status.value,
+                    "total_rows": int(metadata.get("total_rows", 0)),
+                    "valid_rows": int(metadata.get("valid_rows", 0)),
+                    "invalid_rows": int(metadata.get("invalid_rows", 0)),
+                    "errors": list(metadata.get("errors", [])),
+                    "upload_kind": str(metadata.get("upload_kind") or _FLEXIBLE_UPLOAD_KIND),
+                    "activation_summary": summary,
+                    "requires_review": int(summary.get("needs_review", 0) or 0) > 0,
+                    "idempotent_replay": True,
+                }
+
         batch = CoaUploadBatch(
             tenant_id=tenant_id,
             template_id=template_id,
@@ -297,6 +574,29 @@ class CoaUploadService:
         )
         self._session.add(batch)
         await self._session.flush()
+
+        if not is_canonical_upload:
+            metadata = await self._build_flexible_activation_plan(
+                tenant_id=tenant_id,
+                template_id=template_id,
+                normalized_rows=flexible_rows,
+            )
+            batch.upload_status = CoaUploadStatus.SUCCESS
+            batch.error_log = metadata
+            batch.processed_at = datetime.now(UTC)
+            await self._session.flush()
+            return {
+                "batch_id": str(batch.id),
+                "upload_status": batch.upload_status.value,
+                "total_rows": int(metadata["total_rows"]),
+                "valid_rows": int(metadata["valid_rows"]),
+                "invalid_rows": int(metadata["invalid_rows"]),
+                "errors": list(metadata["errors"]),
+                "upload_kind": _FLEXIBLE_UPLOAD_KIND,
+                "activation_summary": dict(metadata["activation_summary"]),
+                "requires_review": int(metadata["activation_summary"].get("needs_review", 0) or 0) > 0,
+                "idempotent_replay": False,
+            }
 
         rows = self.parse_file(file_name=file_name, file_bytes=file_bytes)
         errors = self.validate_structure(rows)
@@ -344,6 +644,10 @@ class CoaUploadService:
             "valid_rows": len(rows) - len(errors),
             "invalid_rows": len(errors),
             "errors": errors,
+            "upload_kind": None,
+            "activation_summary": None,
+            "requires_review": False,
+            "idempotent_replay": False,
         }
 
     async def _next_version(
@@ -598,6 +902,13 @@ class CoaUploadService:
                 raise ValidationError("Tenant-scoped batch missing tenant_id")
             if batch.tenant_id != actor_tenant_id:
                 raise AuthorizationError("Cannot apply another tenant's CoA batch")
+
+        metadata = dict(batch.error_log or {})
+        if metadata.get("upload_kind") == _FLEXIBLE_UPLOAD_KIND:
+            return await self._apply_flexible_batch(
+                batch=batch,
+                actor_tenant_id=actor_tenant_id,
+            )
 
         rows = (
             await self._session.execute(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from financeops.modules.erp_sync.api import (
+    bootstrap,
     connections,
     datasets,
     drift,
@@ -15,6 +16,7 @@ from financeops.modules.erp_sync.api import (
 )
 
 router = APIRouter()
+router.include_router(bootstrap.router)
 router.include_router(connections.router)
 router.include_router(sync_definitions.router)
 router.include_router(sync_runs.router)

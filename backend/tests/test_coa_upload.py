@@ -17,7 +17,9 @@ from financeops.modules.coa.models import (
     CoaIndustryTemplate,
     CoaLedgerAccount,
     CoaSourceType,
+    CoaUploadBatch,
     CoaUploadMode,
+    TenantCoaAccount,
 )
 from financeops.modules.coa.seeds.runner import run_coa_seeds
 
@@ -26,6 +28,21 @@ async def _software_template(async_session: AsyncSession) -> CoaIndustryTemplate
     return (
         await async_session.execute(
             select(CoaIndustryTemplate).where(CoaIndustryTemplate.code == "SOFTWARE_SAAS")
+        )
+    ).scalar_one()
+
+
+async def _template_ledger(async_session: AsyncSession, template_id: uuid.UUID) -> CoaLedgerAccount:
+    return (
+        await async_session.execute(
+            select(CoaLedgerAccount)
+            .where(
+                CoaLedgerAccount.industry_template_id == template_id,
+                CoaLedgerAccount.tenant_id.is_(None),
+                CoaLedgerAccount.is_active.is_(True),
+            )
+            .order_by(CoaLedgerAccount.sort_order.asc(), CoaLedgerAccount.code.asc())
+            .limit(1)
         )
     ).scalar_one()
 
@@ -179,3 +196,112 @@ async def test_apply_replace_disables_previous_scope_ledgers(async_session: Asyn
 
     assert any(item.code == "CUS_LEDGER_100" and item.is_active is False for item in custom_ledgers)
     assert any(item.code == "CUS_LEDGER_200" and item.is_active is True for item in custom_ledgers)
+
+
+@pytest.mark.asyncio
+async def test_flexible_upload_returns_activation_summary_and_review_flags(
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
+    await run_coa_seeds(async_session)
+    template = await _software_template(async_session)
+    seed_ledger = await _template_ledger(async_session, template.id)
+
+    tenant_service = TenantCoaService(async_session)
+    await tenant_service.initialise_tenant_coa(test_user.tenant_id, template.id)
+    existing = (
+        await async_session.execute(
+            select(TenantCoaAccount).where(
+                TenantCoaAccount.tenant_id == test_user.tenant_id,
+                TenantCoaAccount.account_code == seed_ledger.code,
+            )
+        )
+    ).scalar_one()
+    await async_session.delete(existing)
+    await async_session.flush()
+
+    service = CoaUploadService(async_session)
+    csv_content = (
+        "ledger,dr,cr\n"
+        f"{seed_ledger.name},1000,0\n"
+        "Needs Human Review,0,1000\n"
+    ).encode("utf-8")
+
+    upload = await service.upload(
+        actor_id=test_user.id,
+        tenant_id=test_user.tenant_id,
+        template_id=template.id,
+        source_type=CoaSourceType.TENANT_CUSTOM,
+        upload_mode=CoaUploadMode.APPEND,
+        file_name="tb.csv",
+        file_bytes=csv_content,
+    )
+
+    assert upload["upload_status"] == "SUCCESS"
+    assert upload["upload_kind"] == "FLEXIBLE_TB"
+    assert upload["requires_review"] is True
+    assert upload["activation_summary"]["auto_create"] == 1
+    assert upload["activation_summary"]["needs_review"] == 1
+
+
+@pytest.mark.asyncio
+async def test_flexible_upload_apply_is_idempotent_and_marks_activation(
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
+    await run_coa_seeds(async_session)
+    template = await _software_template(async_session)
+    seed_ledger = await _template_ledger(async_session, template.id)
+
+    tenant_service = TenantCoaService(async_session)
+    await tenant_service.initialise_tenant_coa(test_user.tenant_id, template.id)
+    existing = (
+        await async_session.execute(
+            select(TenantCoaAccount).where(
+                TenantCoaAccount.tenant_id == test_user.tenant_id,
+                TenantCoaAccount.account_code == seed_ledger.code,
+            )
+        )
+    ).scalar_one()
+    await async_session.delete(existing)
+    await async_session.flush()
+
+    service = CoaUploadService(async_session)
+    csv_content = f"account,debit,credit\n{seed_ledger.name},500,0\n".encode("utf-8")
+
+    upload = await service.upload(
+        actor_id=test_user.id,
+        tenant_id=test_user.tenant_id,
+        template_id=template.id,
+        source_type=CoaSourceType.TENANT_CUSTOM,
+        upload_mode=CoaUploadMode.APPEND,
+        file_name="tb.csv",
+        file_bytes=csv_content,
+    )
+    apply_result = await service.apply_batch(
+        batch_id=uuid.UUID(str(upload["batch_id"])),
+        actor_tenant_id=test_user.tenant_id,
+        is_platform_admin=False,
+    )
+    assert apply_result["batch_id"] == upload["batch_id"]
+
+    batch = (
+        await async_session.execute(
+            select(CoaUploadBatch).where(CoaUploadBatch.id == uuid.UUID(str(upload["batch_id"])))
+        )
+    ).scalar_one()
+    summary = dict((batch.error_log or {}).get("activation_summary") or {})
+    assert (batch.error_log or {}).get("activation_applied") is True
+    assert int(summary.get("auto_created_applied", 0)) == 1
+
+    replay = await service.upload(
+        actor_id=test_user.id,
+        tenant_id=test_user.tenant_id,
+        template_id=template.id,
+        source_type=CoaSourceType.TENANT_CUSTOM,
+        upload_mode=CoaUploadMode.APPEND,
+        file_name="tb.csv",
+        file_bytes=csv_content,
+    )
+    assert replay["idempotent_replay"] is True
+    assert replay["batch_id"] == upload["batch_id"]

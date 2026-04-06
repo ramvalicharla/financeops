@@ -330,6 +330,10 @@ async def upload_coa(
         valid_rows=int(result["valid_rows"]),
         invalid_rows=int(result["invalid_rows"]),
         errors=list(result["errors"]),
+        upload_kind=str(result.get("upload_kind")) if result.get("upload_kind") else None,
+        activation_summary=dict(result.get("activation_summary") or {}) or None,
+        requires_review=bool(result.get("requires_review", False)),
+        idempotent_replay=bool(result.get("idempotent_replay", False)),
     )
 
 

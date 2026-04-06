@@ -11,6 +11,7 @@ from financeops.db.models.erp_sync import (
     ExternalConnection,
     ExternalPeriodLock,
 )
+from financeops.modules.erp_sync.application.connection_service import resolve_connection_runtime_state
 from financeops.modules.erp_sync.domain.enums import DatasetType
 
 
@@ -125,10 +126,29 @@ async def gate_entity_config_complete(
             ExternalConnection.organisation_id == tenant_id,
             ExternalConnection.entity_id == entity_id,
             ExternalConnection.connector_type == normalized_connector,
-            ExternalConnection.connection_status == "active",
         )
     )
-    if result.scalar_one_or_none() is None:
+    rows: list[ExternalConnection]
+    try:
+        scalar_rows = result.scalars().all()
+        rows = scalar_rows if isinstance(scalar_rows, list) else []
+    except Exception:
+        rows = []
+    if not rows and hasattr(result, "scalar_one_or_none"):
+        single_row = result.scalar_one_or_none()
+        if single_row is not None:
+            rows = [single_row]
+    has_active_connection = False
+    for row in rows:
+        _, runtime_state = await resolve_connection_runtime_state(
+            db,
+            connection=row,
+        )
+        if str(runtime_state.get("connection_status") or row.connection_status).strip().lower() == "active":
+            has_active_connection = True
+            break
+
+    if not has_active_connection:
         raise GateFailure(
             "ENTITY_CONFIG",
             f"No active '{normalized_connector}' ERP connection found for entity {entity_id}.",

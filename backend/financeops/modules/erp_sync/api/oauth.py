@@ -49,6 +49,8 @@ async def oauth_callback(
     state: str = Query(...),
     code: str = Query(...),
     realm_id: str | None = Query(default=None, alias="realmId"),
+    organization_id: str | None = Query(default=None),
+    organization_id_alias: str | None = Query(default=None, alias="organizationId"),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
@@ -60,6 +62,7 @@ async def oauth_callback(
         code=code,
         initiated_by_user_id=user.id,
         realm_id=realm_id,
+        organization_id=organization_id or organization_id_alias,
     )
     await session.flush()
     return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")

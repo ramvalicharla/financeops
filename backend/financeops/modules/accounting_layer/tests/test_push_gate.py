@@ -50,6 +50,17 @@ def _make_ref(
     return ref
 
 
+def _make_connection(*, connection_status: str = "active") -> MagicMock:
+    connection = MagicMock()
+    connection.connection_status = connection_status
+    connection.tenant_id = uuid.uuid4()
+    connection.id = uuid.uuid4()
+    connection.secret_ref = None
+    connection.pinned_connector_version = None
+    connection.connector_type = "zoho"
+    return connection
+
+
 @pytest.fixture
 def tenant_id() -> uuid.UUID:
     return uuid.uuid4()
@@ -195,7 +206,7 @@ class TestGateEntityConfigComplete:
     async def test_active_connection_passes(self, tenant_id: uuid.UUID) -> None:
         db = AsyncMock()
         result = MagicMock()
-        result.scalar_one_or_none.return_value = MagicMock()
+        result.scalar_one_or_none.return_value = _make_connection(connection_status="active")
         db.execute = AsyncMock(return_value=result)
 
         await gate_entity_config_complete(
@@ -244,7 +255,7 @@ class TestRunAllPushGates:
         stale_result.scalars.return_value.all.return_value = []
 
         connection_result = MagicMock()
-        connection_result.scalar_one_or_none.return_value = MagicMock()
+        connection_result.scalar_one_or_none.return_value = _make_connection(connection_status="active")
 
         calls = 0
 

@@ -151,6 +151,7 @@ async def test_erp_secret_ref_not_stored_plaintext(
         "connection_code": connection_code,
         "connection_name": "Encrypted Connection",
         "organisation_id": str(test_user.tenant_id),
+        "organization_id": "zoho-org-encrypted",
         "secret_ref": plain_api_key,
     }
     response = await async_client.post(
@@ -177,6 +178,66 @@ async def test_erp_secret_ref_not_stored_plaintext(
     assert row.secret_ref != plain_api_key
     decrypted_payload = json.loads(decrypt_field(row.secret_ref))
     assert decrypted_payload.get("api_key") == plain_api_key
+    assert decrypted_payload.get("organization_id") == "zoho-org-encrypted"
+
+
+@pytest.mark.asyncio
+async def test_zoho_test_connection_requires_persisted_organization_id(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_access_token: str,
+    test_user,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from financeops.api import deps as api_deps
+
+    class _FakeRedis:
+        async def get(self, key: str):  # type: ignore[no-untyped-def]
+            _ = key
+            return None
+
+        async def setex(self, key: str, ttl: int, value: str):  # type: ignore[no-untyped-def]
+            _ = (key, ttl, value)
+            return True
+
+    monkeypatch.setattr(api_deps, "_redis_pool", _FakeRedis())
+    await set_tenant_context(async_session, test_user.tenant_id)
+    await EntitlementService(async_session).create_tenant_override_entitlement(
+        tenant_id=test_user.tenant_id,
+        feature_name="erp_integration",
+        access_type="boolean",
+        effective_limit=1,
+        actor_user_id=test_user.id,
+        metadata={"reason": "zoho_org_id_missing_test"},
+    )
+    await async_session.flush()
+
+    create_response = await async_client.post(
+        "/api/v1/erp-sync/connections",
+        headers={
+            "Authorization": f"Bearer {test_access_token}",
+            "Idempotency-Key": str(uuid.uuid4()),
+        },
+        json={
+            "connector_type": "zoho",
+            "connection_code": f"zoho-{uuid.uuid4().hex[:8]}",
+            "connection_name": "Zoho Missing Org",
+            "organisation_id": str(test_user.tenant_id),
+            "client_id": "client-id",
+            "client_secret": "client-secret",
+        },
+    )
+    assert create_response.status_code == 200
+    connection_id = create_response.json()["data"]["connection_id"]
+
+    test_response = await async_client.post(
+        f"/api/v1/erp-sync/connections/{connection_id}/test",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+    assert test_response.status_code == 422
+    payload = test_response.json()["error"]
+    assert payload["code"] == "validation_error"
+    assert "organization_id" in payload["message"]
 
 
 @pytest.mark.asyncio

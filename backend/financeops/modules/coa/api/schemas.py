@@ -48,6 +48,10 @@ class CoaUploadResponse(BaseModel):
     valid_rows: int
     invalid_rows: int
     errors: list[dict[str, Any]] = Field(default_factory=list)
+    upload_kind: str | None = None
+    activation_summary: dict[str, int] | None = None
+    requires_review: bool = False
+    idempotent_replay: bool = False
 
 
 class CoaValidateResponse(BaseModel):

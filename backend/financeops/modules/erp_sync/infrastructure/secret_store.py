@@ -15,6 +15,9 @@ CANONICAL_CREDENTIAL_KEYS: tuple[str, ...] = (
     "refresh_token",
     "token_expires_at",
     "realm_id",
+    "organization_id",
+    "use_sandbox",
+    "api_key",
 )
 
 
