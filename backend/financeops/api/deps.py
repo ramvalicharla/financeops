@@ -23,6 +23,10 @@ from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
 from financeops.modules.payment.application.entitlement_service import EntitlementService
 from financeops.platform.db.models.modules import CpModuleRegistry
+from financeops.platform.services.enforcement.auth_modes import (
+    AuthMode,
+    PUBLIC_ROUTE_PATHS,
+)
 from financeops.platform.services.feature_flags.flag_service import evaluate_feature_flag
 
 log = logging.getLogger(__name__)
@@ -30,19 +34,6 @@ log = logging.getLogger(__name__)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 _redis_pool: aioredis.Redis | None = None
-_PUBLIC_AUTH_BYPASS_PATHS = {
-    "/api/v1/auth/register",
-    "/api/v1/auth/login",
-    "/api/v1/auth/forgot-password",
-    "/api/v1/auth/reset-password",
-    "/api/v1/auth/accept-invite",
-    "/api/v1/auth/mfa/verify",
-    "/api/v1/auth/refresh",
-    "/api/v1/auth/logout",
-    "/api/v1/billing/webhook",
-    "/api/v1/billing/webhooks/stripe",
-    "/api/v1/billing/webhooks/razorpay",
-}
 _ONBOARDING_BYPASS_PREFIXES = (
     "/api/v1/org-setup",
     "/api/v1/platform/org",
@@ -70,9 +61,10 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
     Rolls back on exception, closes on exit.
     """
     path = request.url.path
-    if path in _PUBLIC_AUTH_BYPASS_PATHS:
+    if path in PUBLIC_ROUTE_PATHS:
         async with AsyncSessionLocal() as session:
             try:
+                request.state.auth_mode = AuthMode.PUBLIC.value
                 yield session
                 await session.flush()
             except Exception:
@@ -172,6 +164,7 @@ async def get_current_user(
 
     # Keep tenant identity consistent across downstream dependencies/session context.
     request.state.tenant_id = str(jwt_tenant_id)
+    request.state.auth_mode = AuthMode.USER.value
     setattr(user, "_jwt_tenant_id", jwt_tenant_id)
 
     if request.url.path.startswith("/api/v1/org-setup"):

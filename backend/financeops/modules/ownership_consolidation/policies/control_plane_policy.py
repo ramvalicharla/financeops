@@ -5,7 +5,7 @@ from collections.abc import Callable
 from fastapi import Depends
 
 from financeops.platform.services.enforcement.interceptors import (
-    ensure_control_plane_access,
+    ensure_module_governance,
 )
 
 
@@ -14,7 +14,7 @@ def ownership_consolidation_control_plane_dependency(
 ) -> Callable:
     async def _dependency(
         decision: dict = Depends(
-            ensure_control_plane_access(
+            ensure_module_governance(
                 module_code="ownership_consolidation",
                 resource_type=resource_type,
                 action=action,

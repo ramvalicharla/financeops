@@ -44,7 +44,10 @@ from financeops.api.v1 import (
     tenants,
     working_capital,
 )
-from financeops.platform.api.v1 import router as platform_router
+from financeops.platform.api.v1 import (
+    router as platform_router,
+    service_router as platform_service_router,
+)
 from financeops.api.deps import require_entitlement, require_org_setup
 
 router = APIRouter()
@@ -296,4 +299,9 @@ router.include_router(
     prefix="/platform",
     tags=["Platform Control Plane"],
     dependencies=[org_setup_guard],
+)
+router.include_router(
+    platform_service_router,
+    prefix="/platform",
+    tags=["Platform Services"],
 )

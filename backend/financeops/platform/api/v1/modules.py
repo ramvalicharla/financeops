@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
+from financeops.core.exceptions import AuthenticationError
 from financeops.db.models.users import IamUser
 from financeops.platform.schemas.enforcement import (
     ControlPlaneAuthorizeRequest,
@@ -20,7 +21,7 @@ from financeops.platform.services.enforcement.control_plane_authorizer import (
     CommandContext,
     ControlPlaneAuthorizer,
 )
-from financeops.platform.services.enforcement.interceptors import assert_internal_command_token
+from financeops.platform.services.enforcement.interceptors import require_service_token
 from financeops.platform.services.tenancy.module_enablement import (
     create_module_registry_item,
     set_module_enablement,
@@ -31,6 +32,7 @@ from financeops.platform.services.tenancy.package_enablement import (
 )
 
 router = APIRouter()
+service_router = APIRouter()
 
 
 @router.post("/packages")
@@ -143,23 +145,22 @@ async def authorize_finance_execution(
     return decision
 
 
-@router.post("/finance-exec-probe")
+@service_router.post("/finance-exec-probe")
 async def finance_execution_probe(
     body: FinanceExecutionProbeRequest,
-    request: Request,
-    user: IamUser = Depends(require_finance_team),
+    service_claims: dict = Depends(require_service_token(required_scope="finance.execute")),
 ) -> dict:
-    token = request.headers.get("X-Control-Plane-Token", "")
-    claims = assert_internal_command_token(
-        token=token,
-        tenant_id=user.tenant_id,
-        module_code=body.module_code,
-    )
-    # Validate signature and expiry explicitly again for deterministic API response fields.
-    verified = verify_context_token(token)
+    tenant_id = str(service_claims.get("tenant_id") or "")
+    if not tenant_id:
+        raise AuthenticationError("Service token missing tenant_id")
+    if service_claims.get("module_code") != body.module_code:
+        raise AuthenticationError("Service token module mismatch")
     return {
         "status": "executed",
         "module_code": body.module_code,
-        "tenant_id": str(user.tenant_id),
-        "correlation_id": str(claims.get("correlation_id") or verified.get("correlation_id") or ""),
+        "tenant_id": tenant_id,
+        "correlation_id": str(
+            service_claims.get("correlation_id") or service_claims.get("nonce") or ""
+        ),
+        "service_id": str(service_claims.get("service_id") or ""),
     }

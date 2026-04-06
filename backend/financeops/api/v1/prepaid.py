@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
 from financeops.config import settings
 from financeops.db.models.users import IamUser
-from financeops.platform.services.enforcement.interceptors import require_valid_context_token
+from financeops.platform.services.enforcement.interceptors import (
+    validate_optional_control_plane_token,
+)
 from financeops.schemas.prepaid import (
     PrepaidJournalDrillResponse,
     PrepaidRegistryDrillResponse,
@@ -33,7 +35,9 @@ from financeops.temporal.prepaid_workflows import (
     PrepaidAmortizationWorkflowInput,
 )
 
-router = APIRouter(dependencies=[Depends(require_valid_context_token(module_code="prepaid"))])
+router = APIRouter(
+    dependencies=[Depends(validate_optional_control_plane_token(module_code="prepaid"))]
+)
 
 
 @router.post("/run", response_model=PrepaidRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)

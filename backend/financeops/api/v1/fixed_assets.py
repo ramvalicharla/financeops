@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
 from financeops.config import settings
 from financeops.db.models.users import IamUser
-from financeops.platform.services.enforcement.interceptors import require_valid_context_token
+from financeops.platform.services.enforcement.interceptors import (
+    validate_optional_control_plane_token,
+)
 from financeops.schemas.fixed_assets import (
     FarDepreciationDrillResponse,
     FarDisposalDrillResponse,
@@ -37,7 +39,9 @@ from financeops.temporal.fixed_assets_workflows import (
     FixedAssetsWorkflowInput,
 )
 
-router = APIRouter(dependencies=[Depends(require_valid_context_token(module_code="fixed_assets"))])
+router = APIRouter(
+    dependencies=[Depends(validate_optional_control_plane_token(module_code="fixed_assets"))]
+)
 
 
 @router.post("/run", response_model=FarRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)

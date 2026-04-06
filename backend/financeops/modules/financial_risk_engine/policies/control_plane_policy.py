@@ -5,14 +5,14 @@ from collections.abc import Callable
 from fastapi import Depends
 
 from financeops.platform.services.enforcement.interceptors import (
-    ensure_control_plane_access,
+    ensure_module_governance,
 )
 
 
 def financial_risk_control_plane_dependency(*, action: str, resource_type: str) -> Callable:
     async def _dependency(
         decision: dict = Depends(
-            ensure_control_plane_access(
+            ensure_module_governance(
                 module_code="financial_risk_engine",
                 resource_type=resource_type,
                 action=action,
