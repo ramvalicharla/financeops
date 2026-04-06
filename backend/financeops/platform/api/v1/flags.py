@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, get_current_user, require_platform_owner
 from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.db.models.feature_flags import CpModuleFeatureFlag
 from financeops.platform.schemas.feature_flags import (
@@ -31,12 +31,6 @@ _TENANT_FLAG_ROLES = {
     UserRole.finance_leader,
     UserRole.finance_team,
 }
-
-
-def _require_platform_admin(user: IamUser) -> IamUser:
-    if user.role not in _PLATFORM_ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="platform_admin role required")
-    return user
 
 
 def _require_flag_access(*, user: IamUser, target_tenant_id: uuid.UUID) -> IamUser:
@@ -139,9 +133,8 @@ async def update_feature_flag_endpoint(
     flag_id: uuid.UUID,
     body: FeatureFlagUpdateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     row = (
         await session.execute(
             select(CpModuleFeatureFlag).where(
@@ -175,9 +168,8 @@ async def update_feature_flag_endpoint(
 async def delete_feature_flag_endpoint(
     flag_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     row = (
         await session.execute(
             select(CpModuleFeatureFlag).where(

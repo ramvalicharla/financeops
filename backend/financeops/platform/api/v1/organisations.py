@@ -5,8 +5,8 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, require_finance_leader
-from financeops.db.models.users import IamUser
+from financeops.api.deps import get_async_session, require_user_plane_permission
+from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.schemas.hierarchy import (
     EntityCreate,
     GroupCreate,
@@ -24,13 +24,25 @@ from financeops.platform.services.tenancy.hierarchy_service import (
 
 router = APIRouter()
 
+hierarchy_manage_guard = require_user_plane_permission(
+    resource_type="hierarchy",
+    action="manage",
+    fallback_roles={
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.finance_leader,
+    },
+    fallback_error_message="finance_approver role required",
+)
+
 
 @router.post("/organisations")
 async def create_organisation_endpoint(
     body: OrganisationCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(hierarchy_manage_guard),
 ) -> dict:
     org = await create_organisation(
         session,
@@ -50,7 +62,7 @@ async def create_group_endpoint(
     body: GroupCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(hierarchy_manage_guard),
 ) -> dict:
     group = await create_group(
         session,
@@ -70,7 +82,7 @@ async def create_entity_endpoint(
     body: EntityCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(hierarchy_manage_guard),
 ) -> dict:
     entity = await create_entity(
         session,
@@ -105,7 +117,7 @@ async def assign_org_endpoint(
     body: UserOrganisationAssignmentCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(hierarchy_manage_guard),
 ) -> dict:
     assignment = await assign_user_to_organisation(
         session,
@@ -127,7 +139,7 @@ async def assign_entity_endpoint(
     body: UserEntityAssignmentCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(hierarchy_manage_guard),
 ) -> dict:
     assignment = await assign_user_to_entity(
         session,

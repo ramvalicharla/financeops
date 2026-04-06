@@ -5,8 +5,12 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
-from financeops.db.models.users import IamUser
+from financeops.api.deps import (
+    get_async_session,
+    require_finance_team,
+    require_user_plane_permission,
+)
+from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.schemas.workflows import (
     WorkflowApprovalRequest,
     WorkflowInstanceCreate,
@@ -19,13 +23,36 @@ from financeops.platform.services.workflows.template_service import create_templ
 
 router = APIRouter()
 
+workflow_manage_guard = require_user_plane_permission(
+    resource_type="workflow",
+    action="manage",
+    fallback_roles={
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.finance_leader,
+    },
+    fallback_error_message="finance_approver role required",
+)
+workflow_approve_guard = require_user_plane_permission(
+    resource_type="workflow_approval",
+    action="approve",
+    fallback_roles={
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.finance_leader,
+    },
+    fallback_error_message="finance_approver role required",
+)
+
 
 @router.post("/templates")
 async def create_template_endpoint(
     body: WorkflowTemplateCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(workflow_manage_guard),
 ) -> dict:
     template = await create_template(
         session,
@@ -44,7 +71,7 @@ async def create_template_version_endpoint(
     body: WorkflowTemplateVersionCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(workflow_manage_guard),
 ) -> dict:
     version = await create_template_version(
         session,
@@ -66,7 +93,7 @@ async def create_instance_endpoint(
     body: WorkflowInstanceCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(workflow_manage_guard),
 ) -> dict:
     instance = await create_workflow_instance(
         session,
@@ -88,7 +115,7 @@ async def submit_approval_endpoint(
     body: WorkflowApprovalRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(workflow_approve_guard),
 ) -> dict:
     result = await submit_approval(
         session,

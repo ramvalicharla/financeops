@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Annotated
 
 import redis.asyncio as aioredis
@@ -28,6 +29,11 @@ from financeops.platform.services.enforcement.auth_modes import (
     PUBLIC_ROUTE_PATHS,
 )
 from financeops.platform.services.feature_flags.flag_service import evaluate_feature_flag
+from financeops.platform.services.rbac.evaluator import evaluate_permission
+from financeops.platform.services.rbac.user_plane import (
+    TenantRole,
+    has_minimum_tenant_role,
+)
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +50,10 @@ _PLATFORM_ADMIN_ROLES = {
     UserRole.platform_owner,
     UserRole.platform_admin,
 }
+_PLATFORM_OWNER_ROLES = {
+    UserRole.super_admin,
+    UserRole.platform_owner,
+}
 _FINANCE_APPROVER_ROLES = _PLATFORM_ADMIN_ROLES | {
     UserRole.finance_leader,
 }
@@ -52,6 +62,12 @@ _FINANCE_REVIEWER_ROLES = _FINANCE_APPROVER_ROLES | {
 }
 _SUPPORT_ROLES = _PLATFORM_ADMIN_ROLES | {
     UserRole.platform_support,
+}
+_DYNAMIC_PERMISSION_FALLBACK_REASONS = {
+    "permission_not_defined",
+    "no_role_assignments",
+    "no_matching_permissions",
+    "no_effective_permission",
 }
 
 
@@ -365,6 +381,14 @@ def require_platform_admin(
     return user
 
 
+def require_platform_owner(
+    user: IamUser = Depends(get_current_user),
+) -> IamUser:
+    if user.role not in _PLATFORM_OWNER_ROLES:
+        raise AuthorizationError("platform_owner role required")
+    return user
+
+
 def require_support_or_admin(
     user: IamUser = Depends(get_current_user),
 ) -> IamUser:
@@ -397,6 +421,50 @@ async def require_director(
     }:
         raise HTTPException(status_code=403, detail="Director or Finance Leader role required")
     return current_user
+
+
+def require_tenant_minimum_role(minimum_role: TenantRole):
+    async def _dependency(
+        user: IamUser = Depends(get_current_user),
+    ) -> IamUser:
+        if not has_minimum_tenant_role(user.role, minimum_role):
+            raise AuthorizationError(f"{minimum_role.value} role required")
+        return user
+
+    return _dependency
+
+
+def require_user_plane_permission(
+    *,
+    resource_type: str,
+    action: str,
+    fallback_roles: set[UserRole],
+    fallback_error_message: str,
+):
+    async def _dependency(
+        session: AsyncSession = Depends(get_async_session),
+        user: IamUser = Depends(get_current_user),
+    ) -> IamUser:
+        evaluation = await evaluate_permission(
+            session,
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+            resource_type=resource_type,
+            action=action,
+            context_scope={"tenant": user.tenant_id},
+            execution_timestamp=datetime.now(UTC),
+        )
+        if evaluation.allowed:
+            return user
+        if evaluation.reason == "deny_over_allow":
+            raise AuthorizationError(f"{resource_type}.{action} denied")
+        if evaluation.reason not in _DYNAMIC_PERMISSION_FALLBACK_REASONS:
+            raise AuthorizationError(f"{resource_type}.{action} denied")
+        if user.role not in fallback_roles:
+            raise AuthorizationError(fallback_error_message)
+        return user
+
+    return _dependency
 
 
 async def get_redis() -> AsyncGenerator[aioredis.Redis, None]:

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
-from financeops.db.models.users import IamUser, UserRole
+from financeops.api.deps import (
+    get_async_session,
+    require_platform_admin,
+    require_platform_owner,
+)
+from financeops.db.models.users import IamUser
 from financeops.platform.db.models.permissions import CpPermission
 from financeops.platform.db.models.role_permissions import CpRolePermission
 from financeops.platform.db.models.roles import CpRole
@@ -26,26 +30,13 @@ from financeops.platform.services.rbac.role_service import assign_user_role, cre
 
 router = APIRouter()
 
-_PLATFORM_ADMIN_ROLES = {
-    UserRole.super_admin,
-    UserRole.platform_owner,
-    UserRole.platform_admin,
-}
-
-
-def _require_platform_admin(user: IamUser) -> IamUser:
-    if user.role not in _PLATFORM_ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="platform_admin role required")
-    return user
-
 
 @router.get("/roles")
 async def list_roles_endpoint(
     include_inactive: bool = Query(default=False),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> list[dict]:
-    _require_platform_admin(user)
     stmt = select(CpRole).where(CpRole.tenant_id == user.tenant_id)
     if not include_inactive:
         stmt = stmt.where(CpRole.is_active.is_(True))
@@ -67,9 +58,8 @@ async def list_roles_endpoint(
 @router.get("/permissions")
 async def list_permissions_endpoint(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> list[dict]:
-    _require_platform_admin(user)
     rows = (
         await session.execute(
             select(CpPermission).order_by(CpPermission.permission_code.asc())
@@ -91,9 +81,8 @@ async def list_permissions_endpoint(
 async def list_role_permissions_endpoint(
     role_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> list[dict]:
-    _require_platform_admin(user)
     stmt = select(CpRolePermission).where(CpRolePermission.tenant_id == user.tenant_id)
     if role_id is not None:
         stmt = stmt.where(CpRolePermission.role_id == role_id)
@@ -114,9 +103,8 @@ async def list_role_permissions_endpoint(
 async def list_assignments_endpoint(
     user_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> list[dict]:
-    _require_platform_admin(user)
     stmt = select(CpUserRoleAssignment).where(
         CpUserRoleAssignment.tenant_id == user.tenant_id
     )
@@ -149,9 +137,8 @@ async def create_role_endpoint(
     body: RoleCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     role = await create_role(
         session,
         tenant_id=user.tenant_id,
@@ -170,9 +157,8 @@ async def create_role_endpoint(
 async def create_permission_endpoint(
     body: PermissionCreate,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     permission = await create_permission(
         session,
         actor_tenant_id=user.tenant_id,
@@ -191,9 +177,8 @@ async def grant_role_permission_endpoint(
     body: RolePermissionGrant,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     grant = await grant_role_permission(
         session,
         tenant_id=user.tenant_id,
@@ -212,9 +197,8 @@ async def assign_user_role_endpoint(
     body: UserRoleAssignmentCreate,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     assignment = await assign_user_role(
         session,
         tenant_id=user.tenant_id,

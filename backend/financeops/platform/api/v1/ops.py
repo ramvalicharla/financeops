@@ -8,11 +8,11 @@ from typing import Any
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import get_async_session, require_platform_admin
 from financeops.api.v1 import health as health_api
 from financeops.db.models.erp_sync import ExternalSyncRun
 from financeops.db.models.fx_ias21 import (
@@ -20,24 +20,13 @@ from financeops.db.models.fx_ias21 import (
     ConsolidationTranslationRun,
 )
 from financeops.db.models.accounting_notifications import AccountingAuditExportRun
-from financeops.db.models.users import IamSession, IamUser, UserRole
+from financeops.db.models.users import IamSession, IamUser
 from financeops.modules.erp_sync.application.sync_service import SyncService
 from financeops.shared_kernel.response import ok
 
 router = APIRouter()
 
-_PLATFORM_ADMIN_ROLES = {
-    UserRole.super_admin,
-    UserRole.platform_owner,
-    UserRole.platform_admin,
-}
 _RETRYABLE_ERP_SYNC_STATUSES = {"paused"}
-
-
-def _require_platform_admin(user: IamUser) -> IamUser:
-    if user.role not in _PLATFORM_ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="platform_admin role required")
-    return user
 
 
 def _alembic_config() -> Config:
@@ -296,9 +285,8 @@ async def _session_visibility_payload(
 async def get_migration_status(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    _require_platform_admin(user)
     payload = await _migration_status_payload(session)
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
@@ -307,9 +295,8 @@ async def get_migration_status(
 async def get_dependency_status(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    _require_platform_admin(user)
     db_check, redis_check, workers_check, queues_check, temporal_check, ai_check = await asyncio.gather(
         health_api._check_database(),
         health_api._check_redis(),
@@ -338,9 +325,8 @@ async def get_job_status(
     lookback_hours: int = Query(default=24, ge=1, le=24 * 14),
     tenant_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    _require_platform_admin(user)
     target_tenant = tenant_id or user.tenant_id
     payload = await _ops_job_status_payload(
         session,
@@ -356,9 +342,8 @@ async def retry_erp_sync_run(
     request: Request,
     tenant_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    _require_platform_admin(user)
     target_tenant = tenant_id or user.tenant_id
     run = (
         await session.execute(
@@ -403,9 +388,8 @@ async def get_session_status(
     request: Request,
     tenant_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    _require_platform_admin(user)
     target_tenant = tenant_id or user.tenant_id
     payload = await _session_visibility_payload(session, tenant_id=target_tenant)
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
@@ -417,9 +401,8 @@ async def get_ops_summary(
     lookback_hours: int = Query(default=24, ge=1, le=24 * 14),
     tenant_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict[str, Any]:
-    _require_platform_admin(user)
     target_tenant = tenant_id or user.tenant_id
     migration_payload, job_payload, session_payload = await asyncio.gather(
         _migration_status_payload(session),

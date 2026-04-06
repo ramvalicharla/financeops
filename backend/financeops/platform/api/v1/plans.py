@@ -9,7 +9,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, require_platform_admin
+from financeops.api.deps import (
+    get_async_session,
+    require_platform_admin,
+    require_platform_owner,
+)
 from financeops.db.models.payment import BillingEntitlement, BillingPlan
 from financeops.db.models.users import IamUser
 from financeops.modules.payment.application.entitlement_service import EntitlementService
@@ -152,7 +156,7 @@ async def list_plans(
 async def create_plan(
     body: PlanCreateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_platform_admin),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
     row = await AuditWriter.insert_financial_record(
         session,
@@ -216,7 +220,7 @@ async def update_plan(
     plan_id: uuid.UUID,
     body: PlanUpdateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_platform_admin),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
     source = (
         await session.execute(
@@ -292,7 +296,7 @@ async def update_plan(
 async def deactivate_plan(
     plan_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_platform_admin),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
     source = (
         await session.execute(
@@ -383,7 +387,7 @@ async def list_tenant_entitlements(
 async def override_tenant_entitlement(
     body: TenantEntitlementOverrideRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_platform_admin),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
     service = EntitlementService(session)
     row = await service.create_tenant_override_entitlement(

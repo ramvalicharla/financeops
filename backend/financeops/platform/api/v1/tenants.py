@@ -7,27 +7,19 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user
+from financeops.api.deps import (
+    get_async_session,
+    require_platform_admin,
+    require_platform_owner,
+)
 from financeops.db.models.tenants import IamTenant, TenantStatus
-from financeops.db.models.users import IamUser, UserRole
+from financeops.db.models.users import IamUser
 from financeops.platform.schemas.tenants import TenantOnboardingRequest, TenantOnboardingResponse
 from financeops.platform.services.tenancy.package_enablement import create_package
 from financeops.platform.services.tenancy.tenant_provisioning import get_tenant, onboard_tenant
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter()
-
-_PLATFORM_ADMIN_ROLES = {
-    UserRole.super_admin,
-    UserRole.platform_owner,
-    UserRole.platform_admin,
-}
-
-
-def _require_platform_admin(user: IamUser) -> IamUser:
-    if user.role not in _PLATFORM_ADMIN_ROLES:
-        raise HTTPException(status_code=403, detail="platform_admin role required")
-    return user
 
 
 class TenantStatusUpdateRequest(BaseModel):
@@ -57,9 +49,8 @@ async def onboard_tenant_endpoint(
     body: TenantOnboardingRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     correlation_id = str(getattr(request.state, "correlation_id", "") or "")
 
     package = await create_package(
@@ -97,9 +88,8 @@ async def list_tenants_endpoint(
     offset: int = Query(default=0, ge=0),
     status_filter: TenantStatus | None = Query(default=None, alias="status"),
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> Paginated[dict]:
-    _require_platform_admin(user)
     stmt = select(IamTenant)
     if status_filter is not None:
         stmt = stmt.where(IamTenant.status == status_filter)
@@ -128,9 +118,8 @@ async def list_tenants_endpoint(
 async def get_tenant_endpoint(
     tenant_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_admin),
 ) -> dict:
-    _require_platform_admin(user)
     tenant = await get_tenant(session, tenant_id=tenant_id)
     return _serialize_tenant(tenant)
 
@@ -140,9 +129,8 @@ async def update_tenant_status_endpoint(
     tenant_id: uuid.UUID,
     body: TenantStatusUpdateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(get_current_user),
+    user: IamUser = Depends(require_platform_owner),
 ) -> dict:
-    _require_platform_admin(user)
     row = (
         await session.execute(select(IamTenant).where(IamTenant.id == tenant_id))
     ).scalar_one_or_none()

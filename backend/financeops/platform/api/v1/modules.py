@@ -5,9 +5,13 @@ import uuid
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
-from financeops.core.exceptions import AuthenticationError
-from financeops.db.models.users import IamUser
+from financeops.api.deps import (
+    get_async_session,
+    require_finance_team,
+    require_user_plane_permission,
+)
+from financeops.core.exceptions import AuthenticationError, AuthorizationError
+from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.schemas.enforcement import (
     ControlPlaneAuthorizeRequest,
     FinanceExecutionProbeRequest,
@@ -34,12 +38,35 @@ from financeops.platform.services.tenancy.package_enablement import (
 router = APIRouter()
 service_router = APIRouter()
 
+module_manage_guard = require_user_plane_permission(
+    resource_type="module_enablement",
+    action="manage",
+    fallback_roles={
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.finance_leader,
+    },
+    fallback_error_message="finance_approver role required",
+)
+
+
+def _enforce_tenant_scope(*, actor: IamUser, target_tenant_id: uuid.UUID) -> None:
+    if actor.role in {
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+    }:
+        return
+    if actor.tenant_id != target_tenant_id:
+        raise AuthorizationError("tenant scope mismatch")
+
 
 @router.post("/packages")
 async def create_package_endpoint(
     body: PackageCreateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(module_manage_guard),
 ) -> dict:
     package = await create_package(
         session,
@@ -60,8 +87,9 @@ async def assign_package_endpoint(
     body: PackageAssignmentRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(module_manage_guard),
 ) -> dict:
+    _enforce_tenant_scope(actor=user, target_tenant_id=tenant_id)
     row = await assign_package_to_tenant(
         session,
         tenant_id=tenant_id,
@@ -78,7 +106,7 @@ async def assign_package_endpoint(
 async def create_module_endpoint(
     body: ModuleCreateRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(module_manage_guard),
 ) -> dict:
     module = await create_module_registry_item(
         session,
@@ -99,8 +127,9 @@ async def set_module_enablement_endpoint(
     body: ModuleEnablementRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(module_manage_guard),
 ) -> dict:
+    _enforce_tenant_scope(actor=user, target_tenant_id=tenant_id)
     row = await set_module_enablement(
         session,
         tenant_id=tenant_id,

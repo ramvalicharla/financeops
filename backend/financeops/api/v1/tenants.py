@@ -14,6 +14,7 @@ from financeops.api.deps import (
     get_async_session,
     get_current_user,
     require_finance_leader,
+    require_user_plane_permission,
 )
 from financeops.config import settings
 from financeops.db.models.tenants import IamTenant
@@ -21,6 +22,7 @@ from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import user_invited_email
 from financeops.platform.db.models.user_membership import CpUserEntityAssignment
+from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
 from financeops.services.credit_service import get_balance
 from financeops.services.tenant_service import (
     get_tenant,
@@ -42,6 +44,18 @@ from financeops.utils.gstin import extract_state_code, validate_gstin, validate_
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+tenant_user_manage_guard = require_user_plane_permission(
+    resource_type="tenant_user",
+    action="manage",
+    fallback_roles={
+        UserRole.super_admin,
+        UserRole.platform_owner,
+        UserRole.platform_admin,
+        UserRole.finance_leader,
+    },
+    fallback_error_message="finance_approver role required",
+)
 
 
 class UpdateTenantRequest(BaseModel):
@@ -66,6 +80,15 @@ class UpdateRoleRequest(BaseModel):
 class UpdateDisplayPreferencesRequest(BaseModel):
     user_scale: str | None = None
     tenant_scale: str | None = None
+
+
+def _validate_tenant_assignable_role(role: UserRole) -> UserRole:
+    if not is_tenant_assignable_role(role):
+        raise HTTPException(
+            status_code=422,
+            detail="Platform roles cannot be assigned from tenant user management",
+        )
+    return role
 
 
 @router.get("/me")
@@ -134,7 +157,7 @@ async def update_my_tenant(
 @router.get("/me/users")
 async def list_my_users(
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(tenant_user_manage_guard),
 ) -> dict:
     users = await list_tenant_users(session, user.tenant_id)
     return {
@@ -158,8 +181,9 @@ async def list_my_users(
 async def invite_user(
     body: InviteUserRequest,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_leader),
+    user: IamUser = Depends(tenant_user_manage_guard),
 ) -> dict:
+    _validate_tenant_assignable_role(body.role)
     tenant = await get_tenant(session, user.tenant_id)
     if not tenant.org_setup_complete:
         raise HTTPException(
@@ -230,10 +254,15 @@ async def update_user(
     user_id: uuid.UUID,
     body: UpdateRoleRequest,
     session: AsyncSession = Depends(get_async_session),
-    current_user: IamUser = Depends(require_finance_leader),
+    current_user: IamUser = Depends(tenant_user_manage_guard),
 ) -> dict:
-    _ = current_user
-    updated = await update_user_role(session, user_id, body.role)
+    _validate_tenant_assignable_role(body.role)
+    updated = await update_user_role(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=user_id,
+        new_role=body.role,
+    )
     await session.flush()
     return {
         "user_id": str(updated.id),
@@ -246,10 +275,13 @@ async def update_user(
 async def delete_user(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
-    current_user: IamUser = Depends(require_finance_leader),
+    current_user: IamUser = Depends(tenant_user_manage_guard),
 ) -> dict:
-    _ = current_user
-    deactivated = await deactivate_user(session, user_id)
+    deactivated = await deactivate_user(
+        session,
+        tenant_id=current_user.tenant_id,
+        user_id=user_id,
+    )
     await session.flush()
     return {"user_id": str(deactivated.id), "deactivated": True}
 

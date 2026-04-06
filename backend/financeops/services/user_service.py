@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.core.security import hash_password
 from financeops.db.models.users import IamSession, IamUser, UserRole
+from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
 from financeops.services.audit_service import log_action
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
@@ -106,9 +107,22 @@ async def list_tenant_users(
     return list(result.scalars().all())
 
 
-async def deactivate_user(session: AsyncSession, user_id: uuid.UUID) -> IamUser:
+async def deactivate_user(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+) -> IamUser:
     """Soft-delete a user by setting is_active=False."""
-    user = await get_user_by_id(session, user_id)
+    result = await session.execute(
+        select(IamUser).where(
+            IamUser.id == user_id,
+            IamUser.tenant_id == tenant_id,
+        )
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise NotFoundError(f"User {user_id} not found in tenant {tenant_id}")
     old_state = {"is_active": user.is_active}
     user.is_active = False
     await AuditWriter.flush_with_audit(
@@ -130,11 +144,23 @@ async def deactivate_user(session: AsyncSession, user_id: uuid.UUID) -> IamUser:
 
 async def update_user_role(
     session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
     user_id: uuid.UUID,
     new_role: UserRole,
 ) -> IamUser:
     """Update a user's role."""
-    user = await get_user_by_id(session, user_id)
+    if not is_tenant_assignable_role(new_role):
+        raise ValidationError("Platform roles cannot be assigned from tenant user management")
+    result = await session.execute(
+        select(IamUser).where(
+            IamUser.id == user_id,
+            IamUser.tenant_id == tenant_id,
+        )
+    )
+    user = result.scalar_one_or_none()
+    if user is None:
+        raise NotFoundError(f"User {user_id} not found in tenant {tenant_id}")
     old_state = {"role": user.role.value}
     user.role = new_role
     await AuditWriter.flush_with_audit(
