@@ -2,14 +2,13 @@
 
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { getSession, signIn } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { StepIndicator } from "@/components/ui/StepIndicator"
 import { Step1GroupIdentity } from "@/components/org-setup/Step1GroupIdentity"
 import { Step2Entities } from "@/components/org-setup/Step2Entities"
 import { Step3Ownership } from "@/components/org-setup/Step3Ownership"
 import { Step4AccountingTools } from "@/components/org-setup/Step4AccountingTools"
-import { Step5IndustryCoA } from "@/components/org-setup/Step5IndustryCoA"
-import { Step6ErpMapping } from "@/components/org-setup/Step6ErpMapping"
 import { SetupComplete } from "@/components/org-setup/SetupComplete"
 import {
   getOrgSetupSummary,
@@ -17,12 +16,9 @@ import {
   submitOrgSetupStep2,
   submitOrgSetupStep3,
   submitOrgSetupStep4,
-  submitOrgSetupStep5,
-  submitOrgSetupStep6,
   type Step2EntityPayload,
 } from "@/lib/api/orgSetup"
-import { skipCoaSetup } from "@/lib/api/coa"
-import { getCoaTemplates } from "@/lib/api/coa"
+import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { useTenantStore } from "@/lib/store/tenant"
 
 export default function OrgSetupPageClient() {
@@ -40,19 +36,31 @@ export default function OrgSetupPageClient() {
 
   const currentStep = useMemo(() => {
     const nextStep = summaryQuery.data?.current_step ?? 1
-    return Math.min(Math.max(nextStep, 1), 6)
+    return Math.min(Math.max(nextStep, 1), 4)
   }, [summaryQuery.data?.current_step])
 
   const setupComplete = Boolean(summaryQuery.data?.completed_at)
   const groupId = summaryQuery.data?.group?.id ?? null
   const entities = summaryQuery.data?.entities ?? []
-  const coaStatus = summaryQuery.data?.coa_status ?? "pending"
 
-  const templatesQuery = useQuery({
-    queryKey: ["org-setup-templates"],
-    queryFn: getCoaTemplates,
-    enabled: currentStep === 5,
-  })
+  const refreshSessionAfterSetup = async () => {
+    const currentSession = await getSession()
+    if (!currentSession?.access_token || !currentSession.refresh_token) {
+      return null
+    }
+
+    const signInResult = await signIn("credentials", {
+      redirect: false,
+      access_token: currentSession.access_token,
+      refresh_token: currentSession.refresh_token,
+    })
+
+    if (!signInResult || signInResult.ok !== true || signInResult.error) {
+      return null
+    }
+
+    return waitForEstablishedSession()
+  }
 
   const step1Mutation = useMutation({
     mutationFn: submitOrgSetupStep1,
@@ -83,37 +91,20 @@ export default function OrgSetupPageClient() {
     mutationFn: submitOrgSetupStep4,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
-    },
-  })
-
-  const step5Mutation = useMutation({
-    mutationFn: submitOrgSetupStep5,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
-    },
-  })
-
-  const skipCoaMutation = useMutation({
-    mutationFn: skipCoaSetup,
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
-    },
-  })
-
-  const step6Mutation = useMutation({
-    mutationFn: submitOrgSetupStep6,
-    onSuccess: async () => {
+      const refreshedSession = await refreshSessionAfterSetup()
+      const user = refreshedSession?.user
       if (tenantState.tenant_id && tenantState.tenant_slug) {
         setTenant({
           tenant_id: tenantState.tenant_id,
           tenant_slug: tenantState.tenant_slug,
-          org_setup_complete: true,
-          org_setup_step: 7,
-          entity_roles: tenantState.entity_roles,
-          active_entity_id: tenantState.active_entity_id,
+          org_setup_complete: user?.org_setup_complete ?? true,
+          org_setup_step: user?.org_setup_step ?? 7,
+          entity_roles: user?.entity_roles ?? tenantState.entity_roles,
+          active_entity_id:
+            user?.entity_roles.at(0)?.entity_id ?? tenantState.active_entity_id,
         })
       }
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      navigateAfterAuth(nextPath)
     },
   })
 
@@ -194,34 +185,6 @@ export default function OrgSetupPageClient() {
           submitting={step4Mutation.isPending}
           onSubmit={async (configs) => {
             await step4Mutation.mutateAsync({ configs })
-          }}
-        />
-      ) : null}
-
-      {currentStep === 5 ? (
-        <Step5IndustryCoA
-          entities={entities}
-          templates={templatesQuery.data ?? []}
-          templatesLoading={templatesQuery.isLoading}
-          templatesError={templatesQuery.isError}
-          coaStatus={coaStatus}
-          submitting={step5Mutation.isPending}
-          skipping={skipCoaMutation.isPending}
-          onSubmit={async (entityTemplates) => {
-            await step5Mutation.mutateAsync({ entity_templates: entityTemplates })
-          }}
-          onSkip={async () => {
-            await skipCoaMutation.mutateAsync()
-          }}
-        />
-      ) : null}
-
-      {currentStep === 6 ? (
-        <Step6ErpMapping
-          entities={entities}
-          submitting={step6Mutation.isPending}
-          onSubmit={async (payload) => {
-            await step6Mutation.mutateAsync(payload)
           }}
         />
       ) : null}

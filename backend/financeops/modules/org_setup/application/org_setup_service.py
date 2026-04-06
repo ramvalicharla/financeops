@@ -45,6 +45,7 @@ from financeops.utils.gstin import extract_state_code, validate_gstin, validate_
 _CODE_SANITIZE = re.compile(r"[^A-Z0-9]+")
 _GSTIN_BASIC_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
 log = logging.getLogger(__name__)
+_ONBOARDING_FINAL_STEP = 4
 
 
 def _clean_code(prefix: str, source: str, fallback: str) -> str:
@@ -265,12 +266,12 @@ class OrgSetupService:
         current_data = dict(progress.step5_data or {})
         current_data["coa_status"] = "skipped"
         progress.step5_data = current_data
-        if progress.current_step < 6:
-            progress.current_step = 6
+        if progress.current_step > _ONBOARDING_FINAL_STEP:
+            progress.current_step = _ONBOARDING_FINAL_STEP
 
         tenant = await self._get_tenant(tenant_id)
-        if tenant.org_setup_step < 6 and not tenant.org_setup_complete:
-            tenant.org_setup_step = 6
+        if tenant.org_setup_step > _ONBOARDING_FINAL_STEP and not tenant.org_setup_complete:
+            tenant.org_setup_step = _ONBOARDING_FINAL_STEP
 
         await self._session.flush()
         return progress
@@ -301,7 +302,7 @@ class OrgSetupService:
             raise ValidationError("step must be between 1 and 6")
         progress = await self.get_or_create_progress(tenant_id)
         setattr(progress, f"step{step}_data", data)
-        next_step = 6 if step >= 6 else step + 1
+        next_step = min(step + 1, _ONBOARDING_FINAL_STEP)
         if next_step > progress.current_step:
             progress.current_step = next_step
 
@@ -740,6 +741,7 @@ class OrgSetupService:
 
         await self._session.flush()
         await self.save_step(tenant_id, 4, {"config_count": len(rows)})
+        await self.complete_setup(tenant_id)
         return rows
 
     async def submit_step5(
@@ -851,21 +853,12 @@ class OrgSetupService:
         return confirmed_count
 
     async def complete_setup(self, tenant_id: uuid.UUID) -> None:
-        coa_status = await self.get_coa_status(tenant_id)
-        if coa_status not in {"uploaded", "skipped", "erp_connected"}:
-            raise ValidationError(
-                "Chart of accounts must be uploaded, skipped, or connected via ERP before completing setup"
-            )
         tenant = await self._get_tenant(tenant_id)
         progress = await self.get_or_create_progress(tenant_id)
         tenant.org_setup_complete = True
         tenant.org_setup_step = 7
-        current_step5 = dict(progress.step5_data or {})
-        current_step5["coa_status"] = coa_status
-        progress.step5_data = current_step5
         progress.completed_at = datetime.now(UTC)
-        if progress.current_step < 6:
-            progress.current_step = 6
+        progress.current_step = _ONBOARDING_FINAL_STEP
         await self._session.flush()
 
     async def get_setup_summary(self, tenant_id: uuid.UUID) -> dict[str, Any]:
@@ -938,13 +931,14 @@ class OrgSetupService:
         account_count = await self._count_tenant_coa_accounts(tenant_id)
         coa_status = await self.get_coa_status(tenant_id)
         onboarding_score = await self.get_onboarding_score(tenant_id)
+        current_step = min(max(progress.current_step, 1), _ONBOARDING_FINAL_STEP)
 
         return {
             "group": group,
             "entities": list(entities),
             "ownership": list(ownership),
             "erp_configs": list(erp_configs),
-            "current_step": progress.current_step,
+            "current_step": current_step,
             "completed_at": progress.completed_at,
             "coa_account_count": account_count,
             "coa_status": coa_status,

@@ -52,7 +52,7 @@ async def get_progress(
     return OrgSetupProgressResponse(
         id=progress.id,
         tenant_id=progress.tenant_id,
-        current_step=progress.current_step,
+        current_step=min(max(progress.current_step, 1), 4),
         step1_data=progress.step1_data,
         step2_data=progress.step2_data,
         step3_data=progress.step3_data,

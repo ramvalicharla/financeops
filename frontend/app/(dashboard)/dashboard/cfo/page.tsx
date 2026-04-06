@@ -5,6 +5,7 @@ import dynamic from "next/dynamic"
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { CfoChartDatum } from "@/components/charts"
+import { DataActivationSection } from "@/components/dashboard/DataActivationSection"
 import { getKpis, getTrends } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -108,6 +109,8 @@ export default function CfoDashboardPage() {
         </h2>
         <CfoChart data={trendData} />
       </section>
+
+      <DataActivationSection />
 
       <section className="rounded-xl border border-border bg-card p-4">
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">

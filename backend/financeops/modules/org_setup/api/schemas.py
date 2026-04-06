@@ -264,7 +264,7 @@ class OrgSetupSummaryResponse(BaseModel):
     entities: list[OrgEntityResponse]
     ownership: list[OrgOwnershipResponse]
     erp_configs: list[OrgEntityErpConfigResponse]
-    current_step: int = Field(default=1, ge=1, le=6)
+    current_step: int = Field(default=1, ge=1, le=4)
     completed_at: datetime | None = None
     coa_account_count: int
     coa_status: CoaStatusLiteral = "pending"

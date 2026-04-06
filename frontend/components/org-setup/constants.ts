@@ -5,8 +5,6 @@ export const ORG_SETUP_STEP_NAMES = [
   "Legal entities",
   "Ownership structure",
   "Accounting tools",
-  "Industry & chart of accounts",
-  "Account mapping",
 ] as const
 
 export const CURRENCY_OPTIONS = ["INR", "USD", "SGD", "GBP", "EUR", "AED"] as const

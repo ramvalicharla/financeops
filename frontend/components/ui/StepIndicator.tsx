@@ -21,13 +21,14 @@ export type StepIndicatorProps =
 
 export function StepIndicator(props: StepIndicatorProps) {
   if (typeof props.step === "number") {
-    const current = Math.min(Math.max(props.step, 1), 6)
-    const progress = (current / 6) * 100
+    const totalSteps = ORG_SETUP_STEP_NAMES.length
+    const current = Math.min(Math.max(props.step, 1), totalSteps)
+    const progress = (current / totalSteps) * 100
 
     return (
       <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
         <p className="text-sm text-muted-foreground">
-          Step {current} of 6 -{" "}
+          Step {current} of {totalSteps} -{" "}
           <span className="text-foreground">
             {ORG_SETUP_STEP_NAMES[current - 1]}
           </span>

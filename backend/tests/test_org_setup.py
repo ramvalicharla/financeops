@@ -597,7 +597,7 @@ async def test_mark_coa_skipped_sets_progress_status(async_session: AsyncSession
     service = OrgSetupService(async_session)
     progress = await service.mark_coa_skipped(test_user.tenant_id)
 
-    assert progress.current_step >= 6
+    assert progress.current_step == 1
     assert (progress.step5_data or {}).get("coa_status") == "skipped"
 
 
@@ -658,19 +658,21 @@ async def test_step6_allows_unmapped_completion_when_coa_skipped(async_session: 
 @pytest.mark.asyncio
 async def test_complete_setup_sets_flag(async_session: AsyncSession, test_user: IamUser) -> None:
     service = OrgSetupService(async_session)
-    await service.mark_coa_skipped(test_user.tenant_id)
     await service.complete_setup(test_user.tenant_id)
     tenant = await async_session.get(IamTenant, test_user.tenant_id)
+    progress = await service.get_or_create_progress(test_user.tenant_id)
     assert tenant is not None
     assert tenant.org_setup_complete is True
     assert tenant.org_setup_step == 7
+    assert progress.current_step == 4
 
 
 @pytest.mark.asyncio
-async def test_complete_setup_rejects_pending_coa_without_erp(async_session: AsyncSession, test_user: IamUser) -> None:
+async def test_complete_setup_allows_pending_coa_without_erp(async_session: AsyncSession, test_user: IamUser) -> None:
     service = OrgSetupService(async_session)
-    with pytest.raises(ValidationError):
-        await service.complete_setup(test_user.tenant_id)
+    await service.complete_setup(test_user.tenant_id)
+    tenant = await async_session.get(IamTenant, test_user.tenant_id)
+    assert tenant is not None and tenant.org_setup_complete is True
 
 
 @pytest.mark.asyncio
@@ -981,7 +983,7 @@ async def test_get_setup_summary(async_session: AsyncSession, test_user: IamUser
     summary = await service.get_setup_summary(test_user.tenant_id)
     assert summary["group"] is not None
     assert summary["entities"]
-    assert summary["current_step"] == 6
+    assert summary["current_step"] == 4
     assert summary["completed_at"] is None
     assert summary["coa_status"] == "uploaded"
     assert 45 <= summary["onboarding_score"] <= 100
@@ -997,7 +999,7 @@ async def test_skip_coa_endpoint_marks_status(async_client: AsyncClient, test_us
     assert response.status_code == 200
     payload = response.json()["data"]
     assert payload["coa_status"] == "skipped"
-    assert payload["next_step"] >= 6
+    assert 1 <= payload["next_step"] <= 4
     assert payload["onboarding_score"] >= 0
 
 
