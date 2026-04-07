@@ -151,6 +151,8 @@ async def test_erp_secret_ref_not_stored_plaintext(
         "connection_code": connection_code,
         "connection_name": "Encrypted Connection",
         "organisation_id": str(test_user.tenant_id),
+        "client_id": "zoho-client-id",
+        "client_secret": "zoho-client-secret",
         "organization_id": "zoho-org-encrypted",
         "secret_ref": plain_api_key,
     }
@@ -178,11 +180,13 @@ async def test_erp_secret_ref_not_stored_plaintext(
     assert row.secret_ref != plain_api_key
     decrypted_payload = json.loads(decrypt_field(row.secret_ref))
     assert decrypted_payload.get("api_key") == plain_api_key
+    assert decrypted_payload.get("client_id") == "zoho-client-id"
+    assert decrypted_payload.get("client_secret") == "zoho-client-secret"
     assert decrypted_payload.get("organization_id") == "zoho-org-encrypted"
 
 
 @pytest.mark.asyncio
-async def test_zoho_test_connection_requires_persisted_organization_id(
+async def test_zoho_connection_creation_requires_organization_id(
     async_client: AsyncClient,
     async_session: AsyncSession,
     test_access_token: str,
@@ -227,15 +231,8 @@ async def test_zoho_test_connection_requires_persisted_organization_id(
             "client_secret": "client-secret",
         },
     )
-    assert create_response.status_code == 200
-    connection_id = create_response.json()["data"]["connection_id"]
-
-    test_response = await async_client.post(
-        f"/api/v1/erp-sync/connections/{connection_id}/test",
-        headers={"Authorization": f"Bearer {test_access_token}"},
-    )
-    assert test_response.status_code == 422
-    payload = test_response.json()["error"]
+    assert create_response.status_code == 422
+    payload = create_response.json()["error"]
     assert payload["code"] == "validation_error"
     assert "organization_id" in payload["message"]
 

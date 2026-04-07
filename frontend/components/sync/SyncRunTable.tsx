@@ -79,12 +79,12 @@ export function SyncRunTable({
         cell: ({ row }) =>
           row.original.duration_seconds !== null
             ? `${row.original.duration_seconds}s`
-            : "—",
+            : "-",
       },
       {
         accessorKey: "records_extracted",
         header: "Records",
-        cell: ({ row }) => row.original.records_extracted ?? "—",
+        cell: ({ row }) => row.original.records_extracted ?? "-",
       },
       {
         accessorKey: "drift_severity",
@@ -115,7 +115,7 @@ export function SyncRunTable({
               >
                 Validation Report
               </Button>
-              {run.status === "COMPLETED" && !run.publish_event_id ? (
+              {run.status === "COMPLETED" && run.publish_event_id ? (
                 <Button
                   size="sm"
                   variant="secondary"
@@ -142,7 +142,7 @@ export function SyncRunTable({
         },
       },
     ],
-    [isApproving, onApprovePublish, onValidationReport, onViewDrift],
+    [approvePublishTitle, canApprovePublish, isApproving, onApprovePublish, onValidationReport, onViewDrift],
   )
 
   const table = useReactTable({

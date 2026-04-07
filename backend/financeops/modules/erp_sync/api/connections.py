@@ -24,6 +24,31 @@ from financeops.shared_kernel.response import ok
 router = APIRouter()
 
 
+def _normalized_connector_type(body: dict[str, Any]) -> str:
+    return str(body.get("connector_type") or "").strip().lower()
+
+
+def _require_non_empty_string(body: dict[str, Any], field: str, message: str) -> None:
+    if not str(body.get(field) or "").strip():
+        raise ValidationError(message)
+
+
+def _validate_connection_create_payload(body: dict[str, Any]) -> None:
+    connector_type = _normalized_connector_type(body)
+    if connector_type not in {"zoho", "quickbooks"}:
+        return
+
+    _require_non_empty_string(body, "client_id", "client_id is required")
+    _require_non_empty_string(body, "client_secret", "client_secret is required")
+
+    if connector_type == "zoho":
+        _require_non_empty_string(
+            body,
+            "organization_id",
+            "organization_id is required for Zoho connections",
+        )
+
+
 async def _build_secret_ref(body: dict[str, Any]) -> str | None:
     payload: dict[str, Any] = {
         "client_id": body.get("client_id"),
@@ -87,6 +112,7 @@ async def create_connection(
     user: IamUser = Depends(require_finance_team),
     _: str = Depends(require_erp_sync_idempotency_key),
 ) -> dict[str, Any]:
+    _validate_connection_create_payload(body)
     connector_type = ConnectorType(body["connector_type"])
     credentials_ref = await _build_secret_ref(body)
     row = await AuditWriter.insert_financial_record(
@@ -157,6 +183,7 @@ async def list_connections(
             "connection_code": row.connection_code,
             "connection_name": row.connection_name,
             "connector_type": row.connector_type,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
         }
         for row in rows
     ]
@@ -195,6 +222,7 @@ async def get_connection(
             "connector_type": row.connector_type,
             "connection_status": str(runtime_state.get("connection_status") or row.connection_status),
             "source_system_instance_id": row.source_system_instance_id,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
         },
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")

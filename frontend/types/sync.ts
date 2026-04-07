@@ -8,6 +8,18 @@ export type ConnectorType =
   | "XERO"
   | "GENERIC_FILE"
 
+export type BackendConnectorType =
+  | "zoho"
+  | "tally"
+  | "busy"
+  | "marg"
+  | "munim"
+  | "quickbooks"
+  | "xero"
+  | "generic_file"
+
+export type ConnectionStatus = "draft" | "active" | "suspended" | "revoked"
+
 export type SyncRunStatus =
   | "PENDING"
   | "RUNNING"
@@ -34,13 +46,12 @@ export type DatasetType =
 
 export interface ExternalConnection {
   id: string
-  tenant_id: string
-  connector_type: ConnectorType
-  display_name: string
-  last_sync_at: string | null
-  last_sync_status: SyncRunStatus | null
-  is_active: boolean
-  created_at: string
+  connection_code: string
+  connection_name: string
+  connector_type: BackendConnectorType | string
+  connection_status: ConnectionStatus
+  source_system_instance_id?: string
+  created_at?: string | null
 }
 
 export interface ValidationResult {
@@ -79,22 +90,44 @@ export interface DriftReport {
 }
 
 export interface CreateConnectionInput {
-  connector_type: ConnectorType
-  display_name: string
-  datasets: DatasetType[]
-  schedule_mode: "manual" | "daily" | "weekly"
-  schedule_time?: string
-  schedule_day_of_week?: string
-  oauth_connected?: boolean
-  mapping?: Array<{
-    source_column: string
-    canonical_field: string
-  }>
+  connector_type: "zoho" | "quickbooks"
+  connection_code: string
+  connection_name: string
+  client_id: string
+  client_secret: string
+  organization_id?: string
+  realm_id?: string
+  use_sandbox?: boolean
+  entity_id?: string
 }
 
-export interface TestConnectionInput {
-  connector_type: ConnectorType
-  display_name: string
-  credentials?: Record<string, string>
-  file_name?: string
+export interface OAuthStartResult {
+  authorization_url: string
+  state_token: string
+  expires_at: string
+}
+
+export interface OAuthCallbackResult {
+  connection_id: string
+  provider: string
+  token_expires_at: string
+  scopes: string | null
+  status: "connected"
+}
+
+export interface TestConnectionResult {
+  ok: boolean
+  connector_type: string
+  realm_id?: string
+  organization_id?: string
+  company_info?: unknown
+}
+
+export interface SyncBootstrapResult {
+  connection_id: string
+  connection_status: string
+  mapping_definition_id: string
+  mapping_version_id: string
+  sync_definition_id: string
+  sync_definition_version_id: string
 }

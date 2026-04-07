@@ -1,22 +1,27 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import {
   approvPublish,
+  activateConnection,
+  completeOAuth,
   createConnection,
+  getConnection,
   getConnections,
   getDriftReport,
   getSyncRun,
   getSyncRuns,
+  startOAuth,
   testConnection,
   triggerSync,
 } from "@/lib/api/sync"
 import { useAsyncAction, usePolling } from "@/hooks"
 import type {
   CreateConnectionInput,
-  DatasetType,
-  TestConnectionInput,
+  OAuthCallbackResult,
+  OAuthStartResult,
+  TestConnectionResult,
 } from "@/types/sync"
 
 type SyncResourceKey =
@@ -128,19 +133,11 @@ export const useSyncRun = (id: string | null) => {
 }
 
 export const useTriggerSync = () => {
-  const mutation = useAsyncAction(
-    async ({
-      connectionId,
-      datasetTypes,
-    }: {
-      connectionId: string
-      datasetTypes: DatasetType[]
-    }) => {
-      const result = await triggerSync(connectionId, datasetTypes)
-      invalidate("sync-runs", "connections")
-      return result
-    },
-  )
+  const mutation = useAsyncAction(async ({ connectionId }: { connectionId: string }) => {
+    const result = await triggerSync(connectionId)
+    invalidate("sync-runs", "connections")
+    return result
+  })
 
   return {
     error: mutation.error,
@@ -198,9 +195,20 @@ export const useCreateConnection = () => {
 }
 
 export const useTestConnection = () => {
-  const mutation = useAsyncAction(async (payload: TestConnectionInput) =>
-    testConnection(payload),
+  const mutation = useAsyncAction(async (connectionId: string) =>
+    testConnection(connectionId),
   )
+
+  return {
+    error: mutation.error,
+    isPending: mutation.isLoading,
+    mutateAsync: mutation.execute as (connectionId: string) => Promise<TestConnectionResult>,
+    reset: mutation.reset,
+  }
+}
+
+export const useGetConnection = () => {
+  const mutation = useAsyncAction(async (connectionId: string) => getConnection(connectionId))
 
   return {
     error: mutation.error,
@@ -210,22 +218,61 @@ export const useTestConnection = () => {
   }
 }
 
-export const useAllDatasetTypes = () =>
-  useMemo<DatasetType[]>(
-    () => [
-      "TRIAL_BALANCE",
-      "GENERAL_LEDGER",
-      "BANK_STATEMENT",
-      "ACCOUNTS_RECEIVABLE",
-      "ACCOUNTS_PAYABLE",
-      "INVOICE_REGISTER",
-      "PURCHASE_REGISTER",
-      "PAYROLL_SUMMARY",
-      "CHART_OF_ACCOUNTS",
-      "VENDOR_MASTER",
-      "CUSTOMER_MASTER",
-      "GST_RETURN_GSTR1",
-      "FIXED_ASSET_REGISTER",
-    ],
-    [],
+export const useStartOAuth = () => {
+  const mutation = useAsyncAction(
+    async ({
+      connectionId,
+      redirectUri,
+    }: {
+      connectionId: string
+      redirectUri: string
+    }) => startOAuth(connectionId, redirectUri),
   )
+
+  return {
+    error: mutation.error,
+    isPending: mutation.isLoading,
+    mutateAsync: mutation.execute as (payload: {
+      connectionId: string
+      redirectUri: string
+    }) => Promise<OAuthStartResult>,
+    reset: mutation.reset,
+  }
+}
+
+export const useCompleteOAuth = () => {
+  const mutation = useAsyncAction(
+    async ({
+      connectionId,
+      params,
+    }: {
+      connectionId: string
+      params: Record<string, string>
+    }) => completeOAuth(connectionId, params),
+  )
+
+  return {
+    error: mutation.error,
+    isPending: mutation.isLoading,
+    mutateAsync: mutation.execute as (payload: {
+      connectionId: string
+      params: Record<string, string>
+    }) => Promise<OAuthCallbackResult>,
+    reset: mutation.reset,
+  }
+}
+
+export const useActivateConnection = () => {
+  const mutation = useAsyncAction(async (connectionId: string) => {
+    const result = await activateConnection(connectionId)
+    invalidate("connections")
+    return result
+  })
+
+  return {
+    error: mutation.error,
+    isPending: mutation.isLoading,
+    mutateAsync: mutation.execute,
+    reset: mutation.reset,
+  }
+}

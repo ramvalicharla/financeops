@@ -1,16 +1,13 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { formatDistanceToNowStrict } from "date-fns"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui"
 import { SyncRunTable } from "@/components/sync/SyncRunTable"
-import { SyncStatusBadge } from "@/components/sync/SyncStatusBadge"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import {
-  useAllDatasetTypes,
   useApprovePublish,
   useConnections,
   useDriftReport,
@@ -63,9 +60,6 @@ const driftBadgeClass = (severity: "NONE" | "MINOR" | "SIGNIFICANT" | "CRITICAL"
   return "bg-muted text-muted-foreground"
 }
 
-const getRelativeTime = (value: string | null): string =>
-  value ? formatDistanceToNowStrict(new Date(value), { addSuffix: true }) : "Never"
-
 const mergeValidationResults = (
   results: ValidationResult[],
 ): Array<ValidationResult & { category: string }> =>
@@ -110,7 +104,6 @@ export default function SyncPage() {
   const syncRunsQuery = useSyncRuns(selectedConnectionId)
   const triggerSyncMutation = useTriggerSync()
   const approvePublishMutation = useApprovePublish()
-  const allDatasetTypes = useAllDatasetTypes()
   const driftQuery = useDriftReport(driftRun?.id ?? null)
 
   useEffect(() => {
@@ -121,14 +114,6 @@ export default function SyncPage() {
       setSelectedConnectionId(connectionsQuery.data[0]?.id ?? null)
     }
   }, [connectionsQuery.data, selectedConnectionId])
-
-  const selectedConnection = useMemo(
-    () =>
-      connectionsQuery.data?.find(
-        (connection) => connection.id === selectedConnectionId,
-      ) ?? null,
-    [connectionsQuery.data, selectedConnectionId],
-  )
 
   const validationRows = useMemo(
     () => mergeValidationResults(validationRun?.validation_results ?? []),
@@ -221,18 +206,21 @@ export default function SyncPage() {
               onClick={() => setSelectedConnectionId(connection.id)}
               type="button"
             >
-              <p className="font-medium text-foreground">{connection.display_name}</p>
+              <p className="font-medium text-foreground">{connection.connection_name}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Last sync {getRelativeTime(connection.last_sync_at)}
+                Connection status: {connection.connection_status}
               </p>
               <div className="mt-2">
-                {connection.last_sync_status ? (
-                  <SyncStatusBadge status={connection.last_sync_status} />
-                ) : (
-                  <span className="inline-flex rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-                    No runs yet
-                  </span>
-                )}
+                <span
+                  className={cn(
+                    "inline-flex rounded-full px-2 py-1 text-xs font-medium",
+                    connection.connection_status === "active"
+                      ? "bg-[hsl(var(--brand-success)/0.2)] text-[hsl(var(--brand-success))]"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {connection.connection_status.toUpperCase()}
+                </span>
               </div>
             </button>
           ))}
@@ -251,7 +239,6 @@ export default function SyncPage() {
               }
               void triggerSyncMutation.mutateAsync({
                 connectionId: selectedConnectionId,
-                datasetTypes: allDatasetTypes,
               })
             }}
             type="button"

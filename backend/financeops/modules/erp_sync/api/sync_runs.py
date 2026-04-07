@@ -150,15 +150,19 @@ async def list_sync_runs(
     request: Request,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    connection_id: str | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict[str, Any]:
+    filters = [ExternalSyncRun.tenant_id == user.tenant_id]
+    if connection_id:
+        filters.append(ExternalSyncRun.connection_id == uuid.UUID(connection_id))
     pagination_requested = "limit" in request.query_params or "offset" in request.query_params
     total = int(
         (
             await session.execute(
                 select(func.count(ExternalSyncRun.id)).where(
-                    ExternalSyncRun.tenant_id == user.tenant_id
+                    *filters
                 )
             )
         ).scalar_one()
@@ -167,12 +171,17 @@ async def list_sync_runs(
     rows = (await session.execute(
             select(
                 ExternalSyncRun.id,
+                ExternalSyncRun.connection_id,
                 ExternalSyncRun.dataset_type,
                 ExternalSyncRun.run_status,
                 ExternalSyncRun.run_token,
                 ExternalSyncRun.reporting_period_label,
+                ExternalSyncRun.created_at,
+                ExternalSyncRun.published_at,
+                ExternalSyncRun.extraction_fetched_records,
+                ExternalSyncRun.validation_summary_json,
             )
-            .where(ExternalSyncRun.tenant_id == user.tenant_id)
+            .where(*filters)
             .order_by(ExternalSyncRun.created_at.desc(), ExternalSyncRun.id.desc())
             .limit(limit)
             .offset(offset)
@@ -180,10 +189,15 @@ async def list_sync_runs(
     items = [
         {
             "id": str(row.id),
+            "connection_id": str(row.connection_id),
             "dataset_type": row.dataset_type,
             "run_status": row.run_status,
             "run_token": row.run_token,
             "reporting_period_label": row.reporting_period_label,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "published_at": row.published_at.isoformat() if row.published_at else None,
+            "extraction_fetched_records": int(row.extraction_fetched_records or 0),
+            "validation_summary_json": row.validation_summary_json or {},
         }
         for row in rows
     ]
