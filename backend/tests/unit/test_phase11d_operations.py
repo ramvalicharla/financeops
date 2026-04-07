@@ -48,7 +48,7 @@ async def _platform_admin_token(
         full_name="Platform Admin",
         role=UserRole.platform_admin,
         is_active=True,
-        mfa_enabled=False,
+        mfa_enabled=True,
     )
     async_session.add(admin)
     await async_session.flush()

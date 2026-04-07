@@ -43,18 +43,20 @@ services:
   clamav:
     image: clamav/clamav:stable
     container_name: finos-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
     volumes:
       - clamav_data:/var/lib/clamav
       - /var/run/clamav:/var/run/clamav
     environment:
       - CLAMAV_NO_FRESHCLAMD=false
     healthcheck:
-      test: ["CMD", "clamdcheck"]
+      test: ["CMD", "clamdcheck.sh"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
       start_period: 120s
-    restart: unless-stopped
 
   temporal_db:
     image: postgres:16-alpine

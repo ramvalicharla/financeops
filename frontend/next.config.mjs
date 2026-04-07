@@ -1,4 +1,9 @@
 import { withSentryConfig } from "@sentry/nextjs";
+import withBundleAnalyzer from "@next/bundle-analyzer";
+
+const bundleAnalyzer = withBundleAnalyzer({
+  enabled: process.env.ANALYZE === "true",
+});
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -32,6 +37,8 @@ const sentryOptions = {
 
 const hasSentryDsn = Boolean(process.env.SENTRY_DSN?.trim());
 
-export default hasSentryDsn
+const finalConfig = hasSentryDsn
   ? withSentryConfig(nextConfig, sentryOptions)
   : nextConfig;
+
+export default bundleAnalyzer(finalConfig);

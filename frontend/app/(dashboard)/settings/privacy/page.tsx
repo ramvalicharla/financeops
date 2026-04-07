@@ -1,3 +1,7 @@
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Privacy")
+
 ﻿import Link from "next/link"
 
 export default function PrivacySettingsPage() {

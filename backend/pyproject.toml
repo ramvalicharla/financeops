@@ -111,6 +111,8 @@ filterwarnings = [
     "ignore:New instance <NormalizationSourceVersion .* conflicts with persistent instance <NormalizationSourceVersion .*:sqlalchemy.exc.SAWarning",
     # third-party anyio stream finalizer noise emitted as PytestUnraisableExceptionWarning
     "ignore:.*MemoryObjectReceiveStream.*:pytest.PytestUnraisableExceptionWarning",
+    # razorpay SDK uses deprecated pkg_resources API
+    "ignore:pkg_resources is deprecated.*:UserWarning",
 ]
 testpaths = ["tests"]
 markers = [

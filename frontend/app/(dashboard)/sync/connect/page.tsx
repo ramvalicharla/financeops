@@ -1,4 +1,8 @@
 import { ConnectSourceForm } from "@/components/sync/ConnectSourceForm"
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Connect ERP")
+
 
 export default function ConnectSourcePage() {
   return (

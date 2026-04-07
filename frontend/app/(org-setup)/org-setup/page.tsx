@@ -1,5 +1,9 @@
 import { Suspense } from "react"
 import OrgSetupPageClient from "./OrgSetupPageClient"
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Organization Setup")
+
 
 function OrgSetupLoadingFallback() {
   return (

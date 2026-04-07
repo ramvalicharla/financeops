@@ -1,3 +1,7 @@
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Director")
+
 export default function DirectorDashboardPage() {
   return (
     <div className="space-y-6 p-6">

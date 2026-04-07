@@ -50,6 +50,23 @@ _PLATFORM_ADMIN_ROLES = {
     UserRole.platform_owner,
     UserRole.platform_admin,
 }
+
+# Roles for which MFA is unconditionally required regardless of the force_mfa_setup flag.
+_MFA_REQUIRED_ROLES = {
+    UserRole.platform_owner,
+    UserRole.platform_admin,
+}
+
+# Paths that must remain reachable before MFA setup is complete.
+_MFA_SETUP_BYPASS_PATHS = {
+    "/api/v1/auth/mfa/setup",
+    "/api/v1/auth/mfa/verify-setup",
+    "/api/v1/auth/mfa/verify",
+    "/api/v1/auth/change-password",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/me",
+}
 _PLATFORM_OWNER_ROLES = {
     UserRole.super_admin,
     UserRole.platform_owner,
@@ -206,6 +223,20 @@ async def get_current_user(
                 "setup_url": "/mfa/setup",
             },
         )
+
+    # Hard policy: platform_owner and platform_admin MUST have MFA enabled.
+    # This is enforced regardless of the force_mfa_setup DB flag so that
+    # manually clearing the flag cannot bypass the requirement.
+    if (
+        user.role in _MFA_REQUIRED_ROLES
+        and not user.mfa_enabled
+        and request.url.path not in _MFA_SETUP_BYPASS_PATHS
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="MFA is required for this role. Please complete MFA setup.",
+        )
+
     return user
 
 

@@ -28,7 +28,7 @@ async def _create_platform_user(
         full_name=role.value,
         role=role,
         is_active=True,
-        mfa_enabled=False,
+        mfa_enabled=True,
     )
     async_session.add(user)
     await async_session.flush()

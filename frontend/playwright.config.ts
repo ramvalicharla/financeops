@@ -14,6 +14,8 @@ export default defineConfig({
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "Mobile Safari - iPhone 14", use: { ...devices["iPhone 14"] } },
+    { name: "Mobile Chrome - Pixel 5", use: { ...devices["Pixel 5"] } },
   ],
   webServer: {
     command: "npm run dev",

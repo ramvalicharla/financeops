@@ -1,4 +1,8 @@
 import Link from "next/link"
+import { createMetadata } from "@/lib/metadata"
+
+export const metadata = createMetadata("Legal")
+
 
 export default function LegalIndexPage() {
   return (

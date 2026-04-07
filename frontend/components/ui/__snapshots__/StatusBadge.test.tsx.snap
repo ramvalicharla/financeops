@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`StatusBadge > snapshot — failed 1`] = `
+<span
+  class="inline-flex rounded-full px-2 py-1 text-xs font-medium bg-[hsl(var(--brand-danger)/0.2)] text-[hsl(var(--brand-danger))]"
+>
+  failed
+</span>
+`;
+
+exports[`StatusBadge > snapshot — pending 1`] = `
+<span
+  class="inline-flex rounded-full px-2 py-1 text-xs font-medium bg-yellow-500/20 text-yellow-300"
+>
+  pending
+</span>
+`;
+
+exports[`StatusBadge > snapshot — running 1`] = `
+<span
+  class="inline-flex rounded-full px-2 py-1 text-xs font-medium bg-blue-500/20 text-blue-300 animate-pulse"
+>
+  running
+</span>
+`;

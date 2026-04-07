@@ -72,7 +72,7 @@ async def _create_platform_user(
         full_name="Platform User",
         role=role,
         is_active=True,
-        mfa_enabled=False,
+        mfa_enabled=True,
         force_mfa_setup=force_mfa_setup,
     )
     session.add(user)

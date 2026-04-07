@@ -77,7 +77,7 @@ async def test_create_list_get_journal(
         full_name="Approver User",
         role=UserRole.platform_admin,
         is_active=True,
-        mfa_enabled=False,
+        mfa_enabled=True,
     )
     async_session.add(approver)
     await async_session.flush()
