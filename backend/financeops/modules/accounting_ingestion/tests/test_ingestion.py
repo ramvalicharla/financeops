@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -13,12 +14,14 @@ from financeops.db.models.accounting_ingestion import (
 )
 from financeops.modules.accounting_ingestion.application.email_ingestion_service import (
     _is_sender_whitelisted,
+    ingest_email,
 )
 from financeops.modules.accounting_ingestion.application.ocr_pipeline_service import (
     TextractProvider,
 )
 from financeops.modules.accounting_ingestion.application.vendor_portal_service import (
     _generate_reference_id,
+    create_submission,
 )
 from financeops.modules.accounting_ingestion.domain.schemas import (
     EntityDetectionResult,
@@ -222,3 +225,132 @@ class TestEntityDetectionResult:
             reason="routing",
         )
         assert signal.confidence == 1.0
+
+
+class TestUniversalAirlockEnforcement:
+    @pytest.mark.asyncio
+    async def test_vendor_portal_submission_uses_airlock_admission_service(self) -> None:
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=SimpleNamespace(scalar_one_or_none=lambda: None))
+        fake_submission = SimpleNamespace(
+            id=uuid.uuid4(),
+            reference_id="REF1234567890123",
+            status=PortalSubmissionStatus.RECEIVED,
+        )
+        fake_item = SimpleNamespace(
+            mime_type="application/pdf",
+            size_bytes=4,
+            checksum_sha256="abc123",
+            status="ADMITTED",
+        )
+
+        with (
+            patch(
+                "financeops.modules.accounting_ingestion.application.vendor_portal_service.resolve_airlock_actor",
+                new=AsyncMock(return_value=SimpleNamespace(user_id=uuid.uuid4(), tenant_id=uuid.uuid4(), role="finance_leader")),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.vendor_portal_service.AirlockAdmissionService.submit_external_input",
+                new=AsyncMock(return_value=SimpleNamespace(item_id=uuid.uuid4())),
+            ) as submit_mock,
+            patch(
+                "financeops.modules.accounting_ingestion.application.vendor_portal_service.AirlockAdmissionService.admit_airlock_item",
+                new=AsyncMock(return_value=SimpleNamespace(item_id=uuid.uuid4(), status="ADMITTED")),
+            ) as admit_mock,
+            patch(
+                "financeops.modules.accounting_ingestion.application.vendor_portal_service.AirlockAdmissionService.get_item",
+                new=AsyncMock(return_value=fake_item),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.vendor_portal_service.AuditWriter.insert_financial_record",
+                new=AsyncMock(return_value=fake_submission),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.vendor_portal_service.get_storage",
+                return_value=MagicMock(upload_file=MagicMock()),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.ocr_task.run_ocr_pipeline_task.apply_async",
+                new=MagicMock(),
+            ),
+        ):
+            row = await create_submission(
+                db,
+                tenant_id=uuid.uuid4(),
+                submitter_email="vendor@example.com",
+                submitter_name="Vendor",
+                file_bytes=b"data",
+                filename="invoice.pdf",
+                mime_type="application/pdf",
+            )
+
+        assert submit_mock.await_count == 1
+        assert admit_mock.await_count == 1
+        assert row.reference_id == fake_submission.reference_id
+
+    @pytest.mark.asyncio
+    async def test_email_ingestion_uses_airlock_admission_service(self) -> None:
+        tenant_id = uuid.uuid4()
+        message_id = uuid.uuid4()
+        message_row = SimpleNamespace(
+            id=message_id,
+            processing_status=EmailProcessingStatus.PENDING,
+            sender_whitelisted=True,
+            attachment_count=1,
+        )
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                SimpleNamespace(scalar_one_or_none=lambda: None),
+            ]
+        )
+
+        with (
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service.resolve_airlock_actor",
+                new=AsyncMock(return_value=SimpleNamespace(user_id=uuid.uuid4(), tenant_id=tenant_id, role="finance_leader")),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service.AuditWriter.insert_financial_record",
+                new=AsyncMock(return_value=message_row),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service.AirlockAdmissionService.submit_external_input",
+                new=AsyncMock(return_value=SimpleNamespace(item_id=uuid.uuid4())),
+            ) as submit_mock,
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service.AirlockAdmissionService.admit_airlock_item",
+                new=AsyncMock(return_value=SimpleNamespace(item_id=uuid.uuid4(), status="ADMITTED")),
+            ) as admit_mock,
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service.AirlockAdmissionService.get_item",
+                new=AsyncMock(
+                    return_value=SimpleNamespace(
+                        checksum_sha256="abc123",
+                        mime_type="application/pdf",
+                    )
+                ),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service.get_storage",
+                return_value=MagicMock(upload_file=MagicMock()),
+            ),
+            patch(
+                "financeops.modules.accounting_ingestion.application.email_ingestion_service._enqueue_ocr",
+                new=MagicMock(),
+            ),
+        ):
+            row = await ingest_email(
+                db,
+                tenant_id=tenant_id,
+                message_id="mail-1",
+                sender_email="vendor@example.com",
+                sender_name="Vendor",
+                subject="Invoice",
+                attachment_bytes_list=[("invoice.pdf", b"data", "application/pdf")],
+                sender_whitelist=["vendor@example.com"],
+            )
+
+        assert submit_mock.await_count == 1
+        assert admit_mock.await_count == 1
+        assert row.id == message_id

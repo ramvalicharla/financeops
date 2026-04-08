@@ -12,6 +12,11 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.journal_pipeline import (
+    GovernedJournalMutationResult,
+    submit_governed_journal_intent,
+)
 from financeops.db.models.industry_modules import (
     FinanceModule,
     IndustryAccrualSchedule,
@@ -25,7 +30,6 @@ from financeops.db.models.industry_modules import (
     IndustryPrepaidSchedule,
     IndustryRevenueSchedule,
 )
-from financeops.modules.accounting_layer.application.journal_service import create_journal_draft
 from financeops.modules.accounting_layer.domain.schemas import JournalCreate
 from financeops.modules.coa.models import TenantCoaAccount
 from financeops.modules.industry_modules.schemas import (
@@ -359,6 +363,7 @@ async def _create_module_draft_journal(
     *,
     tenant_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    actor_role: str,
     org_entity_id: uuid.UUID,
     journal_date: date,
     reference: str,
@@ -366,7 +371,7 @@ async def _create_module_draft_journal(
     amount: Decimal,
     debit_account_code: str,
     credit_account_code: str,
-) -> uuid.UUID:
+) -> GovernedJournalMutationResult:
     if amount <= 0:
         raise ValidationError("Draft journal amount must be greater than zero.")
 
@@ -380,15 +385,19 @@ async def _create_module_draft_journal(
             {"account_code": credit_account_code, "debit": Decimal("0"), "credit": _q(amount)},
         ],
     )
-    journal = await create_journal_draft(
+    intent_payload = payload.model_dump(mode="json")
+    intent_payload["source"] = "MODULE"
+    intent_payload["external_reference_id"] = reference
+    return await submit_governed_journal_intent(
         db,
+        intent_type=IntentType.CREATE_JOURNAL,
         tenant_id=tenant_id,
-        created_by=actor_user_id,
-        payload=payload,
-        source="MODULE",
-        external_reference_id=reference,
+        user_id=actor_user_id,
+        actor_role=actor_role,
+        source_channel=IntentSourceChannel.API.value,
+        namespace=f"industry_module_create:{reference}",
+        payload=intent_payload,
     )
-    return journal.id
 
 
 async def create_lease(
@@ -396,6 +405,7 @@ async def create_lease(
     *,
     tenant_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    actor_role: str,
     payload: LeaseCreateRequest,
 ) -> LeaseCreateResponse:
     await _ensure_module_enabled(db, tenant_id=tenant_id, module_name="LEASE")
@@ -444,10 +454,11 @@ async def create_lease(
         debit_code=payload.rou_asset_account_code,
         credit_code=payload.lease_liability_account_code,
     )
-    draft_journal_id = await _create_module_draft_journal(
+    journal_mutation = await _create_module_draft_journal(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
+        actor_role=actor_role,
         org_entity_id=payload.entity_id,
         journal_date=payload.lease_start_date,
         reference=f"LEASE:{lease.id}",
@@ -456,6 +467,7 @@ async def create_lease(
         debit_account_code=accounts.debit_account_code,
         credit_account_code=accounts.credit_account_code,
     )
+    draft_journal_id = journal_mutation.require_journal_id()
     db.add(
         IndustryJournalLink(
             tenant_id=tenant_id,
@@ -478,6 +490,9 @@ async def create_lease(
     return LeaseCreateResponse(
         lease_id=lease.id,
         draft_journal_id=draft_journal_id,
+        intent_id=journal_mutation.intent_id,
+        job_id=journal_mutation.job_id,
+        record_refs=journal_mutation.record_refs,
         periods=period_count,
     )
 
@@ -524,6 +539,7 @@ async def create_revenue_contract(
     *,
     tenant_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    actor_role: str,
     payload: RevenueContractCreateRequest,
 ) -> RevenueContractCreateResponse:
     await _ensure_module_enabled(db, tenant_id=tenant_id, module_name="REVENUE")
@@ -575,10 +591,11 @@ async def create_revenue_contract(
         debit_code=payload.receivable_account_code,
         credit_code=payload.revenue_account_code,
     )
-    draft_journal_id = await _create_module_draft_journal(
+    journal_mutation = await _create_module_draft_journal(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
+        actor_role=actor_role,
         org_entity_id=payload.entity_id,
         journal_date=payload.contract_start_date,
         reference=f"REVENUE:{contract.id}",
@@ -587,6 +604,7 @@ async def create_revenue_contract(
         debit_account_code=accounts.debit_account_code,
         credit_account_code=accounts.credit_account_code,
     )
+    draft_journal_id = journal_mutation.require_journal_id()
     db.add(
         IndustryJournalLink(
             tenant_id=tenant_id,
@@ -599,6 +617,9 @@ async def create_revenue_contract(
     return RevenueContractCreateResponse(
         contract_id=contract.id,
         draft_journal_id=draft_journal_id,
+        intent_id=journal_mutation.intent_id,
+        job_id=journal_mutation.job_id,
+        record_refs=journal_mutation.record_refs,
         periods=period_count,
     )
 
@@ -648,6 +669,7 @@ async def create_fixed_asset(
     *,
     tenant_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    actor_role: str,
     payload: FixedAssetCreateRequest,
 ) -> FixedAssetCreateResponse:
     await _ensure_module_enabled(db, tenant_id=tenant_id, module_name="ASSETS")
@@ -692,10 +714,11 @@ async def create_fixed_asset(
         debit_code=payload.asset_account_code,
         credit_code=payload.payable_account_code,
     )
-    draft_journal_id = await _create_module_draft_journal(
+    journal_mutation = await _create_module_draft_journal(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
+        actor_role=actor_role,
         org_entity_id=payload.entity_id,
         journal_date=date.today(),
         reference=f"ASSET:{asset.id}",
@@ -704,6 +727,7 @@ async def create_fixed_asset(
         debit_account_code=accounts.debit_account_code,
         credit_account_code=accounts.credit_account_code,
     )
+    draft_journal_id = journal_mutation.require_journal_id()
     db.add(
         IndustryJournalLink(
             tenant_id=tenant_id,
@@ -716,6 +740,9 @@ async def create_fixed_asset(
     return FixedAssetCreateResponse(
         asset_id=asset.id,
         draft_journal_id=draft_journal_id,
+        intent_id=journal_mutation.intent_id,
+        job_id=journal_mutation.job_id,
+        record_refs=journal_mutation.record_refs,
         periods=period_count,
     )
 
@@ -758,6 +785,7 @@ async def create_prepaid_schedule(
     *,
     tenant_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    actor_role: str,
     payload: PrepaidCreateRequest,
 ) -> ScheduleBatchCreateResponse:
     await _ensure_module_enabled(db, tenant_id=tenant_id, module_name="PREPAID")
@@ -793,10 +821,11 @@ async def create_prepaid_schedule(
         debit_code=payload.prepaid_account_code,
         credit_code=payload.cash_account_code,
     )
-    draft_journal_id = await _create_module_draft_journal(
+    journal_mutation = await _create_module_draft_journal(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
+        actor_role=actor_role,
         org_entity_id=payload.entity_id,
         journal_date=payload.start_date,
         reference=f"PREPAID:{batch_id}",
@@ -805,6 +834,7 @@ async def create_prepaid_schedule(
         debit_account_code=accounts.debit_account_code,
         credit_account_code=accounts.credit_account_code,
     )
+    draft_journal_id = journal_mutation.require_journal_id()
     db.add(
         IndustryJournalLink(
             tenant_id=tenant_id,
@@ -817,6 +847,9 @@ async def create_prepaid_schedule(
     return ScheduleBatchCreateResponse(
         schedule_batch_id=batch_id,
         draft_journal_id=draft_journal_id,
+        intent_id=journal_mutation.intent_id,
+        job_id=journal_mutation.job_id,
+        record_refs=journal_mutation.record_refs,
         periods=period_count,
     )
 
@@ -826,6 +859,7 @@ async def create_accrual_schedule(
     *,
     tenant_id: uuid.UUID,
     actor_user_id: uuid.UUID,
+    actor_role: str,
     payload: AccrualCreateRequest,
 ) -> ScheduleBatchCreateResponse:
     await _ensure_module_enabled(db, tenant_id=tenant_id, module_name="ACCRUAL")
@@ -861,10 +895,11 @@ async def create_accrual_schedule(
         debit_code=payload.expense_account_code,
         credit_code=payload.accrued_liability_account_code,
     )
-    draft_journal_id = await _create_module_draft_journal(
+    journal_mutation = await _create_module_draft_journal(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
+        actor_role=actor_role,
         org_entity_id=payload.entity_id,
         journal_date=payload.start_date,
         reference=f"ACCRUAL:{batch_id}",
@@ -873,6 +908,7 @@ async def create_accrual_schedule(
         debit_account_code=accounts.debit_account_code,
         credit_account_code=accounts.credit_account_code,
     )
+    draft_journal_id = journal_mutation.require_journal_id()
     db.add(
         IndustryJournalLink(
             tenant_id=tenant_id,
@@ -885,5 +921,8 @@ async def create_accrual_schedule(
     return ScheduleBatchCreateResponse(
         schedule_batch_id=batch_id,
         draft_journal_id=draft_journal_id,
+        intent_id=journal_mutation.intent_id,
+        job_id=journal_mutation.job_id,
+        record_refs=journal_mutation.record_refs,
         periods=period_count,
     )

@@ -110,6 +110,18 @@ class AccountingJVAggregate(FinancialBase):
         ForeignKey("iam_users.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_intents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     resubmission_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     voided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     void_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -192,6 +204,18 @@ class AccountingJVLine(FinancialBase):
     narration: Mapped[str | None] = mapped_column(Text, nullable=True)
     tax_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_tax_line: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_intents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
 
 class AccountingJVStateEvent(FinancialBase):
@@ -213,6 +237,18 @@ class AccountingJVStateEvent(FinancialBase):
     )
     actor_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_intents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     occurred_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

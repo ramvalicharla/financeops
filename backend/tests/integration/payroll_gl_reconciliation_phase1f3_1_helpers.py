@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
 import sys
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -16,7 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
+from financeops.core.intent.context import MutationContext, governed_mutation_context
+from financeops.core.intent.enums import JobRunnerType, JobStatus, IntentStatus
 from financeops.core.security import hash_password
+from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalJob
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
@@ -59,8 +64,10 @@ from financeops.modules.payroll_gl_reconciliation.infrastructure.repository impo
     PayrollGlReconciliationRepository,
 )
 from financeops.platform.db.models.modules import CpModuleRegistry
+from financeops.platform.db.models.organisations import CpOrganisation
 from financeops.platform.db.models.permissions import CpPermission
 from financeops.platform.db.models.tenants import CpTenant
+from financeops.platform.db.models.entities import CpEntity
 from financeops.platform.services.isolation.routing_service import create_isolation_route
 from financeops.platform.services.quotas.policy_service import assign_quota_to_tenant
 from financeops.platform.services.rbac.permission_service import (
@@ -201,7 +208,7 @@ def build_payroll_gl_reconciliation_service(
 
 
 def build_normalization_service(session: AsyncSession) -> NormalizationRunService:
-    return NormalizationRunService(
+    service = NormalizationRunService(
         repository=PayrollGlNormalizationRepository(session),
         source_detection_service=SourceDetectionService(),
         mapping_service=NormalizationMappingService(),
@@ -209,6 +216,70 @@ def build_normalization_service(session: AsyncSession) -> NormalizationRunServic
         gl_normalization_service=GlNormalizationService(),
         validation_service=NormalizationValidationService(),
     )
+    raw_upload_run = service.upload_run
+
+    async def governed_upload_run(**kwargs):
+        created_by = uuid.UUID(str(kwargs["created_by"]))
+        user = (
+            await session.execute(select(IamUser).where(IamUser.id == created_by))
+        ).scalar_one_or_none()
+        if user is None:
+            user = await seed_identity_user(
+                session,
+                tenant_id=kwargs["tenant_id"],
+                user_id=created_by,
+                email=f"{created_by.hex[:12]}@example.com",
+            )
+        admitted_airlock_item_id = kwargs.get("admitted_airlock_item_id")
+        if admitted_airlock_item_id is None:
+            import base64
+
+            actor = AirlockActor(user_id=user.id, tenant_id=kwargs["tenant_id"], role=user.role.value)
+            airlock_service = AirlockAdmissionService()
+            submitted = await airlock_service.submit_external_input(
+                session,
+                source_type=str(kwargs.get("source_type") or "normalization_upload"),
+                actor=actor,
+                metadata={
+                    "source_id": str(kwargs["source_id"]),
+                    "source_version_id": str(kwargs["source_version_id"]),
+                    "run_type": str(kwargs["run_type"]),
+                    "reporting_period": str(kwargs["reporting_period"]),
+                },
+                content=base64.b64decode(str(kwargs["file_content_base64"])),
+                file_name=str(kwargs["file_name"]),
+                source_reference=str(kwargs.get("source_external_ref") or kwargs["source_id"]),
+                idempotency_key=hashlib.sha256(
+                    (
+                        f"{kwargs['tenant_id']}:{kwargs['source_id']}:{kwargs['source_version_id']}:"
+                        f"{kwargs['reporting_period']}:{kwargs['file_name']}"
+                    ).encode("utf-8")
+                ).hexdigest(),
+            )
+            admitted = await airlock_service.admit_airlock_item(
+                session,
+                item_id=submitted.item_id,
+                actor=actor,
+            )
+            admitted_airlock_item_id = admitted.item_id
+        kwargs.setdefault("source_type", "normalization_upload")
+        kwargs.setdefault("source_external_ref", str(kwargs["source_id"]))
+        kwargs["admitted_airlock_item_id"] = admitted_airlock_item_id
+        mutation_context = await _create_test_mutation_context(
+            session,
+            tenant_id=kwargs["tenant_id"],
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            module_key="normalization",
+            intent_type="TEST_NORMALIZATION_UPLOAD",
+        )
+        with governed_mutation_context(
+            mutation_context
+        ):
+            return await raw_upload_run(**kwargs)
+
+    service.upload_run = governed_upload_run  # type: ignore[method-assign]
+    return service
 
 
 async def ensure_tenant_context(session: AsyncSession, tenant_id: uuid.UUID) -> None:
@@ -258,6 +329,127 @@ async def seed_identity_user(
     session.add(user)
     await session.flush()
     return user
+
+
+async def _ensure_intent_scope(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+) -> tuple[CpOrganisation, CpEntity]:
+    organisation = (
+        await session.execute(
+            select(CpOrganisation).where(CpOrganisation.tenant_id == tenant_id)
+        )
+    ).scalars().first()
+    if organisation is None:
+        organisation = await AuditWriter.insert_financial_record(
+            session,
+            model_class=CpOrganisation,
+            tenant_id=tenant_id,
+            record_data={"organisation_code": f"ORG-{str(tenant_id)[:8]}"},
+            values={
+                "organisation_code": f"ORG-{str(tenant_id)[:8]}",
+                "organisation_name": "Payroll GL Recon Test Org",
+                "parent_organisation_id": None,
+                "supersedes_id": None,
+                "is_active": True,
+                "correlation_id": "paygl-recon-phase2-1-test",
+            },
+            audit=AuditEvent(
+                tenant_id=tenant_id,
+                user_id=actor_user_id,
+                action="platform.test.cp_org.seed",
+                resource_type="cp_organisation",
+            ),
+        )
+    entity = (
+        await session.execute(
+            select(CpEntity).where(CpEntity.tenant_id == tenant_id)
+        )
+    ).scalars().first()
+    if entity is None:
+        entity = await AuditWriter.insert_financial_record(
+            session,
+            model_class=CpEntity,
+            tenant_id=tenant_id,
+            record_data={"entity_code": f"ENT-{str(tenant_id)[:8]}"},
+            values={
+                "entity_code": f"ENT-{str(tenant_id)[:8]}",
+                "entity_name": "Payroll GL Recon Test Entity",
+                "organisation_id": organisation.id,
+                "group_id": None,
+                "base_currency": "USD",
+                "country_code": "US",
+                "status": "active",
+                "correlation_id": "paygl-recon-phase2-1-test",
+            },
+            audit=AuditEvent(
+                tenant_id=tenant_id,
+                user_id=actor_user_id,
+                action="platform.test.cp_entity.seed",
+                resource_type="cp_entity",
+            ),
+        )
+    return organisation, entity
+
+
+async def _create_test_mutation_context(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    actor_user_id: uuid.UUID,
+    actor_role: str,
+    module_key: str,
+    intent_type: str,
+) -> MutationContext:
+    organisation, entity = await _ensure_intent_scope(
+        session,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+    )
+    now = datetime.now(timezone.utc)
+    intent = CanonicalIntent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        org_id=organisation.id,
+        entity_id=entity.id,
+        intent_type=intent_type,
+        module_key=module_key,
+        target_type="test_request",
+        target_id=None,
+        status=IntentStatus.APPROVED.value,
+        requested_by_user_id=actor_user_id,
+        requested_by_role=actor_role,
+        requested_at=now,
+        approved_at=now,
+        payload_json={},
+        idempotency_key=uuid.uuid4().hex,
+        source_channel="test",
+    )
+    session.add(intent)
+    await session.flush()
+    job = CanonicalJob(
+        id=uuid.uuid4(),
+        intent_id=intent.id,
+        job_type=intent_type,
+        status=JobStatus.RUNNING.value,
+        runner_type=JobRunnerType.INLINE.value,
+        queue_name="test-governed-mutations",
+        idempotency_key=intent.idempotency_key,
+        requested_at=now,
+        retry_count=0,
+        max_retries=0,
+    )
+    session.add(job)
+    await session.flush()
+    return MutationContext(
+        intent_id=intent.id,
+        job_id=job.id,
+        actor_user_id=actor_user_id,
+        actor_role=actor_role,
+        intent_type=intent_type,
+    )
 
 
 async def seed_control_plane_for_payroll_gl_reconciliation(

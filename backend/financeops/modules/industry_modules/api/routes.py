@@ -128,6 +128,7 @@ async def create_lease_endpoint(
         db,
         tenant_id=user.tenant_id,
         actor_user_id=user.id,
+        actor_role=user.role.value,
         payload=body,
     )
     await db.commit()
@@ -165,6 +166,7 @@ async def create_revenue_contract_endpoint(
         db,
         tenant_id=user.tenant_id,
         actor_user_id=user.id,
+        actor_role=user.role.value,
         payload=body,
     )
     await db.commit()
@@ -202,6 +204,7 @@ async def create_asset_endpoint(
         db,
         tenant_id=user.tenant_id,
         actor_user_id=user.id,
+        actor_role=user.role.value,
         payload=body,
     )
     await db.commit()
@@ -239,6 +242,7 @@ async def create_prepaid_endpoint(
         db,
         tenant_id=user.tenant_id,
         actor_user_id=user.id,
+        actor_role=user.role.value,
         payload=body,
     )
     await db.commit()
@@ -257,8 +261,8 @@ async def create_accrual_endpoint(
         db,
         tenant_id=user.tenant_id,
         actor_user_id=user.id,
+        actor_role=user.role.value,
         payload=body,
     )
     await db.commit()
     return ok(payload.model_dump(mode="json"), request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
-

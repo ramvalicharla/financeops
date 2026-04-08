@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.accounting_jv import (
     AccountingJVAggregate,
     AccountingJVLine,
@@ -85,6 +86,7 @@ async def create_journal_draft(
     source: str = "MANUAL",
     external_reference_id: str | None = None,
 ) -> JournalResponse:
+    require_mutation_context("Journal draft creation")
     entity = await _get_entity_for_tenant(
         db,
         tenant_id=tenant_id,
@@ -181,6 +183,7 @@ async def approve_journal(
     acted_by: uuid.UUID,
     actor_role: str | None = None,
 ) -> JournalActionResponse:
+    require_mutation_context("Journal approval")
     jv = await _get_journal_aggregate(
         db,
         tenant_id=tenant_id,
@@ -256,6 +259,7 @@ async def submit_journal(
     acted_by: uuid.UUID,
     actor_role: str | None = None,
 ) -> JournalActionResponse:
+    require_mutation_context("Journal submission")
     jv = await _get_journal_aggregate(
         db,
         tenant_id=tenant_id,
@@ -312,6 +316,7 @@ async def review_journal(
     acted_by: uuid.UUID,
     actor_role: str | None = None,
 ) -> JournalActionResponse:
+    require_mutation_context("Journal review")
     jv = await _get_journal_aggregate(
         db,
         tenant_id=tenant_id,
@@ -369,6 +374,7 @@ async def post_journal(
     acted_by: uuid.UUID,
     actor_role: str | None = None,
 ) -> JournalActionResponse:
+    require_mutation_context("Journal posting")
     jv = await _get_journal_aggregate(
         db,
         tenant_id=tenant_id,
@@ -462,6 +468,7 @@ async def reverse_journal(
     acted_by: uuid.UUID,
     actor_role: str | None = None,
 ) -> JournalResponse:
+    require_mutation_context("Journal reversal")
     original = await _get_journal_aggregate(
         db,
         tenant_id=tenant_id,
@@ -908,6 +915,7 @@ async def _append_state_event(
     actor_role: str,
     comment: str | None,
 ) -> None:
+    mutation_context = require_mutation_context("Journal state event append")
     previous_stmt = (
         select(AccountingJVStateEvent)
         .where(AccountingJVStateEvent.jv_id == jv.id)
@@ -933,6 +941,8 @@ async def _append_state_event(
         triggered_by=triggered_by,
         actor_role=actor_role,
         comment=comment,
+        created_by_intent_id=mutation_context.intent_id,
+        recorded_by_job_id=mutation_context.job_id,
         occurred_at=occurred_at,
     )
     db.add(event)
@@ -946,6 +956,7 @@ async def _append_gl_entries(
     created_by: uuid.UUID,
     journal_date: date,
 ) -> None:
+    mutation_context = require_mutation_context("GL append")
     lines = _active_journal_lines(jv)
     total_debit = sum(
         (line.base_amount if line.base_amount is not None else line.amount)
@@ -989,6 +1000,8 @@ async def _append_gl_entries(
             source_ref=jv.jv_number,
             currency=line.functional_currency or jv.currency,
             uploaded_by=created_by,
+            created_by_intent_id=mutation_context.intent_id,
+            recorded_by_job_id=mutation_context.job_id,
         )
         db.add(row)
         previous_hash = chain_hash

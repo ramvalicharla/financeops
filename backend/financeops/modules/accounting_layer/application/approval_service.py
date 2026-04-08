@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.accounting_approvals import (
     AccountingJVApproval,
     ApprovalDecision,
@@ -113,6 +114,7 @@ async def submit_approval(
     delegated_from: uuid.UUID | None = None,
     idempotency_key: str | None = None,
 ) -> AccountingJVApproval:
+    mutation_context = require_mutation_context("Journal approval decision")
     decision_upper = decision.upper()
     if decision_upper not in (ApprovalDecision.APPROVED, ApprovalDecision.REJECTED):
         raise ValidationError(f"Invalid decision '{decision}'. Must be APPROVED or REJECTED.")
@@ -183,6 +185,8 @@ async def submit_approval(
         decision_reason=decision_reason,
         approval_level=actor_level,
         amount_threshold=jv.total_debit,
+        created_by_intent_id=mutation_context.intent_id,
+        recorded_by_job_id=mutation_context.job_id,
         idempotency_key=idem_key,
         request_fingerprint=fingerprint,
         acted_at=_utcnow(),

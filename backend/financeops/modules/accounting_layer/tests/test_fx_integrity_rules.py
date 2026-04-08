@@ -5,10 +5,13 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
-from financeops.db.models.accounting_jv import EntryType, JVStatus
+from financeops.core.intent.context import MutationContext, governed_mutation_context
+from financeops.db.models.accounting_jv import EntryType
+from financeops.db.models.users import UserRole
 from financeops.modules.accounting_layer.application import revaluation_service
 from financeops.modules.accounting_layer.application.journal_service import _append_gl_entries
 from financeops.services.consolidation import group_consolidation_service
@@ -66,13 +69,22 @@ async def test_gl_entries_stored_in_functional_currency_only() -> None:
     )
     entity = SimpleNamespace(id=entity_id, entity_name="Entity A", base_currency="INR")
 
-    await _append_gl_entries(
-        db,
-        jv=jv,
-        entity=entity,
-        created_by=uuid.uuid4(),
-        journal_date=date(2026, 4, 1),
-    )
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=uuid.uuid4(),
+            actor_role=UserRole.finance_leader.value,
+            intent_type="POST_JOURNAL",
+        )
+    ):
+        await _append_gl_entries(
+            db,
+            jv=jv,
+            entity=entity,
+            created_by=uuid.uuid4(),
+            journal_date=date(2026, 4, 1),
+        )
 
     assert len(db.rows) == 2
     assert all(row.currency == "INR" for row in db.rows)
@@ -110,13 +122,19 @@ async def test_revaluation_posts_fx_gain_to_pnl_account(monkeypatch: pytest.Monk
     async def _fake_get_latest_rate(*args: Any, **kwargs: Any) -> Any:
         return SimpleNamespace(rate=Decimal("82"))
 
-    async def _fake_create_jv(*args: Any, **kwargs: Any) -> Any:
+    async def _fake_adjustment_pipeline(*args: Any, **kwargs: Any) -> Any:
         nonlocal captured_lines
         captured_lines = kwargs["lines"]
-        return SimpleNamespace(id=uuid.uuid4(), status=JVStatus.DRAFT)
-
-    async def _fake_noop(*args: Any, **kwargs: Any) -> Any:
-        return None
+        return (
+            uuid.uuid4(),
+            {
+                "create": {"intent_id": str(uuid.uuid4()), "job_id": str(uuid.uuid4())},
+                "submit": {"intent_id": str(uuid.uuid4()), "job_id": str(uuid.uuid4())},
+                "review": {"intent_id": str(uuid.uuid4()), "job_id": str(uuid.uuid4())},
+                "approve": {"intent_id": str(uuid.uuid4()), "job_id": str(uuid.uuid4())},
+                "post": {"intent_id": str(uuid.uuid4()), "job_id": str(uuid.uuid4())},
+            },
+        )
 
     async def _fake_audit_insert(*args: Any, **kwargs: Any) -> Any:
         model_class = kwargs.get("model_class")
@@ -127,9 +145,29 @@ async def test_revaluation_posts_fx_gain_to_pnl_account(monkeypatch: pytest.Monk
     monkeypatch.setattr(revaluation_service, "_get_entity_for_tenant", _fake_get_entity_for_tenant)
     monkeypatch.setattr(revaluation_service, "_load_monetary_exposures", _fake_load_exposures)
     monkeypatch.setattr(revaluation_service, "get_required_latest_fx_rate", _fake_get_latest_rate)
-    monkeypatch.setattr(revaluation_service, "create_jv", _fake_create_jv)
-    monkeypatch.setattr(revaluation_service, "approve_journal", _fake_noop)
-    monkeypatch.setattr(revaluation_service, "post_journal", _fake_noop)
+    monkeypatch.setattr(
+        revaluation_service,
+        "GuardEngine",
+        lambda: SimpleNamespace(
+            evaluate_mutation=AsyncMock(return_value=SimpleNamespace(overall_passed=True, blocking_failures=[]))
+        ),
+    )
+    monkeypatch.setattr(
+        revaluation_service,
+        "ApprovalPolicyResolver",
+        lambda: SimpleNamespace(
+            resolve_mutation=AsyncMock(
+                return_value=SimpleNamespace(
+                    approval_required=True,
+                    is_granted=True,
+                    required_role=UserRole.finance_leader.value,
+                    reason="approved",
+                )
+            )
+        ),
+    )
+    monkeypatch.setattr(revaluation_service, "emit_governance_event", AsyncMock(return_value=None))
+    monkeypatch.setattr(revaluation_service, "_run_adjustment_journal_pipeline", _fake_adjustment_pipeline)
     monkeypatch.setattr(
         revaluation_service.AuditWriter,
         "insert_financial_record",
@@ -142,9 +180,11 @@ async def test_revaluation_posts_fx_gain_to_pnl_account(monkeypatch: pytest.Monk
         entity_id=entity_id,
         as_of_date=date(2026, 4, 1),
         initiated_by=user_id,
+        actor_role=UserRole.finance_leader.value,
     )
 
     assert result["status"] == "COMPLETED"
+    assert result["adjustment_pipeline"] is not None
     # (82 - 80) * 100
     assert result["total_fx_difference"] == "200.0000"
 
@@ -159,6 +199,86 @@ async def test_revaluation_posts_fx_gain_to_pnl_account(monkeypatch: pytest.Monk
     # Gain goes to P&L as credit in this scenario.
     assert fx_gain_loss_line["entry_type"] == EntryType.CREDIT
     assert fx_gain_loss_line["amount"] == Decimal("200.0000")
+
+
+@pytest.mark.asyncio
+async def test_revaluation_adjustment_pipeline_uses_governed_intents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tenant_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+    initiated_by = uuid.uuid4()
+    approver_id = uuid.uuid4()
+    journal_id = uuid.uuid4()
+    calls: list[dict[str, Any]] = []
+
+    async def _fake_submit(*args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs)
+        current_journal_id = journal_id
+        return SimpleNamespace(
+            intent_id=uuid.uuid4(),
+            status="RECORDED",
+            job_id=uuid.uuid4(),
+            next_action="NONE",
+            record_refs={"journal_id": str(current_journal_id), "status": "DRAFT"},
+            require_journal_id=lambda: current_journal_id,
+            model_dump=lambda: {
+                "intent_id": str(uuid.uuid4()),
+                "status": "RECORDED",
+                "job_id": str(uuid.uuid4()),
+                "next_action": "NONE",
+                "record_refs": {"journal_id": str(current_journal_id), "status": "DRAFT"},
+                "journal_id": str(current_journal_id),
+            },
+        )
+
+    monkeypatch.setattr(revaluation_service, "submit_governed_journal_intent", _fake_submit)
+    monkeypatch.setattr(
+        revaluation_service,
+        "_resolve_distinct_approver",
+        AsyncMock(return_value=SimpleNamespace(id=approver_id, role=UserRole.finance_leader)),
+    )
+
+    resolved_journal_id, pipeline = await revaluation_service._run_adjustment_journal_pipeline(
+        _FakeAsyncSession(),
+        tenant_id=tenant_id,
+        entity_id=entity_id,
+        as_of_date=date(2026, 4, 1),
+        initiated_by=initiated_by,
+        actor_role=UserRole.finance_leader.value,
+        lines=[
+            {
+                "account_code": "1100",
+                "entry_type": EntryType.DEBIT,
+                "amount": Decimal("200.0000"),
+                "transaction_currency": "INR",
+                "functional_currency": "INR",
+                "base_amount": Decimal("200.0000"),
+                "narration": "FX revaluation",
+            },
+            {
+                "account_code": "FX_GAIN_LOSS",
+                "entry_type": EntryType.CREDIT,
+                "amount": Decimal("200.0000"),
+                "transaction_currency": "INR",
+                "functional_currency": "INR",
+                "base_amount": Decimal("200.0000"),
+                "narration": "FX revaluation offset",
+            },
+        ],
+    )
+
+    assert resolved_journal_id == journal_id
+    assert [call["intent_type"].value for call in calls] == [
+        "CREATE_JOURNAL",
+        "SUBMIT_JOURNAL",
+        "REVIEW_JOURNAL",
+        "APPROVE_JOURNAL",
+        "POST_JOURNAL",
+    ]
+    assert calls[0]["user_id"] == initiated_by
+    assert calls[3]["user_id"] == approver_id
+    assert pipeline["post"]["journal_id"] == str(journal_id)
 
 
 @pytest.mark.asyncio

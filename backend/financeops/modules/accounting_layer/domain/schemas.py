@@ -239,6 +239,14 @@ class JournalActionResponse(BaseModel):
     posted_at: datetime | None
 
 
+class GovernedMutationResponse(BaseModel):
+    intent_id: uuid.UUID
+    status: str
+    job_id: uuid.UUID | None
+    next_action: str
+    record_refs: dict[str, Any] | None = None
+
+
 class TrialBalanceAccountRow(BaseModel):
     account_code: str
     account_name: str
@@ -337,6 +345,7 @@ class RevaluationRunResponse(BaseModel):
     functional_currency: str
     status: str
     adjustment_jv_id: str | None
+    adjustment_pipeline: dict[str, Any] | None = None
     line_count: int
     total_fx_difference: str
 

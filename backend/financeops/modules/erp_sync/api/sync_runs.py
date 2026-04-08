@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_team
 from financeops.config import limiter, settings
+from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.service import IntentActor, IntentService
 from financeops.db.models.erp_sync import (
     ExternalSyncDriftReport,
     ExternalSyncError,
@@ -26,8 +29,6 @@ from financeops.modules.erp_sync.application.sync_service import SyncService
 from financeops.modules.erp_sync.domain.enums import DatasetType
 from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.modules.auto_trigger.pipeline import trigger_post_sync_pipeline
-from financeops.security.antivirus import AntivirusUnavailableError, scan_file
-from financeops.security.file_validation import FileValidationError, validate_file
 from financeops.shared_kernel.idempotency import optional_idempotency_key, require_erp_sync_idempotency_key
 from financeops.shared_kernel.response import ok
 from financeops.observability.workflow_signals import (
@@ -62,53 +63,66 @@ async def create_sync_run(
     try:
         if body.get("file_content_base64"):
             content_bytes = base64.b64decode(str(body["file_content_base64"]))
-            try:
-                validate_file(filename=filename, content=content_bytes)
-                scan_result = await scan_file(content=content_bytes, filename=filename)
-            except FileValidationError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"file_validation_failed:{exc.reason}",
-                ) from exc
-            except AntivirusUnavailableError as exc:
-                raise HTTPException(
-                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail="antivirus_unavailable",
-                ) from exc
-            if not scan_result.clean:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"malware_detected:{scan_result.threat_name or 'unknown'}",
-                )
-
-        sync_service = SyncService(session)
-        result = await sync_service.trigger_sync_run(
-            tenant_id=user.tenant_id,
-            organisation_id=uuid.UUID(str(body.get("organisation_id", user.tenant_id))),
-            entity_id=uuid.UUID(str(body["entity_id"])) if body.get("entity_id") else None,
-            connection_id=uuid.UUID(str(body["connection_id"])),
-            sync_definition_id=uuid.UUID(str(body["sync_definition_id"])),
-            sync_definition_version_id=uuid.UUID(str(body["sync_definition_version_id"])),
-            dataset_type=DatasetType(str(body["dataset_type"])),
-            idempotency_key=idempotency_key,
-            created_by=user.id,
-            extraction_kwargs={
-                "content": content_bytes,
-                "filename": filename,
-                "checkpoint": body.get("checkpoint"),
+        airlock_service = AirlockAdmissionService()
+        airlock_result = await airlock_service.submit_external_input(
+            session,
+            source_type="erp_sync_upload" if content_bytes else "erp_sync_request",
+            actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+            metadata={
+                "connection_id": str(body["connection_id"]),
+                "sync_definition_id": str(body["sync_definition_id"]),
+                "sync_definition_version_id": str(body["sync_definition_version_id"]),
+                "dataset_type": str(body["dataset_type"]),
             },
+            content=content_bytes or None,
+            file_name=filename if content_bytes else None,
+            entity_id=uuid.UUID(str(body["entity_id"])) if body.get("entity_id") else None,
+            source_reference=str(body.get("connection_id") or ""),
+            idempotency_key=idempotency_key,
+        )
+        airlock_result = await airlock_service.admit_airlock_item(
+            session,
+            item_id=airlock_result.item_id,
+            actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+        )
+
+        result = await IntentService(session).submit_intent(
+            intent_type=IntentType.CREATE_ERP_SYNC_RUN,
+            actor=IntentActor(
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                role=user.role.value,
+                source_channel=IntentSourceChannel.API.value,
+                request_id=str(getattr(request.state, "request_id", "") or "") or None,
+                correlation_id=str(getattr(request.state, "correlation_id", "") or "") or None,
+            ),
+            payload={
+                "organisation_id": str(body.get("organisation_id", user.tenant_id)),
+                "entity_id": str(body["entity_id"]) if body.get("entity_id") else None,
+                "connection_id": str(body["connection_id"]),
+                "sync_definition_id": str(body["sync_definition_id"]),
+                "sync_definition_version_id": str(body["sync_definition_version_id"]),
+                "dataset_type": str(body["dataset_type"]),
+                "checkpoint": body.get("checkpoint"),
+                "file_name": filename,
+                "file_content_base64": str(body.get("file_content_base64") or ""),
+                "admitted_airlock_item_id": str(airlock_result.item_id),
+                "source_type": "erp_sync_upload" if content_bytes else "erp_sync_request",
+                "source_external_ref": str(body.get("connection_id") or ""),
+            },
+            idempotency_key=idempotency_key,
         )
         await session.flush()
-        if str(result.get("sync_run_status", "")).lower() == "completed":
+        if str((result.record_refs or {}).get("sync_run_status", "")).lower() == "completed":
             try:
                 trigger_post_sync_pipeline.delay(
                     tenant_id=str(user.tenant_id),
-                    sync_run_id=str(result["sync_run_id"]),
+                    sync_run_id=str((result.record_refs or {})["sync_run_id"]),
                 )
             except Exception as exc:
                 log.warning(
                     "Auto-trigger enqueue failed for sync_run_id=%s tenant_id=%s: %s",
-                    result.get("sync_run_id"),
+                    (result.record_refs or {}).get("sync_run_id"),
                     user.tenant_id,
                     exc,
                 )
@@ -130,9 +144,17 @@ async def create_sync_run(
         complete_workflow(
             workflow_timer,
             status="success",
-            extra={"run_id": str(result.get("sync_run_id") or "")},
+            extra={"run_id": str((result.record_refs or {}).get("sync_run_id") or "")},
         )
-        return ok(result, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+        response_payload = {
+            "intent_id": str(result.intent_id),
+            "status": result.status,
+            "job_id": str(result.job_id) if result.job_id else None,
+            "next_action": result.next_action,
+            "record_refs": result.record_refs or {},
+            "airlock_item_id": str(airlock_result.item_id),
+        }
+        return ok(response_payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
     except Exception as exc:
         duration_ms = (time.perf_counter() - started) * 1000
         observe_erp_sync(

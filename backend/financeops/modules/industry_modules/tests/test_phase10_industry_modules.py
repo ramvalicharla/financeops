@@ -1,17 +1,25 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from financeops.core.exceptions import ValidationError
+from financeops.db.models.users import UserRole
 from financeops.modules.industry_modules.application.service import (
+    _AccountPair,
     build_asset_projection,
     build_lease_projection,
+    create_lease,
     split_evenly,
     _months_between_inclusive,
 )
+from financeops.modules.industry_modules.application import service as industry_service_module
+from financeops.modules.industry_modules.schemas import LeaseCreateRequest
 
 
 class TestScheduleMath:
@@ -84,3 +92,62 @@ class TestScheduleMath:
                 depreciation_method="XYZ",
             )
 
+
+class _Session:
+    def __init__(self) -> None:
+        self.rows: list[object] = []
+
+    def add(self, row: object) -> None:
+        self.rows.append(row)
+
+    async def flush(self) -> None:
+        for row in self.rows:
+            if hasattr(row, "id") and getattr(row, "id", None) is None:
+                setattr(row, "id", uuid.uuid4())
+
+
+@pytest.mark.asyncio
+async def test_create_lease_uses_governed_journal_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = _Session()
+    journal_id = uuid.uuid4()
+    intent_id = uuid.uuid4()
+    job_id = uuid.uuid4()
+
+    monkeypatch.setattr(industry_service_module, "_ensure_module_enabled", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        industry_service_module,
+        "_resolve_account_pair",
+        AsyncMock(return_value=_AccountPair("1600", "2100")),
+    )
+    governed_mock = AsyncMock(
+        return_value=SimpleNamespace(
+            intent_id=intent_id,
+            job_id=job_id,
+            record_refs={"journal_id": str(journal_id), "status": "DRAFT"},
+            require_journal_id=lambda: journal_id,
+        )
+    )
+    monkeypatch.setattr(industry_service_module, "submit_governed_journal_intent", governed_mock)
+
+    payload = await create_lease(
+        session,
+        tenant_id=uuid.uuid4(),
+        actor_user_id=uuid.uuid4(),
+        actor_role=UserRole.finance_leader.value,
+        payload=LeaseCreateRequest(
+            entity_id=uuid.uuid4(),
+            lease_start_date=date(2026, 4, 1),
+            lease_end_date=date(2026, 6, 1),
+            lease_payment=Decimal("1000"),
+            discount_rate=Decimal("0.12"),
+            lease_type="OFFICE",
+        ),
+    )
+
+    assert payload.draft_journal_id == journal_id
+    assert payload.intent_id == intent_id
+    assert payload.job_id == job_id
+    kwargs = governed_mock.await_args.kwargs
+    assert kwargs["intent_type"].value == "CREATE_JOURNAL"
+    assert kwargs["payload"]["source"] == "MODULE"
+    assert kwargs["payload"]["external_reference_id"].startswith("LEASE:")

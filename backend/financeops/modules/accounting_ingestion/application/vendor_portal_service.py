@@ -8,17 +8,20 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ValidationError
+from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.db.models.accounting_ingestion import (
     PortalSubmissionStatus,
     VendorPortalSubmission,
 )
 from financeops.db.models.accounting_vendor import AccountingVendor
+from financeops.modules.accounting_ingestion.application.airlock_actor import (
+    resolve_airlock_actor,
+)
 from financeops.services.audit_writer import AuditWriter
 from financeops.storage.provider import get_storage
 
 logger = logging.getLogger(__name__)
-
-_AIRLOCK_ACCEPTED_STATUS = {"APPROVED", "SCAN_SKIPPED", "CLEAN"}
 
 
 def _generate_reference_id() -> str:
@@ -57,31 +60,46 @@ async def create_submission(
     mime_type: str,
     entity_id: uuid.UUID | None = None,
 ) -> VendorPortalSubmission:
-    from financeops.storage.airlock import scan_and_seal
-
     normalized_email = submitter_email.lower().strip()
     email_verified, vendor_id = await _verify_vendor_email(
         db,
         tenant_id=tenant_id,
         submitter_email=normalized_email,
     )
-
-    airlock_result = await scan_and_seal(
-        file_bytes=file_bytes,
-        filename=filename,
-        tenant_id=str(tenant_id),
-    )
-    scan_status = airlock_result.status
-    accepted_by_airlock = scan_status in _AIRLOCK_ACCEPTED_STATUS
+    airlock_service = AirlockAdmissionService()
+    airlock_actor = await resolve_airlock_actor(db, tenant_id=tenant_id)
+    accepted_by_airlock = False
+    scan_status = "REJECTED"
+    rejection_reason: str | None = None
+    airlock_item = None
+    try:
+        submitted = await airlock_service.submit_external_input(
+            db,
+            source_type="vendor_portal_upload",
+            actor=airlock_actor,
+            metadata={"submitter_email": normalized_email, "vendor_id": str(vendor_id) if vendor_id else None},
+            content=file_bytes,
+            file_name=filename,
+            entity_id=entity_id,
+            source_reference=normalized_email,
+            idempotency_key=f"{tenant_id}:{normalized_email}:{filename}",
+        )
+        await airlock_service.admit_airlock_item(db, item_id=submitted.item_id, actor=airlock_actor)
+        airlock_item = await airlock_service.get_item(db, tenant_id=tenant_id, item_id=submitted.item_id)
+        scan_status = airlock_item.status
+        accepted_by_airlock = airlock_item.status == "ADMITTED"
+    except ValidationError as exc:
+        rejection_reason = str(exc)
 
     r2_key: str | None = None
     if accepted_by_airlock:
-        r2_key = f"vendor_portal/{tenant_id}/{airlock_result.sha256}/{filename}"
+        assert airlock_item is not None
+        r2_key = f"vendor_portal/{tenant_id}/{airlock_item.checksum_sha256}/{filename}"
         storage = get_storage()
         storage.upload_file(
             file_bytes,
             key=r2_key,
-            content_type=airlock_result.mime_type or mime_type,
+            content_type=airlock_item.mime_type or mime_type,
             tenant_id=str(tenant_id),
             uploaded_by=None,
         )
@@ -90,7 +108,6 @@ async def create_submission(
     public_status = (
         PortalSubmissionStatus.RECEIVED if accepted_by_airlock else PortalSubmissionStatus.REJECTED
     )
-    rejection_reason = airlock_result.rejection_reason if not accepted_by_airlock else None
 
     submission = await AuditWriter.insert_financial_record(
         db,
@@ -112,9 +129,9 @@ async def create_submission(
             "vendor_email_verified": email_verified,
             "r2_key": r2_key,
             "filename": filename,
-            "mime_type": airlock_result.mime_type or mime_type,
-            "file_size_bytes": airlock_result.size_bytes,
-            "sha256_hash": airlock_result.sha256,
+            "mime_type": (airlock_item.mime_type if airlock_item is not None else None) or mime_type,
+            "file_size_bytes": airlock_item.size_bytes if airlock_item is not None else len(file_bytes),
+            "sha256_hash": airlock_item.checksum_sha256 if airlock_item is not None else None,
             "scan_status": scan_status,
             "status": public_status,
             "rejection_reason": rejection_reason,

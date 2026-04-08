@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.accounting_jv import (
     AccountingJVAggregate,
     AccountingJVLine,
@@ -63,6 +64,7 @@ async def create_jv(
     workflow_instance_id: uuid.UUID | None = None,
     lines: list[dict[str, Any]] | None = None,
 ) -> AccountingJVAggregate:
+    mutation_context = require_mutation_context("Journal creation")
     jv_number = await _generate_jv_number(db, tenant_id, fiscal_year, fiscal_period)
 
     jv_id = uuid.uuid4()
@@ -88,6 +90,8 @@ async def create_jv(
         external_reference_id=external_reference_id,
         currency=currency,
         created_by=created_by,
+        created_by_intent_id=mutation_context.intent_id,
+        recorded_by_job_id=mutation_context.job_id,
         total_debit=Decimal("0"),
         total_credit=Decimal("0"),
         resubmission_count=0,
@@ -111,6 +115,7 @@ async def update_jv_lines(
     lines: list[dict[str, Any]],
     expected_version: int,
 ) -> AccountingJVAggregate:
+    require_mutation_context("Journal line update")
     jv = await _get_jv(db, jv_id, tenant_id)
 
     if jv.status != JVStatus.DRAFT:
@@ -140,6 +145,7 @@ async def transition_jv(
     comment: str | None = None,
     is_admin: bool = False,
 ) -> AccountingJVAggregate:
+    require_mutation_context("Journal transition")
     jv = await _get_jv(db, jv_id, tenant_id)
     _check_optimistic_lock(jv, expected_version)
 
@@ -307,6 +313,7 @@ async def _append_lines(
     jv: AccountingJVAggregate,
     lines: list[dict[str, Any]],
 ) -> None:
+    mutation_context = require_mutation_context("Journal line append")
     if not lines:
         raise ValidationError("JV must have at least one line.")
 
@@ -364,6 +371,8 @@ async def _append_lines(
             narration=line_data.get("narration"),
             tax_code=line_data.get("tax_code"),
             is_tax_line=bool(line_data.get("is_tax_line", False)),
+            created_by_intent_id=mutation_context.intent_id,
+            recorded_by_job_id=mutation_context.job_id,
         )
         db.add(line)
 
@@ -388,6 +397,7 @@ async def _append_state_event(
     actor_role: str,
     comment: str | None,
 ) -> None:
+    mutation_context = require_mutation_context("Journal state transition event")
     previous_hash = None
     previous_stmt = (
         select(AccountingJVStateEvent)
@@ -415,6 +425,8 @@ async def _append_state_event(
         triggered_by=triggered_by,
         actor_role=actor_role,
         comment=comment,
+        created_by_intent_id=mutation_context.intent_id,
+        recorded_by_job_id=mutation_context.job_id,
         occurred_at=_utcnow(),
     )
     db.add(event)

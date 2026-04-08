@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date
+import hashlib
+import json
 import time
 import uuid
 from typing import Any
@@ -8,8 +10,10 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.core.exceptions import AuthorizationError
+from financeops.core.exceptions import AuthorizationError, ValidationError
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.service import IntentActor, IntentService
 from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.accounting_layer.api.reporting_routes import reporting_router
@@ -24,14 +28,8 @@ from financeops.modules.accounting_layer.application.financial_statements_servic
     get_profit_and_loss,
 )
 from financeops.modules.accounting_layer.application.journal_service import (
-    approve_journal,
-    create_journal_draft,
     get_journal,
     list_journals,
-    post_journal,
-    review_journal,
-    reverse_journal,
-    submit_journal,
 )
 from financeops.modules.accounting_layer.application.revaluation_service import (
     run_fx_revaluation,
@@ -41,20 +39,17 @@ from financeops.modules.accounting_layer.application.trial_balance_service impor
     get_trial_balance,
 )
 from financeops.modules.accounting_layer.application.jv_service import (
-    create_jv,
     get_jv,
     get_jv_state_history,
     list_jvs,
-    transition_jv,
-    update_jv_lines,
 )
 from financeops.modules.accounting_layer.domain.schemas import (
     ApprovalRequest,
     ApprovalResponse,
     BalanceSheetResponse,
     CashFlowResponse,
-    JournalActionResponse,
     JournalCreate,
+    GovernedMutationResponse,
     JournalResponse,
     JVCreate,
     JVLineResponse,
@@ -135,6 +130,51 @@ def _serialize_jv(jv: AccountingJVAggregate) -> dict[str, Any]:
     return base_payload
 
 
+def _build_idempotency_key(
+    request: Request,
+    *,
+    intent_type: IntentType,
+    body: Any | None = None,
+    target_id: uuid.UUID | None = None,
+    actor: IamUser,
+) -> str:
+    header_key = request.headers.get("Idempotency-Key")
+    if header_key:
+        return header_key
+    body_payload = body.model_dump(mode="json") if hasattr(body, "model_dump") else body or {}
+    fingerprint = {
+        "intent_type": intent_type.value,
+        "tenant_id": str(actor.tenant_id),
+        "user_id": str(actor.id),
+        "target_id": str(target_id) if target_id else "",
+        "body": body_payload,
+    }
+    raw = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _intent_actor(request: Request, user: IamUser) -> IntentActor:
+    return IntentActor(
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        role=user.role.value,
+        source_channel=IntentSourceChannel.API.value,
+        request_id=getattr(request.state, "request_id", None),
+        correlation_id=str(getattr(request.state, "correlation_id", None) or "") or None,
+    )
+
+
+def _serialize_intent_result(result) -> dict[str, Any]:
+    payload = GovernedMutationResponse(
+        intent_id=result.intent_id,
+        status=result.status,
+        job_id=result.job_id,
+        next_action=result.next_action,
+        record_refs=result.record_refs,
+    )
+    return payload.model_dump(mode="json")
+
+
 @jv_router.post("/")
 async def create_jv_endpoint(
     request: Request,
@@ -142,27 +182,7 @@ async def create_jv_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    jv = await create_jv(
-        session,
-        tenant_id=user.tenant_id,
-        entity_id=body.entity_id,
-        created_by=user.id,
-        period_date=body.period_date,
-        fiscal_year=body.fiscal_year,
-        fiscal_period=body.fiscal_period,
-        description=body.description,
-        reference=body.reference,
-        currency=body.currency,
-        location_id=body.location_id,
-        cost_centre_id=body.cost_centre_id,
-        workflow_instance_id=body.workflow_instance_id,
-        lines=[line.model_dump() for line in body.lines] if body.lines else None,
-    )
-    await session.flush()
-    return ok(
-        _serialize_jv(jv),
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    raise ValidationError("Direct JV mutation endpoints are disabled. Use /api/v1/accounting/journals intents.")
 
 
 @jv_router.get("/")
@@ -213,18 +233,7 @@ async def update_jv_lines_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    jv = await update_jv_lines(
-        session,
-        jv_id=jv_id,
-        tenant_id=user.tenant_id,
-        lines=[line.model_dump() for line in body.lines],
-        expected_version=body.expected_version,
-    )
-    await session.flush()
-    return ok(
-        _serialize_jv(jv),
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    raise ValidationError("Direct JV mutation endpoints are disabled. Use /api/v1/accounting/journals intents.")
 
 
 @jv_router.post("/{jv_id}/transition")
@@ -235,22 +244,7 @@ async def transition_jv_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    jv = await transition_jv(
-        session,
-        jv_id=jv_id,
-        tenant_id=user.tenant_id,
-        to_status=body.to_status,
-        triggered_by=user.id,
-        actor_role=user.role.value,
-        expected_version=body.expected_version,
-        comment=body.comment,
-        is_admin=_is_admin(user),
-    )
-    await session.flush()
-    return ok(
-        _serialize_jv(jv),
-        request_id=getattr(request.state, "request_id", None),
-    ).model_dump(mode="json")
+    raise ValidationError("Direct JV mutation endpoints are disabled. Use /api/v1/accounting/journals intents.")
 
 
 @jv_router.get("/{jv_id}/history")
@@ -273,21 +267,7 @@ async def approve_jv_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict[str, Any]:
-    approval = await submit_approval(
-        session,
-        jv_id=jv_id,
-        tenant_id=user.tenant_id,
-        acted_by=user.id,
-        actor_role=user.role.value,
-        decision=body.decision,
-        decision_reason=body.decision_reason,
-        expected_version=body.expected_version,
-        idempotency_key=body.idempotency_key,
-        delegated_from=body.delegated_from,
-    )
-    await session.flush()
-    payload = ApprovalResponse.model_validate(approval).model_dump(mode="json")
-    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+    raise ValidationError("Direct JV mutation endpoints are disabled. Use /api/v1/accounting/journals intents.")
 
 
 @jv_router.get("/{jv_id}/approvals")
@@ -329,15 +309,20 @@ async def create_journal_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(journal_create_guard),
 ) -> dict[str, Any]:
-    journal = await create_journal_draft(
-        session,
-        tenant_id=user.tenant_id,
-        created_by=user.id,
-        payload=body,
+    intent_result = await IntentService(session).submit_intent(
+        intent_type=IntentType.CREATE_JOURNAL,
+        actor=_intent_actor(request, user),
+        payload=body.model_dump(mode="json"),
+        idempotency_key=_build_idempotency_key(
+            request,
+            intent_type=IntentType.CREATE_JOURNAL,
+            body=body,
+            actor=user,
+        ),
     )
     await session.flush()
     return ok(
-        journal.model_dump(mode="json"),
+        _serialize_intent_result(intent_result),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -375,17 +360,21 @@ async def approve_journal_endpoint(
 ) -> dict[str, Any]:
     if not _can_approve(user):
         raise AuthorizationError("finance approver role required")
-    result = await approve_journal(
-        session,
-        tenant_id=user.tenant_id,
-        journal_id=journal_id,
-        acted_by=user.id,
-        actor_role=user.role.value,
+    result = await IntentService(session).submit_intent(
+        intent_type=IntentType.APPROVE_JOURNAL,
+        actor=_intent_actor(request, user),
+        payload={},
+        target_id=journal_id,
+        idempotency_key=_build_idempotency_key(
+            request,
+            intent_type=IntentType.APPROVE_JOURNAL,
+            target_id=journal_id,
+            actor=user,
+        ),
     )
     await session.flush()
-    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
     return ok(
-        payload,
+        _serialize_intent_result(result),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -400,20 +389,24 @@ async def post_journal_endpoint(
     if not _can_post(user):
         raise AuthorizationError("finance poster role required")
     started = time.perf_counter()
-    result = await post_journal(
-        session,
-        tenant_id=user.tenant_id,
-        journal_id=journal_id,
-        acted_by=user.id,
-        actor_role=user.role.value,
+    result = await IntentService(session).submit_intent(
+        intent_type=IntentType.POST_JOURNAL,
+        actor=_intent_actor(request, user),
+        payload={},
+        target_id=journal_id,
+        idempotency_key=_build_idempotency_key(
+            request,
+            intent_type=IntentType.POST_JOURNAL,
+            target_id=journal_id,
+            actor=user,
+        ),
     )
     finance_workflow_duration_ms.labels(workflow="journal_post", status="success").observe(
         (time.perf_counter() - started) * 1000
     )
     await session.flush()
-    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
     return ok(
-        payload,
+        _serialize_intent_result(result),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -427,16 +420,21 @@ async def reverse_journal_endpoint(
 ) -> dict[str, Any]:
     if not _can_post(user):
         raise AuthorizationError("finance poster role required")
-    journal = await reverse_journal(
-        session,
-        tenant_id=user.tenant_id,
-        journal_id=journal_id,
-        acted_by=user.id,
-        actor_role=user.role.value,
+    result = await IntentService(session).submit_intent(
+        intent_type=IntentType.REVERSE_JOURNAL,
+        actor=_intent_actor(request, user),
+        payload={},
+        target_id=journal_id,
+        idempotency_key=_build_idempotency_key(
+            request,
+            intent_type=IntentType.REVERSE_JOURNAL,
+            target_id=journal_id,
+            actor=user,
+        ),
     )
     await session.flush()
     return ok(
-        journal.model_dump(mode="json"),
+        _serialize_intent_result(result),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -448,17 +446,21 @@ async def submit_journal_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(journal_submit_guard),
 ) -> dict[str, Any]:
-    result = await submit_journal(
-        session,
-        tenant_id=user.tenant_id,
-        journal_id=journal_id,
-        acted_by=user.id,
-        actor_role=user.role.value,
+    result = await IntentService(session).submit_intent(
+        intent_type=IntentType.SUBMIT_JOURNAL,
+        actor=_intent_actor(request, user),
+        payload={},
+        target_id=journal_id,
+        idempotency_key=_build_idempotency_key(
+            request,
+            intent_type=IntentType.SUBMIT_JOURNAL,
+            target_id=journal_id,
+            actor=user,
+        ),
     )
     await session.flush()
-    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
     return ok(
-        payload,
+        _serialize_intent_result(result),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 
@@ -472,17 +474,21 @@ async def review_journal_endpoint(
 ) -> dict[str, Any]:
     if not _can_review(user):
         raise AuthorizationError("finance reviewer role required")
-    result = await review_journal(
-        session,
-        tenant_id=user.tenant_id,
-        journal_id=journal_id,
-        acted_by=user.id,
-        actor_role=user.role.value,
+    result = await IntentService(session).submit_intent(
+        intent_type=IntentType.REVIEW_JOURNAL,
+        actor=_intent_actor(request, user),
+        payload={},
+        target_id=journal_id,
+        idempotency_key=_build_idempotency_key(
+            request,
+            intent_type=IntentType.REVIEW_JOURNAL,
+            target_id=journal_id,
+            actor=user,
+        ),
     )
     await session.flush()
-    payload = JournalActionResponse.model_validate(result).model_dump(mode="json")
     return ok(
-        payload,
+        _serialize_intent_result(result),
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 

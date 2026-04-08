@@ -8,16 +8,19 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ValidationError
+from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.db.models.accounting_ingestion import (
     AccountingInboundEmailMessage,
     EmailProcessingStatus,
+)
+from financeops.modules.accounting_ingestion.application.airlock_actor import (
+    resolve_airlock_actor,
 )
 from financeops.services.audit_writer import AuditWriter
 from financeops.storage.provider import get_storage
 
 logger = logging.getLogger(__name__)
-
-_AIRLOCK_ACCEPTED_STATUS = {"APPROVED", "SCAN_SKIPPED", "CLEAN"}
 
 
 def _is_sender_whitelisted(sender_email: str, whitelist: list[str]) -> bool:
@@ -95,14 +98,17 @@ async def ingest_email(
         return msg
 
     processed = 0
+    airlock_actor = await resolve_airlock_actor(db, tenant_id=tenant_id)
     for filename, file_bytes, mime_type in attachment_bytes_list:
         ok = await _process_attachment(
+            db=db,
             tenant_id=tenant_id,
             filename=filename,
             file_bytes=file_bytes,
             mime_type=mime_type,
             entity_id=entity_routing_id,
             email_message_id=msg.id,
+            airlock_actor=airlock_actor,
         )
         if ok:
             processed += 1
@@ -117,35 +123,49 @@ async def ingest_email(
 
 async def _process_attachment(
     *,
+    db: AsyncSession,
     tenant_id: uuid.UUID,
     filename: str,
     file_bytes: bytes,
     mime_type: str,
     entity_id: uuid.UUID | None,
     email_message_id: uuid.UUID,
+    airlock_actor,
 ) -> bool:
-    from financeops.storage.airlock import scan_and_seal
-
-    airlock_result = await scan_and_seal(
-        file_bytes=file_bytes,
-        filename=filename,
-        tenant_id=str(tenant_id),
-    )
-    if airlock_result.status not in _AIRLOCK_ACCEPTED_STATUS:
+    airlock_service = AirlockAdmissionService()
+    try:
+        submitted = await airlock_service.submit_external_input(
+            db,
+            source_type="inbound_email_attachment",
+            actor=airlock_actor,
+            metadata={"email_message_id": str(email_message_id)},
+            content=file_bytes,
+            file_name=filename,
+            entity_id=entity_id,
+            source_reference=str(email_message_id),
+            idempotency_key=f"{tenant_id}:{email_message_id}:{filename}",
+        )
+        await airlock_service.admit_airlock_item(
+            db,
+            item_id=submitted.item_id,
+            actor=airlock_actor,
+        )
+        airlock_item = await airlock_service.get_item(db, tenant_id=tenant_id, item_id=submitted.item_id)
+    except ValidationError as exc:
         logger.warning(
             "Inbound email attachment rejected: tenant=%s file=%s reason=%s",
             str(tenant_id)[:8],
             filename,
-            airlock_result.rejection_reason,
+            exc,
         )
         return False
 
     storage = get_storage()
-    r2_key = f"ingestion/{tenant_id}/{airlock_result.sha256}/{filename}"
+    r2_key = f"ingestion/{tenant_id}/{airlock_item.checksum_sha256}/{filename}"
     storage.upload_file(
         file_bytes,
         key=r2_key,
-        content_type=airlock_result.mime_type or mime_type,
+        content_type=airlock_item.mime_type or mime_type,
         tenant_id=str(tenant_id),
         uploaded_by=None,
     )

@@ -47,9 +47,12 @@ class RunActionResponse(BaseModel):
 
 
 class RunUploadResponse(RunActionResponse):
+    intent_id: uuid.UUID
+    job_id: uuid.UUID
     payroll_line_count: int = 0
     gl_line_count: int = 0
     exception_count: int = 0
+    source_airlock_item_id: uuid.UUID | None = None
 
 
 class SourceSummaryResponse(BaseModel):

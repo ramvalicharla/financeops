@@ -10,6 +10,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import FinanceOpsError, NotFoundError, ValidationError
+from financeops.core.governance.airlock import AirlockAdmissionService
+from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.erp_sync import (
     ExternalConnection,
     ExternalConnectionVersion,
@@ -72,7 +74,17 @@ class SyncService:
         created_by: uuid.UUID,
         extraction_kwargs: Mapping[str, Any] | None = None,
         resumed_from_run_id: uuid.UUID | None = None,
+        admitted_airlock_item_id: uuid.UUID | None = None,
+        source_type: str | None = None,
+        source_external_ref: str | None = None,
     ) -> dict[str, Any]:
+        mutation_context = require_mutation_context("ERP sync run creation")
+        await AirlockAdmissionService().assert_admitted(
+            self._session,
+            tenant_id=tenant_id,
+            item_id=admitted_airlock_item_id,
+            source_type=source_type,
+        )
         connection, definition, version = await self._fetch_sync_context(
             tenant_id=tenant_id,
             connection_id=connection_id,
@@ -183,6 +195,11 @@ class SyncService:
                 "reporting_period_label": self._resolve_reporting_period_label(version.period_resolution_json),
                 "run_token": sync_token,
                 "idempotency_key": idempotency_key,
+                "source_airlock_item_id": admitted_airlock_item_id,
+                "source_type": source_type,
+                "source_external_ref": source_external_ref,
+                "created_by_intent_id": mutation_context.intent_id,
+                "recorded_by_job_id": mutation_context.job_id,
                 "run_status": run_status,
                 "raw_snapshot_payload_hash": raw_snapshot_payload_hash,
                 "mapping_version_token": str(mapping_resolution["mapping_version_token"]),
@@ -222,6 +239,8 @@ class SyncService:
                 "payload_hash": raw_snapshot_payload_hash,
                 "payload_size_bytes": len(canonical_json_dumps(self._json_safe(extracted)).encode("utf-8")),
                 "frozen": False,
+                "created_by_intent_id": mutation_context.intent_id,
+                "recorded_by_job_id": mutation_context.job_id,
                 "created_by": created_by,
             },
         )
@@ -232,6 +251,9 @@ class SyncService:
             "raw_snapshot_id": str(raw_snapshot.id),
             "raw_snapshot_token": raw_snapshot.snapshot_token,
             "validation_summary": validation_summary,
+            "source_airlock_item_id": str(admitted_airlock_item_id) if admitted_airlock_item_id else None,
+            "intent_id": str(mutation_context.intent_id),
+            "job_id": str(mutation_context.job_id),
         }
 
     async def freeze_snapshot(
@@ -332,6 +354,9 @@ class SyncService:
             created_by=created_by,
             extraction_kwargs=extraction_kwargs,
             resumed_from_run_id=paused_run.id,
+            admitted_airlock_item_id=paused_run.source_airlock_item_id,
+            source_type=paused_run.source_type,
+            source_external_ref=paused_run.source_external_ref,
         )
         return {
             "sync_run_id": resumed["sync_run_id"],
@@ -497,6 +522,9 @@ class SyncService:
                 created_by=kwargs["created_by"],
                 extraction_kwargs=kwargs.get("extraction_kwargs"),
                 resumed_from_run_id=kwargs.get("resumed_from_run_id"),
+                admitted_airlock_item_id=kwargs.get("admitted_airlock_item_id"),
+                source_type=kwargs.get("source_type"),
+                source_external_ref=kwargs.get("source_external_ref"),
             )
         if action == "freeze_snapshot":
             return await self.freeze_snapshot(

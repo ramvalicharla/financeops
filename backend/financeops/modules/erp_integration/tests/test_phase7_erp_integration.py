@@ -58,6 +58,17 @@ def _mock_connector() -> SimpleNamespace:
     )
 
 
+def _governed_result(journal_id: uuid.UUID) -> SimpleNamespace:
+    return SimpleNamespace(
+        intent_id=uuid.uuid4(),
+        status="RECORDED",
+        job_id=uuid.uuid4(),
+        next_action="NONE",
+        record_refs={"journal_id": str(journal_id), "status": "DRAFT"},
+        require_journal_id=lambda: journal_id,
+    )
+
+
 def test_registry_manual_connector() -> None:
     connector = get_connector("MANUAL")
     assert isinstance(connector, ManualConnector)
@@ -81,17 +92,14 @@ async def test_import_journals_creates_draft_and_mapping(monkeypatch: pytest.Mon
         erp_type="MANUAL",
         connection_config={},
     )
-    actor = SimpleNamespace(id=uuid.uuid4())
-    created_journal = SimpleNamespace(id=uuid.uuid4())
+    actor = SimpleNamespace(id=uuid.uuid4(), role=UserRole.finance_leader)
+    created_journal_id = uuid.uuid4()
+    governed_mock = AsyncMock(return_value=_governed_result(created_journal_id))
 
     monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
     monkeypatch.setattr(service, "_assert_account_code_scope", AsyncMock(return_value=None))
     monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
-    monkeypatch.setattr(
-        erp_service_module,
-        "create_journal_draft",
-        AsyncMock(return_value=created_journal),
-    )
+    monkeypatch.setattr(erp_service_module, "submit_governed_journal_intent", governed_mock)
 
     request = JournalImportRequest(
         erp_connector_id=connector_row.id,
@@ -116,6 +124,9 @@ async def test_import_journals_creates_draft_and_mapping(monkeypatch: pytest.Mon
     )
     assert payload["imported_count"] == 1
     assert payload["failed_count"] == 0
+    assert payload["imported_journals"][0]["journal_id"] == str(created_journal_id)
+    assert payload["imported_journals"][0]["intent_id"] is not None
+    assert payload["imported_journals"][0]["job_id"] is not None
 
 
 @pytest.mark.asyncio
@@ -228,12 +239,12 @@ async def test_import_journals_is_idempotent_for_duplicate_external_reference(
         erp_type="MANUAL",
         connection_config={},
     )
-    actor = SimpleNamespace(id=uuid.uuid4())
-    create_draft_mock = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
+    actor = SimpleNamespace(id=uuid.uuid4(), role=UserRole.finance_leader)
+    governed_mock = AsyncMock(return_value=_governed_result(uuid.uuid4()))
 
     monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
     monkeypatch.setattr(service, "_assert_account_code_scope", AsyncMock(return_value=None))
-    monkeypatch.setattr(erp_service_module, "create_journal_draft", create_draft_mock)
+    monkeypatch.setattr(erp_service_module, "submit_governed_journal_intent", governed_mock)
     monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
 
     tx = JournalImportTransaction(
@@ -259,7 +270,7 @@ async def test_import_journals_is_idempotent_for_duplicate_external_reference(
     assert payload["imported_count"] == 1
     assert payload["skipped_duplicates"] == 1
     assert payload["failed_count"] == 0
-    assert create_draft_mock.await_count == 1
+    assert governed_mock.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -277,8 +288,8 @@ async def test_import_journals_with_unmapped_account_is_flagged(
         erp_type="MANUAL",
         connection_config={},
     )
-    actor = SimpleNamespace(id=uuid.uuid4())
-    create_draft_mock = AsyncMock()
+    actor = SimpleNamespace(id=uuid.uuid4(), role=UserRole.finance_leader)
+    governed_mock = AsyncMock()
 
     monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
     monkeypatch.setattr(
@@ -286,7 +297,7 @@ async def test_import_journals_with_unmapped_account_is_flagged(
         "_assert_account_code_scope",
         AsyncMock(side_effect=ValidationError("account mapping missing")),
     )
-    monkeypatch.setattr(erp_service_module, "create_journal_draft", create_draft_mock)
+    monkeypatch.setattr(erp_service_module, "submit_governed_journal_intent", governed_mock)
     monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
 
     request = JournalImportRequest(
@@ -312,7 +323,7 @@ async def test_import_journals_with_unmapped_account_is_flagged(
     )
     assert payload["imported_count"] == 0
     assert payload["failed_count"] == 1
-    assert create_draft_mock.await_count == 0
+    assert governed_mock.await_count == 0
 
 
 @pytest.mark.asyncio
@@ -330,12 +341,12 @@ async def test_imported_journals_are_created_as_draft_with_erp_source(
         erp_type="MANUAL",
         connection_config={},
     )
-    actor = SimpleNamespace(id=uuid.uuid4())
-    create_draft_mock = AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4()))
+    actor = SimpleNamespace(id=uuid.uuid4(), role=UserRole.finance_leader)
+    governed_mock = AsyncMock(return_value=_governed_result(uuid.uuid4()))
 
     monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
     monkeypatch.setattr(service, "_assert_account_code_scope", AsyncMock(return_value=None))
-    monkeypatch.setattr(erp_service_module, "create_journal_draft", create_draft_mock)
+    monkeypatch.setattr(erp_service_module, "submit_governed_journal_intent", governed_mock)
     monkeypatch.setattr(erp_service_module, "get_connector", lambda _: _mock_connector())
 
     request = JournalImportRequest(
@@ -360,9 +371,9 @@ async def test_imported_journals_are_created_as_draft_with_erp_source(
         body=request,
     )
     assert payload["imported_count"] == 1
-    kwargs = create_draft_mock.await_args.kwargs
-    assert kwargs["source"] == "ERP"
-    assert kwargs["external_reference_id"] == "ERP-TXN-DRAFT"
+    kwargs = governed_mock.await_args.kwargs
+    assert kwargs["payload"]["source"] == "ERP"
+    assert kwargs["payload"]["external_reference_id"] == "ERP-TXN-DRAFT"
 
 
 @pytest.mark.asyncio

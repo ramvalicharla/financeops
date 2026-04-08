@@ -10,6 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.core.exceptions import ValidationError
+from financeops.core.governance.approvals import ApprovalPolicyResolver, ApprovalRequest
+from financeops.core.governance.events import GovernanceActor, emit_governance_event
+from financeops.core.governance.guards import GuardEngine, MutationGuardContext
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.closing_checklist.models import (
     ChecklistRun,
@@ -301,9 +305,48 @@ async def lock_period_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    guard_engine = GuardEngine()
+    approval_resolver = ApprovalPolicyResolver()
+    actor = GovernanceActor(user_id=user.id, role=user.role.value)
     if not _can_lock_period(user):
         observe_governance_operation(operation="lock_period", status="denied")
         raise HTTPException(status_code=403, detail="finance approver role required")
+    guard_result = await guard_engine.evaluate_mutation(
+        session,
+        context=MutationGuardContext(
+            tenant_id=user.tenant_id,
+            module_key="period_close",
+            mutation_type="PERIOD_HARD_CLOSE" if body.lock_type.upper() == "HARD_CLOSED" else "PERIOD_SOFT_CLOSE",
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            entity_id=body.org_entity_id,
+            period_year=body.fiscal_year,
+            period_number=body.period_number,
+            period_guard_mode=None,
+            subject_type="accounting_period",
+            subject_id=f"{body.org_entity_id}:{body.fiscal_year}:{body.period_number}:{body.lock_type.upper()}",
+        ),
+    )
+    if not guard_result.overall_passed:
+        raise HTTPException(
+            status_code=422,
+            detail="; ".join(item.message for item in guard_result.blocking_failures),
+        )
+    approval = await approval_resolver.resolve_mutation(
+        session,
+        request=ApprovalRequest(
+            tenant_id=user.tenant_id,
+            module_key="period_close",
+            mutation_type="PERIOD_HARD_CLOSE" if body.lock_type.upper() == "HARD_CLOSED" else "PERIOD_SOFT_CLOSE",
+            entity_id=body.org_entity_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type="accounting_period",
+            subject_id=f"{body.org_entity_id}:{body.fiscal_year}:{body.period_number}:{body.lock_type.upper()}",
+        ),
+    )
+    if approval.approval_required and not approval.is_granted:
+        raise HTTPException(status_code=422, detail=approval.reason)
 
     if body.lock_type.upper() == "HARD_CLOSED":
         if body.org_entity_id is None:
@@ -320,6 +363,17 @@ async def lock_period_endpoint(
         )
         if not readiness["pass"]:
             observe_governance_operation(operation="lock_period", status="blocked_readiness")
+            await emit_governance_event(
+                session,
+                tenant_id=user.tenant_id,
+                module_key="period_close",
+                subject_type="accounting_period",
+                subject_id=f"{body.org_entity_id}:{body.fiscal_year}:{body.period_number}:HARD_CLOSED",
+                event_type="GUARD_EVALUATED",
+                actor=actor,
+                entity_id=body.org_entity_id,
+                payload={"blockers": readiness["blockers"], "warnings": readiness["warnings"], "pass": False},
+            )
             for blocker in readiness.get("blockers", []):
                 observe_close_readiness_failure(reason=str(blocker)[:100])
             raise HTTPException(
@@ -344,6 +398,17 @@ async def lock_period_endpoint(
             actor_user_id=user.id,
         )
         await session.flush()
+        await emit_governance_event(
+            session,
+            tenant_id=user.tenant_id,
+            module_key="period_close",
+            subject_type="accounting_period",
+            subject_id=str(payload["period_id"]),
+            event_type="RECORD_RECORDED",
+            actor=actor,
+            entity_id=body.org_entity_id,
+            payload=payload,
+        )
         observe_governance_operation(operation="lock_period", status="success")
         return payload
     except Exception:
@@ -357,11 +422,47 @@ async def unlock_period_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    guard_engine = GuardEngine()
+    approval_resolver = ApprovalPolicyResolver()
+    actor = GovernanceActor(user_id=user.id, role=user.role.value)
     try:
         ensure_unlock_role(user.role)
     except Exception:
         observe_governance_operation(operation="unlock_period", status="denied")
         raise
+    guard_result = await guard_engine.evaluate_mutation(
+        session,
+        context=MutationGuardContext(
+            tenant_id=user.tenant_id,
+            module_key="period_close",
+            mutation_type="PERIOD_UNLOCK",
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            entity_id=body.org_entity_id,
+            subject_type="accounting_period",
+            subject_id=f"{body.org_entity_id}:{body.fiscal_year}:{body.period_number}:UNLOCK",
+        ),
+    )
+    if not guard_result.overall_passed:
+        raise HTTPException(
+            status_code=422,
+            detail="; ".join(item.message for item in guard_result.blocking_failures),
+        )
+    approval = await approval_resolver.resolve_mutation(
+        session,
+        request=ApprovalRequest(
+            tenant_id=user.tenant_id,
+            module_key="period_close",
+            mutation_type="PERIOD_UNLOCK",
+            entity_id=body.org_entity_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type="accounting_period",
+            subject_id=f"{body.org_entity_id}:{body.fiscal_year}:{body.period_number}:UNLOCK",
+        ),
+    )
+    if approval.approval_required and not approval.is_granted:
+        raise HTTPException(status_code=422, detail=approval.reason)
     try:
         payload = await unlock_period(
             session,
@@ -373,6 +474,17 @@ async def unlock_period_endpoint(
             actor_user_id=user.id,
         )
         await session.flush()
+        await emit_governance_event(
+            session,
+            tenant_id=user.tenant_id,
+            module_key="period_close",
+            subject_type="accounting_period",
+            subject_id=str(payload["period_id"]),
+            event_type="RECORD_RECORDED",
+            actor=actor,
+            entity_id=body.org_entity_id,
+            payload=payload,
+        )
         observe_governance_operation(operation="unlock_period", status="success")
         return payload
     except Exception:

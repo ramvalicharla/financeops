@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.journal_pipeline import submit_governed_journal_intent
 from financeops.core.security import decrypt_field, encrypt_field
 from financeops.db.models.accounting_jv import AccountingJVAggregate, JVStatus
 from financeops.db.models.accounting_vendor import AccountingVendor
@@ -29,7 +31,6 @@ from financeops.db.models.erp_integration import (
     ErpSyncType,
 )
 from financeops.db.models.users import IamUser
-from financeops.modules.accounting_layer.application.journal_service import create_journal_draft
 from financeops.modules.accounting_layer.domain.schemas import JournalCreate, JournalLineCreate
 from financeops.modules.coa.models import TenantCoaAccount
 from financeops.modules.erp_integration.connectors.registry import get_connector
@@ -420,24 +421,40 @@ class ErpIntegrationService:
                     narration=row_data.get("narration"),
                     lines=lines,
                 )
-                created = await create_journal_draft(
+                intent_payload = payload.model_dump(mode="json")
+                intent_payload["source"] = "ERP"
+                intent_payload["external_reference_id"] = external_reference_id
+                journal_mutation = await submit_governed_journal_intent(
                     self._session,
+                    intent_type=IntentType.CREATE_JOURNAL,
                     tenant_id=tenant_id,
-                    created_by=actor.id,
-                    payload=payload,
-                    source="ERP",
-                    external_reference_id=external_reference_id,
+                    user_id=actor.id,
+                    actor_role=getattr(actor.role, "value", str(getattr(actor, "role", ""))),
+                    source_channel=IntentSourceChannel.IMPORT.value,
+                    namespace=f"erp_import_journal:{connector_row.id}:{external_reference_id}",
+                    payload=intent_payload,
                 )
+                created_journal_id = journal_mutation.require_journal_id()
                 self._session.add(
                     ErpJournalMapping(
                         tenant_id=tenant_id,
                         erp_connector_id=connector_row.id,
-                        internal_journal_id=created.id,
+                        internal_journal_id=created_journal_id,
                         erp_journal_id=external_reference_id,
                     )
                 )
                 imported_count += 1
                 existing_external_ids.add(external_reference_id)
+                failed_records.append(
+                    {
+                        "external_reference_id": external_reference_id,
+                        "journal_id": str(created_journal_id),
+                        "intent_id": str(journal_mutation.intent_id),
+                        "job_id": str(journal_mutation.job_id) if journal_mutation.job_id else None,
+                        "record_refs": journal_mutation.record_refs,
+                        "result": "IMPORTED",
+                    }
+                )
             except Exception as exc:  # noqa: BLE001
                 failed_records.append(
                     {
@@ -450,8 +467,11 @@ class ErpIntegrationService:
         return {
             "imported_count": imported_count,
             "skipped_duplicates": skipped_duplicates,
-            "failed_count": len(failed_records),
-            "failed_records": failed_records,
+            "failed_count": len(
+                [row for row in failed_records if row.get("result") != "IMPORTED"]
+            ),
+            "imported_journals": [row for row in failed_records if row.get("result") == "IMPORTED"],
+            "failed_records": [row for row in failed_records if row.get("result") != "IMPORTED"],
         }
 
     async def export_journals(

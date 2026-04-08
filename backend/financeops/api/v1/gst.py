@@ -15,6 +15,9 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_team,
 )
+from financeops.core.governance.approvals import ApprovalPolicyResolver, ApprovalRequest
+from financeops.core.governance.events import GovernanceActor, emit_governance_event
+from financeops.core.governance.guards import GuardEngine, MutationGuardContext
 from financeops.db.models.gst import GstReconItem, GstReturn
 from financeops.db.models.users import IamUser
 from financeops.platform.db.models.entities import CpEntity
@@ -65,6 +68,8 @@ async def create_return(
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
     """Record a GST return (INSERT ONLY)."""
+    guard_engine = GuardEngine()
+    approval_resolver = ApprovalPolicyResolver()
     resolved_entity_id = await resolve_entity_id(user.tenant_id, body.entity_id, session)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     entity = (
@@ -78,6 +83,42 @@ async def create_return(
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
     resolved_entity_name = body.entity_name or entity.entity_name
+    actor = GovernanceActor(user_id=user.id, role=user.role.value)
+    guard_result = await guard_engine.evaluate_mutation(
+        session,
+        context=MutationGuardContext(
+            tenant_id=user.tenant_id,
+            module_key="gst",
+            mutation_type="GST_RETURN_SUBMIT",
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            entity_id=resolved_entity_id,
+            amount=body.taxable_value,
+            subject_type="gst_return",
+            subject_id=f"{resolved_entity_id}:{body.return_type}:{body.period_year}-{body.period_month:02d}",
+        ),
+    )
+    if not guard_result.overall_passed:
+        raise HTTPException(
+            status_code=422,
+            detail="; ".join(item.message for item in guard_result.blocking_failures),
+        )
+    approval = await approval_resolver.resolve_mutation(
+        session,
+        request=ApprovalRequest(
+            tenant_id=user.tenant_id,
+            module_key="gst",
+            mutation_type="GST_RETURN_SUBMIT",
+            entity_id=resolved_entity_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            amount=body.taxable_value,
+            subject_type="gst_return",
+            subject_id=f"{resolved_entity_id}:{body.return_type}:{body.period_year}-{body.period_month:02d}",
+        ),
+    )
+    if approval.approval_required and not approval.is_granted:
+        raise HTTPException(status_code=422, detail=approval.reason)
 
     ret = await create_gst_return(
         session,
@@ -100,6 +141,21 @@ async def create_return(
         created_by=user.id,
     )
     await session.flush()
+    await emit_governance_event(
+        session,
+        tenant_id=user.tenant_id,
+        module_key="gst",
+        subject_type="gst_return",
+        subject_id=str(ret.id),
+        event_type="RECORD_RECORDED",
+        actor=actor,
+        entity_id=resolved_entity_id,
+        payload={
+            "return_type": ret.return_type,
+            "period": f"{ret.period_year}-{ret.period_month:02d}",
+            "total_tax": str(ret.total_tax),
+        },
+    )
     return {
         "return_id": str(ret.id),
         "return_type": ret.return_type,

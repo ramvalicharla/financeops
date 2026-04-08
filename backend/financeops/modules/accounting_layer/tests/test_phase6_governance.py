@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from financeops.core.exceptions import AuthorizationError, ValidationError
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.db.models.accounting_jv import JVStatus
 from financeops.db.models.users import UserRole
 from financeops.modules.accounting_layer.application import governance_service, journal_service
@@ -44,14 +45,23 @@ async def test_maker_cannot_approve_own_journal(monkeypatch: pytest.MonkeyPatch)
         ),
     )
 
-    with pytest.raises(ValidationError, match="maker cannot approve own journal"):
-        await journal_service.approve_journal(
-            AsyncMock(),
-            tenant_id=tenant_id,
-            journal_id=journal_id,
-            acted_by=maker_id,
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=maker_id,
             actor_role=UserRole.finance_leader.value,
+            intent_type="APPROVE_JOURNAL",
         )
+    ):
+        with pytest.raises(ValidationError, match="maker cannot approve own journal"):
+            await journal_service.approve_journal(
+                AsyncMock(),
+                tenant_id=tenant_id,
+                journal_id=journal_id,
+                acted_by=maker_id,
+                actor_role=UserRole.finance_leader.value,
+            )
 
 
 @pytest.mark.asyncio
@@ -75,14 +85,23 @@ async def test_posting_blocked_in_locked_period(monkeypatch: pytest.MonkeyPatch)
         AsyncMock(side_effect=ValidationError("Period is HARD_CLOSED. Posting is blocked.")),
     )
 
-    with pytest.raises(ValidationError, match="HARD_CLOSED"):
-        await journal_service.post_journal(
-            AsyncMock(),
-            tenant_id=tenant_id,
-            journal_id=journal_id,
-            acted_by=poster_id,
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=poster_id,
             actor_role=UserRole.finance_leader.value,
+            intent_type="POST_JOURNAL",
         )
+    ):
+        with pytest.raises(ValidationError, match="HARD_CLOSED"):
+            await journal_service.post_journal(
+                AsyncMock(),
+                tenant_id=tenant_id,
+                journal_id=journal_id,
+                acted_by=poster_id,
+                actor_role=UserRole.finance_leader.value,
+            )
 
 
 def test_unlock_requires_proper_role() -> None:
@@ -195,13 +214,22 @@ async def test_submit_journal_emits_governance_audit_event(monkeypatch: pytest.M
     monkeypatch.setattr(journal_service, "_append_state_event", AsyncMock(return_value=None))
     monkeypatch.setattr(journal_service, "record_governance_event", record_event_mock)
 
-    response = await journal_service.submit_journal(
-        AsyncMock(),
-        tenant_id=tenant_id,
-        journal_id=journal_id,
-        acted_by=actor_id,
-        actor_role=UserRole.finance_team.value,
-    )
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=actor_id,
+            actor_role=UserRole.finance_team.value,
+            intent_type="SUBMIT_JOURNAL",
+        )
+    ):
+        response = await journal_service.submit_journal(
+            AsyncMock(),
+            tenant_id=tenant_id,
+            journal_id=journal_id,
+            acted_by=actor_id,
+            actor_role=UserRole.finance_team.value,
+        )
 
     assert response.status == "SUBMITTED"
     assert record_event_mock.await_count == 1
@@ -440,6 +468,23 @@ async def test_hard_close_blocked_when_readiness_fails(monkeypatch: pytest.Monke
         close_routes,
         "run_close_readiness",
         AsyncMock(return_value={"pass": False, "blockers": ["Draft journals pending"], "warnings": []}),
+    )
+    monkeypatch.setattr(close_routes, "emit_governance_event", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        close_routes,
+        "GuardEngine",
+        lambda: MagicMock(
+            evaluate_mutation=AsyncMock(return_value=MagicMock(overall_passed=True, blocking_failures=[]))
+        ),
+    )
+    monkeypatch.setattr(
+        close_routes,
+        "ApprovalPolicyResolver",
+        lambda: MagicMock(
+            resolve_mutation=AsyncMock(
+                return_value=MagicMock(approval_required=True, is_granted=True, reason="approved")
+            )
+        ),
     )
 
     with pytest.raises(HTTPException) as exc_info:

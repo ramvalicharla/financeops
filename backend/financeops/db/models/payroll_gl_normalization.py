@@ -176,6 +176,23 @@ class NormalizationRun(FinancialBase):
     reporting_period: Mapped[Any] = mapped_column(Date, nullable=False)
     source_artifact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     source_file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_airlock_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("airlock_items.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    source_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_external_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_intents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     run_token: Mapped[str] = mapped_column(String(64), nullable=False)
     run_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     validation_summary_json: Mapped[dict[str, Any]] = mapped_column(

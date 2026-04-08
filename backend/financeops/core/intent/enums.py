@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from enum import Enum
+
+
+class IntentStatus(str, Enum):
+    DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
+    VALIDATED = "VALIDATED"
+    APPROVED = "APPROVED"
+    EXECUTING = "EXECUTING"
+    EXECUTED = "EXECUTED"
+    RECORDED = "RECORDED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+class IntentType(str, Enum):
+    CREATE_JOURNAL = "CREATE_JOURNAL"
+    SUBMIT_JOURNAL = "SUBMIT_JOURNAL"
+    REVIEW_JOURNAL = "REVIEW_JOURNAL"
+    APPROVE_JOURNAL = "APPROVE_JOURNAL"
+    POST_JOURNAL = "POST_JOURNAL"
+    REVERSE_JOURNAL = "REVERSE_JOURNAL"
+    CREATE_ERP_SYNC_RUN = "CREATE_ERP_SYNC_RUN"
+    CREATE_NORMALIZATION_RUN = "CREATE_NORMALIZATION_RUN"
+
+
+class IntentEventType(str, Enum):
+    AUTH_CONTEXT_CAPTURED = "AUTH_CONTEXT_CAPTURED"
+    INTENT_CREATED = "INTENT_CREATED"
+    INTENT_SUBMITTED = "INTENT_SUBMITTED"
+    INTENT_VALIDATED = "INTENT_VALIDATED"
+    INTENT_APPROVED = "INTENT_APPROVED"
+    INTENT_REJECTED = "INTENT_REJECTED"
+    JOB_DISPATCHED = "JOB_DISPATCHED"
+    JOB_EXECUTED = "JOB_EXECUTED"
+    RECORD_RECORDED = "RECORD_RECORDED"
+
+
+class IntentSourceChannel(str, Enum):
+    UI = "ui"
+    API = "api"
+    SYSTEM = "system"
+    IMPORT = "import"
+
+
+class GuardResultStatus(str, Enum):
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SKIP = "SKIP"
+
+
+class JobStatus(str, Enum):
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
+
+class JobRunnerType(str, Enum):
+    INLINE = "INLINE"
+
+
+class NextAction(str, Enum):
+    APPROVAL_REQUIRED = "APPROVAL_REQUIRED"
+    EXECUTING = "EXECUTING"
+    NONE = "NONE"

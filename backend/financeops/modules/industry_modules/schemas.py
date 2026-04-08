@@ -60,6 +60,9 @@ class LeaseScheduleRow(BaseModel):
 class LeaseCreateResponse(BaseModel):
     lease_id: uuid.UUID
     draft_journal_id: uuid.UUID
+    intent_id: uuid.UUID
+    job_id: uuid.UUID | None
+    record_refs: dict[str, Any] | None = None
     periods: int
 
 
@@ -110,6 +113,9 @@ class RevenueScheduleRow(BaseModel):
 class RevenueContractCreateResponse(BaseModel):
     contract_id: uuid.UUID
     draft_journal_id: uuid.UUID
+    intent_id: uuid.UUID
+    job_id: uuid.UUID | None
+    record_refs: dict[str, Any] | None = None
     periods: int
 
 
@@ -145,6 +151,9 @@ class AssetScheduleRow(BaseModel):
 class FixedAssetCreateResponse(BaseModel):
     asset_id: uuid.UUID
     draft_journal_id: uuid.UUID
+    intent_id: uuid.UUID
+    job_id: uuid.UUID | None
+    record_refs: dict[str, Any] | None = None
     periods: int
 
 
@@ -193,5 +202,7 @@ class AccrualCreateRequest(BaseModel):
 class ScheduleBatchCreateResponse(BaseModel):
     schedule_batch_id: uuid.UUID
     draft_journal_id: uuid.UUID
+    intent_id: uuid.UUID
+    job_id: uuid.UUID | None
+    record_refs: dict[str, Any] | None = None
     periods: int
-

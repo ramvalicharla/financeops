@@ -6,6 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from financeops.core.governance.airlock import AirlockAdmissionService
+from financeops.core.exceptions import ValidationError
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.modules.erp_sync.application.sync_service import SyncService
 from financeops.modules.erp_sync.domain.enums import DatasetType
 
@@ -51,52 +54,115 @@ async def test_trigger_sync_run_uses_persisted_secret_ref_for_connector_extract(
         validation_service=validation_service,
     )
 
-    with (
-        patch.object(
-            service,
-            "_fetch_sync_context",
-            new_callable=AsyncMock,
-            return_value=(connection, definition, version),
-        ),
-        patch.object(
-            service,
-            "_resolve_active_secret_ref",
-            new_callable=AsyncMock,
-            return_value="enc-active-secret",
-        ),
-        patch.object(
-            service,
-            "_build_sync_token",
-            new_callable=AsyncMock,
-            return_value="sync-token",
-        ),
-        patch(
-            "financeops.modules.erp_sync.application.sync_service.get_connector",
-            return_value=connector,
-        ),
-        patch(
-            "financeops.modules.erp_sync.application.sync_service.AuditWriter.insert_financial_record",
-            new_callable=AsyncMock,
-            side_effect=[
-                SimpleNamespace(id=uuid.uuid4(), run_status="completed", run_token="sync-token"),
-                SimpleNamespace(id=uuid.uuid4(), snapshot_token="snapshot-token"),
-            ],
-        ),
-    ):
-        result = await service.trigger_sync_run(
-            tenant_id=tenant_id,
-            organisation_id=tenant_id,
-            entity_id=None,
-            connection_id=connection.id,
-            sync_definition_id=uuid.uuid4(),
-            sync_definition_version_id=uuid.uuid4(),
-            dataset_type=DatasetType.TRIAL_BALANCE,
-            idempotency_key="idempotency-key",
-            created_by=uuid.uuid4(),
-            extraction_kwargs={"checkpoint": {"page": 2}},
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=uuid.uuid4(),
+            actor_role="finance_leader",
+            intent_type="TEST_ERP_SYNC_TRIGGER",
         )
+    ):
+        with (
+            patch.object(
+                service,
+                "_fetch_sync_context",
+                new_callable=AsyncMock,
+                return_value=(connection, definition, version),
+            ),
+            patch.object(
+                service,
+                "_resolve_active_secret_ref",
+                new_callable=AsyncMock,
+                return_value="enc-active-secret",
+            ),
+            patch.object(
+                service,
+                "_build_sync_token",
+                new_callable=AsyncMock,
+                return_value="sync-token",
+            ),
+            patch(
+                "financeops.modules.erp_sync.application.sync_service.get_connector",
+                return_value=connector,
+            ),
+            patch.object(
+                AirlockAdmissionService,
+                "assert_admitted",
+                new=AsyncMock(return_value=SimpleNamespace(id=uuid.uuid4(), status="ADMITTED")),
+            ),
+            patch(
+                "financeops.modules.erp_sync.application.sync_service.AuditWriter.insert_financial_record",
+                new_callable=AsyncMock,
+                side_effect=[
+                    SimpleNamespace(id=uuid.uuid4(), run_status="completed", run_token="sync-token"),
+                    SimpleNamespace(id=uuid.uuid4(), snapshot_token="snapshot-token"),
+                ],
+            ),
+        ):
+            result = await service.trigger_sync_run(
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                entity_id=None,
+                connection_id=connection.id,
+                sync_definition_id=uuid.uuid4(),
+                sync_definition_version_id=uuid.uuid4(),
+                dataset_type=DatasetType.TRIAL_BALANCE,
+                idempotency_key="idempotency-key",
+                created_by=uuid.uuid4(),
+                extraction_kwargs={"checkpoint": {"page": 2}},
+                admitted_airlock_item_id=uuid.uuid4(),
+                source_type="erp_sync_request",
+            )
 
     extract_kwargs = connector.extract.await_args.kwargs
     assert extract_kwargs["secret_ref"] == "enc-active-secret"
     assert extract_kwargs["checkpoint"] == {"page": 2}
     assert result["sync_run_status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_run_requires_admitted_airlock_reference() -> None:
+    service = SyncService(AsyncMock())
+
+    with pytest.raises(ValidationError, match="cannot run without an active intent/job context"):
+        await service.trigger_sync_run(
+            tenant_id=uuid.uuid4(),
+            organisation_id=uuid.uuid4(),
+            entity_id=None,
+            connection_id=uuid.uuid4(),
+            sync_definition_id=uuid.uuid4(),
+            sync_definition_version_id=uuid.uuid4(),
+            dataset_type=DatasetType.TRIAL_BALANCE,
+            idempotency_key="idempotency-key",
+            created_by=uuid.uuid4(),
+            extraction_kwargs={},
+        )
+
+
+@pytest.mark.asyncio
+async def test_trigger_sync_run_requires_admitted_airlock_reference_after_context() -> None:
+    service = SyncService(AsyncMock())
+
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=uuid.uuid4(),
+            actor_role="finance_leader",
+            intent_type="TEST_ERP_SYNC_TRIGGER",
+        )
+    ):
+        with pytest.raises(ValidationError, match="admitted_airlock_item_id is required"):
+            await service.trigger_sync_run(
+                tenant_id=uuid.uuid4(),
+                organisation_id=uuid.uuid4(),
+                entity_id=None,
+                connection_id=uuid.uuid4(),
+                sync_definition_id=uuid.uuid4(),
+                sync_definition_version_id=uuid.uuid4(),
+                dataset_type=DatasetType.TRIAL_BALANCE,
+                idempotency_key="idempotency-key",
+                created_by=uuid.uuid4(),
+                extraction_kwargs={},
+            )

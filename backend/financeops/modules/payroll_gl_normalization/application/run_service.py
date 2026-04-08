@@ -6,6 +6,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from financeops.core.intent.context import require_mutation_context
+from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.modules.payroll_gl_normalization.application.gl_normalization_service import (
     GlNormalizationService,
 )
@@ -252,7 +254,17 @@ class NormalizationRunService:
         file_content_base64: str,
         sheet_name: str | None,
         created_by: uuid.UUID,
+        admitted_airlock_item_id: uuid.UUID | None,
+        source_type: str | None = None,
+        source_external_ref: str | None = None,
     ) -> dict[str, Any]:
+        mutation_context = require_mutation_context("Normalization run upload")
+        await AirlockAdmissionService().assert_admitted(
+            self._repository._session,
+            tenant_id=tenant_id,
+            item_id=admitted_airlock_item_id,
+            source_type=source_type,
+        )
         source = await self._repository.get_source_by_id(
             tenant_id=tenant_id, source_id=source_id
         )
@@ -347,10 +359,15 @@ class NormalizationRunService:
             reporting_period=reporting_period,
             source_artifact_id=source_artifact_id,
             source_file_hash=source_file_hash,
+            source_airlock_item_id=admitted_airlock_item_id,
+            source_type=source_type,
+            source_external_ref=source_external_ref,
             run_token=run_token,
             run_status=RunStatus.PENDING.value,
             validation_summary_json=summary,
             created_by=created_by,
+            created_by_intent_id=mutation_context.intent_id,
+            recorded_by_job_id=mutation_context.job_id,
         )
         evidence_links: list[dict[str, Any]] = []
         if run_type == RunType.PAYROLL_NORMALIZATION.value:
@@ -409,6 +426,9 @@ class NormalizationRunService:
             "payroll_line_count": len(payroll_lines),
             "gl_line_count": len(gl_lines),
             "exception_count": len(all_exceptions),
+            "source_airlock_item_id": str(admitted_airlock_item_id) if admitted_airlock_item_id else None,
+            "intent_id": str(mutation_context.intent_id),
+            "job_id": str(mutation_context.job_id),
             "idempotent": False,
         }
 
