@@ -5,11 +5,13 @@ from datetime import UTC, date, datetime
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.rls import set_tenant_context
 from financeops.modules.payment.application.entitlement_service import EntitlementService
+from financeops.platform.db.models.modules import CpModuleRegistry
+from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 
 
 async def _insert_anomaly_run(async_session: AsyncSession, tenant_id: uuid.UUID) -> uuid.UUID:
@@ -146,6 +148,32 @@ async def _grant_erp_integration_entitlement(
         effective_limit=1,
         actor_user_id=actor_user_id,
         metadata={"reason": "pagination_test"},
+    )
+    module = (
+        await async_session.execute(
+            select(CpModuleRegistry).where(CpModuleRegistry.module_code == "erp_sync")
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        module = CpModuleRegistry(
+            module_code="erp_sync",
+            module_name="ERP Sync",
+            engine_context="finance",
+            is_financial_impacting=True,
+            is_active=True,
+        )
+        async_session.add(module)
+        await async_session.flush()
+    await set_module_enablement(
+        async_session,
+        tenant_id=tenant_id,
+        module_id=module.id,
+        enabled=True,
+        enablement_source="test",
+        actor_user_id=actor_user_id,
+        correlation_id="pagination-test",
+        effective_from=__import__("datetime").datetime.now(__import__("datetime").UTC),
+        effective_to=None,
     )
     await async_session.flush()
 

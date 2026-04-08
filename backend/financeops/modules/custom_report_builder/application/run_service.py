@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
 from financeops.db.models.custom_report_builder import ReportDefinition, ReportRun
+from financeops.db.rls import set_tenant_context
 from financeops.modules.custom_report_builder.application.export_service import (
     ReportExportService,
 )
@@ -136,6 +137,7 @@ class ReportRunService:
                 },
             )
             try:
+                await set_tenant_context(db, tenant_id)
                 # After rollback SQLAlchemy expires loaded instances; reload the
                 # persisted RUNNING row so the append-only FAILED transition can
                 # be derived without touching expired state.

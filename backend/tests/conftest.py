@@ -10,6 +10,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 pytest_plugins = (
     "tests.integration.mis_phase1f1_helpers",
@@ -94,6 +96,17 @@ from financeops.db.models.fx_rates import (  # noqa: F401
     FxRateFetchRun,
     FxRateQuote,
     FxVarianceResult,
+)
+from financeops.db.models.intent_pipeline import (  # noqa: F401
+    CanonicalIntent,
+    CanonicalIntentEvent,
+    CanonicalJob,
+)
+from financeops.db.models.governance_control import (  # noqa: F401
+    AirlockEvent,
+    AirlockItem,
+    CanonicalGovernanceEvent,
+    GovernanceApprovalPolicy,
 )
 from financeops.db.models.consolidation import (  # noqa: F401
     ConsolidationElimination,
@@ -516,6 +529,13 @@ def _backend_dir() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
+def _current_alembic_head() -> str:
+    cfg = Config(str(_backend_dir() / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_backend_dir() / "migrations"))
+    script_dir = ScriptDirectory.from_config(cfg)
+    return script_dir.get_current_head() or ""
+
+
 def _run_alembic_upgrade_head(database_url: str) -> None:
     env = os.environ.copy()
     env["MIGRATION_DATABASE_URL"] = database_url
@@ -574,6 +594,30 @@ async def _ensure_pgvector_available(conn) -> None:
         )
 
 
+async def _ensure_shared_schema_bootstrapped(conn) -> None:
+    iam_tenants_exists = await conn.scalar(
+        text("SELECT to_regclass('public.iam_tenants')")
+    )
+    if iam_tenants_exists is None:
+        await _ensure_pgvector_available(conn)
+        await conn.run_sync(Base.metadata.create_all)
+    alembic_table_exists = await conn.scalar(
+        text("SELECT to_regclass('public.alembic_version')")
+    )
+    if alembic_table_exists is None:
+        await conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS alembic_version "
+                "(version_num varchar(32) NOT NULL)"
+            )
+        )
+    await conn.execute(text("DELETE FROM alembic_version"))
+    await conn.execute(
+        text("INSERT INTO alembic_version (version_num) VALUES (:version_num)"),
+        {"version_num": _current_alembic_head()},
+    )
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
     """Close module-level Redis pools before the event loop is torn down."""
@@ -593,28 +637,33 @@ async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
 async def engine():
     """
     Create a shared test engine once per session.
-    Schema bootstrap is migration-driven (alembic upgrade head) to avoid
-    enum/type duplication and metadata drift from create_all().
+    Schema bootstrap uses metadata creation on the shared test database.
+    Migration-path validation is covered separately by dedicated temp-db tests.
     """
     test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
     async with test_engine.begin() as conn:
         await _ensure_pgvector_available(conn)
         await _reset_public_schema(conn)
         await _ensure_pgvector_available(conn)
-    _run_alembic_upgrade_head(TEST_DATABASE_URL)
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        await _ensure_shared_schema_bootstrapped(conn)
     yield test_engine
     async with test_engine.begin() as conn:
         await _reset_public_schema(conn)
     await test_engine.dispose()
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def async_session(engine) -> AsyncGenerator[AsyncSession, None]:
     """
     Provide per-test isolation using an outer connection transaction.
     Any test-level commit remains contained and is discarded at teardown.
     """
     async with engine.connect() as connection:
+        await _ensure_shared_schema_bootstrapped(connection)
+        if connection.in_transaction():
+            await connection.rollback()
         outer_tx = await connection.begin()
         session = AsyncSession(
             bind=connection,
@@ -724,7 +773,7 @@ def test_access_token(test_user: IamUser) -> str:
     return create_access_token(test_user.id, test_user.tenant_id, test_user.role.value)
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def async_client(
     async_session: AsyncSession,
 ) -> AsyncGenerator[AsyncClient, None]:

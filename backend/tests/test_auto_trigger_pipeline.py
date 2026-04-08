@@ -24,6 +24,8 @@ from financeops.modules.auto_trigger.pipeline import (
     trigger_post_sync_pipeline_async,
 )
 from financeops.modules.payment.application.entitlement_service import EntitlementService
+from financeops.platform.db.models.modules import CpModuleRegistry
+from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.shared_kernel.idempotency import require_erp_sync_idempotency_key
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
@@ -222,6 +224,7 @@ async def _grant_erp_integration_entitlement(
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> None:
+    await set_tenant_context(session, tenant_id)
     service = EntitlementService(session)
     await service.create_tenant_override_entitlement(
         tenant_id=tenant_id,
@@ -230,6 +233,32 @@ async def _grant_erp_integration_entitlement(
         effective_limit=1,
         metadata={"source": "test"},
         actor_user_id=user_id,
+    )
+    module = (
+        await session.execute(
+            select(CpModuleRegistry).where(CpModuleRegistry.module_code == "erp_sync")
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        module = CpModuleRegistry(
+            module_code="erp_sync",
+            module_name="ERP Sync",
+            engine_context="finance",
+            is_financial_impacting=True,
+            is_active=True,
+        )
+        session.add(module)
+        await session.flush()
+    await set_module_enablement(
+        session,
+        tenant_id=tenant_id,
+        module_id=module.id,
+        enabled=True,
+        enablement_source="test",
+        actor_user_id=user_id,
+        correlation_id="auto-trigger-test",
+        effective_from=datetime.now(UTC),
+        effective_to=None,
     )
     await session.commit()
 

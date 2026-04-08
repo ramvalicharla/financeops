@@ -63,6 +63,7 @@ async def _create_platform_user(
     email: str,
     role: UserRole,
     force_mfa_setup: bool = False,
+    mfa_enabled: bool = True,
 ) -> IamUser:
     await _ensure_platform_tenant(session)
     user = IamUser(
@@ -72,7 +73,7 @@ async def _create_platform_user(
         full_name="Platform User",
         role=role,
         is_active=True,
-        mfa_enabled=True,
+        mfa_enabled=mfa_enabled,
         force_mfa_setup=force_mfa_setup,
     )
     session.add(user)
@@ -443,6 +444,7 @@ async def test_login_returns_requires_mfa_setup_when_forced(
         email="forced.mfa@example.com",
         role=UserRole.platform_admin,
         force_mfa_setup=True,
+        mfa_enabled=False,
     )
     response = await async_client.post(
         "/api/v1/auth/login",
@@ -465,6 +467,7 @@ async def test_login_normal_when_mfa_setup_not_forced(
         email="normal.mfa@example.com",
         role=UserRole.platform_admin,
         force_mfa_setup=False,
+        mfa_enabled=False,
     )
     response = await async_client.post(
         "/api/v1/auth/login",
@@ -483,6 +486,7 @@ async def test_force_mfa_setup_cleared_after_setup(async_session: AsyncSession) 
         email="mfa.clear@example.com",
         role=UserRole.platform_admin,
         force_mfa_setup=True,
+        mfa_enabled=False,
     )
     setup_payload = await setup_totp(user, async_session)
     totp_code = pyotp.TOTP(setup_payload["totp_secret"]).now()
