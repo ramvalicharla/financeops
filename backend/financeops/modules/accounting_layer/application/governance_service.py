@@ -11,6 +11,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from financeops.core.governance.events import GovernanceActor, emit_governance_event
 from financeops.db.models.accounting_governance import (
     AccountingGovernanceAuditEvent,
     AccountingPeriod,
@@ -138,6 +139,22 @@ async def record_governance_event(
         action=action,
         target_id=target_id,
         payload=payload,
+    )
+    await emit_governance_event(
+        db,
+        tenant_id=tenant_id,
+        module_key=module,
+        subject_type="governed_mutation",
+        subject_id=target_id,
+        event_type=str(action or "").strip().upper(),
+        actor=GovernanceActor(user_id=actor_user_id, role=None),
+        entity_id=entity_id,
+        payload={
+            **payload,
+            "legacy_module": module,
+            "legacy_action": action,
+            "legacy_target_id": target_id,
+        },
     )
 
 

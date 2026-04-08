@@ -187,4 +187,21 @@ class ApprovalPolicyResolver:
                     "mutation_type": request.mutation_type,
                 },
             )
+        if evaluation.approval_required and not evaluation.is_granted:
+            await emit_governance_event(
+                db,
+                tenant_id=request.tenant_id,
+                module_key=request.module_key,
+                subject_type=request.subject_type,
+                subject_id=request.subject_id or request.mutation_type,
+                event_type="APPROVAL_REJECTED",
+                actor=actor,
+                entity_id=request.entity_id,
+                payload={
+                    "policy_id": str(evaluation.policy_id) if evaluation.policy_id else None,
+                    "required_role": evaluation.required_role,
+                    "mutation_type": request.mutation_type,
+                    "reason": evaluation.reason,
+                },
+            )
         return evaluation

@@ -18,6 +18,7 @@ from financeops.db.models.governance_control import (
     GovernanceApprovalPolicy,
 )
 from financeops.db.models.users import UserRole
+from financeops.modules.accounting_layer.application.governance_service import record_governance_event
 
 
 @pytest.mark.asyncio
@@ -273,3 +274,43 @@ async def test_approval_policy_resolver_blocks_finance_team_for_approve_journal_
     assert evaluation.approval_required is True
     assert evaluation.is_granted is False
     assert evaluation.required_role == UserRole.finance_leader.value
+
+    governance_events = (
+        await async_session.execute(
+            select(CanonicalGovernanceEvent).where(
+                CanonicalGovernanceEvent.subject_id == "approve-journal"
+            )
+        )
+    ).scalars().all()
+    assert {row.event_type for row in governance_events} >= {
+        "APPROVAL_REQUIRED",
+        "APPROVAL_REJECTED",
+    }
+
+
+@pytest.mark.asyncio
+async def test_legacy_governance_event_bridge_emits_canonical_event(
+    async_session: AsyncSession,
+    test_user,
+) -> None:
+    await record_governance_event(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        entity_id=None,
+        actor_user_id=test_user.id,
+        module="journal_workflow",
+        action="journal_approved",
+        target_id="journal-123",
+        payload={"status": "APPROVED"},
+    )
+
+    governance_event = (
+        await async_session.execute(
+            select(CanonicalGovernanceEvent).where(
+                CanonicalGovernanceEvent.subject_id == "journal-123",
+                CanonicalGovernanceEvent.event_type == "JOURNAL_APPROVED",
+            )
+        )
+    ).scalar_one()
+    assert governance_event.module_key == "journal_workflow"
+    assert governance_event.payload_json["legacy_action"] == "journal_approved"

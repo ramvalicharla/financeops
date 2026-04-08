@@ -8,11 +8,13 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import HTTPException
 
+from financeops.api.v1 import bank_recon as bank_recon_routes
 from financeops.api.v1 import gst as gst_routes
 from financeops.core.governance.approvals import ApprovalEvaluation
 from financeops.core.intent.service import IntentSubmissionResult
 from financeops.db.models.users import UserRole
 from financeops.modules.closing_checklist.api import routes as close_routes
+from financeops.modules.coa.api import routes as coa_routes
 from financeops.modules.erp_sync.api import sync_runs as erp_sync_routes
 from financeops.modules.payroll_gl_normalization.api import routes as normalization_routes
 
@@ -162,6 +164,152 @@ async def test_normalization_upload_route_requires_airlock_before_mutation(
     assert response.source_airlock_item_id == airlock_item_id
     assert response.intent_id == submit_intent_mock.return_value.intent_id
     assert response.job_id == submit_intent_mock.return_value.job_id
+
+
+@pytest.mark.asyncio
+async def test_bank_recon_upload_route_requires_airlock_before_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    airlock_item_id = uuid.uuid4()
+    submit_mock = AsyncMock(
+        return_value=SimpleNamespace(
+            item_id=airlock_item_id,
+            status="QUARANTINED",
+            quarantine_ref="q://bank",
+            checksum_sha256="abc",
+            admitted=False,
+        )
+    )
+    admit_mock = AsyncMock(
+        return_value=SimpleNamespace(
+            item_id=airlock_item_id,
+            status="ADMITTED",
+            quarantine_ref="q://bank",
+            checksum_sha256="abc",
+            admitted=True,
+        )
+    )
+    store_mock = AsyncMock(return_value=[SimpleNamespace(id=uuid.uuid4())])
+    parser = SimpleNamespace(parse_csv=lambda _content: [SimpleNamespace(transaction_date=__import__("datetime").date(2026, 3, 1), balance=1)])
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_scalar_result(SimpleNamespace(entity_name="Bank Entity")))
+
+    monkeypatch.setattr(bank_recon_routes.AirlockAdmissionService, "submit_external_input", submit_mock)
+    monkeypatch.setattr(bank_recon_routes.AirlockAdmissionService, "admit_airlock_item", admit_mock)
+    monkeypatch.setattr(bank_recon_routes, "assert_entity_access", AsyncMock(return_value=None))
+    monkeypatch.setattr(bank_recon_routes, "get_parser", lambda _bank_name: parser)
+    monkeypatch.setattr(bank_recon_routes, "store_bank_transactions", store_mock)
+
+    response = await bank_recon_routes.upload_bank_statement(
+        bank_name="HDFC",
+        entity_id=uuid.uuid4(),
+        file=SimpleNamespace(read=AsyncMock(return_value=b"date,amount\n2026-03-01,1"), filename="statement.csv"),
+        session=session,
+        user=SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4(), role=UserRole.finance_team),
+    )
+
+    assert submit_mock.await_count == 1
+    assert admit_mock.await_count == 1
+    assert store_mock.await_args.kwargs["admitted_airlock_item_id"] == airlock_item_id
+    assert store_mock.await_args.kwargs["source_type"] == "bank_recon_statement_upload"
+    assert response["airlock_item_id"] == str(airlock_item_id)
+
+
+@pytest.mark.asyncio
+async def test_coa_routes_require_airlock_before_validate_and_upload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upload_airlock_item_id = uuid.uuid4()
+    validate_airlock_item_id = uuid.uuid4()
+    submit_mock = AsyncMock(
+        side_effect=[
+            SimpleNamespace(
+                item_id=upload_airlock_item_id,
+                status="QUARANTINED",
+                quarantine_ref="q://coa-upload",
+                checksum_sha256="upload",
+                admitted=False,
+            ),
+            SimpleNamespace(
+                item_id=validate_airlock_item_id,
+                status="QUARANTINED",
+                quarantine_ref="q://coa-validate",
+                checksum_sha256="validate",
+                admitted=False,
+            ),
+        ]
+    )
+    admit_mock = AsyncMock(
+        side_effect=[
+            SimpleNamespace(
+                item_id=upload_airlock_item_id,
+                status="ADMITTED",
+                quarantine_ref="q://coa-upload",
+                checksum_sha256="upload",
+                admitted=True,
+            ),
+            SimpleNamespace(
+                item_id=validate_airlock_item_id,
+                status="ADMITTED",
+                quarantine_ref="q://coa-validate",
+                checksum_sha256="validate",
+                admitted=True,
+            ),
+        ]
+    )
+    upload_mock = AsyncMock(
+        return_value={
+            "batch_id": str(uuid.uuid4()),
+            "upload_status": "SUCCESS",
+            "total_rows": 1,
+            "valid_rows": 1,
+            "invalid_rows": 0,
+            "errors": [],
+            "upload_kind": None,
+            "activation_summary": None,
+            "requires_review": False,
+            "idempotent_replay": False,
+        }
+    )
+    validate_mock = AsyncMock(
+        return_value={"total_rows": 1, "valid_rows": 1, "invalid_rows": 0, "errors": []}
+    )
+
+    monkeypatch.setattr(coa_routes.AirlockAdmissionService, "submit_external_input", submit_mock)
+    monkeypatch.setattr(coa_routes.AirlockAdmissionService, "admit_airlock_item", admit_mock)
+    monkeypatch.setattr(coa_routes.CoaUploadService, "upload", upload_mock)
+    monkeypatch.setattr(coa_routes.CoaUploadService, "validate_only", validate_mock)
+    monkeypatch.setattr(coa_routes, "commit_session", AsyncMock(return_value=None))
+
+    user = SimpleNamespace(id=uuid.uuid4(), tenant_id=uuid.uuid4(), role=UserRole.finance_team)
+    upload_response = await coa_routes.upload_coa.__wrapped__(
+        request=SimpleNamespace(),
+        file=SimpleNamespace(
+            read=AsyncMock(
+                return_value=b"group_code,group_name,subgroup_code,subgroup_name,ledger_code,ledger_name,ledger_type,is_control_account\n"
+            ),
+            filename="coa.csv",
+        ),
+        template_id=uuid.uuid4(),
+        mode="APPEND",
+        session=AsyncMock(),
+        user=user,
+    )
+    validate_response = await coa_routes.validate_coa.__wrapped__(
+        request=SimpleNamespace(),
+        file=SimpleNamespace(read=AsyncMock(return_value=b"group_code,group_name,subgroup_code,subgroup_name,ledger_code,ledger_name,ledger_type,is_control_account\n"), filename="coa.csv"),
+        session=AsyncMock(),
+        user=user,
+    )
+
+    assert submit_mock.await_count == 2
+    assert admit_mock.await_count == 2
+    assert upload_mock.await_args.kwargs["admitted_airlock_item_id"] == upload_airlock_item_id
+    assert upload_mock.await_args.kwargs["airlock_source_type"] == "coa_upload"
+    assert validate_mock.await_args.kwargs["admitted_airlock_item_id"] == validate_airlock_item_id
+    assert validate_mock.await_args.kwargs["airlock_source_type"] == "coa_validate_upload"
+    assert upload_response.upload_status == "SUCCESS"
+    assert validate_response.valid_rows == 1
 
 
 @pytest.mark.asyncio

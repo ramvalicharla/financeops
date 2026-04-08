@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from openpyxl import Workbook
@@ -22,6 +24,16 @@ from financeops.modules.coa.models import (
     TenantCoaAccount,
 )
 from financeops.modules.coa.seeds.runner import run_coa_seeds
+
+
+@pytest.fixture(autouse=True)
+def _mock_airlock_admission(monkeypatch: pytest.MonkeyPatch) -> uuid.UUID:
+    admitted_item_id = uuid.uuid4()
+    monkeypatch.setattr(
+        "financeops.modules.coa.application.coa_upload_service.AirlockAdmissionService.assert_admitted",
+        AsyncMock(return_value=SimpleNamespace(id=admitted_item_id, status="ADMITTED")),
+    )
+    return admitted_item_id
 
 
 async def _software_template(async_session: AsyncSession) -> CoaIndustryTemplate:
@@ -56,7 +68,13 @@ async def test_validate_only_detects_duplicate_ledger_code(async_session: AsyncS
         "REV,Revenue,REV_SG,Revenue SG,LED001,Duplicate Revenue,INCOME,false\n"
     ).encode("utf-8")
 
-    result = await service.validate_only(file_name="coa.csv", file_bytes=csv_content)
+    result = await service.validate_only(
+        actor_tenant_id=uuid.uuid4(),
+        file_name="coa.csv",
+        file_bytes=csv_content,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_validate_upload",
+    )
 
     assert result["total_rows"] == 2
     assert result["invalid_rows"] == 1
@@ -100,12 +118,15 @@ async def test_upload_and_apply_creates_tenant_custom_ledger(async_session: Asyn
 
     upload = await service.upload(
         actor_id=test_user.id,
+        actor_tenant_id=test_user.tenant_id,
         tenant_id=test_user.tenant_id,
         template_id=template.id,
         source_type=CoaSourceType.TENANT_CUSTOM,
         upload_mode=CoaUploadMode.APPEND,
         file_name="coa.csv",
         file_bytes=csv_content,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_upload",
     )
 
     assert upload["upload_status"] == "SUCCESS"
@@ -152,12 +173,15 @@ async def test_apply_replace_disables_previous_scope_ledgers(async_session: Asyn
     ).encode("utf-8")
     first_upload = await service.upload(
         actor_id=test_user.id,
+        actor_tenant_id=test_user.tenant_id,
         tenant_id=test_user.tenant_id,
         template_id=template.id,
         source_type=CoaSourceType.TENANT_CUSTOM,
         upload_mode=CoaUploadMode.APPEND,
         file_name="coa_first.csv",
         file_bytes=first_csv,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_upload",
     )
     await service.apply_batch(
         batch_id=uuid.UUID(str(first_upload["batch_id"])),
@@ -171,12 +195,15 @@ async def test_apply_replace_disables_previous_scope_ledgers(async_session: Asyn
     ).encode("utf-8")
     replace_upload = await service.upload(
         actor_id=test_user.id,
+        actor_tenant_id=test_user.tenant_id,
         tenant_id=test_user.tenant_id,
         template_id=template.id,
         source_type=CoaSourceType.TENANT_CUSTOM,
         upload_mode=CoaUploadMode.REPLACE,
         file_name="coa_replace.csv",
         file_bytes=replace_csv,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_upload",
     )
     await service.apply_batch(
         batch_id=uuid.UUID(str(replace_upload["batch_id"])),
@@ -229,12 +256,15 @@ async def test_flexible_upload_returns_activation_summary_and_review_flags(
 
     upload = await service.upload(
         actor_id=test_user.id,
+        actor_tenant_id=test_user.tenant_id,
         tenant_id=test_user.tenant_id,
         template_id=template.id,
         source_type=CoaSourceType.TENANT_CUSTOM,
         upload_mode=CoaUploadMode.APPEND,
         file_name="tb.csv",
         file_bytes=csv_content,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_upload",
     )
 
     assert upload["upload_status"] == "SUCCESS"
@@ -271,12 +301,15 @@ async def test_flexible_upload_apply_is_idempotent_and_marks_activation(
 
     upload = await service.upload(
         actor_id=test_user.id,
+        actor_tenant_id=test_user.tenant_id,
         tenant_id=test_user.tenant_id,
         template_id=template.id,
         source_type=CoaSourceType.TENANT_CUSTOM,
         upload_mode=CoaUploadMode.APPEND,
         file_name="tb.csv",
         file_bytes=csv_content,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_upload",
     )
     apply_result = await service.apply_batch(
         batch_id=uuid.UUID(str(upload["batch_id"])),
@@ -296,12 +329,15 @@ async def test_flexible_upload_apply_is_idempotent_and_marks_activation(
 
     replay = await service.upload(
         actor_id=test_user.id,
+        actor_tenant_id=test_user.tenant_id,
         tenant_id=test_user.tenant_id,
         template_id=template.id,
         source_type=CoaSourceType.TENANT_CUSTOM,
         upload_mode=CoaUploadMode.APPEND,
         file_name="tb.csv",
         file_bytes=csv_content,
+        admitted_airlock_item_id=uuid.uuid4(),
+        airlock_source_type="coa_upload",
     )
     assert replay["idempotent_replay"] is True
     assert replay["batch_id"] == upload["batch_id"]

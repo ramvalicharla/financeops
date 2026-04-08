@@ -13,6 +13,8 @@ from financeops.core.security import hash_password
 from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalIntentEvent
 from financeops.db.models.users import IamUser, UserRole
+from financeops.modules.accounting_layer.application.approval_service import submit_approval
+from financeops.modules.accounting_layer.application.jv_service import create_jv
 from financeops.modules.accounting_layer.application.journal_service import create_journal_draft
 from financeops.modules.accounting_layer.domain.schemas import JournalCreate
 from financeops.modules.coa.models import TenantCoaAccount
@@ -220,4 +222,27 @@ async def test_direct_domain_mutation_is_blocked_without_intent_context(
             tenant_id=test_user.tenant_id,
             created_by=test_user.id,
             payload=JournalCreate.model_validate(_payload(entity.id)),
+        )
+
+    with pytest.raises(ValidationError):
+        await create_jv(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            entity_id=entity.id,
+            created_by=test_user.id,
+            period_date="2026-04-01",
+            fiscal_year=2026,
+            fiscal_period=4,
+            lines=[],
+        )
+
+    with pytest.raises(ValidationError):
+        await submit_approval(
+            async_session,
+            jv_id=uuid.uuid4(),
+            tenant_id=test_user.tenant_id,
+            acted_by=test_user.id,
+            actor_role=UserRole.finance_leader.value,
+            decision="APPROVED",
+            expected_version=1,
         )

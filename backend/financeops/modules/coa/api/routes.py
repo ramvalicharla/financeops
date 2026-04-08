@@ -25,6 +25,7 @@ from financeops.api.deps import (
 )
 from financeops.config import limiter, settings
 from financeops.core.exceptions import ValidationError
+from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
 from financeops.db.models.users import IamUser
 from financeops.db.transaction import commit_session
 from financeops.modules.coa.api.schemas import (
@@ -305,6 +306,21 @@ async def upload_coa(
     if not file_bytes:
         raise ValidationError("Uploaded file is empty")
     _validate_upload_file(file=file, file_bytes=file_bytes)
+    airlock_service = AirlockAdmissionService()
+    airlock_result = await airlock_service.submit_external_input(
+        session,
+        source_type="coa_upload",
+        actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+        metadata={"template_id": str(template_id), "mode": upload_mode.value},
+        content=file_bytes,
+        file_name=file.filename or "coa_upload.csv",
+        source_reference=str(template_id),
+    )
+    airlock_result = await airlock_service.admit_airlock_item(
+        session,
+        item_id=airlock_result.item_id,
+        actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+    )
 
     platform_admin = _is_platform_admin(user.role)
     source_type = (
@@ -315,12 +331,15 @@ async def upload_coa(
     service = CoaUploadService(session)
     result = await service.upload(
         actor_id=user.id,
+        actor_tenant_id=user.tenant_id,
         tenant_id=tenant_id,
         template_id=template_id,
         source_type=source_type,
         upload_mode=upload_mode,
         file_name=file.filename or "coa_upload.csv",
         file_bytes=file_bytes,
+        admitted_airlock_item_id=airlock_result.item_id,
+        airlock_source_type="coa_upload",
     )
     await commit_session(session)
     return CoaUploadResponse(
@@ -343,18 +362,36 @@ async def validate_coa(
     request: Request,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_async_session),
-    _: IamUser = Depends(require_finance_team),
+    user: IamUser = Depends(require_finance_team),
 ) -> CoaValidateResponse:
     del request
     file_bytes = await file.read()
     if not file_bytes:
         raise ValidationError("Uploaded file is empty")
     _validate_upload_file(file=file, file_bytes=file_bytes)
+    airlock_service = AirlockAdmissionService()
+    airlock_result = await airlock_service.submit_external_input(
+        session,
+        source_type="coa_validate_upload",
+        actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+        metadata={"operation": "validate_only"},
+        content=file_bytes,
+        file_name=file.filename or "coa_upload.csv",
+        source_reference=file.filename or "coa_upload.csv",
+    )
+    airlock_result = await airlock_service.admit_airlock_item(
+        session,
+        item_id=airlock_result.item_id,
+        actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+    )
 
     service = CoaUploadService(session)
     result = await service.validate_only(
+        actor_tenant_id=user.tenant_id,
         file_name=file.filename or "coa_upload.csv",
         file_bytes=file_bytes,
+        admitted_airlock_item_id=airlock_result.item_id,
+        airlock_source_type="coa_validate_upload",
     )
     return CoaValidateResponse(
         total_rows=int(result["total_rows"]),

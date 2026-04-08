@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import AuthorizationError, NotFoundError, ValidationError
+from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.modules.coa.models import (
     CoaAccountGroup,
     CoaAccountSubgroup,
@@ -249,9 +250,18 @@ class CoaUploadService:
     async def validate_only(
         self,
         *,
+        actor_tenant_id: uuid.UUID,
         file_name: str,
         file_bytes: bytes,
+        admitted_airlock_item_id: uuid.UUID,
+        airlock_source_type: str,
     ) -> dict[str, Any]:
+        await AirlockAdmissionService().assert_admitted(
+            self._session,
+            tenant_id=actor_tenant_id,
+            item_id=admitted_airlock_item_id,
+            source_type=airlock_source_type,
+        )
         try:
             rows = self.parse_file(file_name=file_name, file_bytes=file_bytes)
         except ValidationError:
@@ -511,13 +521,22 @@ class CoaUploadService:
         self,
         *,
         actor_id: uuid.UUID,
+        actor_tenant_id: uuid.UUID,
         tenant_id: uuid.UUID | None,
         template_id: uuid.UUID,
         source_type: CoaSourceType,
         upload_mode: CoaUploadMode,
         file_name: str,
         file_bytes: bytes,
+        admitted_airlock_item_id: uuid.UUID,
+        airlock_source_type: str,
     ) -> dict[str, Any]:
+        await AirlockAdmissionService().assert_admitted(
+            self._session,
+            tenant_id=actor_tenant_id,
+            item_id=admitted_airlock_item_id,
+            source_type=airlock_source_type,
+        )
         template = (
             await self._session.execute(
                 select(CoaIndustryTemplate).where(CoaIndustryTemplate.id == template_id)

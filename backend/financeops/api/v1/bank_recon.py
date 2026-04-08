@@ -15,6 +15,7 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_team,
 )
+from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
 from financeops.db.models.bank_recon import BankReconItem, BankStatement, BankTransaction
 from financeops.db.models.users import IamUser
 from financeops.platform.db.models.entities import CpEntity
@@ -78,7 +79,25 @@ async def upload_bank_statement(
     Upload and parse a bank statement CSV.
     Supported banks: HDFC, ICICI, SBI, Axis
     """
-    content = (await file.read()).decode("utf-8", errors="replace")
+    file_bytes = await file.read()
+    airlock_service = AirlockAdmissionService()
+    airlock_result = await airlock_service.submit_external_input(
+        session,
+        source_type="bank_recon_statement_upload",
+        actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+        metadata={"bank_name": bank_name, "entity_id": str(entity_id)},
+        content=file_bytes,
+        file_name=file.filename or "statement.csv",
+        entity_id=entity_id,
+        source_reference=f"{entity_id}:{bank_name}",
+    )
+    airlock_result = await airlock_service.admit_airlock_item(
+        session,
+        item_id=airlock_result.item_id,
+        actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
+    )
+
+    content = file_bytes.decode("utf-8", errors="replace")
 
     if bank_name == "auto":
         bank_name = detect_bank_from_content(content)
@@ -112,6 +131,8 @@ async def upload_bank_statement(
         bank_name=bank_name,
         transactions=transactions,
         uploaded_by=user.id,
+        admitted_airlock_item_id=airlock_result.item_id,
+        source_type="bank_recon_statement_upload",
     )
 
     await session.flush()
@@ -123,6 +144,7 @@ async def upload_bank_statement(
             "from": min(t.transaction_date for t in transactions).isoformat(),
             "to": max(t.transaction_date for t in transactions).isoformat(),
         },
+        "airlock_item_id": str(airlock_result.item_id),
     }
 
 

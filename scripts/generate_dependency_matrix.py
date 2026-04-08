@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import http.client
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -137,6 +138,11 @@ def _http_json(url: str, timeout: float = 1.5) -> dict | None:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             payload = response.read().decode("utf-8")
             return json.loads(payload)
+    except http.client.IncompleteRead as exc:
+        try:
+            return json.loads(exc.partial.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError, TypeError):
+            return None
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, OSError):
         return None
 

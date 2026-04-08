@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.db.models.bank_recon import BankStatement, BankTransaction, BankReconItem
 from financeops.modules.bank_reconciliation.parsers.base import BankTransaction as ParsedBankTransaction
 from financeops.platform.db.models.entities import CpEntity
@@ -380,9 +381,17 @@ async def store_bank_transactions(
     bank_name: str,
     transactions: list[ParsedBankTransaction],
     uploaded_by: uuid.UUID,
+    admitted_airlock_item_id: uuid.UUID,
+    source_type: str,
 ) -> list[BankTransaction]:
     if not transactions:
         return []
+    await AirlockAdmissionService().assert_admitted(
+        session,
+        tenant_id=tenant_id,
+        item_id=admitted_airlock_item_id,
+        source_type=source_type,
+    )
 
     first = min(t.transaction_date for t in transactions)
     last = max(t.transaction_date for t in transactions)
