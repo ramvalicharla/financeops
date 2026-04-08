@@ -1060,6 +1060,10 @@ async def _serialize_journals(
                 total_debit=_q4(journal.total_debit),
                 total_credit=_q4(journal.total_credit),
                 currency=journal.currency,
+                created_by=journal.created_by,
+                intent_id=journal.created_by_intent_id,
+                job_id=journal.recorded_by_job_id,
+                approval_status=journal_status if journal_status in {"SUBMITTED", "REVIEWED", "APPROVED"} else None,
                 lines=serialised_lines,
             )
         )

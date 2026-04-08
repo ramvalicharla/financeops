@@ -150,6 +150,7 @@ export const SETTINGS_NAV_ITEMS = [
   },
   { label: "CoA Uploads", href: "/settings/coa", icon: Layers },
   { label: "ERP Mapping", href: "/settings/erp-mapping", icon: GitMerge },
+  { label: "Airlock", href: "/settings/airlock", icon: ShieldCheck },
   {
     label: "Groups & Entities",
     href: "/settings/groups",

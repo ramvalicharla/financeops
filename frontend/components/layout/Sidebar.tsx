@@ -3,12 +3,14 @@
 import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
+import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
 import { Button } from "@/components/ui/button"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
+import { listControlPlaneEntities } from "@/lib/api/control-plane"
 import {
   ADMIN_NAV_ITEMS,
   ADVISORY_NAV_ITEMS,
@@ -19,6 +21,7 @@ import {
   SETTINGS_NAV_ITEMS,
   TRUST_NAV_ITEMS,
 } from "@/lib/config/navigation"
+import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { filterNavigationItems } from "@/lib/ui-access"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
@@ -52,6 +55,14 @@ export function Sidebar({
   const sidebarOpen = useUIStore((state) => state.sidebarOpen)
   const closeSidebar = useUIStore((state) => state.closeSidebar)
   const setTenant = useTenantStore((state) => state.setTenant)
+  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
+  const currentOrg = useControlPlaneStore((state) => state.current_org)
+  const setCurrentOrg = useControlPlaneStore((state) => state.setCurrentOrg)
+  const entitiesQuery = useQuery({
+    queryKey: ["control-plane-entities"],
+    queryFn: listControlPlaneEntities,
+  })
 
   useEffect(() => {
     setTenant({
@@ -65,6 +76,16 @@ export function Sidebar({
   }, [entityRoles, orgSetupComplete, orgSetupStep, setTenant, tenantId, tenantSlug])
 
   useEffect(() => {
+    setCurrentOrg(tenantSlug)
+  }, [setCurrentOrg, tenantSlug])
+
+  useEffect(() => {
+    if (!activeEntityId && entitiesQuery.data?.[0]?.id) {
+      setActiveEntity(entitiesQuery.data[0].id)
+    }
+  }, [activeEntityId, entitiesQuery.data, setActiveEntity])
+
+  useEffect(() => {
     if (pathname.startsWith("/reconciliation")) {
       setReconciliationOpen(true)
     }
@@ -74,6 +95,17 @@ export function Sidebar({
     const [first, second] = userName.split(" ")
     return `${first?.[0] ?? ""}${second?.[0] ?? ""}`.toUpperCase()
   }, [userName])
+
+  const entityOptions = useMemo(() => {
+    if (entityRoles.length) {
+      return entityRoles
+    }
+    return (entitiesQuery.data ?? []).map((entity) => ({
+      entity_id: entity.id,
+      entity_name: entity.entity_name,
+      role: null,
+    }))
+  }, [entitiesQuery.data, entityRoles])
 
   const showTrust = userRole === "finance_leader"
   const showAdvisory = userRole === "finance_leader"
@@ -172,6 +204,17 @@ export function Sidebar({
           <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
             FinanceOps
           </p>
+          <div className="mt-3 rounded-md border border-border bg-background p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Org</p>
+            <select
+              aria-label="Current organisation"
+              className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+              value={currentOrg ?? tenantSlug}
+              onChange={(event) => setCurrentOrg(event.target.value)}
+            >
+              <option value={currentOrg ?? tenantSlug}>{currentOrg ?? tenantSlug}</option>
+            </select>
+          </div>
         </div>
 
         <nav aria-label="Main navigation" className="flex-1 space-y-2 overflow-y-auto p-3">
@@ -236,7 +279,7 @@ export function Sidebar({
         </nav>
 
         <div className="space-y-3 border-t border-border p-3">
-          <EntitySwitcher entityRoles={entityRoles} />
+          <EntitySwitcher entityRoles={entityOptions} />
           <div className="rounded-md border border-border bg-background p-3">
             <div className="mb-2 flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium">
@@ -245,6 +288,9 @@ export function Sidebar({
               <div>
                 <p className="text-sm font-medium text-foreground">{userName}</p>
                 <p className="text-xs text-muted-foreground">{userEmail}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Role: {String(userRole).replace(/_/g, " ")}
+                </p>
               </div>
             </div>
             <Button

@@ -12,6 +12,7 @@ import {
   reverseJournal,
   submitJournal,
 } from "@/lib/api/accounting-journals"
+import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import {
   canPerformAction,
   getPermissionDeniedMessage,
@@ -34,6 +35,7 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
   const { data: session } = useSession()
   const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
   const queryClient = useQueryClient()
+  const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
   const journalId = params.id
   const journalQuery = useQuery({
     queryKey: ["accounting-journal", journalId],
@@ -47,23 +49,38 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
 
   const submitMutation = useMutation({
     mutationFn: () => submitJournal(journalId),
-    onSuccess: refresh,
+    onSuccess: async (result) => {
+      openIntentPanel(result)
+      await refresh()
+    },
   })
   const reviewMutation = useMutation({
     mutationFn: () => reviewJournal(journalId),
-    onSuccess: refresh,
+    onSuccess: async (result) => {
+      openIntentPanel(result)
+      await refresh()
+    },
   })
   const approveMutation = useMutation({
     mutationFn: () => approveJournal(journalId),
-    onSuccess: refresh,
+    onSuccess: async (result) => {
+      openIntentPanel(result)
+      await refresh()
+    },
   })
   const postMutation = useMutation({
     mutationFn: () => postJournal(journalId),
-    onSuccess: refresh,
+    onSuccess: async (result) => {
+      openIntentPanel(result)
+      await refresh()
+    },
   })
   const reverseMutation = useMutation({
     mutationFn: () => reverseJournal(journalId),
-    onSuccess: refresh,
+    onSuccess: async (result) => {
+      openIntentPanel(result)
+      await refresh()
+    },
   })
 
   const journal = journalQuery.data
@@ -132,6 +149,18 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
               <div>
                 <p className="text-xs uppercase text-muted-foreground">Reference</p>
                 <p className="mt-1 text-sm text-foreground">{journal.reference ?? "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">Intent ID</p>
+                <p className="mt-1 break-all font-mono text-xs text-foreground">{journal.intent_id ?? "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">Job ID</p>
+                <p className="mt-1 break-all font-mono text-xs text-foreground">{journal.job_id ?? "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase text-muted-foreground">Approval Status</p>
+                <p className="mt-1 text-sm text-foreground">{journal.approval_status ?? "-"}</p>
               </div>
             </div>
             <p className="mt-3 text-sm text-muted-foreground">{journal.narration ?? "-"}</p>

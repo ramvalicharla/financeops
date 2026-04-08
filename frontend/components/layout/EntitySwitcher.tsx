@@ -1,10 +1,15 @@
 "use client"
 
 import { useMemo } from "react"
-import type { EntityRole } from "@/types/api"
 import { useTenantStore } from "@/lib/store/tenant"
 
-const roleLabelMap: Record<EntityRole["role"], string> = {
+type EntitySwitcherOption = {
+  entity_id: string
+  entity_name: string
+  role?: "admin" | "accountant" | "auditor" | "viewer" | null
+}
+
+const roleLabelMap: Record<NonNullable<EntitySwitcherOption["role"]>, string> = {
   admin: "Admin",
   accountant: "Accountant",
   auditor: "Auditor",
@@ -12,7 +17,7 @@ const roleLabelMap: Record<EntityRole["role"], string> = {
 }
 
 interface EntitySwitcherProps {
-  entityRoles: EntityRole[]
+  entityRoles: EntitySwitcherOption[]
 }
 
 export function EntitySwitcher({ entityRoles }: EntitySwitcherProps) {
@@ -43,11 +48,12 @@ export function EntitySwitcher({ entityRoles }: EntitySwitcherProps) {
       >
         {entityRoles.map((entityRole) => (
           <option key={entityRole.entity_id} value={entityRole.entity_id}>
-            {entityRole.entity_name} ({roleLabelMap[entityRole.role]})
+            {entityRole.entity_name}
+            {entityRole.role ? ` (${roleLabelMap[entityRole.role]})` : ""}
           </option>
         ))}
       </select>
-      {activeEntity ? (
+      {activeEntity?.role ? (
         <span className="inline-flex rounded-full bg-accent px-2 py-1 text-xs font-medium text-accent-foreground">
           {roleLabelMap[activeEntity.role]}
         </span>

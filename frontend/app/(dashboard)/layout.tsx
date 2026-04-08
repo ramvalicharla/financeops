@@ -4,9 +4,13 @@ import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import type { UserRole } from "@/lib/auth"
 import { DataActivationReminder } from "@/components/layout/DataActivationReminder"
+import { ContextBar } from "@/components/layout/ContextBar"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { DisplayPreferenceBootstrap } from "@/components/layout/DisplayPreferenceBootstrap"
+import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { Topbar } from "@/components/layout/Topbar"
+import { IntentPanel } from "@/components/panels/IntentPanel"
+import { JobPanel } from "@/components/panels/JobPanel"
 import { SearchProvider } from "@/components/search/SearchProvider"
 
 export default async function DashboardLayout({
@@ -75,6 +79,8 @@ export default async function DashboardLayout({
             userEmail={user.email ?? ""}
             userName={user.name ?? "Finance User"}
           />
+          <ModuleTabs />
+          <ContextBar tenantSlug={tenantSlug} />
           <main id="main-content" className="flex-1 overflow-y-auto p-6">
             <DataActivationReminder
               initialCoaStatus={user.coa_status}
@@ -82,6 +88,8 @@ export default async function DashboardLayout({
             />
             {children}
           </main>
+          <IntentPanel />
+          <JobPanel />
         </SearchProvider>
       </div>
     </div>

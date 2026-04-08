@@ -230,6 +230,10 @@ class JournalResponse(BaseModel):
     total_debit: Decimal
     total_credit: Decimal
     currency: str
+    created_by: uuid.UUID | None = None
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
+    approval_status: str | None = None
     lines: list[JournalLineResponse]
 
 

@@ -1,0 +1,83 @@
+"use client"
+
+import { create } from "zustand"
+import { createJSONStorage, persist } from "zustand/middleware"
+
+export type ControlPlanePanel = "intent" | "jobs" | null
+
+export interface IntentPanelState {
+  intent_id: string
+  status: string
+  job_id?: string | null
+  next_action?: string | null
+  record_refs?: Record<string, unknown> | null
+  guard_results?: Record<string, unknown> | null
+}
+
+interface ControlPlaneState {
+  current_org: string | null
+  current_module: string | null
+  current_period: string
+  active_panel: ControlPlanePanel
+  selected_intent_id: string | null
+  selected_job_id: string | null
+  intent_payload: IntentPanelState | null
+  setCurrentOrg: (org: string | null) => void
+  setCurrentModule: (module: string | null) => void
+  setCurrentPeriod: (period: string) => void
+  openIntentPanel: (payload: IntentPanelState) => void
+  openJobPanel: (jobId?: string | null) => void
+  closePanel: () => void
+}
+
+const currentPeriodLabel = () => {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, "0")
+  return `${now.getFullYear()}-${month}`
+}
+
+export const useControlPlaneStore = create<ControlPlaneState>()(
+  persist(
+    (set) => ({
+      current_org: null,
+      current_module: null,
+      current_period: currentPeriodLabel(),
+      active_panel: null,
+      selected_intent_id: null,
+      selected_job_id: null,
+      intent_payload: null,
+      setCurrentOrg: (org) => set({ current_org: org }),
+      setCurrentModule: (module) => set({ current_module: module }),
+      setCurrentPeriod: (period) => set({ current_period: period }),
+      openIntentPanel: (payload) =>
+        set({
+          active_panel: "intent",
+          selected_intent_id: payload.intent_id,
+          selected_job_id: payload.job_id ?? null,
+          intent_payload: payload,
+        }),
+      openJobPanel: (jobId) =>
+        set({
+          active_panel: "jobs",
+          selected_job_id: jobId ?? null,
+        }),
+      closePanel: () =>
+        set({
+          active_panel: null,
+        }),
+    }),
+    {
+      name: "financeops-control-plane-store",
+      storage: createJSONStorage(() => sessionStorage),
+      partialize: (state) => ({
+        current_org: state.current_org,
+        current_module: state.current_module,
+        current_period: state.current_period,
+        active_panel: state.active_panel,
+        selected_intent_id: state.selected_intent_id,
+        selected_job_id: state.selected_job_id,
+        intent_payload: state.intent_payload,
+      }),
+    },
+  ),
+)

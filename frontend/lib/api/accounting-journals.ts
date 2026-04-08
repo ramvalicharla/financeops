@@ -46,19 +46,25 @@ export interface JournalRecord {
   total_debit: string
   total_credit: string
   currency: string
+  created_by?: string | null
+  intent_id?: string | null
+  job_id?: string | null
+  approval_status?: string | null
   lines: JournalLine[]
 }
 
-export interface JournalActionResult {
-  id: string
-  status: "DRAFT" | "SUBMITTED" | "REVIEWED" | "APPROVED" | "POSTED" | "REVERSED"
-  posted_at: string | null
+export interface GovernedMutationResponse {
+  intent_id: string
+  status: string
+  job_id: string | null
+  next_action: string
+  record_refs: Record<string, unknown> | null
 }
 
 export const createJournal = async (
   payload: CreateJournalPayload,
-): Promise<JournalRecord> => {
-  const response = await apiClient.post<JournalRecord>(
+): Promise<GovernedMutationResponse> => {
+  const response = await apiClient.post<GovernedMutationResponse>(
     "/api/v1/accounting/journals/",
     payload,
   )
@@ -92,8 +98,8 @@ export const getJournal = async (journalId: string): Promise<JournalRecord> => {
 
 export const approveJournal = async (
   journalId: string,
-): Promise<JournalActionResult> => {
-  const response = await apiClient.post<JournalActionResult>(
+): Promise<GovernedMutationResponse> => {
+  const response = await apiClient.post<GovernedMutationResponse>(
     `/api/v1/accounting/journals/${journalId}/approve`,
     {},
   )
@@ -102,8 +108,8 @@ export const approveJournal = async (
 
 export const submitJournal = async (
   journalId: string,
-): Promise<JournalActionResult> => {
-  const response = await apiClient.post<JournalActionResult>(
+): Promise<GovernedMutationResponse> => {
+  const response = await apiClient.post<GovernedMutationResponse>(
     `/api/v1/accounting/journals/${journalId}/submit`,
     {},
   )
@@ -112,8 +118,8 @@ export const submitJournal = async (
 
 export const reviewJournal = async (
   journalId: string,
-): Promise<JournalActionResult> => {
-  const response = await apiClient.post<JournalActionResult>(
+): Promise<GovernedMutationResponse> => {
+  const response = await apiClient.post<GovernedMutationResponse>(
     `/api/v1/accounting/journals/${journalId}/review`,
     {},
   )
@@ -122,8 +128,8 @@ export const reviewJournal = async (
 
 export const postJournal = async (
   journalId: string,
-): Promise<JournalActionResult> => {
-  const response = await apiClient.post<JournalActionResult>(
+): Promise<GovernedMutationResponse> => {
+  const response = await apiClient.post<GovernedMutationResponse>(
     `/api/v1/accounting/journals/${journalId}/post`,
     {},
   )
@@ -132,8 +138,8 @@ export const postJournal = async (
 
 export const reverseJournal = async (
   journalId: string,
-): Promise<JournalRecord> => {
-  const response = await apiClient.post<JournalRecord>(
+): Promise<GovernedMutationResponse> => {
+  const response = await apiClient.post<GovernedMutationResponse>(
     `/api/v1/accounting/journals/${journalId}/reverse`,
     {},
   )

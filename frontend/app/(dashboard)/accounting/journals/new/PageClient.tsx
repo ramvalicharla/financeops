@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { createJournal } from "@/lib/api/accounting-journals"
 import { getTenantCoaAccounts } from "@/lib/api/coa"
+import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { Button } from "@/components/ui/button"
 
@@ -27,6 +28,7 @@ const asNumber = (value: string): number => {
 
 export default function NewJournalPage() {
   const router = useRouter()
+  const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const [journalDate, setJournalDate] = useState(today)
   const [reference, setReference] = useState("")
@@ -60,7 +62,8 @@ export default function NewJournalPage() {
 
   const createMutation = useMutation({
     mutationFn: createJournal,
-    onSuccess: () => {
+    onSuccess: (result) => {
+      openIntentPanel(result)
       router.push("/accounting/journals")
     },
     onError: (cause) => {

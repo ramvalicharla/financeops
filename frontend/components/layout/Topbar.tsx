@@ -10,14 +10,17 @@ import {
 import { usePathname } from "next/navigation"
 import { Ellipsis, Menu, Search } from "lucide-react"
 import { signOut } from "next-auth/react"
+import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { useSearch } from "@/components/search/SearchProvider"
 import { EntityLocationSelector } from "@/components/layout/EntityLocationSelector"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { Button } from "@/components/ui/button"
+import { listControlPlaneEntities } from "@/lib/api/control-plane"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useUIStore } from "@/lib/store/ui"
 import { useDisplayScale } from "@/lib/store/displayScale"
 import { cn } from "@/lib/utils"
@@ -140,6 +143,11 @@ export function Topbar({
   )
   const dismissBillingWarning = useUIStore((state) => state.dismissBillingWarning)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
+  const entitiesQuery = useQuery({
+    queryKey: ["control-plane-entities"],
+    queryFn: listControlPlaneEntities,
+  })
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
 
@@ -157,8 +165,11 @@ export function Topbar({
               "FinanceOps")
 
   const activeEntity = useMemo(
-    () => entityRoles.find((role) => role.entity_id === activeEntityId) ?? null,
-    [activeEntityId, entityRoles],
+    () =>
+      entityRoles.find((role) => role.entity_id === activeEntityId) ??
+      entitiesQuery.data?.find((entity) => entity.id === activeEntityId) ??
+      null,
+    [activeEntityId, entitiesQuery.data, entityRoles],
   )
 
   useEffect(() => {
@@ -220,6 +231,9 @@ export function Topbar({
       <div className="relative md:hidden">
         <div className="flex min-h-16 items-center gap-2 px-4 py-2">
           <div className="flex items-center gap-3">
+            <div className="hidden rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground lg:block">
+              FinanceOps Control Plane
+            </div>
             <button
               aria-label="Open navigation menu"
               className="rounded-md border border-border p-2 text-foreground"
@@ -281,6 +295,17 @@ export function Topbar({
                 type="button"
                 onClick={() => {
                   setMobileActionsOpen(false)
+                  openJobPanel()
+                }}
+                className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <span>Jobs</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionsOpen(false)
                   openPalette()
                 }}
                 className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
@@ -318,6 +343,14 @@ export function Topbar({
               {activeEntity?.entity_name ?? "No active entity"}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => openJobPanel()}
+            className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Jobs
+          </button>
 
           <button
             type="button"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from financeops.platform.api.v1 import (
+    control_plane,
     entities,
     flags,
     isolation,
@@ -21,6 +22,7 @@ service_router = APIRouter()
 router.include_router(tenants.router, prefix="/tenants", tags=["Platform Tenants"])
 router.include_router(organisations.router, prefix="/org", tags=["Platform Hierarchy"])
 router.include_router(entities.router, prefix="/entities", tags=["Platform Entities"])
+router.include_router(control_plane.router, prefix="/control-plane", tags=["Platform Control Plane"])
 router.include_router(modules.router, prefix="/modules", tags=["Platform Modules"])
 service_router.include_router(
     modules.service_router,
