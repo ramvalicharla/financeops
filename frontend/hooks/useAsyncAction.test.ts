@@ -42,7 +42,7 @@ describe("useAsyncAction", () => {
   })
 
   it("returns the resolved value from execute", async () => {
-    const actionFn = vi.fn().mockResolvedValue("success-value")
+    const actionFn: () => Promise<string> = vi.fn().mockResolvedValue("success-value")
     const { result } = renderHook(() => useAsyncAction(actionFn))
 
     let returned: string | undefined
@@ -137,7 +137,7 @@ describe("useAsyncAction", () => {
 
   it("deduplicates concurrent calls — returns same promise", async () => {
     let callCount = 0
-    const actionFn = vi.fn().mockImplementation(
+    const actionFn: () => Promise<string> = vi.fn().mockImplementation(
       () =>
         new Promise<string>((res) => {
           callCount++
