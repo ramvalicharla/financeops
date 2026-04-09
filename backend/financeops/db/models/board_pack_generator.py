@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -26,6 +27,13 @@ from financeops.db.base import Base
 class BoardPackGeneratorDefinition(Base):
     __tablename__ = "board_pack_definitions"
     __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "organisation_id",
+            "board_pack_code",
+            "version_token",
+            name="uq_board_pack_definitions_version_token",
+        ),
         {"extend_existing": True},
     )
 
@@ -35,8 +43,12 @@ class BoardPackGeneratorDefinition(Base):
         server_default=text("gen_random_uuid()"),
     )
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    organisation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    board_pack_code: Mapped[str] = mapped_column(String(128), nullable=False)
+    board_pack_name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    audience_scope: Mapped[str] = mapped_column(String(64), nullable=False, default="board")
     section_types: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,
@@ -56,6 +68,32 @@ class BoardPackGeneratorDefinition(Base):
         server_default=text("'{}'::jsonb"),
         default=dict,
     )
+    section_order_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+        default=dict,
+    )
+    inclusion_config_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'{}'::jsonb"),
+        default=dict,
+    )
+    version_token: Mapped[str] = mapped_column(String(64), nullable=False)
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("board_pack_definitions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        server_default=text("'candidate'"),
+        default="candidate",
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -74,6 +112,8 @@ class BoardPackGeneratorDefinition(Base):
         server_default=text("true"),
         default=True,
     )
+    chain_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
 
 
 class BoardPackGeneratorRun(Base):
@@ -127,6 +167,8 @@ class BoardPackGeneratorRun(Base):
         server_default=text("'{}'::jsonb"),
         default=dict,
     )
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -159,6 +201,8 @@ class BoardPackGeneratorSection(Base):
     section_order: Mapped[int] = mapped_column(Integer, nullable=False)
     data_snapshot: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     section_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     rendered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -194,6 +238,8 @@ class BoardPackGeneratorArtifact(Base):
     format: Mapped[str] = mapped_column(String(20), nullable=False)
     storage_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[int | None] = mapped_column(BIGINT, nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

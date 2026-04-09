@@ -9,6 +9,7 @@ from sqlalchemy import desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.forecasting.models import ForecastAssumption, ForecastLineItem, ForecastRun
 
@@ -85,6 +86,7 @@ async def _assumption_map(session: AsyncSession, run: ForecastRun) -> dict[str, 
 
 
 async def _seed_default_assumptions(session: AsyncSession, run: ForecastRun) -> list[ForecastAssumption]:
+    require_mutation_context("Forecast assumption seeding")
     defaults = [
         (
             "revenue_growth_pct_monthly",
@@ -115,6 +117,7 @@ async def _seed_default_assumptions(session: AsyncSession, run: ForecastRun) -> 
             assumption_label=label,
             category=category,
         )
+        apply_mutation_linkage(row)
         session.add(row)
         rows.append(row)
     await session.flush()
@@ -133,6 +136,7 @@ async def create_forecast_run(
     """
     Create a new forecast run and seed default assumptions.
     """
+    require_mutation_context("Forecast run creation")
     _period_parts(base_period)
     if horizon_months not in {3, 6, 12, 24}:
         raise ValidationError("horizon_months must be one of: 3, 6, 12, 24")
@@ -145,6 +149,7 @@ async def create_forecast_run(
         status="draft",
         created_by=created_by,
     )
+    apply_mutation_linkage(run)
     session.add(run)
     await session.flush()
     await _seed_default_assumptions(session, run)
@@ -162,6 +167,7 @@ async def update_assumption(
     """
     Update a single assumption and recompute forecast lines.
     """
+    require_mutation_context("Forecast assumption update")
     row = (
         await session.execute(
             select(ForecastAssumption).where(
@@ -193,6 +199,7 @@ async def compute_forecast_lines(
     """
     Compute forecast line items from assumptions using Decimal arithmetic.
     """
+    require_mutation_context("Forecast line computation")
     run = await _load_run(session, tenant_id=tenant_id, forecast_run_id=forecast_run_id)
     assumptions = await _assumption_map(session, run)
 
@@ -228,6 +235,7 @@ async def compute_forecast_lines(
                 mis_category=category,
                 amount=amount,
             )
+            apply_mutation_linkage(row)
             session.add(row)
             created_rows.append(row)
 
@@ -257,6 +265,7 @@ async def compute_forecast_lines(
                 mis_category=category,
                 amount=amount,
             )
+            apply_mutation_linkage(row)
             session.add(row)
             created_rows.append(row)
 
@@ -276,6 +285,7 @@ async def publish_forecast(
     """
     Publish a forecast run and supersede previously published run.
     """
+    require_mutation_context("Forecast publish")
     run = await _load_run(session, tenant_id=tenant_id, forecast_run_id=forecast_run_id)
     now = datetime.now(UTC)
     await session.execute(
@@ -391,4 +401,3 @@ __all__ = [
     "publish_forecast",
     "get_forecast_vs_budget",
 ]
-

@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.mis_manager import MisUpload
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
@@ -120,6 +121,7 @@ async def create_budget_version(
     from that version as starting point (new append-only records).
     Auto-increments version_number within tenant+fiscal_year.
     """
+    require_mutation_context("Budget version creation")
     max_version = (
         await session.execute(
             select(func.max(BudgetVersion.version_number)).where(
@@ -130,14 +132,14 @@ async def create_budget_version(
     ).scalar_one()
     next_version = int(max_version or 0) + 1
 
-    version = BudgetVersion(
+    version = apply_mutation_linkage(BudgetVersion(
         tenant_id=tenant_id,
         fiscal_year=fiscal_year,
         version_name=version_name,
         version_number=next_version,
         status="draft",
         created_by=created_by,
-    )
+    ))
     session.add(version)
     await session.flush()
 
@@ -158,7 +160,7 @@ async def create_budget_version(
 
         for line in source_lines:
             session.add(
-                BudgetLineItem(
+                apply_mutation_linkage(BudgetLineItem(
                     budget_version_id=version.id,
                     tenant_id=tenant_id,
                     entity_id=line.entity_id,
@@ -177,7 +179,7 @@ async def create_budget_version(
                     month_11=line.month_11,
                     month_12=line.month_12,
                     basis=line.basis,
-                )
+                ))
             )
         await session.flush()
 
@@ -202,6 +204,7 @@ async def upsert_budget_line(
     Validates: all values are Decimal, none are negative for
     revenue lines without explicit justification.
     """
+    require_mutation_context("Budget line creation")
     await _load_budget_version(
         session,
         tenant_id=tenant_id,
@@ -225,7 +228,7 @@ async def upsert_budget_line(
             raise ValidationError("negative revenue budget requires basis justification")
         normalized.append(_q2(decimal_value))
 
-    record = BudgetLineItem(
+    record = apply_mutation_linkage(BudgetLineItem(
         budget_version_id=budget_version_id,
         tenant_id=tenant_id,
         entity_id=entity_id,
@@ -244,7 +247,7 @@ async def upsert_budget_line(
         month_11=normalized[10],
         month_12=normalized[11],
         basis=basis,
-    )
+    ))
     session.add(record)
     await session.flush()
     return record
@@ -259,6 +262,7 @@ async def approve_budget(
     """
     Mark budget as board-approved and supersede prior approved version.
     """
+    require_mutation_context("Budget approval")
     target = await _load_budget_version(
         session,
         tenant_id=tenant_id,
@@ -282,6 +286,7 @@ async def approve_budget(
     target.board_approved_by = approved_by
     target.board_approved_at = now
     target.updated_at = now
+    apply_mutation_linkage(target)
     await session.flush()
     return target
 

@@ -14,6 +14,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
+from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
 from financeops.db.models.custom_report_builder import ReportDefinition, ReportRun
 from financeops.db.rls import set_tenant_context
 from financeops.modules.custom_report_builder.application.export_service import (
@@ -420,6 +421,8 @@ class ReportRunService:
             run_metadata=metadata,
             created_at=datetime.now(UTC),
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(next_row)
         db.add(next_row)
         await db.flush()
         return next_row

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -189,8 +190,30 @@ async def test_bank_recon_upload_route_requires_airlock_before_store(
             admitted=True,
         )
     )
-    store_mock = AsyncMock(return_value=[SimpleNamespace(id=uuid.uuid4())])
-    parser = SimpleNamespace(parse_csv=lambda _content: [SimpleNamespace(transaction_date=__import__("datetime").date(2026, 3, 1), balance=1)])
+    statement_id = uuid.uuid4()
+    submit_intent_mock = AsyncMock(
+        return_value=IntentSubmissionResult(
+            intent_id=uuid.uuid4(),
+            status="RECORDED",
+            job_id=uuid.uuid4(),
+            next_action="NONE",
+            record_refs={"statement_id": str(statement_id), "transaction_count": 1},
+        )
+    )
+    parser = SimpleNamespace(
+        parse_csv=lambda _content: [
+            SimpleNamespace(
+                transaction_date=__import__("datetime").date(2026, 3, 1),
+                value_date=None,
+                description="statement row",
+                reference=None,
+                debit=None,
+                credit="1",
+                balance="1",
+                transaction_type="credit",
+            )
+        ]
+    )
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_scalar_result(SimpleNamespace(entity_name="Bank Entity")))
 
@@ -198,9 +221,13 @@ async def test_bank_recon_upload_route_requires_airlock_before_store(
     monkeypatch.setattr(bank_recon_routes.AirlockAdmissionService, "admit_airlock_item", admit_mock)
     monkeypatch.setattr(bank_recon_routes, "assert_entity_access", AsyncMock(return_value=None))
     monkeypatch.setattr(bank_recon_routes, "get_parser", lambda _bank_name: parser)
-    monkeypatch.setattr(bank_recon_routes, "store_bank_transactions", store_mock)
+    monkeypatch.setattr(bank_recon_routes.IntentService, "submit_intent", submit_intent_mock)
 
     response = await bank_recon_routes.upload_bank_statement(
+        request=SimpleNamespace(
+            state=SimpleNamespace(request_id="req-1", correlation_id="corr-1"),
+            headers={},
+        ),
         bank_name="HDFC",
         entity_id=uuid.uuid4(),
         file=SimpleNamespace(read=AsyncMock(return_value=b"date,amount\n2026-03-01,1"), filename="statement.csv"),
@@ -210,9 +237,12 @@ async def test_bank_recon_upload_route_requires_airlock_before_store(
 
     assert submit_mock.await_count == 1
     assert admit_mock.await_count == 1
-    assert store_mock.await_args.kwargs["admitted_airlock_item_id"] == airlock_item_id
-    assert store_mock.await_args.kwargs["source_type"] == "bank_recon_statement_upload"
+    assert submit_intent_mock.await_args.kwargs["payload"]["admitted_airlock_item_id"] == str(airlock_item_id)
+    assert submit_intent_mock.await_args.kwargs["payload"]["source_type"] == "bank_recon_statement_upload"
     assert response["airlock_item_id"] == str(airlock_item_id)
+    assert response["statement_id"] == str(statement_id)
+    assert response["intent_id"] == str(submit_intent_mock.return_value.intent_id)
+    assert response["job_id"] == str(submit_intent_mock.return_value.job_id)
 
 
 @pytest.mark.asyncio
@@ -360,47 +390,58 @@ async def test_gst_create_return_blocks_when_canonical_approval_denied(
 ) -> None:
     tenant_id = uuid.uuid4()
     entity_id = uuid.uuid4()
+    return_id = uuid.uuid4()
+    created_return = SimpleNamespace(
+        id=return_id,
+        return_type="GSTR1",
+        period_year=2026,
+        period_month=3,
+        entity_id=entity_id,
+        entity_name="GST Entity",
+        gstin="29ABCDE1234F1Z5",
+        total_tax=Decimal("18000"),
+        status="draft",
+        created_at=SimpleNamespace(isoformat=lambda: "2026-03-01T00:00:00+00:00"),
+    )
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_scalar_result(SimpleNamespace(entity_name="GST Entity")))
+    session.execute = AsyncMock(
+        side_effect=[
+            _scalar_result(SimpleNamespace(entity_name="GST Entity")),
+            SimpleNamespace(scalar_one=lambda: created_return),
+        ]
+    )
     monkeypatch.setattr(gst_routes, "resolve_entity_id", AsyncMock(return_value=entity_id))
     monkeypatch.setattr(gst_routes, "assert_entity_access", AsyncMock(return_value=None))
-    monkeypatch.setattr(
-        gst_routes,
-        "GuardEngine",
-        lambda: SimpleNamespace(
-            evaluate_mutation=AsyncMock(return_value=SimpleNamespace(overall_passed=True, blocking_failures=[]))
-        ),
+    submit_intent_mock = AsyncMock(
+        return_value=IntentSubmissionResult(
+            intent_id=uuid.uuid4(),
+            status="VALIDATED",
+            job_id=None,
+            next_action="APPROVAL_REQUIRED",
+            record_refs={"return_id": str(return_id)},
+        )
     )
-    monkeypatch.setattr(
-        gst_routes,
-        "ApprovalPolicyResolver",
-        lambda: SimpleNamespace(
-            resolve_mutation=AsyncMock(
-                return_value=ApprovalEvaluation(
-                    approval_required=True,
-                    is_granted=False,
-                    required_role=UserRole.finance_leader.value,
-                    policy_id=None,
-                    next_action="APPROVAL_REQUIRED",
-                    reason="gst approval denied",
-                )
-            )
+    monkeypatch.setattr(gst_routes.IntentService, "submit_intent", submit_intent_mock)
+
+    result = await gst_routes.create_return(
+        request=SimpleNamespace(
+            state=SimpleNamespace(request_id="req-1", correlation_id="corr-1"),
+            headers={},
         ),
+        body=gst_routes.CreateGstReturnRequest(
+            period_year=2026,
+            period_month=3,
+            entity_id=entity_id,
+            gstin="29ABCDE1234F1Z5",
+            return_type="GSTR1",
+            taxable_value="100000.00",
+            igst_amount="18000.00",
+            cgst_amount="0",
+            sgst_amount="0",
+        ),
+        session=session,
+        user=SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id, role=UserRole.finance_leader),
     )
 
-    with pytest.raises(HTTPException, match="gst approval denied"):
-        await gst_routes.create_return(
-            body=gst_routes.CreateGstReturnRequest(
-                period_year=2026,
-                period_month=3,
-                entity_id=entity_id,
-                gstin="29ABCDE1234F1Z5",
-                return_type="GSTR1",
-                taxable_value="100000.00",
-                igst_amount="18000.00",
-                cgst_amount="0",
-                sgst_amount="0",
-            ),
-            session=session,
-            user=SimpleNamespace(id=uuid.uuid4(), tenant_id=tenant_id, role=UserRole.finance_leader),
-        )
+    assert result["job_id"] is None
+    assert result["intent_id"] == str(submit_intent_mock.return_value.intent_id)

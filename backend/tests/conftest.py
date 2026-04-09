@@ -13,23 +13,6 @@ import pytest_asyncio
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 
-pytest_plugins = (
-    "tests.integration.mis_phase1f1_helpers",
-    "tests.integration.reconciliation_phase1f2_helpers",
-    "tests.integration.normalization_phase1f3_helpers",
-    "tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers",
-    "tests.integration.ratio_variance_phase1f4_helpers",
-    "tests.integration.financial_risk_phase1f5_helpers",
-    "tests.integration.anomaly_pattern_phase1f6_helpers",
-    "tests.integration.board_pack_phase1f7_helpers",
-    "tests.integration.multi_entity_consolidation_phase2_3_helpers",
-    "tests.integration.fx_translation_phase2_4_helpers",
-    "tests.integration.ownership_consolidation_phase2_5_helpers",
-    "tests.integration.cash_flow_phase2_6_helpers",
-    "tests.integration.equity_phase2_7_helpers",
-    "tests.integration.observability_phase3_helpers",
-    "tests.integration.erp_sync_phase4c_helpers",
-)
 
 # On Windows, asyncpg's persistent IOCP socket readers cause GetQueuedCompletionStatus
 # to block indefinitely between run_until_complete() calls (test → teardown boundary).
@@ -194,6 +177,17 @@ from financeops.platform.db.models import (  # noqa: F401
 from financeops.db.models.mis_manager import MisTemplate, MisUpload  # noqa: F401
 from financeops.db.models.monthend import MonthEndChecklist, MonthEndTask  # noqa: F401
 from financeops.db.models.prompts import AiPromptVersion  # noqa: F401
+from financeops.db.models.custom_report_builder import (  # noqa: F401
+    ReportDefinition,
+    ReportResult,
+    ReportRun,
+)
+from financeops.db.models.board_pack_generator import (  # noqa: F401
+    BoardPackGeneratorArtifact,
+    BoardPackGeneratorDefinition,
+    BoardPackGeneratorRun,
+    BoardPackGeneratorSection,
+)
 from financeops.db.models.reconciliation import (  # noqa: F401
     GlEntry,
     ReconItem,
@@ -509,6 +503,7 @@ from financeops.modules.locations.models import (  # noqa: F401
 )
 from financeops.db.models.ai_cost import AICostEvent, TenantTokenBudget  # noqa: F401
 from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken  # noqa: F401
+from financeops.db.append_only import append_only_function_sql
 
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
@@ -523,6 +518,41 @@ TEST_DATABASE_URL = os.getenv(
     "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
 )
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
+
+_INTEGRATION_PLUGIN_MODULES = (
+    "tests.integration.mis_phase1f1_helpers",
+    "tests.integration.reconciliation_phase1f2_helpers",
+    "tests.integration.normalization_phase1f3_helpers",
+    "tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers",
+    "tests.integration.ratio_variance_phase1f4_helpers",
+    "tests.integration.financial_risk_phase1f5_helpers",
+    "tests.integration.anomaly_pattern_phase1f6_helpers",
+    "tests.integration.board_pack_phase1f7_helpers",
+    "tests.integration.multi_entity_consolidation_phase2_3_helpers",
+    "tests.integration.fx_translation_phase2_4_helpers",
+    "tests.integration.ownership_consolidation_phase2_5_helpers",
+    "tests.integration.cash_flow_phase2_6_helpers",
+    "tests.integration.equity_phase2_7_helpers",
+    "tests.integration.observability_phase3_helpers",
+    "tests.integration.erp_sync_phase4c_helpers",
+)
+
+
+def _should_load_integration_plugins(pytest_args: list[str]) -> bool:
+    normalized = [str(arg).replace("\\", "/") for arg in pytest_args if str(arg).strip()]
+    if not normalized:
+        return True
+    if any(arg in {".", "tests", "tests/"} for arg in normalized):
+        return True
+    return any(arg.startswith("tests/integration") for arg in normalized)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    if not _should_load_integration_plugins(list(getattr(config, "args", []))):
+        return
+    for plugin_name in _INTEGRATION_PLUGIN_MODULES:
+        if not config.pluginmanager.has_plugin(plugin_name):
+            config.pluginmanager.import_plugin(plugin_name)
 
 
 def _backend_dir() -> Path:
@@ -574,16 +604,15 @@ async def _ensure_pgvector_available(conn) -> None:
     try:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     except Exception as exc:  # pragma: no cover - infrastructure guard
-        # Parallel test invocations can race while creating extensions; if the
-        # extension already exists, treat that as success and continue.
-        installed_after_error = await conn.execute(
-            text("SELECT 1 FROM pg_extension WHERE extname = 'vector' LIMIT 1")
-        )
-        if installed_after_error.scalar_one_or_none() != 1:
-            raise RuntimeError(
-                "pgvector extension is required by FinanceOps tests/migrations but is unavailable. "
-                "Start the test database with pgvector support (recommended: infra/docker-compose.test.yml)."
-            ) from exc
+        message = str(exc).lower()
+        if "pg_extension_name_index" in message or "already exists" in message:
+            return
+        # Shared/local test databases should already provide pgvector. Avoid
+        # issuing follow-up commands inside a failed transaction context here.
+        raise RuntimeError(
+            "pgvector extension is required by FinanceOps tests/migrations but is unavailable. "
+            "Start the test database with pgvector support (recommended: infra/docker-compose.test.yml)."
+        ) from exc
     installed = await conn.execute(
         text("SELECT 1 FROM pg_extension WHERE extname = 'vector' LIMIT 1")
     )
@@ -601,6 +630,7 @@ async def _ensure_shared_schema_bootstrapped(conn) -> None:
     if iam_tenants_exists is None:
         await _ensure_pgvector_available(conn)
         await conn.run_sync(Base.metadata.create_all)
+    await conn.execute(text(append_only_function_sql()))
     alembic_table_exists = await conn.scalar(
         text("SELECT to_regclass('public.alembic_version')")
     )

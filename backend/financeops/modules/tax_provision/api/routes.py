@@ -3,11 +3,15 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.tax_provision.models import TaxPosition, TaxProvisionRun
 from financeops.modules.tax_provision.service import (
@@ -21,6 +25,30 @@ from financeops.platform.services.tenancy.entity_access import assert_entity_acc
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/tax", tags=["tax"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+        target_id=target_id,
+    )
 
 
 class ComputeProvisionRequest(BaseModel):
@@ -84,6 +112,7 @@ def _serialize_position(row: TaxPosition) -> dict:
 
 @router.post("/provision/compute")
 async def compute_provision_endpoint(
+    request: Request,
     body: ComputeProvisionRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -95,17 +124,22 @@ async def compute_provision_endpoint(
         user_id=user.id,
         user_role=user.role,
     )
-    row = await compute_tax_provision(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        period=body.period,
-        entity_id=body.entity_id,
-        applicable_tax_rate=body.applicable_tax_rate,
-        created_by=user.id,
-        requester_user_id=user.id,
-        requester_user_role=user.role.value,
+        user=user,
+        intent_type=IntentType.COMPUTE_TAX_PROVISION,
+        payload={
+            "period": body.period,
+            "entity_id": str(body.entity_id) if body.entity_id else None,
+            "applicable_tax_rate": str(body.applicable_tax_rate),
+        },
     )
-    return _serialize_provision(row)
+    row = await get_provision_for_period(session, tenant_id=user.tenant_id, period=body.period)
+    payload = _serialize_provision(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/provision/{period}")
@@ -154,22 +188,30 @@ async def list_positions_endpoint(
 
 @router.post("/positions")
 async def upsert_position_endpoint(
+    request: Request,
     body: UpsertTaxPositionRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    row = await upsert_tax_position(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        position_name=body.position_name,
-        position_type=body.position_type,
-        carrying_amount=body.carrying_amount,
-        tax_base=body.tax_base,
-        is_asset=body.is_asset,
-        tax_rate=body.tax_rate,
-        description=body.description,
+        user=user,
+        intent_type=IntentType.UPSERT_TAX_POSITION,
+        payload=body.model_dump(mode="json"),
     )
-    return _serialize_position(row)
+    row = (
+        await session.execute(
+            select(TaxPosition).where(
+                TaxPosition.tenant_id == user.tenant_id,
+                TaxPosition.position_name == body.position_name,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_position(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 __all__ = ["router"]

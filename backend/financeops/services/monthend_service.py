@@ -4,9 +4,10 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.monthend import MonthEndChecklist, MonthEndTask
 from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
@@ -37,10 +38,7 @@ async def create_checklist(
     notes: str | None = None,
     add_default_tasks: bool = True,
 ) -> MonthEndChecklist:
-    """
-    Create a month-end closing checklist for a period/entity (INSERT ONLY).
-    Optionally adds a standard set of default tasks.
-    """
+    require_mutation_context("Month-end checklist creation")
     previous_hash = await get_previous_hash_locked(session, MonthEndChecklist, tenant_id)
     record_data = {
         "tenant_id": str(tenant_id),
@@ -52,31 +50,35 @@ async def create_checklist(
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
 
-    checklist = MonthEndChecklist(
-        tenant_id=tenant_id,
-        period_year=period_year,
-        period_month=period_month,
-        entity_name=entity_name,
-        status="open",
-        notes=notes,
-        created_by=created_by,
-        chain_hash=chain_hash,
-        previous_hash=previous_hash,
+    checklist = apply_mutation_linkage(
+        MonthEndChecklist(
+            tenant_id=tenant_id,
+            period_year=period_year,
+            period_month=period_month,
+            entity_name=entity_name,
+            status="open",
+            notes=notes,
+            created_by=created_by,
+            chain_hash=chain_hash,
+            previous_hash=previous_hash,
+        )
     )
     session.add(checklist)
     await session.flush()
 
     if add_default_tasks:
         for task_def in DEFAULT_TASKS:
-            task = MonthEndTask(
-                checklist_id=checklist.id,
-                tenant_id=tenant_id,
-                task_name=task_def["name"],
-                task_category=task_def["category"],
-                priority=task_def["priority"],
-                sort_order=task_def["sort_order"],
-                status="pending",
-                is_required=True,
+            task = apply_mutation_linkage(
+                MonthEndTask(
+                    checklist_id=checklist.id,
+                    tenant_id=tenant_id,
+                    task_name=task_def["name"],
+                    task_category=task_def["category"],
+                    priority=task_def["priority"],
+                    sort_order=task_def["sort_order"],
+                    status="pending",
+                    is_required=True,
+                )
             )
             session.add(task)
         await session.flush()
@@ -98,19 +100,21 @@ async def add_task(
     due_date: date | None = None,
     is_required: bool = True,
 ) -> MonthEndTask:
-    """Add a task to a checklist (UUIDBase — mutable status)."""
-    task = MonthEndTask(
-        checklist_id=checklist_id,
-        tenant_id=tenant_id,
-        task_name=task_name,
-        task_category=task_category,
-        priority=priority,
-        sort_order=sort_order,
-        description=description,
-        assigned_to=assigned_to,
-        due_date=due_date,
-        is_required=is_required,
-        status="pending",
+    require_mutation_context("Month-end task creation")
+    task = apply_mutation_linkage(
+        MonthEndTask(
+            checklist_id=checklist_id,
+            tenant_id=tenant_id,
+            task_name=task_name,
+            task_category=task_category,
+            priority=priority,
+            sort_order=sort_order,
+            description=description,
+            assigned_to=assigned_to,
+            due_date=due_date,
+            is_required=is_required,
+            status="pending",
+        )
     )
     session.add(task)
     await session.flush()
@@ -126,7 +130,7 @@ async def update_task_status(
     completed_by: uuid.UUID | None = None,
     notes: str | None = None,
 ) -> MonthEndTask | None:
-    """Update task status (MonthEndTask is UUIDBase, mutable)."""
+    require_mutation_context("Month-end task status update")
     result = await session.execute(
         select(MonthEndTask).where(
             MonthEndTask.id == task_id,
@@ -155,11 +159,7 @@ async def close_checklist(
     closed_by: uuid.UUID,
     notes: str | None = None,
 ) -> MonthEndChecklist | None:
-    """
-    Close a month-end checklist.
-    Since MonthEndChecklist is FinancialBase (INSERT ONLY), closing means
-    inserting a new record that supersedes the old one.
-    """
+    require_mutation_context("Month-end checklist close")
     result = await session.execute(
         select(MonthEndChecklist).where(
             MonthEndChecklist.id == checklist_id,
@@ -182,18 +182,20 @@ async def close_checklist(
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
 
-    closed = MonthEndChecklist(
-        tenant_id=tenant_id,
-        period_year=existing.period_year,
-        period_month=existing.period_month,
-        entity_name=existing.entity_name,
-        status="closed",
-        closed_at=now,
-        closed_by=closed_by,
-        notes=notes or existing.notes,
-        created_by=existing.created_by,
-        chain_hash=chain_hash,
-        previous_hash=previous_hash,
+    closed = apply_mutation_linkage(
+        MonthEndChecklist(
+            tenant_id=tenant_id,
+            period_year=existing.period_year,
+            period_month=existing.period_month,
+            entity_name=existing.entity_name,
+            status="closed",
+            closed_at=now,
+            closed_by=closed_by,
+            notes=notes or existing.notes,
+            created_by=existing.created_by,
+            chain_hash=chain_hash,
+            previous_hash=previous_hash,
+        )
     )
     session.add(closed)
     await session.flush()
@@ -246,4 +248,3 @@ async def list_tasks(
         .order_by(MonthEndTask.sort_order, MonthEndTask.created_at)
     )
     return list(result.scalars().all())
-

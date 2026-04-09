@@ -10,7 +10,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
-from financeops.core.exceptions import ValidationError
+from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.core.governance.approvals import ApprovalPolicyResolver, ApprovalRequest
 from financeops.core.governance.events import GovernanceActor, emit_governance_event
 from financeops.core.governance.guards import GuardEngine, MutationGuardContext
@@ -23,6 +26,8 @@ from financeops.modules.closing_checklist.models import (
 )
 from financeops.modules.closing_checklist.service import (
     DependencyNotMetError,
+    assign_task_to_user,
+    create_template as create_checklist_template,
     get_closing_analytics,
     get_or_create_run,
     period_end_date,
@@ -51,6 +56,27 @@ from financeops.platform.services.tenancy.entity_access import assert_entity_acc
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/close", tags=["closing-checklist"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class TaskStatusPatchRequest(BaseModel):
@@ -681,39 +707,32 @@ async def get_analytics(
 
 @router.post("/templates", status_code=status.HTTP_201_CREATED)
 async def create_template(
+    request: Request,
     body: CreateTemplateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    template = ChecklistTemplate(
-        tenant_id=user.tenant_id,
-        name=body.name,
-        description=body.description,
-        is_default=body.is_default,
-        created_by=user.id,
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.CREATE_CHECKLIST_TEMPLATE,
+        payload=body.model_dump(mode="json"),
     )
-    session.add(template)
-    await session.flush()
-
-    for task in body.tasks:
-        row = ChecklistTemplateTask(
-            template_id=template.id,
-            tenant_id=user.tenant_id,
-            task_name=task.task_name,
-            description=task.description,
-            assigned_role=task.assigned_role,
-            days_relative_to_period_end=task.days_relative_to_period_end,
-            depends_on_task_ids=[str(item) for item in task.depends_on_task_ids],
-            auto_trigger_event=task.auto_trigger_event,
-            order_index=task.order_index,
+    template = (
+        await session.execute(
+            select(ChecklistTemplate).where(
+                ChecklistTemplate.id == uuid.UUID(str((result.record_refs or {})["template_id"])),
+                ChecklistTemplate.tenant_id == user.tenant_id,
+            )
         )
-        session.add(row)
-
-    await session.flush()
+    ).scalar_one()
     return {
         "id": str(template.id),
         "name": template.name,
         "is_default": template.is_default,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
@@ -755,6 +774,7 @@ async def list_templates(
 
 @router.get("/{period}")
 async def get_or_create_checklist(
+    request: Request,
     period: str,
     entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
@@ -762,14 +782,32 @@ async def get_or_create_checklist(
 ) -> dict:
     resolved_entity_id = await _resolve_entity_for_user(session, user, entity_id)
     normalized_period = _ensure_period(period)
-    run = await get_or_create_run(
+    run = await _load_run_by_period(
         session,
         tenant_id=user.tenant_id,
-        period=normalized_period,
-        created_by=user.id,
         entity_id=resolved_entity_id,
+        period=normalized_period,
     )
-    await session.flush()
+    intent_id: str | None = None
+    job_id: str | None = None
+    if run is None:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.ENSURE_CHECKLIST_RUN,
+            payload={"period": normalized_period, "entity_id": str(resolved_entity_id)},
+        )
+        intent_id = str(result.intent_id)
+        job_id = str(result.job_id) if result.job_id else None
+        run = await _load_run_by_period(
+            session,
+            tenant_id=user.tenant_id,
+            entity_id=resolved_entity_id,
+            period=normalized_period,
+        )
+        if run is None:
+            raise HTTPException(status_code=500, detail="Checklist run was not recorded")
 
     tasks, template_map = await _load_tasks_with_templates(
         session,
@@ -801,6 +839,8 @@ async def get_or_create_checklist(
             "id": str(run.id),
             "period": run.period,
             "status": run.status,
+            "intent_id": intent_id,
+            "job_id": job_id,
             "progress_pct": _to_str(run.progress_pct),
             "target_close_date": run.target_close_date.isoformat() if run.target_close_date else None,
             "actual_close_date": run.actual_close_date.isoformat() if run.actual_close_date else None,
@@ -815,6 +855,7 @@ async def get_or_create_checklist(
 
 @router.patch("/{period}/tasks/{task_id}")
 async def patch_task_status(
+    request: Request,
     period: str,
     task_id: uuid.UUID,
     body: TaskStatusPatchRequest,
@@ -866,15 +907,18 @@ async def patch_task_status(
         raise HTTPException(status_code=403, detail="Role is not allowed to update this task")
 
     try:
-        updated = await update_task_status(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            run_id=run.id,
-            task_id=task.id,
-            new_status=body.status,
-            updated_by=user.id,
-            notes=body.notes,
-            entity_id=resolved_entity_id,
+            user=user,
+            intent_type=IntentType.UPDATE_CHECKLIST_TASK_STATUS,
+            payload={
+                "run_id": str(run.id),
+                "task_id": str(task.id),
+                "status": body.status,
+                "notes": body.notes,
+                "entity_id": str(resolved_entity_id),
+            },
         )
     except DependencyNotMetError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
@@ -883,7 +927,16 @@ async def patch_task_status(
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
 
-    await session.flush()
+    updated = (
+        await session.execute(
+            select(ChecklistRunTask).where(
+                ChecklistRunTask.id == task.id,
+                ChecklistRunTask.run_id == run.id,
+                ChecklistRunTask.tenant_id == user.tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
+            )
+        )
+    ).scalar_one()
     refreshed_run = await _load_run_by_period(
         session,
         tenant_id=user.tenant_id,
@@ -896,6 +949,8 @@ async def patch_task_status(
             "status": updated.status,
             "notes": updated.notes,
             "completed_at": updated.completed_at.isoformat() if updated.completed_at else None,
+            "intent_id": str(result.intent_id),
+            "job_id": str(result.job_id) if result.job_id else None,
         },
         "run": {
             "id": str(refreshed_run.id) if refreshed_run else str(run.id),
@@ -907,6 +962,7 @@ async def patch_task_status(
 
 @router.post("/{period}/tasks/{task_id}/assign")
 async def assign_task(
+    request: Request,
     period: str,
     task_id: uuid.UUID,
     body: TaskAssignRequest,
@@ -950,9 +1006,28 @@ async def assign_task(
     if assignee is None:
         raise HTTPException(status_code=404, detail="Assignee not found")
 
-    task.assigned_to = assignee.id
-    task.updated_at = datetime.now(UTC)
-    await session.flush()
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.ASSIGN_CHECKLIST_TASK,
+        payload={
+            "run_id": str(run.id),
+            "task_id": str(task.id),
+            "user_id": str(assignee.id),
+            "entity_id": str(resolved_entity_id),
+        },
+    )
+    task = (
+        await session.execute(
+            select(ChecklistRunTask).where(
+                ChecklistRunTask.id == task.id,
+                ChecklistRunTask.run_id == run.id,
+                ChecklistRunTask.tenant_id == user.tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
+            )
+        )
+    ).scalar_one()
     try:
         await send_notification(
             session,
@@ -970,5 +1045,7 @@ async def assign_task(
     return {
         "task_id": str(task.id),
         "assigned_to": str(task.assigned_to),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 

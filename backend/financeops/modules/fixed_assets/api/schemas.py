@@ -53,6 +53,8 @@ class FaAssetClassResponse(BaseModel):
     coa_accum_dep_account_id: uuid.UUID | None = None
     coa_dep_expense_account_id: uuid.UUID | None = None
     is_active: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -117,6 +119,8 @@ class FaAssetResponse(BaseModel):
     location_id: uuid.UUID | None = None
     cost_centre_id: uuid.UUID | None = None
     is_active: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -152,6 +156,8 @@ class FaDepreciationRunResponse(BaseModel):
     accumulated_dep: Decimal
     run_reference: str
     is_reversal: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
 
 
@@ -175,6 +181,8 @@ class FaRevaluationResponse(BaseModel):
     fair_value: Decimal
     revaluation_surplus: Decimal
     method: str
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
 
 
@@ -199,6 +207,8 @@ class FaImpairmentResponse(BaseModel):
     fvlcts: Decimal | None = None
     impairment_loss: Decimal
     discount_rate: Decimal | None = None
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
 
 

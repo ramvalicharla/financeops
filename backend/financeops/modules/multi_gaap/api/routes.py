@@ -3,17 +3,42 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.multi_gaap.models import MultiGAAPConfig, MultiGAAPRun
 from financeops.modules.multi_gaap.service import compute_gaap_view, get_gaap_comparison, get_or_create_config, get_specific_run, update_config
 from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 
 router = APIRouter(prefix="/gaap", tags=["gaap"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class ConfigPatchRequest(BaseModel):
@@ -89,18 +114,43 @@ async def _resolve_entity_id(
 
 @router.get("/config")
 async def get_config_endpoint(
+    request: Request,
     entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    row = await get_or_create_config(session, tenant_id=user.tenant_id, entity_id=resolved_entity_id)
+    row = (
+        await session.execute(
+            select(MultiGAAPConfig).where(
+                MultiGAAPConfig.tenant_id == user.tenant_id,
+                MultiGAAPConfig.entity_id == resolved_entity_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.ENSURE_MULTI_GAAP_CONFIG,
+            payload={"entity_id": str(resolved_entity_id)},
+        )
+        row = (
+            await session.execute(
+                select(MultiGAAPConfig).where(
+                    MultiGAAPConfig.id == uuid.UUID(str((result.record_refs or {})["config_id"])),
+                    MultiGAAPConfig.tenant_id == user.tenant_id,
+                )
+            )
+        ).scalar_one()
     return _serialize_config(row)
 
 
 @router.patch("/config")
 async def patch_config_endpoint(
+    request: Request,
     body: ConfigPatchRequest,
     entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
@@ -108,32 +158,62 @@ async def patch_config_endpoint(
 ) -> dict:
     resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    row = await update_config(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        updates=body.model_dump(exclude_none=True),
-        entity_id=resolved_entity_id,
+        user=user,
+        intent_type=IntentType.UPDATE_MULTI_GAAP_CONFIG,
+        payload={
+            "entity_id": str(resolved_entity_id),
+            "updates": body.model_dump(mode="json", exclude_none=True),
+        },
     )
-    return _serialize_config(row)
+    row = (
+        await session.execute(
+            select(MultiGAAPConfig).where(
+                MultiGAAPConfig.id == uuid.UUID(str((result.record_refs or {})["config_id"])),
+                MultiGAAPConfig.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_config(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.post("/compute")
 async def compute_endpoint(
+    request: Request,
     body: ComputeRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    row = await compute_gaap_view(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        period=body.period,
-        gaap_framework=body.gaap_framework,
-        created_by=user.id,
-        entity_id=resolved_entity_id,
+        user=user,
+        intent_type=IntentType.COMPUTE_MULTI_GAAP_VIEW,
+        payload={
+            "entity_id": str(resolved_entity_id),
+            "period": body.period,
+            "gaap_framework": body.gaap_framework,
+        },
     )
-    return _serialize_run(row)
+    row = (
+        await session.execute(
+            select(MultiGAAPRun).where(
+                MultiGAAPRun.id == uuid.UUID(str((result.record_refs or {})["run_id"])),
+                MultiGAAPRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_run(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/comparison")

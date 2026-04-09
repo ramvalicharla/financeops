@@ -8,19 +8,69 @@ from httpx import AsyncClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser, UserRole
-from financeops.modules.budgeting.service import approve_budget, create_budget_version, upsert_budget_line
+from financeops.modules.budgeting.service import (
+    approve_budget as _approve_budget,
+    create_budget_version as _create_budget_version,
+    upsert_budget_line as _upsert_budget_line,
+)
 from financeops.modules.forecasting.models import ForecastAssumption, ForecastLineItem, ForecastRun
 from financeops.modules.forecasting.service import (
     _apply_growth_rate,
-    compute_forecast_lines,
-    create_forecast_run,
+    compute_forecast_lines as _compute_forecast_lines,
+    create_forecast_run as _create_forecast_run,
     get_forecast_vs_budget,
-    publish_forecast,
-    update_assumption,
+    publish_forecast as _publish_forecast,
+    update_assumption as _update_assumption,
 )
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role=UserRole.finance_leader.value,
+        intent_type=intent_type,
+    )
+
+
+async def create_budget_version(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CREATE_BUDGET_VERSION")):
+        return await _create_budget_version(*args, **kwargs)
+
+
+async def upsert_budget_line(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPSERT_BUDGET_LINE")):
+        return await _upsert_budget_line(*args, **kwargs)
+
+
+async def approve_budget(*args, **kwargs):
+    with governed_mutation_context(_governed_context("APPROVE_BUDGET_VERSION")):
+        return await _approve_budget(*args, **kwargs)
+
+
+async def create_forecast_run(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CREATE_FORECAST_RUN")):
+        return await _create_forecast_run(*args, **kwargs)
+
+
+async def update_assumption(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPDATE_FORECAST_ASSUMPTION")):
+        return await _update_assumption(*args, **kwargs)
+
+
+async def compute_forecast_lines(*args, **kwargs):
+    with governed_mutation_context(_governed_context("COMPUTE_FORECAST_LINES")):
+        return await _compute_forecast_lines(*args, **kwargs)
+
+
+async def publish_forecast(*args, **kwargs):
+    with governed_mutation_context(_governed_context("PUBLISH_FORECAST")):
+        return await _publish_forecast(*args, **kwargs)
 
 
 async def _create_run(async_session: AsyncSession, tenant_id: uuid.UUID, user_id: uuid.UUID, *, horizon: int = 12) -> ForecastRun:
@@ -474,4 +524,3 @@ def test_apply_growth_rate_helper_decimal() -> None:
     base = Decimal("1000000")
     rate = Decimal("5.00")
     assert _apply_growth_rate(base, rate) == Decimal("1050000.00")
-

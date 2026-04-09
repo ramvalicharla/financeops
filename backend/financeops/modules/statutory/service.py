@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.statutory.models import StatutoryFiling, StatutoryRegisterEntry
 from financeops.platform.db.models.entities import CpEntity
 
@@ -72,6 +73,7 @@ async def ensure_standard_filings(
     entity_id: uuid.UUID | None,
     fiscal_year: int,
 ) -> None:
+    require_mutation_context("Statutory filing calendar bootstrap")
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     existing_count = int(
         (
@@ -92,8 +94,7 @@ async def ensure_standard_filings(
 
     now = datetime.now(UTC)
     for form_number, form_description, due_date in _fy_dates(fiscal_year):
-        session.add(
-            StatutoryFiling(
+        row = StatutoryFiling(
                 tenant_id=tenant_id,
                 entity_id=resolved_entity_id,
                 form_number=form_number,
@@ -103,7 +104,8 @@ async def ensure_standard_filings(
                 penalty_amount=Decimal("0.00"),
                 created_at=now,
             )
-        )
+        apply_mutation_linkage(row)
+        session.add(row)
     await session.flush()
 
 
@@ -114,7 +116,6 @@ async def get_compliance_calendar(
     entity_id: uuid.UUID | None = None,
 ) -> list[dict]:
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
-    await ensure_standard_filings(session, tenant_id, resolved_entity_id, fiscal_year)
     rows = (
         await session.execute(
             select(StatutoryFiling)
@@ -157,6 +158,7 @@ async def mark_as_filed(
     filing_reference: str,
     entity_id: uuid.UUID | None = None,
 ) -> StatutoryFiling:
+    require_mutation_context("Statutory filing mark-as-filed")
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     current = (
         await session.execute(
@@ -182,6 +184,7 @@ async def mark_as_filed(
         penalty_amount=current.penalty_amount,
         notes=current.notes,
     )
+    apply_mutation_linkage(row)
     session.add(row)
     await session.flush()
     return row
@@ -227,6 +230,7 @@ async def add_register_entry(
     currency: str | None = None,
     reference_document: str | None = None,
 ) -> StatutoryRegisterEntry:
+    require_mutation_context("Statutory register entry creation")
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     now = datetime.now(UTC)
     row = StatutoryRegisterEntry(
@@ -243,6 +247,7 @@ async def add_register_entry(
         created_at=now,
         updated_at=now,
     )
+    apply_mutation_linkage(row)
     session.add(row)
     await session.flush()
     return row

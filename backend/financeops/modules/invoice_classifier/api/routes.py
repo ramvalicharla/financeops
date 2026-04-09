@@ -93,7 +93,12 @@ async def route_classification(
     service = ClassifierService(session)
     row = await service.get_classification(user.tenant_id, classification_id)
     await assert_entity_access(session, user.tenant_id, row.entity_id, user.id, user.role)
-    routed_record_id = await service.route_to_module(user.tenant_id, classification_id)
+    routed_record_id = await service.route_to_module(
+        user.tenant_id,
+        classification_id,
+        actor_user_id=user.id,
+        actor_role=user.role.value,
+    )
     refreshed = await service.get_classification(user.tenant_id, classification_id)
     return InvoiceRouteResponse(routed_record_id=routed_record_id, routing_action=str(refreshed.routing_action or "PENDING"))
 

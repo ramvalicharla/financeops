@@ -8,6 +8,7 @@ import sentry_sdk
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.db.session import AsyncSessionLocal, clear_tenant_context, set_tenant_context
 from financeops.db.models.board_pack_generator import BoardPackGeneratorRun
 from financeops.db.models.users import IamUser, UserRole
@@ -52,12 +53,43 @@ def generate_board_pack_task(
         async with AsyncSessionLocal() as session:
             try:
                 await set_tenant_context(session, str(parsed_tenant_id))
-                await service.generate(
-                    db=session,
-                    run_id=parsed_run_id,
-                    tenant_id=parsed_tenant_id,
-                )
                 session_execute = getattr(session, "execute", None)
+                run_row = None
+                if callable(session_execute):
+                    run_row = (
+                        await session_execute(
+                            select(BoardPackGeneratorRun).where(
+                                BoardPackGeneratorRun.id == parsed_run_id,
+                                BoardPackGeneratorRun.tenant_id == parsed_tenant_id,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if run_row is None:
+                        raise BoardPackGenerationError("Board pack run not found")
+                metadata = dict(getattr(run_row, "run_metadata", {}) or {})
+                intent_id = metadata.get("intent_id")
+                job_id = metadata.get("job_id")
+                if run_row is not None and intent_id and job_id:
+                    with governed_mutation_context(
+                        MutationContext(
+                            intent_id=uuid.UUID(str(intent_id)),
+                            job_id=uuid.UUID(str(job_id)),
+                            actor_user_id=run_row.triggered_by,
+                            actor_role=None,
+                            intent_type="GENERATE_BOARD_PACK",
+                        )
+                    ):
+                        await service.generate(
+                            db=session,
+                            run_id=parsed_run_id,
+                            tenant_id=parsed_tenant_id,
+                        )
+                else:
+                    await service.generate(
+                        db=session,
+                        run_id=parsed_run_id,
+                        tenant_id=parsed_tenant_id,
+                    )
                 if callable(session_execute):
                     run_row = (
                         await session_execute(

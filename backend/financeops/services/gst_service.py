@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.gst import GstReturn, GstReconItem
 from financeops.platform.db.models.entities import CpEntity
 from financeops.platform.db.models.organisations import CpOrganisation
@@ -126,6 +127,7 @@ async def create_gst_return(
     cost_centre_id: uuid.UUID | None = None,
 ) -> GstReturn:
     """Create a GST return record (INSERT ONLY)."""
+    require_mutation_context("GST return preparation")
     resolved_entity_id, resolved_entity_name = await _resolve_or_create_entity(
         session,
         tenant_id=tenant_id,
@@ -148,7 +150,7 @@ async def create_gst_return(
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
 
-    gst_return = GstReturn(
+    gst_return = apply_mutation_linkage(GstReturn(
         tenant_id=tenant_id,
         period_year=period_year,
         period_month=period_month,
@@ -170,7 +172,7 @@ async def create_gst_return(
         notes=notes,
         chain_hash=chain_hash,
         previous_hash=previous_hash,
-    )
+    ))
     session.add(gst_return)
     await session.flush()
     return gst_return
@@ -192,6 +194,7 @@ async def run_gst_reconciliation(
     Compare two GST return types for the same period/entity.
     Creates GstReconItem for each field where values differ.
     """
+    require_mutation_context("GST reconciliation run")
     # Fetch the two returns
     criteria = [
         GstReturn.tenant_id == tenant_id,
@@ -249,7 +252,7 @@ async def run_gst_reconciliation(
             }
             chain_hash = compute_chain_hash(record_data, previous_hash)
 
-            item = GstReconItem(
+            item = apply_mutation_linkage(GstReconItem(
                 tenant_id=tenant_id,
                 period_year=period_year,
                 period_month=period_month,
@@ -267,7 +270,7 @@ async def run_gst_reconciliation(
                 run_by=run_by,
                 chain_hash=chain_hash,
                 previous_hash=previous_hash,
-            )
+            ))
             session.add(item)
             items.append(item)
 
@@ -280,6 +283,33 @@ async def run_gst_reconciliation(
         period_year, period_month, len(items),
     )
     return items
+
+
+async def submit_gst_return(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    return_id: uuid.UUID,
+    filed_by: uuid.UUID,
+    filing_date: date | None = None,
+) -> GstReturn:
+    require_mutation_context("GST return submission")
+    row = (
+        await session.execute(
+            select(GstReturn).where(
+                GstReturn.tenant_id == tenant_id,
+                GstReturn.id == return_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise ValueError("GST return not found")
+    row.status = "filed"
+    row.filed_by = filed_by
+    row.filing_date = filing_date or date.today()
+    apply_mutation_linkage(row)
+    await session.flush()
+    return row
 
 
 async def list_gst_returns(

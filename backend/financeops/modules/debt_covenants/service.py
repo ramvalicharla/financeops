@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.budgeting.models import BudgetLineItem
 from financeops.modules.cash_flow_forecast.models import CashFlowForecastAssumption
@@ -144,6 +145,68 @@ async def compute_covenant_value(
     return Decimal("0.000000")
 
 
+async def create_covenant_definition(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID,
+    facility_name: str,
+    lender_name: str,
+    covenant_type: str,
+    covenant_label: str,
+    threshold_value: Decimal,
+    threshold_direction: str,
+    measurement_frequency: str,
+    grace_period_days: int,
+    notification_threshold_pct: Decimal,
+) -> CovenantDefinition:
+    require_mutation_context("Covenant definition creation")
+    now = datetime.now(UTC)
+    row = CovenantDefinition(
+        tenant_id=tenant_id,
+        entity_id=entity_id,
+        facility_name=facility_name,
+        lender_name=lender_name,
+        covenant_type=covenant_type,
+        covenant_label=covenant_label,
+        threshold_value=threshold_value,
+        threshold_direction=threshold_direction,
+        measurement_frequency=measurement_frequency,
+        is_active=True,
+        grace_period_days=grace_period_days,
+        notification_threshold_pct=notification_threshold_pct,
+        created_at=now,
+        updated_at=now,
+    )
+    apply_mutation_linkage(row)
+    session.add(row)
+    await session.flush()
+    return row
+
+
+async def update_covenant_definition(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    covenant_id: uuid.UUID,
+    updates: dict,
+) -> CovenantDefinition:
+    require_mutation_context("Covenant definition update")
+    row = (
+        await session.execute(
+            select(CovenantDefinition).where(
+                CovenantDefinition.id == covenant_id,
+                CovenantDefinition.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise ValueError("Covenant not found")
+    for key, value in updates.items():
+        setattr(row, key, value)
+    row.updated_at = datetime.utcnow()
+    await session.flush()
+    return row
+
+
 def _variance_pct(actual: Decimal, threshold: Decimal) -> Decimal:
     if threshold == Decimal("0"):
         return Decimal("0.0000")
@@ -213,6 +276,7 @@ async def check_all_covenants(
     period: str,
     entity_id: uuid.UUID | None = None,
 ) -> list[CovenantBreachEvent]:
+    require_mutation_context("Covenant check run")
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     # unbounded-ok: active covenant definitions are tenant-scoped and operationally capped.
     # Full active set is required to compute period compliance in one run.
@@ -247,6 +311,7 @@ async def check_all_covenants(
             breach_type=breach_type,
             variance_pct=_variance_pct(actual, threshold),
         )
+        apply_mutation_linkage(event)
         session.add(event)
         await session.flush()
         await _notify_if_needed(session, tenant_id, event, definition)

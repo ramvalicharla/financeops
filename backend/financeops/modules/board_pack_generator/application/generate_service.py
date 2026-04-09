@@ -9,6 +9,7 @@ import sentry_sdk
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
 from financeops.modules.board_pack_generator.application.export_service import (
     BoardPackExportService,
 )
@@ -353,6 +354,8 @@ class BoardPackGenerateService:
             chain_hash=chain_hash if to_status == PackRunStatus.COMPLETE else None,
             run_metadata=metadata,
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(next_row)
         db.add(next_row)
         await db.flush()
         return next_row
@@ -375,6 +378,8 @@ class BoardPackGenerateService:
             data_snapshot=rendered_section.data_snapshot,
             section_hash=rendered_section.section_hash,
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
 
@@ -401,6 +406,8 @@ class BoardPackGenerateService:
             generated_at=generated_at,
             checksum=RenderedSection.compute_hash({"filename": filename, "content_length": len(content)}),
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(artifact)
         db.add(artifact)
         await db.flush()
 

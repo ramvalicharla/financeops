@@ -49,6 +49,8 @@ class BankStatement(FinancialBase):
     transaction_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     file_name: Mapped[str] = mapped_column(String(500), nullable=False)
     file_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # status: pending / processed / error
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="pending")
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -79,6 +81,8 @@ class BankTransaction(FinancialBase):
     credit_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     balance: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # match_status: unmatched / matched / excluded
     match_status: Mapped[str] = mapped_column(String(50), nullable=False, default="unmatched")
 
@@ -111,6 +115,8 @@ class BankReconItem(FinancialBase):
     bank_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     gl_reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # status: open / resolved
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

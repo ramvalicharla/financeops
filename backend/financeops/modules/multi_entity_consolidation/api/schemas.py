@@ -94,6 +94,8 @@ class ConsolidationRunCreateResponse(BaseModel):
     run_token: str
     status: str
     idempotent: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
 
 
 class ConsolidationRunExecuteResponse(BaseModel):
@@ -104,4 +106,5 @@ class ConsolidationRunExecuteResponse(BaseModel):
     variance_count: int
     evidence_count: int
     idempotent: bool
-
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None

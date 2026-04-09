@@ -114,6 +114,7 @@ async def recon_phase1f2_db_url() -> AsyncGenerator[str, None]:
 
     env = os.environ.copy()
     env["DATABASE_URL"] = target_url
+    env["MIGRATION_DATABASE_URL"] = target_url
     env.setdefault("SECRET_KEY", "test-secret-key")
     env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
     env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")

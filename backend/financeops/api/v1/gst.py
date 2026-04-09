@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,9 @@ from financeops.api.deps import (
 from financeops.core.governance.approvals import ApprovalPolicyResolver, ApprovalRequest
 from financeops.core.governance.events import GovernanceActor, emit_governance_event
 from financeops.core.governance.guards import GuardEngine, MutationGuardContext
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.gst import GstReconItem, GstReturn
 from financeops.db.models.users import IamUser
 from financeops.platform.db.models.entities import CpEntity
@@ -32,6 +35,39 @@ from financeops.services.gst_service import (
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _decimal_string(value: Decimal) -> str:
+    rendered = format(value, "f")
+    if "." not in rendered:
+        return rendered
+    stripped = rendered.rstrip("0").rstrip(".")
+    return stripped or "0"
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: UUID | None = None,
+):
+    service = IntentService(session)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        target_id=target_id,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+    )
 
 
 class CreateGstReturnRequest(BaseModel):
@@ -61,15 +97,18 @@ class RunGstReconRequest(BaseModel):
     return_type_b: str
 
 
+class SubmitGstReturnRequest(BaseModel):
+    filing_date: date | None = None
+
+
 @router.post("/returns", status_code=status.HTTP_201_CREATED)
 async def create_return(
+    request: Request,
     body: CreateGstReturnRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
     """Record a GST return (INSERT ONLY)."""
-    guard_engine = GuardEngine()
-    approval_resolver = ApprovalPolicyResolver()
     resolved_entity_id = await resolve_entity_id(user.tenant_id, body.entity_id, session)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
     entity = (
@@ -83,79 +122,25 @@ async def create_return(
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
     resolved_entity_name = body.entity_name or entity.entity_name
-    actor = GovernanceActor(user_id=user.id, role=user.role.value)
-    guard_result = await guard_engine.evaluate_mutation(
+    result = await _submit_intent(
+        request,
         session,
-        context=MutationGuardContext(
-            tenant_id=user.tenant_id,
-            module_key="gst",
-            mutation_type="GST_RETURN_SUBMIT",
-            actor_user_id=user.id,
-            actor_role=user.role.value,
-            entity_id=resolved_entity_id,
-            amount=body.taxable_value,
-            subject_type="gst_return",
-            subject_id=f"{resolved_entity_id}:{body.return_type}:{body.period_year}-{body.period_month:02d}",
-        ),
-    )
-    if not guard_result.overall_passed:
-        raise HTTPException(
-            status_code=422,
-            detail="; ".join(item.message for item in guard_result.blocking_failures),
-        )
-    approval = await approval_resolver.resolve_mutation(
-        session,
-        request=ApprovalRequest(
-            tenant_id=user.tenant_id,
-            module_key="gst",
-            mutation_type="GST_RETURN_SUBMIT",
-            entity_id=resolved_entity_id,
-            actor_user_id=user.id,
-            actor_role=user.role.value,
-            amount=body.taxable_value,
-            subject_type="gst_return",
-            subject_id=f"{resolved_entity_id}:{body.return_type}:{body.period_year}-{body.period_month:02d}",
-        ),
-    )
-    if approval.approval_required and not approval.is_granted:
-        raise HTTPException(status_code=422, detail=approval.reason)
-
-    ret = await create_gst_return(
-        session,
-        tenant_id=user.tenant_id,
-        period_year=body.period_year,
-        period_month=body.period_month,
-        entity_id=resolved_entity_id,
-        entity_name=resolved_entity_name,
-        gstin=body.gstin,
-        return_type=body.return_type,
-        taxable_value=body.taxable_value,
-        igst_amount=body.igst_amount,
-        cgst_amount=body.cgst_amount,
-        sgst_amount=body.sgst_amount,
-        cess_amount=body.cess_amount,
-        filing_date=body.filing_date,
-        notes=body.notes,
-        location_id=body.location_id,
-        cost_centre_id=body.cost_centre_id,
-        created_by=user.id,
-    )
-    await session.flush()
-    await emit_governance_event(
-        session,
-        tenant_id=user.tenant_id,
-        module_key="gst",
-        subject_type="gst_return",
-        subject_id=str(ret.id),
-        event_type="RECORD_RECORDED",
-        actor=actor,
-        entity_id=resolved_entity_id,
+        user=user,
+        intent_type=IntentType.PREPARE_GST_RETURN,
         payload={
-            "return_type": ret.return_type,
-            "period": f"{ret.period_year}-{ret.period_month:02d}",
-            "total_tax": str(ret.total_tax),
+            **body.model_dump(mode="json"),
+            "entity_id": str(resolved_entity_id),
+            "entity_name": resolved_entity_name,
         },
     )
+    ret = (
+        await session.execute(
+            select(GstReturn).where(
+                GstReturn.id == UUID(str((result.record_refs or {})["return_id"])),
+                GstReturn.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
     return {
         "return_id": str(ret.id),
         "return_type": ret.return_type,
@@ -163,9 +148,11 @@ async def create_return(
         "entity_id": str(ret.entity_id),
         "entity_name": ret.entity_name,
         "gstin": ret.gstin,
-        "total_tax": str(ret.total_tax),
+        "total_tax": _decimal_string(ret.total_tax),
         "status": ret.status,
         "created_at": ret.created_at.isoformat(),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
@@ -217,7 +204,7 @@ async def list_returns(
             "entity_id": str(r.entity_id),
             "entity_name": r.entity_name,
             "gstin": r.gstin,
-            "total_tax": str(r.total_tax),
+            "total_tax": _decimal_string(r.total_tax),
             "status": r.status,
         }
         for r in returns
@@ -258,12 +245,12 @@ async def get_return(
         "entity_id": str(row.entity_id),
         "entity_name": row.entity_name,
         "gstin": row.gstin,
-        "taxable_value": str(row.taxable_value),
-        "igst_amount": str(row.igst_amount),
-        "cgst_amount": str(row.cgst_amount),
-        "sgst_amount": str(row.sgst_amount),
-        "cess_amount": str(row.cess_amount),
-        "total_tax": str(row.total_tax),
+        "taxable_value": _decimal_string(row.taxable_value),
+        "igst_amount": _decimal_string(row.igst_amount),
+        "cgst_amount": _decimal_string(row.cgst_amount),
+        "sgst_amount": _decimal_string(row.sgst_amount),
+        "cess_amount": _decimal_string(row.cess_amount),
+        "total_tax": _decimal_string(row.total_tax),
         "status": row.status,
         "filing_date": row.filing_date.isoformat() if row.filing_date else None,
         "notes": row.notes,
@@ -271,8 +258,53 @@ async def get_return(
     }
 
 
+@router.post("/returns/{return_id}/submit")
+async def submit_return(
+    return_id: UUID,
+    body: SubmitGstReturnRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict:
+    row = (
+        await session.execute(
+            select(GstReturn).where(
+                GstReturn.id == return_id,
+                GstReturn.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="GST return not found")
+    await assert_entity_access(session, user.tenant_id, row.entity_id, user.id, user.role)
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.SUBMIT_GST_RETURN,
+        payload={**body.model_dump(mode="json"), "entity_id": str(row.entity_id)},
+        target_id=return_id,
+    )
+    submitted = (
+        await session.execute(
+            select(GstReturn).where(
+                GstReturn.id == return_id,
+                GstReturn.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    return {
+        "return_id": str(submitted.id),
+        "status": submitted.status,
+        "filing_date": submitted.filing_date.isoformat() if submitted.filing_date else None,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
+    }
+
+
 @router.post("/reconcile", status_code=status.HTTP_201_CREATED)
 async def run_gst_recon(
+    request: Request,
     body: RunGstReconRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
@@ -280,33 +312,44 @@ async def run_gst_recon(
     """Run GST reconciliation between two return types for the same period."""
     resolved_entity_id = await resolve_entity_id(user.tenant_id, body.entity_id, session)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    items = await run_gst_reconciliation(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        period_year=body.period_year,
-        period_month=body.period_month,
-        entity_id=resolved_entity_id,
-        return_type_a=body.return_type_a,
-        return_type_b=body.return_type_b,
-        run_by=user.id,
+        user=user,
+        intent_type=IntentType.RUN_GST_RECONCILIATION,
+        payload={**body.model_dump(mode="json"), "entity_id": str(resolved_entity_id)},
     )
-    await session.flush()
+    item_ids = [UUID(str(value)) for value in ((result.record_refs or {}).get("item_ids") or [])]
+    items = []
+    if item_ids:
+        items = list(
+            (
+                await session.execute(
+                    select(GstReconItem).where(
+                        GstReconItem.tenant_id == user.tenant_id,
+                        GstReconItem.id.in_(item_ids),
+                    )
+                )
+            ).scalars().all()
+        )
     return {
         "period": f"{body.period_year}-{body.period_month:02d}",
         "entity_id": str(resolved_entity_id),
         "comparison": f"{body.return_type_a} vs {body.return_type_b}",
-        "breaks_found": len(items),
+        "breaks_found": int((result.record_refs or {}).get("breaks_found") or len(items)),
         "items": [
             {
                 "item_id": str(i.id),
                 "field_name": i.field_name,
-                "value_a": str(i.value_a),
-                "value_b": str(i.value_b),
-                "difference": str(i.difference),
+                "value_a": _decimal_string(i.value_a),
+                "value_b": _decimal_string(i.value_b),
+                "difference": _decimal_string(i.difference),
                 "status": i.status,
             }
             for i in items
         ],
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 

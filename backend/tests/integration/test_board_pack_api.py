@@ -302,7 +302,7 @@ async def test_t_041_generate_enqueues_task_once(
         calls.append((run_id, tenant_id))
 
     monkeypatch.setattr(
-        "financeops.modules.board_pack_generator.api.routes.generate_board_pack_task.delay",
+        "financeops.modules.board_pack_generator.tasks.generate_board_pack_task.delay",
         _fake_delay,
     )
 
@@ -319,6 +319,8 @@ async def test_t_041_generate_enqueues_task_once(
     assert response.status_code == 202
     payload = response.json()["data"]
     assert payload["status"] == "PENDING"
+    assert payload["intent_id"]
+    assert payload["job_id"]
     assert calls == [(payload["id"], str(test_user.tenant_id))]
 
 

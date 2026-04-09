@@ -461,7 +461,12 @@ async def test_route_to_fa_creates_stub_asset(async_session: AsyncSession, test_
         entity.id,
         InvoiceInput("INV-14", "Hardware Vendor", "Laptop purchase", Decimal("80000.0000")),
     )
-    routed_id = await service.route_to_module(test_user.tenant_id, row.id)
+    routed_id = await service.route_to_module(
+        test_user.tenant_id,
+        row.id,
+        actor_user_id=test_user.id,
+        actor_role=test_user.role.value,
+    )
     asset = await async_session.get(FaAsset, routed_id)
     assert asset is not None
 
@@ -486,7 +491,12 @@ async def test_route_to_prepaid_creates_stub_schedule(async_session: AsyncSessio
         entity.id,
         InvoiceInput("INV-15", "SaaS Vendor", "Annual subscription plan", Decimal("12000.0000")),
     )
-    routed_id = await service.route_to_module(test_user.tenant_id, row.id)
+    routed_id = await service.route_to_module(
+        test_user.tenant_id,
+        row.id,
+        actor_user_id=test_user.id,
+        actor_role=test_user.role.value,
+    )
     schedule = await async_session.get(PrepaidSchedule, routed_id)
     assert schedule is not None
 

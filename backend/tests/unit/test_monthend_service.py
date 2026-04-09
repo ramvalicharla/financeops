@@ -1,17 +1,50 @@
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.services.monthend_service import (
-    add_task,
-    close_checklist,
-    create_checklist,
+    add_task as _add_task,
+    close_checklist as _close_checklist,
+    create_checklist as _create_checklist,
     get_checklist,
     list_checklists,
     list_tasks,
-    update_task_status,
+    update_task_status as _update_task_status,
 )
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type=intent_type,
+    )
+
+
+async def create_checklist(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CREATE_MONTHEND_CHECKLIST")):
+        return await _create_checklist(*args, **kwargs)
+
+
+async def add_task(*args, **kwargs):
+    with governed_mutation_context(_governed_context("ADD_MONTHEND_TASK")):
+        return await _add_task(*args, **kwargs)
+
+
+async def update_task_status(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPDATE_MONTHEND_TASK_STATUS")):
+        return await _update_task_status(*args, **kwargs)
+
+
+async def close_checklist(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CLOSE_MONTHEND_CHECKLIST")):
+        return await _close_checklist(*args, **kwargs)
 
 
 @pytest.mark.asyncio

@@ -90,7 +90,7 @@ async def test_fixed_assets_run_status_and_results_endpoints(
 ) -> None:
     stub_temporal = _StubTemporalClient()
     with patch(
-        "financeops.api.v1.fixed_assets.get_temporal_client",
+        "financeops.temporal.client.get_temporal_client",
         new=AsyncMock(return_value=stub_temporal),
     ):
         response = await async_client.post(
@@ -102,6 +102,8 @@ async def test_fixed_assets_run_status_and_results_endpoints(
     assert response.status_code == 202
     payload = response.json()["data"]
     assert payload["status"] == "accepted"
+    assert payload["intent_id"]
+    assert payload["job_id"]
     assert stub_temporal.started
 
     run_id = payload["run_id"]

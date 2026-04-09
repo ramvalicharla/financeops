@@ -4,19 +4,47 @@ import uuid
 from decimal import Decimal
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.exceptions import ValidationError
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.debt_covenants.models import CovenantBreachEvent, CovenantDefinition
-from financeops.modules.debt_covenants.service import check_all_covenants, get_covenant_dashboard
+from financeops.modules.debt_covenants.service import get_covenant_dashboard
 from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/covenants", tags=["covenants"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+        target_id=target_id,
+    )
 
 
 class CovenantCreateRequest(BaseModel):
@@ -132,36 +160,43 @@ async def covenant_dashboard_endpoint(
 
 @router.post("")
 async def create_covenant_endpoint(
+    request: Request,
     body: CovenantCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    now = datetime.utcnow()
-    row = CovenantDefinition(
-        tenant_id=user.tenant_id,
-        entity_id=resolved_entity_id,
-        facility_name=body.facility_name,
-        lender_name=body.lender_name,
-        covenant_type=body.covenant_type,
-        covenant_label=body.covenant_label,
-        threshold_value=body.threshold_value,
-        threshold_direction=body.threshold_direction,
-        measurement_frequency=body.measurement_frequency,
-        is_active=True,
-        grace_period_days=body.grace_period_days,
-        notification_threshold_pct=body.notification_threshold_pct,
-        created_at=now,
-        updated_at=now,
-    )
-    session.add(row)
-    await session.flush()
-    return _serialize_definition(row)
+    try:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CREATE_COVENANT_DEFINITION,
+            payload={
+                **body.model_dump(mode="json"),
+                "entity_id": str(resolved_entity_id),
+            },
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    row = (
+        await session.execute(
+            select(CovenantDefinition).where(
+                CovenantDefinition.id == uuid.UUID(str((result.record_refs or {})["covenant_id"])),
+                CovenantDefinition.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_definition(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.patch("/{covenant_id}")
 async def patch_covenant_endpoint(
+    request: Request,
     covenant_id: uuid.UUID,
     body: CovenantPatchRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -175,29 +210,74 @@ async def patch_covenant_endpoint(
     if row is None:
         raise HTTPException(status_code=404, detail="Covenant not found")
     await assert_entity_access(session, user.tenant_id, row.entity_id, user.id, user.role)
-    updates = body.model_dump(exclude_none=True)
-    for key, value in updates.items():
-        setattr(row, key, value)
-    row.updated_at = datetime.utcnow()
-    await session.flush()
-    return _serialize_definition(row)
+    updates = body.model_dump(mode="json", exclude_none=True)
+    try:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.UPDATE_COVENANT_DEFINITION,
+            payload={
+                "covenant_id": str(covenant_id),
+                "updates": updates,
+            },
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    updated = (
+        await session.execute(
+            select(CovenantDefinition).where(
+                CovenantDefinition.id == covenant_id,
+                CovenantDefinition.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_definition(updated)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.post("/check")
 async def run_check_endpoint(
+    request: Request,
     body: CheckRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     resolved_entity_id = await _resolve_entity_id(session, user, body.entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    rows = await check_all_covenants(
-        session,
-        tenant_id=user.tenant_id,
-        entity_id=resolved_entity_id,
-        period=body.period,
-    )
-    return {"events": [_serialize_event(row) for row in rows], "count": len(rows)}
+    try:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CHECK_COVENANTS,
+            payload={
+                "entity_id": str(resolved_entity_id),
+                "period": body.period,
+            },
+        )
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    event_ids = [uuid.UUID(str(value)) for value in ((result.record_refs or {}).get("event_ids") or [])]
+    rows = (
+        await session.execute(
+            select(CovenantBreachEvent)
+            .where(
+                CovenantBreachEvent.id.in_(event_ids or [uuid.UUID("00000000-0000-0000-0000-000000000000")]),
+                CovenantBreachEvent.tenant_id == user.tenant_id,
+                CovenantBreachEvent.entity_id == resolved_entity_id,
+            )
+            .order_by(desc(CovenantBreachEvent.computed_at), desc(CovenantBreachEvent.id))
+        )
+    ).scalars().all()
+    return {
+        "events": [_serialize_event(row) for row in rows],
+        "count": len(rows),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
+    }
 
 
 @router.get("/{covenant_id}/history", response_model=Paginated[dict])

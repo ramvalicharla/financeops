@@ -9,10 +9,11 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser, UserRole
-from financeops.modules.expense_management.service import submit_claim
+from financeops.modules.expense_management.service import submit_claim as _submit_claim
 from financeops.modules.notifications.models import NotificationEvent, NotificationPreferences, NotificationReadState
 from financeops.modules.notifications.service import (
     get_or_create_preferences,
@@ -28,6 +29,21 @@ from financeops.modules.notifications.service import (
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _expense_context() -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type="SUBMIT_EXPENSE_CLAIM",
+    )
+
+
+async def submit_claim(*args, **kwargs):
+    with governed_mutation_context(_expense_context()):
+        return await _submit_claim(*args, **kwargs)
 
 
 async def _create_user(

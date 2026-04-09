@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
 from financeops.db.models.custom_report_builder import (
     ReportDefinition,
     ReportResult,
@@ -124,6 +125,7 @@ class ReportRepository:
         tenant_id: uuid.UUID,
         definition_id: uuid.UUID,
         triggered_by: uuid.UUID,
+        run_metadata: dict[str, Any] | None = None,
     ) -> ReportRun:
         run_id = uuid.uuid4()
         row = ReportRun(
@@ -132,9 +134,11 @@ class ReportRepository:
             definition_id=definition_id,
             status="PENDING",
             triggered_by=triggered_by,
-            run_metadata={"origin_run_id": str(run_id)},
+            run_metadata={"origin_run_id": str(run_id), **(run_metadata or {})},
             created_at=datetime.now(UTC),
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
         return row
@@ -241,10 +245,11 @@ class ReportRepository:
             export_path_pdf=export_paths.get("PDF"),
             created_at=datetime.now(UTC),
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
         return row
 
 
 __all__ = ["ReportRepository"]
-

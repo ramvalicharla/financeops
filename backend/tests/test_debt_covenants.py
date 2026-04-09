@@ -7,17 +7,38 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ValidationError
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser
 from financeops.modules.debt_covenants.models import CovenantBreachEvent, CovenantDefinition
 from financeops.modules.debt_covenants import service as covenant_service
-from financeops.modules.debt_covenants.service import check_all_covenants, compute_covenant_value, get_covenant_dashboard
+from financeops.modules.debt_covenants.service import (
+    check_all_covenants as _check_all_covenants,
+    compute_covenant_value,
+    get_covenant_dashboard,
+)
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context() -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type="CHECK_COVENANTS",
+    )
+
+
+async def check_all_covenants(*args, **kwargs):
+    with governed_mutation_context(_governed_context()):
+        return await _check_all_covenants(*args, **kwargs)
 
 
 @pytest.mark.asyncio
@@ -210,6 +231,12 @@ async def test_all_covenant_values_decimal(async_session: AsyncSession, test_use
 
 
 @pytest.mark.asyncio
+async def test_check_all_covenants_requires_governed_context(async_session: AsyncSession, test_user: IamUser) -> None:
+    with pytest.raises(ValidationError):
+        await _check_all_covenants(async_session, test_user.tenant_id, "2026-03")
+
+
+@pytest.mark.asyncio
 async def test_zero_ebitda_no_division_error(async_session: AsyncSession, test_user: IamUser, monkeypatch: pytest.MonkeyPatch) -> None:
     async def _snapshot(*args, **kwargs):  # type: ignore[no-untyped-def]
         return {
@@ -335,6 +362,8 @@ async def test_api_create_covenant(async_client, test_user: IamUser) -> None:
     )
     assert response.status_code == 200
     assert response.json()["data"]["facility_name"] == "HDFC TL"
+    assert response.json()["data"]["intent_id"]
+    assert response.json()["data"]["job_id"]
 
 
 @pytest.mark.asyncio
@@ -360,3 +389,5 @@ async def test_api_check_covenants(async_client, async_session: AsyncSession, te
     )
     assert response.status_code == 200
     assert "events" in response.json()["data"]
+    assert response.json()["data"]["intent_id"]
+    assert response.json()["data"]["job_id"]

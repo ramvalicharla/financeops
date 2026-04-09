@@ -87,6 +87,8 @@ class PrepaidSchedule(Base):
         nullable=True,
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'ACTIVE'"), default="ACTIVE")
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -132,6 +134,8 @@ class PrepaidAmortisationEntry(Base):
     amortisation_amount: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     is_last_period: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), default=False)
     run_reference: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

@@ -9,6 +9,8 @@ from httpx import AsyncClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ValidationError
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import hash_password
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
@@ -18,10 +20,10 @@ from financeops.modules.expense_management.policy_engine import ExpensePolicyEng
 from financeops.modules.expense_management.service import (
     JustificationRequiredError,
     PolicyViolationError,
-    _get_or_create_policy,
-    approve_claim,
+    _get_or_create_policy as _ensure_policy_service,
+    approve_claim as _approve_claim,
     get_expense_analytics,
-    submit_claim,
+    submit_claim as _submit_claim,
 )
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
@@ -30,8 +32,19 @@ def _make_engine(policy: ExpensePolicy) -> ExpensePolicyEngine:
     return ExpensePolicyEngine(policy)
 
 
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type=intent_type,
+    )
+
+
 async def _ensure_policy(async_session: AsyncSession, tenant_id: uuid.UUID) -> ExpensePolicy:
-    policy = await _get_or_create_policy(async_session, tenant_id)
+    with governed_mutation_context(_governed_context("ENSURE_EXPENSE_POLICY")):
+        policy = await _ensure_policy_service(async_session, tenant_id)
     await async_session.flush()
     return policy
 
@@ -91,20 +104,43 @@ async def _submit_claim_for_user(
     has_receipt: bool = True,
     justification: str | None = None,
 ) -> ExpenseClaim:
-    return await submit_claim(
-        async_session,
-        tenant_id=tenant_id,
-        submitted_by=user_id,
-        vendor_name=vendor_name,
-        description="Test expense",
-        category=category,
-        amount=amount,
-        currency="INR",
-        claim_date=claim_date,
-        has_receipt=has_receipt,
-        receipt_url="https://example.com/receipt.png" if has_receipt else None,
-        justification=justification,
-    )
+    with governed_mutation_context(_governed_context("SUBMIT_EXPENSE_CLAIM")):
+        return await _submit_claim(
+            async_session,
+            tenant_id=tenant_id,
+            submitted_by=user_id,
+            vendor_name=vendor_name,
+            description="Test expense",
+            category=category,
+            amount=amount,
+            currency="INR",
+            claim_date=claim_date,
+            has_receipt=has_receipt,
+            receipt_url="https://example.com/receipt.png" if has_receipt else None,
+            justification=justification,
+        )
+
+
+async def _approve_claim_for_user(
+    async_session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    claim_id: uuid.UUID,
+    approver_id: uuid.UUID,
+    approver_role: str,
+    action: str,
+    comments: str | None = None,
+):
+    with governed_mutation_context(_governed_context("APPROVE_EXPENSE_CLAIM")):
+        return await _approve_claim(
+            async_session,
+            tenant_id=tenant_id,
+            claim_id=claim_id,
+            approver_id=approver_id,
+            approver_role=approver_role,
+            action=action,
+            comments=comments,
+        )
 
 
 # Policy engine (8)
@@ -294,7 +330,7 @@ async def test_approval_creates_audit_record(async_session: AsyncSession, test_u
         amount=Decimal("1200.00"),
         claim_date=date(2025, 3, 17),
     )
-    await approve_claim(
+    await _approve_claim_for_user(
         async_session,
         tenant_id=test_user.tenant_id,
         claim_id=claim.id,
@@ -324,7 +360,7 @@ async def test_rejection_creates_audit_record(async_session: AsyncSession, test_
         amount=Decimal("1200.00"),
         claim_date=date(2025, 3, 17),
     )
-    await approve_claim(
+    await _approve_claim_for_user(
         async_session,
         tenant_id=test_user.tenant_id,
         claim_id=claim.id,
@@ -402,6 +438,8 @@ async def test_submit_expense_via_api(async_client: AsyncClient, test_access_tok
     assert response.status_code == 201
     payload = response.json()["data"]
     assert payload["vendor_name"] == "Office Store"
+    assert payload["intent_id"]
+    assert payload["job_id"]
 
 
 @pytest.mark.asyncio
@@ -551,6 +589,23 @@ async def test_policy_endpoint_returns_defaults(async_client: AsyncClient, test_
     assert response.status_code == 200
     payload = response.json()["data"]
     assert payload["meal_limit_per_day"] == "2000.00"
+
+
+@pytest.mark.asyncio
+async def test_submit_claim_requires_governed_context(async_session: AsyncSession, test_user: IamUser) -> None:
+    with pytest.raises(ValidationError):
+        await _submit_claim(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            submitted_by=test_user.id,
+            vendor_name="Contextless",
+            description="Blocked",
+            category="other",
+            amount=Decimal("10.00"),
+            currency="INR",
+            claim_date=date(2025, 3, 17),
+            has_receipt=True,
+        )
 
 
 @pytest.mark.asyncio

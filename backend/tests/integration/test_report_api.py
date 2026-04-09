@@ -95,7 +95,7 @@ async def test_t_143_run_endpoint_returns_pending_and_enqueues_task(
         calls.append((run_id, tenant_id))
 
     monkeypatch.setattr(
-        "financeops.modules.custom_report_builder.api.routes.run_custom_report_task.delay",
+        "financeops.modules.custom_report_builder.tasks.run_custom_report_task.delay",
         _fake_delay,
     )
 
@@ -107,6 +107,8 @@ async def test_t_143_run_endpoint_returns_pending_and_enqueues_task(
     assert response.status_code == 202
     data = response.json()["data"]
     assert data["status"] == "PENDING"
+    assert data["intent_id"]
+    assert data["job_id"]
     assert calls == [(data["id"], str(test_user.tenant_id))]
 
 
@@ -398,4 +400,3 @@ async def test_t_148_rls_hides_tenant_b_definitions_from_tenant_a(
     assert response.status_code == 200
     names = [item["name"] for item in response.json()["data"]]
     assert "Tenant B Report" not in names
-

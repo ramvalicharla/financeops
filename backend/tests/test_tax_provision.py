@@ -7,17 +7,46 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.tax_provision.models import TaxPosition, TaxProvisionRun
-from financeops.modules.tax_provision.service import compute_tax_provision, get_tax_provision_schedule, upsert_tax_position
+from financeops.modules.tax_provision.service import (
+    compute_tax_provision as _compute_tax_provision,
+    get_tax_provision_schedule,
+    upsert_tax_position as _upsert_tax_position,
+)
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role=_default_actor_role(),
+        intent_type=intent_type,
+    )
+
+
+def _default_actor_role() -> str:
+    return "finance_leader"
+
+
+async def compute_tax_provision(*args, **kwargs):
+    with governed_mutation_context(_governed_context("COMPUTE_TAX_PROVISION")):
+        return await _compute_tax_provision(*args, **kwargs)
+
+
+async def upsert_tax_position(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPSERT_TAX_POSITION")):
+        return await _upsert_tax_position(*args, **kwargs)
 
 
 async def _seed_budget(async_session: AsyncSession, test_user: IamUser, fiscal_year: int, annual_total: Decimal) -> None:

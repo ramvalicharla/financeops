@@ -2,21 +2,58 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+import uuid
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser
 from financeops.modules.statutory.models import StatutoryFiling, StatutoryRegisterEntry
-from financeops.modules.statutory.service import add_register_entry, get_compliance_calendar, get_register, mark_as_filed
+from financeops.modules.statutory.service import (
+    add_register_entry as _add_register_entry,
+    ensure_standard_filings as _ensure_standard_filings,
+    get_compliance_calendar as _get_compliance_calendar,
+    get_register,
+    mark_as_filed as _mark_as_filed,
+)
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type=intent_type,
+    )
+
+
+async def get_compliance_calendar(*args, **kwargs):
+    fiscal_year = kwargs.get("fiscal_year")
+    if fiscal_year is None and len(args) >= 3:
+        fiscal_year = args[2]
+    with governed_mutation_context(_governed_context("ENSURE_STATUTORY_FILINGS")):
+        await _ensure_standard_filings(args[0], args[1], kwargs.get("entity_id"), fiscal_year)
+    return await _get_compliance_calendar(*args, **kwargs)
+
+
+async def mark_as_filed(*args, **kwargs):
+    with governed_mutation_context(_governed_context("MARK_STATUTORY_FILING")):
+        return await _mark_as_filed(*args, **kwargs)
+
+
+async def add_register_entry(*args, **kwargs):
+    with governed_mutation_context(_governed_context("ADD_STATUTORY_REGISTER_ENTRY")):
+        return await _add_register_entry(*args, **kwargs)
 
 
 @pytest.mark.asyncio

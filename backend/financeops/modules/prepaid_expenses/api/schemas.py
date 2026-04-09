@@ -58,6 +58,8 @@ class PrepaidScheduleResponse(BaseModel):
     location_id: uuid.UUID | None = None
     cost_centre_id: uuid.UUID | None = None
     status: str
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime | None = None
 
@@ -80,6 +82,8 @@ class PrepaidAmortisationEntryResponse(BaseModel):
     amortisation_amount: Decimal
     is_last_period: bool
     run_reference: str
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
 
 

@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.config import settings
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.custom_report_builder import (
     ReportDefinition,
     ReportRun,
@@ -33,10 +36,35 @@ from financeops.modules.custom_report_builder.domain.metric_registry import (
 from financeops.modules.custom_report_builder.infrastructure.repository import (
     ReportRepository,
 )
-from financeops.modules.custom_report_builder.tasks import run_custom_report_task
+from financeops.modules.custom_report_builder.tasks import run_custom_report_task  # compatibility import
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+async def _submit_intent(
+    request: Request,
+    db: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict[str, Any],
+    target_id: uuid.UUID | None = None,
+):
+    service = IntentService(db)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        target_id=target_id,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+    )
 
 
 class CreateDefinitionRequest(BaseModel):
@@ -98,6 +126,8 @@ class RunResponse(BaseModel):
     error_message: str | None = None
     row_count: int | None = None
     run_metadata: dict[str, Any]
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
     created_at: datetime
 
 
@@ -237,6 +267,7 @@ async def delete_definition(
 
 @router.post("/run", response_model=RunResponse, status_code=status.HTTP_202_ACCEPTED)
 async def run_report(
+    request: Request,
     body: RunRequest,
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -252,15 +283,26 @@ async def run_report(
     if not definition.is_active:
         raise HTTPException(status_code=400, detail="Definition is inactive")
 
-    run = await repo.create_run(
+    result = await _submit_intent(
+        request,
+        db,
+        user=user,
+        intent_type=IntentType.GENERATE_REPORT,
+        payload={
+            "definition_id": str(body.definition_id),
+            "triggered_by": str(body.triggered_by or user.id),
+        },
+    )
+    run = await repo.get_run(
         db=db,
         tenant_id=user.tenant_id,
-        definition_id=body.definition_id,
-        triggered_by=body.triggered_by or user.id,
+        run_id=uuid.UUID(str((result.record_refs or {})["run_id"])),
     )
-    await db.commit()
-    run_custom_report_task.delay(str(run.id), str(user.tenant_id))
-    return RunResponse.model_validate(run)
+    if run is None:
+        raise HTTPException(status_code=500, detail="Report run was not created")
+    return RunResponse.model_validate(run).model_copy(
+        update={"intent_id": result.intent_id, "job_id": result.job_id}
+    )
 
 
 @router.get("/runs", response_model=Paginated[RunResponse] | list[RunResponse])

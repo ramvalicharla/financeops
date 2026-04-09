@@ -8,22 +8,53 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser
 from financeops.modules.cash_flow_forecast.models import CashFlowForecastAssumption, CashFlowForecastRun
 from financeops.modules.cash_flow_forecast.service import (
-    create_forecast_run,
+    create_forecast_run as _create_forecast_run,
     get_forecast_summary,
-    publish_forecast,
-    seed_from_historical,
-    update_week_assumptions,
+    publish_forecast as _publish_forecast,
+    seed_from_historical as _seed_from_historical,
+    update_week_assumptions as _update_week_assumptions,
 )
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type=intent_type,
+    )
+
+
+async def create_forecast_run(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CREATE_CASH_FLOW_FORECAST")):
+        return await _create_forecast_run(*args, **kwargs)
+
+
+async def update_week_assumptions(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPDATE_CASH_FLOW_WEEK")):
+        return await _update_week_assumptions(*args, **kwargs)
+
+
+async def seed_from_historical(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CREATE_CASH_FLOW_FORECAST")):
+        return await _seed_from_historical(*args, **kwargs)
+
+
+async def publish_forecast(*args, **kwargs):
+    with governed_mutation_context(_governed_context("PUBLISH_CASH_FLOW_FORECAST")):
+        return await _publish_forecast(*args, **kwargs)
 
 
 @pytest.mark.asyncio

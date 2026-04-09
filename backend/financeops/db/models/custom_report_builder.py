@@ -140,6 +140,8 @@ class ReportRun(Base):
         server_default=text("'{}'::jsonb"),
         default=dict,
     )
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -177,6 +179,8 @@ class ReportResult(Base):
     export_path_csv: Mapped[str | None] = mapped_column(Text, nullable=True)
     export_path_excel: Mapped[str | None] = mapped_column(Text, nullable=True)
     export_path_pdf: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

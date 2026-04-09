@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +16,9 @@ from financeops.api.deps import (
     require_finance_team,
 )
 from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.bank_recon import BankReconItem, BankStatement, BankTransaction
 from financeops.db.models.users import IamUser
 from financeops.platform.db.models.entities import CpEntity
@@ -37,6 +40,31 @@ from financeops.services.bank_recon_service import (
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: UUID | None = None,
+):
+    service = IntentService(session)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        target_id=target_id,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+    )
 
 
 class CreateStatementRequest(BaseModel):
@@ -69,6 +97,7 @@ class AddTransactionRequest(BaseModel):
 
 @router.post("/upload-statement")
 async def upload_bank_statement(
+    request: Request,
     bank_name: str,
     entity_id: UUID,
     file: UploadFile = File(...),
@@ -123,33 +152,51 @@ async def upload_bank_statement(
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
 
-    stored = await store_bank_transactions(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        entity_id=entity_id,
-        entity_name=entity.entity_name,
-        bank_name=bank_name,
-        transactions=transactions,
-        uploaded_by=user.id,
-        admitted_airlock_item_id=airlock_result.item_id,
-        source_type="bank_recon_statement_upload",
+        user=user,
+        intent_type=IntentType.IMPORT_BANK_STATEMENT,
+        payload={
+            "entity_id": str(entity_id),
+            "entity_name": entity.entity_name,
+            "bank_name": bank_name,
+            "transactions": [
+                {
+                    "transaction_date": txn.transaction_date.isoformat(),
+                    "value_date": txn.value_date.isoformat() if txn.value_date else None,
+                    "description": txn.description,
+                    "reference": txn.reference,
+                    "debit": str(txn.debit) if txn.debit is not None else None,
+                    "credit": str(txn.credit) if txn.credit is not None else None,
+                    "balance": str(txn.balance) if txn.balance is not None else None,
+                    "transaction_type": txn.transaction_type,
+                }
+                for txn in transactions
+            ],
+            "admitted_airlock_item_id": str(airlock_result.item_id),
+            "source_type": "bank_recon_statement_upload",
+        },
     )
-
-    await session.flush()
     return {
         "bank": bank_name,
         "transactions_parsed": len(transactions),
-        "transactions_stored": len(stored),
+        "transactions_stored": int((result.record_refs or {}).get("transaction_count") or 0),
         "date_range": {
             "from": min(t.transaction_date for t in transactions).isoformat(),
             "to": max(t.transaction_date for t in transactions).isoformat(),
         },
         "airlock_item_id": str(airlock_result.item_id),
+        "statement_id": (result.record_refs or {}).get("statement_id"),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
+        "intent_status": result.status,
     }
 
 
 @router.post("/statements", status_code=status.HTTP_201_CREATED)
 async def create_statement(
+    request: Request,
     body: CreateStatementRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
@@ -166,26 +213,26 @@ async def create_statement(
     ).scalar_one_or_none()
     if entity is None:
         raise HTTPException(status_code=404, detail="Entity not found")
-    stmt = await create_bank_statement(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        bank_name=body.bank_name,
-        account_number_masked=body.account_number_masked,
-        currency=body.currency,
-        period_year=body.period_year,
-        period_month=body.period_month,
-        entity_id=resolved_entity_id,
-        entity_name=body.entity_name or entity.entity_name,
-        opening_balance=body.opening_balance,
-        closing_balance=body.closing_balance,
-        file_name=body.file_name,
-        file_hash=body.file_hash,
-        uploaded_by=user.id,
-        transaction_count=body.transaction_count,
-        location_id=body.location_id,
-        cost_centre_id=body.cost_centre_id,
+        user=user,
+        intent_type=IntentType.CREATE_BANK_STATEMENT,
+        payload={
+            **body.model_dump(mode="json"),
+            "entity_id": str(resolved_entity_id),
+            "entity_name": body.entity_name or entity.entity_name,
+            "period_number": body.period_month,
+        },
     )
-    await session.flush()
+    stmt = (
+        await session.execute(
+            select(BankStatement).where(
+                BankStatement.id == UUID(str((result.record_refs or {})["statement_id"])),
+                BankStatement.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
     return {
         "statement_id": str(stmt.id),
         "bank_name": stmt.bank_name,
@@ -195,6 +242,8 @@ async def create_statement(
         "closing_balance": str(stmt.closing_balance),
         "status": stmt.status,
         "created_at": stmt.created_at.isoformat(),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
@@ -261,6 +310,7 @@ async def list_statements(
 
 @router.post("/transactions", status_code=status.HTTP_201_CREATED)
 async def add_transaction(
+    request: Request,
     body: AddTransactionRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
@@ -278,19 +328,26 @@ async def add_transaction(
 
     resolved_entity_id = body.entity_id or statement.entity_id
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    txn = await add_bank_transaction(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        statement_id=body.statement_id,
-        entity_id=resolved_entity_id,
-        transaction_date=body.transaction_date,
-        description=body.description,
-        debit_amount=body.debit_amount,
-        credit_amount=body.credit_amount,
-        balance=body.balance,
-        reference=body.reference,
+        user=user,
+        intent_type=IntentType.ADD_BANK_TRANSACTION,
+        payload={
+            **body.model_dump(mode="json"),
+            "entity_id": str(resolved_entity_id),
+            "period_year": statement.period_year,
+            "period_number": statement.period_month,
+        },
     )
-    await session.flush()
+    txn = (
+        await session.execute(
+            select(BankTransaction).where(
+                BankTransaction.id == UUID(str((result.record_refs or {})["transaction_id"])),
+                BankTransaction.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
     return {
         "transaction_id": str(txn.id),
         "transaction_date": txn.transaction_date.isoformat(),
@@ -298,6 +355,8 @@ async def add_transaction(
         "credit_amount": str(txn.credit_amount),
         "match_status": txn.match_status,
         "created_at": txn.created_at.isoformat(),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
@@ -369,6 +428,7 @@ async def list_transactions(
 
 @router.post("/run/{statement_id}", status_code=status.HTTP_201_CREATED)
 async def run_bank_recon(
+    request: Request,
     statement_id: UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
@@ -384,16 +444,34 @@ async def run_bank_recon(
     if statement is None:
         raise HTTPException(status_code=404, detail="Bank statement not found")
     await assert_entity_access(session, user.tenant_id, statement.entity_id, user.id, user.role)
-    items = await run_bank_reconciliation(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        statement_id=statement_id,
-        run_by=user.id,
+        user=user,
+        intent_type=IntentType.RUN_BANK_RECONCILIATION,
+        payload={
+            "statement_id": str(statement_id),
+            "entity_id": str(statement.entity_id),
+            "period_year": statement.period_year,
+            "period_number": statement.period_month,
+        },
     )
-    await session.flush()
+    item_ids = [UUID(str(value)) for value in ((result.record_refs or {}).get("item_ids") or [])]
+    items = []
+    if item_ids:
+        items = list(
+            (
+                await session.execute(
+                    select(BankReconItem).where(
+                        BankReconItem.tenant_id == user.tenant_id,
+                        BankReconItem.id.in_(item_ids),
+                    )
+                )
+            ).scalars().all()
+        )
     return {
         "statement_id": str(statement_id),
-        "open_items_created": len(items),
+        "open_items_created": int((result.record_refs or {}).get("open_items_created") or len(items)),
         "items": [
             {
                 "item_id": str(i.id),
@@ -403,6 +481,8 @@ async def run_bank_recon(
             }
             for i in items
         ],
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 

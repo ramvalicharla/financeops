@@ -9,6 +9,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.governance.airlock import AirlockAdmissionService
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.bank_recon import BankStatement, BankTransaction, BankReconItem
 from financeops.modules.bank_reconciliation.parsers.base import BankTransaction as ParsedBankTransaction
 from financeops.platform.db.models.entities import CpEntity
@@ -119,6 +120,7 @@ async def create_bank_statement(
     cost_centre_id: uuid.UUID | None = None,
 ) -> BankStatement:
     """Create a bank statement header record (INSERT ONLY)."""
+    require_mutation_context("Bank statement creation")
     resolved_entity_id, resolved_entity_name = await _resolve_or_create_entity(
         session,
         tenant_id=tenant_id,
@@ -139,7 +141,7 @@ async def create_bank_statement(
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
 
-    stmt = BankStatement(
+    stmt = apply_mutation_linkage(BankStatement(
         tenant_id=tenant_id,
         bank_name=bank_name,
         account_number_masked=account_number_masked,
@@ -159,7 +161,7 @@ async def create_bank_statement(
         uploaded_by=uploaded_by,
         chain_hash=chain_hash,
         previous_hash=previous_hash,
-    )
+    ))
     session.add(stmt)
     await session.flush()
     return stmt
@@ -179,6 +181,7 @@ async def add_bank_transaction(
     reference: str | None = None,
 ) -> BankTransaction:
     """Add a single bank transaction row (INSERT ONLY)."""
+    require_mutation_context("Bank transaction creation")
     resolved_entity_id = entity_id
     if resolved_entity_id is None:
         resolved_entity_id = (
@@ -203,7 +206,7 @@ async def add_bank_transaction(
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
 
-    txn = BankTransaction(
+    txn = apply_mutation_linkage(BankTransaction(
         tenant_id=tenant_id,
         statement_id=statement_id,
         entity_id=resolved_entity_id,
@@ -216,7 +219,7 @@ async def add_bank_transaction(
         match_status="unmatched",
         chain_hash=chain_hash,
         previous_hash=previous_hash,
-    )
+    ))
     session.add(txn)
     await session.flush()
     return txn
@@ -233,6 +236,7 @@ async def run_bank_reconciliation(
     Run basic bank reconciliation: create BankReconItem for each unmatched transaction.
     In Phase 1, all unmatched transactions become 'bank_only' open items.
     """
+    require_mutation_context("Bank reconciliation run")
     # Fetch statement header
     result = await session.execute(
         select(BankStatement).where(
@@ -267,7 +271,7 @@ async def run_bank_reconciliation(
         }
         chain_hash = compute_chain_hash(record_data, previous_hash)
 
-        item = BankReconItem(
+        item = apply_mutation_linkage(BankReconItem(
             tenant_id=tenant_id,
             statement_id=statement_id,
             period_year=stmt.period_year,
@@ -282,7 +286,7 @@ async def run_bank_reconciliation(
             run_by=run_by,
             chain_hash=chain_hash,
             previous_hash=previous_hash,
-        )
+        ))
         session.add(item)
         items.append(item)
 
@@ -384,6 +388,7 @@ async def store_bank_transactions(
     admitted_airlock_item_id: uuid.UUID,
     source_type: str,
 ) -> list[BankTransaction]:
+    require_mutation_context("Bank statement import")
     if not transactions:
         return []
     await AirlockAdmissionService().assert_admitted(

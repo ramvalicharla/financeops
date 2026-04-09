@@ -24,6 +24,8 @@ class FarRun(FinancialBase):
     configuration_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     workflow_id: Mapped[str] = mapped_column(String(128), nullable=False)
     correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
 
 class FarRunEvent(FinancialBase):

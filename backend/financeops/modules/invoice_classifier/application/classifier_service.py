@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -10,6 +12,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.service import IntentActor, IntentService
 from financeops.modules.fixed_assets.models import FaAssetClass
 from financeops.modules.fixed_assets.application.fixed_asset_service import FixedAssetService
 from financeops.modules.invoice_classifier.application.ai_classifier import classify_with_ai
@@ -142,7 +146,11 @@ class ClassifierService:
         await self._session.flush()
         return row
 
-    async def _ensure_default_asset_class(self, tenant_id: uuid.UUID, entity_id: uuid.UUID) -> FaAssetClass:
+    async def _ensure_default_asset_class(
+        self,
+        tenant_id: uuid.UUID,
+        entity_id: uuid.UUID,
+    ) -> FaAssetClass | None:
         row = (
             await self._session.execute(
                 select(FaAssetClass)
@@ -152,28 +160,69 @@ class ClassifierService:
                     FaAssetClass.is_active.is_(True),
                 )
                 .order_by(FaAssetClass.created_at.asc())
-            )
+        )
         ).scalars().first()
         if row is not None:
             return row
 
-        return await self._fa_service.create_asset_class(
-            tenant_id=tenant_id,
-            entity_id=entity_id,
-            data={
-                "name": "Unclassified Asset",
-                "asset_type": "TANGIBLE",
-                "default_method": "SLM",
-                "default_useful_life_years": 5,
-                "default_residual_pct": Decimal("0.0500"),
-                "is_active": True,
-            },
+        return None
+
+    @staticmethod
+    def _intent_idempotency_key(
+        *,
+        tenant_id: uuid.UUID,
+        classification_id: uuid.UUID,
+        intent_type: IntentType,
+        payload: dict[str, Any],
+    ) -> str:
+        fingerprint = {
+            "tenant_id": str(tenant_id),
+            "classification_id": str(classification_id),
+            "intent_type": intent_type.value,
+            "payload": payload,
+        }
+        raw = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"), default=str)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    async def _submit_governed_route_intent(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        classification_id: uuid.UUID,
+        actor_user_id: uuid.UUID,
+        actor_role: str,
+        intent_type: IntentType,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        result = await IntentService(self._session).submit_intent(
+            intent_type=intent_type,
+            actor=IntentActor(
+                user_id=actor_user_id,
+                tenant_id=tenant_id,
+                role=actor_role,
+                source_channel=IntentSourceChannel.API.value,
+            ),
+            payload=payload,
+            idempotency_key=self._intent_idempotency_key(
+                tenant_id=tenant_id,
+                classification_id=classification_id,
+                intent_type=intent_type,
+                payload=payload,
+            ),
         )
+        if not result.record_refs:
+            raise ValidationError(
+                f"{intent_type.value} completed without governed record references."
+            )
+        return result.record_refs
 
     async def route_to_module(
         self,
         tenant_id: uuid.UUID,
         classification_id: uuid.UUID,
+        *,
+        actor_user_id: uuid.UUID,
+        actor_role: str,
     ) -> uuid.UUID:
         row = await self._get_classification_or_404(tenant_id, classification_id)
 
@@ -182,50 +231,96 @@ class ClassifierService:
 
         final_classification = (row.human_override or row.classification or "UNCERTAIN").upper()
         routed_record_id: uuid.UUID | None = None
+        invoice_date = row.invoice_date or date.today()
 
         if final_classification == "FIXED_ASSET":
             asset_class = await self._ensure_default_asset_class(tenant_id, row.entity_id)
-            invoice_date = row.invoice_date or date.today()
-            asset = await self._fa_service.create_asset(
+            if asset_class is None:
+                asset_class_refs = await self._submit_governed_route_intent(
+                    tenant_id=tenant_id,
+                    classification_id=classification_id,
+                actor_user_id=actor_user_id,
+                actor_role=actor_role,
+                intent_type=IntentType.CREATE_FIXED_ASSET_CLASS,
+                payload={
+                    "entity_id": str(row.entity_id),
+                    "period_year": invoice_date.year,
+                    "period_number": invoice_date.month,
+                    "name": "Unclassified Asset",
+                    "asset_type": "TANGIBLE",
+                    "default_method": "SLM",
+                    "default_useful_life_years": 5,
+                    "default_residual_pct": "0.0500",
+                        "is_active": True,
+                    },
+                )
+                asset_class_id = asset_class_refs.get("asset_class_id")
+                if asset_class_id in {None, ""}:
+                    raise ValidationError(
+                        "CREATE_FIXED_ASSET_CLASS intent did not return asset_class_id."
+                    )
+                asset_class = await self._session.get(FaAssetClass, uuid.UUID(str(asset_class_id)))
+                if asset_class is None:
+                    raise ValidationError("Governed asset class creation did not persist.")
+            asset_refs = await self._submit_governed_route_intent(
                 tenant_id=tenant_id,
-                entity_id=row.entity_id,
-                data={
-                    "asset_class_id": asset_class.id,
+                classification_id=classification_id,
+                actor_user_id=actor_user_id,
+                actor_role=actor_role,
+                intent_type=IntentType.CREATE_FIXED_ASSET,
+                payload={
+                    "entity_id": str(row.entity_id),
+                    "period_year": invoice_date.year,
+                    "period_number": invoice_date.month,
+                    "asset_class_id": str(asset_class.id),
                     "asset_code": f"INV-{row.invoice_number}",
                     "asset_name": row.line_description or row.vendor_name or f"Invoice {row.invoice_number}",
                     "description": row.line_description,
                     "location": None,
                     "serial_number": None,
-                    "purchase_date": invoice_date,
-                    "capitalisation_date": invoice_date,
-                    "original_cost": Decimal(str(row.invoice_amount)),
-                    "residual_value": Decimal("0"),
-                    "useful_life_years": Decimal("5"),
+                    "purchase_date": invoice_date.isoformat(),
+                    "capitalisation_date": invoice_date.isoformat(),
+                    "original_cost": str(Decimal(str(row.invoice_amount))),
+                    "residual_value": "0",
+                    "useful_life_years": "5",
                     "depreciation_method": "SLM",
                     "status": "UNDER_INSTALLATION",
                     "gaap_overrides": None,
                 },
             )
-            routed_record_id = asset.id
+            asset_id = asset_refs.get("asset_id")
+            if asset_id in {None, ""}:
+                raise ValidationError("CREATE_FIXED_ASSET intent did not return asset_id.")
+            routed_record_id = uuid.UUID(str(asset_id))
             row.routing_action = "ROUTED_TO_FA"
         elif final_classification == "PREPAID_EXPENSE":
-            invoice_date = row.invoice_date or date.today()
-            schedule = await self._prepaid_service.create_schedule(
+            schedule_refs = await self._submit_governed_route_intent(
                 tenant_id=tenant_id,
-                entity_id=row.entity_id,
-                data={
+                classification_id=classification_id,
+                actor_user_id=actor_user_id,
+                actor_role=actor_role,
+                intent_type=IntentType.CREATE_PREPAID_SCHEDULE,
+                payload={
+                    "entity_id": str(row.entity_id),
+                    "period_year": invoice_date.year,
+                    "period_number": invoice_date.month,
                     "reference_number": f"INV-{row.invoice_number}",
                     "description": row.line_description or row.vendor_name or f"Invoice {row.invoice_number}",
                     "prepaid_type": "OTHER",
                     "vendor_name": row.vendor_name,
                     "invoice_number": row.invoice_number,
-                    "total_amount": Decimal(str(row.invoice_amount)),
-                    "coverage_start": invoice_date,
-                    "coverage_end": invoice_date + timedelta(days=30),
+                    "total_amount": str(Decimal(str(row.invoice_amount))),
+                    "coverage_start": invoice_date.isoformat(),
+                    "coverage_end": (invoice_date + timedelta(days=30)).isoformat(),
                     "amortisation_method": "SLM",
                 },
             )
-            routed_record_id = schedule.id
+            schedule_id = schedule_refs.get("schedule_id")
+            if schedule_id in {None, ""}:
+                raise ValidationError(
+                    "CREATE_PREPAID_SCHEDULE intent did not return schedule_id."
+                )
+            routed_record_id = uuid.UUID(str(schedule_id))
             row.routing_action = "ROUTED_TO_PREPAID"
         else:
             row.routing_action = "ROUTED_TO_EXPENSE"

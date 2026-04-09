@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from openpyxl import Workbook
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.forecasting.models import ForecastAssumption, ForecastLineItem, ForecastRun
 from financeops.modules.forecasting.service import (
@@ -25,6 +28,30 @@ from financeops.modules.forecasting.service import (
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/forecast", tags=["forecasting"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+        target_id=target_id,
+    )
 
 
 class CreateForecastRequest(BaseModel):
@@ -95,22 +122,29 @@ def _serialize_line(row: ForecastLineItem) -> dict:
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_run(
+    request: Request,
     body: CreateForecastRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     try:
-        run = await create_forecast_run(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            run_name=body.run_name,
-            forecast_type=body.forecast_type,
-            base_period=body.base_period,
-            horizon_months=body.horizon_months,
-            created_by=user.id,
+            user=user,
+            intent_type=IntentType.CREATE_FORECAST_RUN,
+            payload=body.model_dump(mode="json"),
         )
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
+    run = (
+        await session.execute(
+            select(ForecastRun).where(
+                ForecastRun.id == uuid.UUID(str((result.record_refs or {})["run_id"])),
+                ForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
     assumptions = (
         await session.execute(
             select(ForecastAssumption).where(
@@ -122,6 +156,8 @@ async def create_run(
     return {
         "run": _serialize_run(run),
         "assumptions": [_serialize_assumption(row) for row in assumptions],
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
@@ -195,23 +231,47 @@ async def get_run(
 
 @router.patch("/{run_id}/assumptions/{key}")
 async def patch_assumption(
+    request: Request,
     run_id: uuid.UUID,
     key: str,
     body: UpdateAssumptionRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    run = (
+        await session.execute(
+            select(ForecastRun).where(
+                ForecastRun.id == run_id,
+                ForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Forecast run not found")
     try:
-        row = await update_assumption(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            forecast_run_id=run_id,
-            assumption_key=key,
-            new_value=_to_decimal(body.value, "value"),
-            basis=body.basis,
+            user=user,
+            intent_type=IntentType.UPDATE_FORECAST_ASSUMPTION,
+            payload={
+                "forecast_run_id": str(run_id),
+                "assumption_key": key,
+                "new_value": str(_to_decimal(body.value, "value")),
+                "basis": body.basis,
+            },
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
+    row = (
+        await session.execute(
+            select(ForecastAssumption).where(
+                ForecastAssumption.tenant_id == user.tenant_id,
+                ForecastAssumption.forecast_run_id == run_id,
+                ForecastAssumption.assumption_key == key,
+            )
+        )
+    ).scalar_one()
     lines_count = (
         await session.execute(
             select(func.count()).select_from(ForecastLineItem).where(
@@ -220,38 +280,87 @@ async def patch_assumption(
             )
         )
     ).scalar_one()
-    return {"assumption": _serialize_assumption(row), "line_items_total": int(lines_count)}
+    return {
+        "assumption": _serialize_assumption(row),
+        "line_items_total": int(lines_count),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
+    }
 
 
 @router.post("/{run_id}/compute")
 async def compute(
+    request: Request,
     run_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
+    run = (
+        await session.execute(
+            select(ForecastRun).where(
+                ForecastRun.id == run_id,
+                ForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail="Forecast run not found")
     try:
-        rows = await compute_forecast_lines(session, tenant_id=user.tenant_id, forecast_run_id=run_id)
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.COMPUTE_FORECAST_LINES,
+            payload={"forecast_run_id": str(run_id)},
+        )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
-    return {"line_items_created": len(rows)}
+    return {
+        "line_items_created": int((result.record_refs or {}).get("line_items_created") or 0),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
+    }
 
 
 @router.post("/{run_id}/publish")
 async def publish(
+    request: Request,
     run_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
+    existing = (
+        await session.execute(
+            select(ForecastRun).where(
+                ForecastRun.id == run_id,
+                ForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Forecast run not found")
     try:
-        row = await publish_forecast(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            forecast_run_id=run_id,
-            published_by=user.id,
+            user=user,
+            intent_type=IntentType.PUBLISH_FORECAST,
+            payload={"forecast_run_id": str(run_id)},
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
-    return _serialize_run(row)
+    row = (
+        await session.execute(
+            select(ForecastRun).where(
+                ForecastRun.id == uuid.UUID(str((result.record_refs or {})["run_id"])),
+                ForecastRun.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_run(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/{run_id}/vs-budget")
@@ -337,4 +446,3 @@ async def export_run(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-

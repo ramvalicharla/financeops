@@ -4,7 +4,7 @@ import logging
 from datetime import date
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,19 +14,40 @@ from financeops.api.deps import (
     require_finance_leader,
     require_finance_team,
 )
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
+from financeops.db.models.monthend import MonthEndChecklist, MonthEndTask
 from financeops.db.models.users import IamUser
 from financeops.services.monthend_service import (
-    add_task,
-    close_checklist,
-    create_checklist,
     get_checklist,
     list_checklists,
     list_tasks,
-    update_task_status,
 )
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class CreateChecklistRequest(BaseModel):
@@ -49,7 +70,7 @@ class AddTaskRequest(BaseModel):
 
 
 class UpdateTaskStatusRequest(BaseModel):
-    status: str  # pending / in_progress / completed / skipped
+    status: str
     notes: str | None = None
 
 
@@ -59,22 +80,19 @@ class CloseChecklistRequest(BaseModel):
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_monthend_checklist(
+    request: Request,
     body: CreateChecklistRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    """Create a month-end closing checklist (INSERT ONLY)."""
-    checklist = await create_checklist(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        period_year=body.period_year,
-        period_month=body.period_month,
-        entity_name=body.entity_name,
-        created_by=user.id,
-        notes=body.notes,
-        add_default_tasks=body.add_default_tasks,
+        user=user,
+        intent_type=IntentType.CREATE_MONTHEND_CHECKLIST,
+        payload=body.model_dump(mode="json"),
     )
-    await session.flush()
+    checklist = await session.get(MonthEndChecklist, UUID(str((result.record_refs or {})["checklist_id"])))
     return {
         "checklist_id": str(checklist.id),
         "period_year": checklist.period_year,
@@ -82,6 +100,8 @@ async def create_monthend_checklist(
         "entity_name": checklist.entity_name,
         "status": checklist.status,
         "created_at": checklist.created_at.isoformat(),
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
@@ -94,7 +114,6 @@ async def list_monthend_checklists(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    """List month-end checklists."""
     checklists = await list_checklists(
         session,
         tenant_id=user.tenant_id,
@@ -125,7 +144,6 @@ async def get_monthend_checklist(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    """Get a checklist with all its tasks."""
     checklist = await get_checklist(session, user.tenant_id, checklist_id)
     if checklist is None:
         raise HTTPException(status_code=404, detail="Checklist not found")
@@ -157,82 +175,86 @@ async def get_monthend_checklist(
 
 @router.post("/{checklist_id}/tasks", status_code=status.HTTP_201_CREATED)
 async def add_checklist_task(
+    request: Request,
     checklist_id: UUID,
     body: AddTaskRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    """Add a task to a checklist."""
-    task = await add_task(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        checklist_id=checklist_id,
-        task_name=body.task_name,
-        task_category=body.task_category,
-        priority=body.priority,
-        sort_order=body.sort_order,
-        description=body.description,
-        assigned_to=body.assigned_to,
-        due_date=body.due_date,
-        is_required=body.is_required,
+        user=user,
+        intent_type=IntentType.ADD_MONTHEND_TASK,
+        payload={"checklist_id": str(checklist_id), **body.model_dump(mode="json")},
     )
-    await session.flush()
+    task = await session.get(MonthEndTask, UUID(str((result.record_refs or {})["task_id"])))
     return {
         "task_id": str(task.id),
         "task_name": task.task_name,
         "status": task.status,
         "priority": task.priority,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
 @router.patch("/{checklist_id}/tasks/{task_id}")
 async def update_task(
+    request: Request,
     checklist_id: UUID,
     task_id: UUID,
     body: UpdateTaskStatusRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
-    """Update task status."""
-    task = await update_task_status(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        task_id=task_id,
-        status=body.status,
-        completed_by=user.id if body.status == "completed" else None,
-        notes=body.notes,
+        user=user,
+        intent_type=IntentType.UPDATE_MONTHEND_TASK_STATUS,
+        payload={
+            "checklist_id": str(checklist_id),
+            "task_id": str(task_id),
+            "status": body.status,
+            "notes": body.notes,
+        },
     )
+    task = await session.get(MonthEndTask, task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
-    await session.flush()
     return {
         "task_id": str(task.id),
         "task_name": task.task_name,
         "status": task.status,
         "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 
 @router.post("/{checklist_id}/close", status_code=status.HTTP_201_CREATED)
 async def close_monthend_checklist(
+    request: Request,
     checklist_id: UUID,
     body: CloseChecklistRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    """Close a month-end checklist (creates new closed record — INSERT ONLY)."""
-    closed = await close_checklist(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        checklist_id=checklist_id,
-        closed_by=user.id,
-        notes=body.notes,
+        user=user,
+        intent_type=IntentType.CLOSE_MONTHEND_CHECKLIST,
+        payload={"checklist_id": str(checklist_id), **body.model_dump(mode="json")},
     )
+    closed = await session.get(MonthEndChecklist, UUID(str((result.record_refs or {})["checklist_id"])))
     if closed is None:
         raise HTTPException(status_code=404, detail="Checklist not found")
-    await session.flush()
     return {
         "checklist_id": str(closed.id),
         "status": closed.status,
         "closed_at": closed.closed_at.isoformat() if closed.closed_at else None,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }

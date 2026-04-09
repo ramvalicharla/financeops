@@ -30,10 +30,83 @@ def _utcnow() -> datetime:
 
 
 def _intent_metadata(intent_type: IntentType, *, has_target: bool) -> tuple[str, str]:
-    if intent_type == IntentType.CREATE_ERP_SYNC_RUN:
-        return "erp_sync", "sync_run_request"
-    if intent_type == IntentType.CREATE_NORMALIZATION_RUN:
-        return "normalization", "normalization_run_request"
+    metadata: dict[IntentType, tuple[str, str]] = {
+        IntentType.CREATE_JOURNAL: ("accounting_layer", "journal_request"),
+        IntentType.SUBMIT_JOURNAL: ("accounting_layer", "journal"),
+        IntentType.REVIEW_JOURNAL: ("accounting_layer", "journal"),
+        IntentType.APPROVE_JOURNAL: ("accounting_layer", "journal"),
+        IntentType.POST_JOURNAL: ("accounting_layer", "journal"),
+        IntentType.REVERSE_JOURNAL: ("accounting_layer", "journal"),
+        IntentType.CREATE_ERP_SYNC_RUN: ("erp_sync", "sync_run_request"),
+        IntentType.CREATE_NORMALIZATION_RUN: ("normalization", "normalization_run_request"),
+        IntentType.IMPORT_BANK_STATEMENT: ("bank_reconciliation", "bank_statement_import"),
+        IntentType.CREATE_BANK_STATEMENT: ("bank_reconciliation", "bank_statement"),
+        IntentType.ADD_BANK_TRANSACTION: ("bank_reconciliation", "bank_transaction"),
+        IntentType.RUN_BANK_RECONCILIATION: ("bank_reconciliation", "bank_reconciliation_run"),
+        IntentType.PREPARE_GST_RETURN: ("gst", "gst_return"),
+        IntentType.SUBMIT_GST_RETURN: ("gst", "gst_return"),
+        IntentType.RUN_GST_RECONCILIATION: ("gst", "gst_reconciliation_run"),
+        IntentType.CREATE_FIXED_ASSET_CLASS: ("fixed_assets", "fixed_asset_class"),
+        IntentType.UPDATE_FIXED_ASSET_CLASS: ("fixed_assets", "fixed_asset_class"),
+        IntentType.CREATE_FIXED_ASSET: ("fixed_assets", "fixed_asset"),
+        IntentType.UPDATE_FIXED_ASSET: ("fixed_assets", "fixed_asset"),
+        IntentType.RUN_FIXED_ASSET_DEPRECIATION: ("fixed_assets", "fixed_asset_depreciation"),
+        IntentType.RUN_FIXED_ASSET_WORKFLOW: ("fixed_assets", "far_run"),
+        IntentType.POST_FIXED_ASSET_REVALUATION: ("fixed_assets", "fixed_asset_revaluation"),
+        IntentType.POST_FIXED_ASSET_IMPAIRMENT: ("fixed_assets", "fixed_asset_impairment"),
+        IntentType.DISPOSE_FIXED_ASSET: ("fixed_assets", "fixed_asset"),
+        IntentType.CREATE_PREPAID_SCHEDULE: ("prepaid", "prepaid_schedule"),
+        IntentType.UPDATE_PREPAID_SCHEDULE: ("prepaid", "prepaid_schedule"),
+        IntentType.POST_PREPAID_AMORTIZATION: ("prepaid", "prepaid_amortization_run"),
+        IntentType.RUN_PREPAID_WORKFLOW: ("prepaid", "prepaid_run"),
+        IntentType.RUN_CONSOLIDATION: ("multi_entity_consolidation", "consolidation_run"),
+        IntentType.EXECUTE_CONSOLIDATION: ("multi_entity_consolidation", "consolidation_run"),
+        IntentType.GENERATE_REPORT: ("custom_report_builder", "report_run"),
+        IntentType.GENERATE_BOARD_PACK: ("board_pack_generator", "board_pack_run"),
+        IntentType.CREATE_WORKING_CAPITAL_SNAPSHOT: ("working_capital", "working_capital_snapshot"),
+        IntentType.CREATE_BUDGET_VERSION: ("budgeting", "budget_version"),
+        IntentType.UPSERT_BUDGET_LINE: ("budgeting", "budget_line"),
+        IntentType.APPROVE_BUDGET_VERSION: ("budgeting", "budget_version"),
+        IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT: ("working_capital_analysis", "working_capital_snapshot"),
+        IntentType.CREATE_CHECKLIST_TEMPLATE: ("closing_checklist", "checklist_template"),
+        IntentType.ENSURE_CHECKLIST_RUN: ("closing_checklist", "checklist_run"),
+        IntentType.UPDATE_CHECKLIST_TASK_STATUS: ("closing_checklist", "checklist_task"),
+        IntentType.ASSIGN_CHECKLIST_TASK: ("closing_checklist", "checklist_task"),
+        IntentType.AUTO_COMPLETE_CHECKLIST_TASKS: ("closing_checklist", "checklist_run"),
+        IntentType.CREATE_MONTHEND_CHECKLIST: ("monthend", "monthend_checklist"),
+        IntentType.ADD_MONTHEND_TASK: ("monthend", "monthend_task"),
+        IntentType.UPDATE_MONTHEND_TASK_STATUS: ("monthend", "monthend_task"),
+        IntentType.CLOSE_MONTHEND_CHECKLIST: ("monthend", "monthend_checklist"),
+        IntentType.CREATE_FORECAST_RUN: ("forecasting", "forecast_run"),
+        IntentType.UPDATE_FORECAST_ASSUMPTION: ("forecasting", "forecast_assumption"),
+        IntentType.COMPUTE_FORECAST_LINES: ("forecasting", "forecast_run"),
+        IntentType.PUBLISH_FORECAST: ("forecasting", "forecast_run"),
+        IntentType.CREATE_CASH_FLOW_FORECAST: ("cash_flow_forecast", "cash_flow_forecast_run"),
+        IntentType.UPDATE_CASH_FLOW_WEEK: ("cash_flow_forecast", "cash_flow_forecast_week"),
+        IntentType.PUBLISH_CASH_FLOW_FORECAST: ("cash_flow_forecast", "cash_flow_forecast_run"),
+        IntentType.COMPUTE_TAX_PROVISION: ("tax_provision", "tax_provision_run"),
+        IntentType.UPSERT_TAX_POSITION: ("tax_provision", "tax_position"),
+        IntentType.ADD_TRANSFER_PRICING_TRANSACTION: ("transfer_pricing", "intercompany_transaction"),
+        IntentType.GENERATE_TRANSFER_PRICING_DOC: ("transfer_pricing", "transfer_pricing_document"),
+        IntentType.ENSURE_EXPENSE_POLICY: ("expense_management", "expense_policy"),
+        IntentType.SUBMIT_EXPENSE_CLAIM: ("expense_management", "expense_claim"),
+        IntentType.UPDATE_EXPENSE_POLICY: ("expense_management", "expense_policy"),
+        IntentType.APPROVE_EXPENSE_CLAIM: ("expense_management", "expense_claim"),
+        IntentType.ENSURE_MULTI_GAAP_CONFIG: ("multi_gaap", "multi_gaap_config"),
+        IntentType.UPDATE_MULTI_GAAP_CONFIG: ("multi_gaap", "multi_gaap_config"),
+        IntentType.COMPUTE_MULTI_GAAP_VIEW: ("multi_gaap", "multi_gaap_run"),
+        IntentType.ENSURE_STATUTORY_FILINGS: ("statutory", "statutory_filing_calendar"),
+        IntentType.MARK_STATUTORY_FILING: ("statutory", "statutory_filing"),
+        IntentType.ADD_STATUTORY_REGISTER_ENTRY: ("statutory", "statutory_register_entry"),
+        IntentType.CREATE_COVENANT_DEFINITION: ("debt_covenants", "covenant_definition"),
+        IntentType.UPDATE_COVENANT_DEFINITION: ("debt_covenants", "covenant_definition"),
+        IntentType.CHECK_COVENANTS: ("debt_covenants", "covenant_check_run"),
+    }
+    if intent_type in metadata:
+        module_key, target_type = metadata[intent_type]
+        if has_target and intent_type == IntentType.CREATE_JOURNAL:
+            return module_key, "journal"
+        return module_key, target_type
     return "accounting_layer", "journal" if has_target else "journal_request"
 
 
@@ -389,27 +462,24 @@ class IntentService:
         payload: dict[str, Any],
         target_id: uuid.UUID | None,
     ) -> CpEntity:
-        if intent_type in {
-            IntentType.CREATE_JOURNAL,
-            IntentType.CREATE_ERP_SYNC_RUN,
-            IntentType.CREATE_NORMALIZATION_RUN,
-        }:
-            entity_key = "org_entity_id" if intent_type == IntentType.CREATE_JOURNAL else "entity_id"
-            entity_id = payload.get(entity_key)
-            if entity_id is not None:
-                stmt = select(CpEntity).where(
-                    CpEntity.id == uuid.UUID(str(entity_id)),
-                    CpEntity.tenant_id == tenant_id,
-                )
-                result = await self._db.execute(stmt)
-                entity = result.scalar_one_or_none()
-                if entity is None:
-                    raise ValidationError("Entity does not belong to tenant.")
-                return entity
+        entity_id = payload.get("org_entity_id") if intent_type == IntentType.CREATE_JOURNAL else payload.get("entity_id")
+        if entity_id is None and isinstance(payload.get("entity_ids"), list) and payload["entity_ids"]:
+            entity_id = payload["entity_ids"][0]
+        if entity_id is not None:
+            stmt = select(CpEntity).where(
+                CpEntity.id == uuid.UUID(str(entity_id)),
+                CpEntity.tenant_id == tenant_id,
+            )
+            result = await self._db.execute(stmt)
+            entity = result.scalar_one_or_none()
+            if entity is None:
+                raise ValidationError("Entity does not belong to tenant.")
+            return entity
 
-            if intent_type == IntentType.CREATE_JOURNAL:
-                raise ValidationError("org_entity_id is required.")
+        if intent_type == IntentType.CREATE_JOURNAL:
+            raise ValidationError("org_entity_id is required.")
 
+        if target_id is None:
             stmt = select(CpEntity).where(
                 CpEntity.tenant_id == tenant_id,
             ).order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
@@ -418,8 +488,6 @@ class IntentService:
             if entity is None:
                 raise ValidationError("Entity is required for governed intent scope.")
             return entity
-        if target_id is None:
-            raise ValidationError(f"{intent_type.value} requires a target journal.")
         stmt = (
             select(CpEntity)
             .join(AccountingJVAggregate, AccountingJVAggregate.entity_id == CpEntity.id)
@@ -431,8 +499,16 @@ class IntentService:
         )
         result = await self._db.execute(stmt)
         entity = result.scalar_one_or_none()
+        if entity is not None:
+            return entity
+
+        stmt = select(CpEntity).where(
+            CpEntity.tenant_id == tenant_id,
+        ).order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+        result = await self._db.execute(stmt)
+        entity = result.scalars().first()
         if entity is None:
-            raise ValidationError("Target journal does not belong to tenant.")
+            raise ValidationError("Entity is required for governed intent scope.")
         return entity
 
     async def _emit_event(

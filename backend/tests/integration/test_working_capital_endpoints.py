@@ -38,6 +38,8 @@ async def test_create_working_capital_snapshot(
     assert response.status_code == 201
     data = response.json()["data"]
     assert "snapshot_id" in data
+    assert data["intent_id"] is not None
+    assert data["job_id"] is not None
     assert data["entity_name"] == "WC_API_Entity"
     assert "current_ratio" in data
     assert "working_capital" in data

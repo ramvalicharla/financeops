@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.fixed_assets.application.depreciation_engine import get_depreciation
 from financeops.modules.fixed_assets.application.impairment_engine import (
     calculate_impairment_loss,
@@ -78,6 +79,7 @@ class FixedAssetService:
         entity_id: uuid.UUID,
         data: dict[str, Any],
     ) -> FaAssetClass:
+        require_mutation_context("Fixed asset class creation")
         row = FaAssetClass(
             tenant_id=tenant_id,
             entity_id=entity_id,
@@ -93,6 +95,7 @@ class FixedAssetService:
             coa_dep_expense_account_id=data.get("coa_dep_expense_account_id"),
             is_active=bool(data.get("is_active", True)),
         )
+        apply_mutation_linkage(row)
         self._session.add(row)
         await self._session.flush()
         return row
@@ -103,6 +106,7 @@ class FixedAssetService:
         class_id: uuid.UUID,
         data: dict[str, Any],
     ) -> FaAssetClass:
+        require_mutation_context("Fixed asset class update")
         row = (
             await self._session.execute(
                 select(FaAssetClass).where(FaAssetClass.id == class_id, FaAssetClass.tenant_id == tenant_id)
@@ -127,6 +131,7 @@ class FixedAssetService:
             if key in data:
                 setattr(row, key, data[key])
 
+        apply_mutation_linkage(row)
         await self._session.flush()
         return row
 
@@ -171,6 +176,7 @@ class FixedAssetService:
         entity_id: uuid.UUID,
         data: dict[str, Any],
     ) -> FaAsset:
+        require_mutation_context("Fixed asset creation")
         existing = (
             await self._session.execute(
                 select(FaAsset.id).where(
@@ -205,6 +211,7 @@ class FixedAssetService:
             cost_centre_id=data.get("cost_centre_id"),
             is_active=bool(data.get("is_active", True)),
         )
+        apply_mutation_linkage(row)
         self._session.add(row)
         await self._session.flush()
         return row
@@ -215,6 +222,7 @@ class FixedAssetService:
         asset_id: uuid.UUID,
         data: dict[str, Any],
     ) -> FaAsset:
+        require_mutation_context("Fixed asset update")
         row = await self._get_asset_or_404(tenant_id, asset_id)
         allowed = {
             "asset_name",
@@ -232,6 +240,7 @@ class FixedAssetService:
         for key, value in data.items():
             if key in allowed:
                 setattr(row, key, value)
+        apply_mutation_linkage(row)
         await self._session.flush()
         return row
 
@@ -281,6 +290,7 @@ class FixedAssetService:
         period_end: date,
         gaap: str = "INDAS",
     ) -> list[FaDepreciationRun]:
+        require_mutation_context("Fixed asset depreciation run")
         gaap_key = gaap.upper()
         assets = (
             await self._session.execute(
@@ -338,6 +348,7 @@ class FixedAssetService:
                 run_reference=run_reference,
                 is_reversal=False,
             )
+            apply_mutation_linkage(row)
             self._session.add(row)
             runs.append(row)
 
@@ -408,6 +419,7 @@ class FixedAssetService:
         method: str,
         revaluation_date: date,
     ) -> FaRevaluation:
+        require_mutation_context("Fixed asset revaluation")
         asset = await self._get_asset_or_404(tenant_id, asset_id)
         accum_dep = await self._asset_accum_dep(tenant_id, asset.id, "INDAS", as_of=revaluation_date)
         pre_cost = Decimal(str(asset.original_cost))
@@ -421,7 +433,7 @@ class FixedAssetService:
         else:
             raise ValidationError("Invalid revaluation method")
 
-        row = FaRevaluation(
+        row = apply_mutation_linkage(FaRevaluation(
             tenant_id=tenant_id,
             entity_id=asset.entity_id,
             asset_id=asset.id,
@@ -432,13 +444,14 @@ class FixedAssetService:
             fair_value=Decimal(str(fair_value)),
             revaluation_surplus=Decimal(str(result["surplus"])),
             method=method_upper,
-        )
+        ))
         self._session.add(row)
 
         gaap_overrides = dict(asset.gaap_overrides or {})
         gaap_overrides["_accumulated_dep"] = str(result["new_accum_dep"])
         asset.gaap_overrides = gaap_overrides
         asset.original_cost = Decimal(str(result["new_cost"]))
+        apply_mutation_linkage(asset)
 
         await self._session.flush()
         return row
@@ -466,6 +479,7 @@ class FixedAssetService:
         discount_rate: Decimal | None,
         impairment_date: date,
     ) -> FaImpairment:
+        require_mutation_context("Fixed asset impairment")
         asset = await self._get_asset_or_404(tenant_id, asset_id)
         accum_dep = await self._asset_accum_dep(tenant_id, asset.id, "INDAS", as_of=impairment_date)
         nbv = Decimal(str(asset.original_cost)) - accum_dep
@@ -478,7 +492,7 @@ class FixedAssetService:
         recoverable = calculate_recoverable_amount(viu, fvlcts_value)
         impairment_loss = calculate_impairment_loss(nbv, recoverable)
 
-        row = FaImpairment(
+        row = apply_mutation_linkage(FaImpairment(
             tenant_id=tenant_id,
             entity_id=asset.entity_id,
             asset_id=asset.id,
@@ -489,11 +503,12 @@ class FixedAssetService:
             fvlcts=fvlcts,
             impairment_loss=impairment_loss,
             discount_rate=discount_rate,
-        )
+        ))
         self._session.add(row)
 
         if impairment_loss > Decimal("0"):
             asset.status = "IMPAIRED"
+        apply_mutation_linkage(asset)
 
         await self._session.flush()
         return row
@@ -570,6 +585,7 @@ class FixedAssetService:
         disposal_date: date,
         proceeds: Decimal,
     ) -> FaAsset:
+        require_mutation_context("Fixed asset disposal")
         asset = await self._get_asset_or_404(tenant_id, asset_id)
         accum_dep = await self._asset_accum_dep(tenant_id, asset.id, "INDAS", as_of=disposal_date)
         nbv = Decimal(str(asset.original_cost)) - accum_dep
@@ -581,6 +597,7 @@ class FixedAssetService:
         overrides = dict(asset.gaap_overrides or {})
         overrides["disposal_gain_loss"] = str(gain_loss)
         asset.gaap_overrides = overrides
+        apply_mutation_linkage(asset)
 
         await self._session.flush()
         return asset

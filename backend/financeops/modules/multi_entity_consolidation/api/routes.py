@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.multi_entity_consolidation.api.schemas import (
     ConsolidationAdjustmentCreateRequest,
@@ -47,6 +50,31 @@ from financeops.modules.multi_entity_consolidation.policies.control_plane_policy
 )
 
 router = APIRouter()
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    service = IntentService(session)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        target_id=target_id,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+    )
 
 
 def _build_service(session: AsyncSession) -> RunService:
@@ -630,27 +658,33 @@ async def list_adjustment_definition_versions(
     ],
 )
 async def create_run(
+    request: Request,
     body: ConsolidationRunCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> ConsolidationRunCreateResponse:
-    service = _build_service(session)
     try:
-        response = await service.create_run(
-            tenant_id=user.tenant_id,
-            organisation_id=body.organisation_id,
-            reporting_period=body.reporting_period,
-            source_run_refs=[row.model_dump(mode="json") for row in body.source_run_refs],
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.RUN_CONSOLIDATION,
+            payload={
+                "organisation_id": str(body.organisation_id),
+                "reporting_period": body.reporting_period.isoformat(),
+                "source_run_refs": [row.model_dump(mode="json") for row in body.source_run_refs],
+            },
         )
+        response = dict(result.record_refs or {})
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
-    await session.flush()
     return ConsolidationRunCreateResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
         status=response["status"],
         idempotent=bool(response["idempotent"]),
+        intent_id=result.intent_id,
+        job_id=result.job_id,
     )
 
 
@@ -667,20 +701,23 @@ async def create_run(
     ],
 )
 async def execute_run(
+    request: Request,
     id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> ConsolidationRunExecuteResponse:
-    service = _build_service(session)
     try:
-        response = await service.execute_run(
-            tenant_id=user.tenant_id,
-            run_id=id,
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.EXECUTE_CONSOLIDATION,
+            payload={},
+            target_id=id,
         )
+        response = dict(result.record_refs or {})
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
-    await session.flush()
     return ConsolidationRunExecuteResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
@@ -689,6 +726,8 @@ async def execute_run(
         variance_count=int(response["variance_count"]),
         evidence_count=int(response["evidence_count"]),
         idempotent=bool(response["idempotent"]),
+        intent_id=result.intent_id,
+        job_id=result.job_id,
     )
 
 

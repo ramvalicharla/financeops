@@ -8,6 +8,8 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.working_capital import WorkingCapitalSnapshot
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
@@ -164,6 +166,7 @@ async def compute_wc_snapshot(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+    require_mutation_context("Working-capital snapshot computation")
 
     if entity_id is not None and requester_user_id is not None and requester_user_role is not None:
         await assert_entity_access(
@@ -208,7 +211,7 @@ async def compute_wc_snapshot(
     ap_60 = _q2(ap_total * Decimal("0.15"))
     ap_90 = _q2(ap_total - ap_current - ap_30 - ap_60)
 
-    snapshot = WCSnapshot(
+    snapshot = apply_mutation_linkage(WCSnapshot(
         tenant_id=tenant_id,
         period=period,
         entity_id=entity_id,
@@ -230,7 +233,7 @@ async def compute_wc_snapshot(
         net_working_capital=_q2(current_assets - current_liabilities),
         current_ratio=_q4(current_ratio),
         quick_ratio=_q4(quick_ratio),
-    )
+    ))
     session.add(snapshot)
     await session.flush()
 
@@ -243,7 +246,7 @@ async def compute_wc_snapshot(
     ]
     for idx, (bucket, overdue, amount) in enumerate(ar_buckets, start=1):
         probability = await get_payment_probability(overdue)
-        row = ARLineItem(
+        row = apply_mutation_linkage(ARLineItem(
             snapshot_id=snapshot.id,
             tenant_id=tenant_id,
             customer_name=f"Customer {idx}",
@@ -257,7 +260,7 @@ async def compute_wc_snapshot(
             amount_base_currency=_q2(amount),
             aging_bucket=bucket,
             payment_probability_score=probability,
-        )
+        ))
         session.add(row)
 
     ap_buckets = [
@@ -267,7 +270,7 @@ async def compute_wc_snapshot(
         ("over_90", 120, ap_90, False, None),
     ]
     for idx, (bucket, overdue, amount, discount, pct) in enumerate(ap_buckets, start=1):
-        row = APLineItem(
+        row = apply_mutation_linkage(APLineItem(
             snapshot_id=snapshot.id,
             tenant_id=tenant_id,
             vendor_name=f"Vendor {idx}",
@@ -282,7 +285,7 @@ async def compute_wc_snapshot(
             aging_bucket=bucket,
             early_payment_discount_available=discount,
             early_payment_discount_pct=pct,
-        )
+        ))
         session.add(row)
 
     await session.flush()
@@ -340,7 +343,19 @@ async def get_wc_dashboard(
     All values: Decimal not float.
     """
     target_period = period or datetime.now(UTC).strftime("%Y-%m")
-    current_snapshot = await compute_wc_snapshot(session, tenant_id, target_period)
+    current_snapshot = (
+        await session.execute(
+            select(WCSnapshot)
+            .where(
+                WCSnapshot.tenant_id == tenant_id,
+                WCSnapshot.period == target_period,
+            )
+            .order_by(WCSnapshot.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if current_snapshot is None:
+        raise ValidationError("Working-capital snapshot must be created through the intent pipeline before dashboard reads.")
 
     trend_rows = (
         await session.execute(

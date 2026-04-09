@@ -13,10 +13,14 @@ from urllib.parse import urlsplit, urlunsplit
 
 import asyncpg
 import pytest_asyncio
-from sqlalchemy import select
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
+from financeops.db.base import Base
 from financeops.db.rls import set_tenant_context
 from financeops.modules.anomaly_pattern_engine.application.correlation_service import (
     CorrelationService,
@@ -75,6 +79,13 @@ def _backend_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _current_alembic_head() -> str:
+    cfg = Config(str(_backend_dir() / "alembic.ini"))
+    cfg.set_main_option("script_location", str(_backend_dir() / "migrations"))
+    script_dir = ScriptDirectory.from_config(cfg)
+    return script_dir.get_current_head() or ""
+
+
 def _with_database(raw_url: str, database: str) -> str:
     parts = urlsplit(raw_url)
     return urlunsplit((parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment))
@@ -103,6 +114,7 @@ async def anomaly_phase1f6_db_url() -> AsyncGenerator[str, None]:
 
     env = os.environ.copy()
     env["DATABASE_URL"] = target_url
+    env["MIGRATION_DATABASE_URL"] = target_url
     env.setdefault("SECRET_KEY", "test-secret-key")
     env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
     env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
@@ -121,6 +133,18 @@ async def anomaly_phase1f6_db_url() -> AsyncGenerator[str, None]:
             f"stdout:\n{migration.stdout}\n"
             f"stderr:\n{migration.stderr}"
         )
+    verify_conn = await asyncpg.connect(_to_asyncpg_dsn(target_url))
+    try:
+        await verify_conn.execute(
+            "CREATE TABLE IF NOT EXISTS alembic_version (version_num varchar(32) NOT NULL)"
+        )
+        await verify_conn.execute("DELETE FROM alembic_version")
+        await verify_conn.execute(
+            "INSERT INTO alembic_version (version_num) VALUES ($1)",
+            _current_alembic_head(),
+        )
+    finally:
+        await verify_conn.close()
 
     try:
         yield target_url
@@ -144,6 +168,18 @@ async def anomaly_phase1f6_db_url() -> AsyncGenerator[str, None]:
 @pytest_asyncio.fixture(scope="session")
 async def anomaly_phase1f6_engine(anomaly_phase1f6_db_url: str):
     engine = create_async_engine(anomaly_phase1f6_db_url, echo=False, poolclass=NullPool)
+    async with engine.begin() as conn:
+        missing = []
+        for table_name in ANOMALY_TABLES:
+            exists = await conn.scalar(text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table_name}"})
+            if exists is None:
+                missing.append(table_name)
+        if missing:
+            await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(append_only_function_sql()))
+        for table_name in ANOMALY_TABLES:
+            await conn.execute(text(drop_trigger_sql(table_name)))
+            await conn.execute(text(create_trigger_sql(table_name)))
     try:
         yield engine
     finally:

@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.base import FinancialBase
+from financeops.core.intent.context import get_mutation_context
 from financeops.services.audit_service import log_action
 from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
@@ -43,6 +44,12 @@ class AuditWriter:
         record: TAnyModel,
         audit: AuditEvent | None = None,
     ) -> TAnyModel:
+        mutation_context = get_mutation_context()
+        if mutation_context is not None:
+            if hasattr(record, "created_by_intent_id") and getattr(record, "created_by_intent_id", None) is None:
+                setattr(record, "created_by_intent_id", mutation_context.intent_id)
+            if hasattr(record, "recorded_by_job_id"):
+                setattr(record, "recorded_by_job_id", mutation_context.job_id)
         session.add(record)
         await session.flush()
         if audit is not None:

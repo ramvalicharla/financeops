@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import calendar
+import hashlib
+import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -9,6 +11,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import require_mutation_context
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.service import IntentActor, IntentService
 from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
 from financeops.modules.closing_checklist.models import (
@@ -17,6 +22,7 @@ from financeops.modules.closing_checklist.models import (
     ChecklistTemplate,
     ChecklistTemplateTask,
 )
+from financeops.db.models.users import IamUser
 from financeops.platform.db.models.entities import CpEntity
 
 
@@ -159,6 +165,7 @@ async def _get_default_template(
         )
     ).scalar_one_or_none()
     if row is None:
+        require_mutation_context("Closing-checklist default template creation")
         template = ChecklistTemplate(
             tenant_id=tenant_id,
             name="Default Month-End Close Checklist",
@@ -189,6 +196,47 @@ async def _get_default_template(
         await session.flush()
         row = template
     return row
+
+
+async def create_template(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    name: str,
+    description: str | None,
+    is_default: bool,
+    created_by: uuid.UUID,
+    tasks: list[dict[str, object]],
+) -> ChecklistTemplate:
+    require_mutation_context("Closing-checklist template creation")
+    template = ChecklistTemplate(
+        tenant_id=tenant_id,
+        name=name,
+        description=description,
+        is_default=is_default,
+        created_by=created_by,
+    )
+    session.add(template)
+    await session.flush()
+
+    for raw_task in tasks:
+        session.add(
+            ChecklistTemplateTask(
+                template_id=template.id,
+                tenant_id=tenant_id,
+                task_name=str(raw_task["task_name"]),
+                description=str(raw_task["description"]) if raw_task.get("description") not in {None, ""} else None,
+                assigned_role=str(raw_task["assigned_role"]) if raw_task.get("assigned_role") not in {None, ""} else None,
+                days_relative_to_period_end=int(raw_task["days_relative_to_period_end"]),
+                depends_on_task_ids=[str(item) for item in list(raw_task.get("depends_on_task_ids") or [])],
+                auto_trigger_event=(
+                    str(raw_task["auto_trigger_event"]) if raw_task.get("auto_trigger_event") not in {None, ""} else None
+                ),
+                order_index=int(raw_task.get("order_index") or 0),
+            )
+        )
+    await session.flush()
+    return template
 
 
 async def _recompute_run_status(session: AsyncSession, run: ChecklistRun) -> None:
@@ -279,6 +327,7 @@ async def get_or_create_run(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+    require_mutation_context("Closing-checklist run creation")
 
     template = await _get_default_template(
         session,
@@ -389,6 +438,7 @@ async def update_task_status(
     run.actual_close_date = today().
     If any task moves to in_progress: set run.status = 'in_progress'.
     """
+    require_mutation_context("Closing-checklist task status update")
     status_value = str(new_status or "").strip().lower()
     if status_value not in {"not_started", "in_progress", "completed", "blocked", "skipped"}:
         raise ValidationError("Invalid checklist task status")
@@ -453,6 +503,61 @@ async def update_task_status(
     return task
 
 
+async def assign_task_to_user(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+    task_id: uuid.UUID,
+    assignee_id: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+) -> ChecklistRunTask:
+    require_mutation_context("Closing-checklist task assignment")
+    run = (
+        await session.execute(
+            select(ChecklistRun).where(
+                ChecklistRun.id == run_id,
+                ChecklistRun.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise NotFoundError("Checklist run not found")
+    resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id or run.entity_id)
+    if run.entity_id != resolved_entity_id:
+        raise NotFoundError("Checklist run not found")
+
+    task = (
+        await session.execute(
+            select(ChecklistRunTask).where(
+                ChecklistRunTask.id == task_id,
+                ChecklistRunTask.run_id == run.id,
+                ChecklistRunTask.tenant_id == tenant_id,
+                ChecklistRunTask.entity_id == resolved_entity_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if task is None:
+        raise NotFoundError("Checklist task not found")
+
+    assignee = (
+        await session.execute(
+            select(IamUser).where(
+                IamUser.id == assignee_id,
+                IamUser.tenant_id == tenant_id,
+                IamUser.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if assignee is None:
+        raise NotFoundError("Assignee not found")
+
+    task.assigned_to = assignee.id
+    task.updated_at = datetime.now(UTC)
+    await session.flush()
+    return task
+
+
 async def auto_complete_task(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -469,6 +574,7 @@ async def auto_complete_task(
     Returns list of auto-completed tasks.
     If no run exists for the period: no-op (do not create).
     """
+    require_mutation_context("Closing-checklist task auto-complete")
     run = (
         await session.execute(
             select(ChecklistRun).where(
@@ -644,11 +750,27 @@ async def run_auto_complete_for_event(
     async with AsyncSessionLocal() as session:
         try:
             await set_tenant_context(session, parsed_tenant_id)
-            await auto_complete_task(
-                session=session,
-                tenant_id=parsed_tenant_id,
-                period=period,
-                event=event,
+            raw = json.dumps(
+                {
+                    "tenant_id": str(parsed_tenant_id),
+                    "period": period,
+                    "event": event,
+                    "intent_type": IntentType.AUTO_COMPLETE_CHECKLIST_TASKS.value,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            await IntentService(session).submit_intent(
+                intent_type=IntentType.AUTO_COMPLETE_CHECKLIST_TASKS,
+                actor=IntentActor(
+                    user_id=uuid.uuid5(parsed_tenant_id, f"closing-checklist:{period}:{event}"),
+                    tenant_id=parsed_tenant_id,
+                    role="finance_leader",
+                    source_channel=IntentSourceChannel.SYSTEM.value,
+                    correlation_id=f"closing-checklist:{period}:{event}",
+                ),
+                payload={"period": period, "event": event},
+                idempotency_key=hashlib.sha256(raw.encode("utf-8")).hexdigest(),
             )
             await session.commit()
         except Exception:

@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.budgeting.models import BudgetLineItem
 from financeops.modules.transfer_pricing.models import ICTransaction, TPConfig, TransferPricingDoc
 
@@ -25,6 +26,7 @@ async def get_or_create_config(session: AsyncSession, tenant_id: uuid.UUID) -> T
     ).scalar_one_or_none()
     if row is not None:
         return row
+    require_mutation_context("Transfer-pricing config creation")
     now = datetime.now(UTC)
     row = TPConfig(
         tenant_id=tenant_id,
@@ -35,9 +37,28 @@ async def get_or_create_config(session: AsyncSession, tenant_id: uuid.UUID) -> T
         created_at=now,
         updated_at=now,
     )
+    apply_mutation_linkage(row)
     session.add(row)
     await session.flush()
     return row
+
+
+async def _get_config_or_default(session: AsyncSession, tenant_id: uuid.UUID) -> TPConfig:
+    row = (
+        await session.execute(select(TPConfig).where(TPConfig.tenant_id == tenant_id))
+    ).scalar_one_or_none()
+    if row is not None:
+        return row
+    now = datetime.now(UTC)
+    return TPConfig(
+        tenant_id=tenant_id,
+        consolidated_revenue_threshold=Decimal("50000000.00"),
+        international_transactions_exist=False,
+        specified_domestic_transactions_exist=False,
+        applicable_methods=[],
+        created_at=now,
+        updated_at=now,
+    )
 
 
 async def check_3ceb_applicability(
@@ -45,7 +66,7 @@ async def check_3ceb_applicability(
     tenant_id: uuid.UUID,
     fiscal_year: int,
 ) -> dict:
-    config = await get_or_create_config(session, tenant_id)
+    config = await _get_config_or_default(session, tenant_id)
     txns = (
         await session.execute(
             select(ICTransaction).where(ICTransaction.tenant_id == tenant_id, ICTransaction.fiscal_year == fiscal_year)
@@ -103,6 +124,7 @@ async def add_transaction(
     actual_price: Decimal | None = None,
     description: str | None = None,
 ) -> ICTransaction:
+    require_mutation_context("Transfer-pricing transaction creation")
     amount = _money(transaction_amount)
     amount_inr = amount
     adjustment = Decimal("0.00")
@@ -125,6 +147,7 @@ async def add_transaction(
         is_international=is_international,
         description=description,
     )
+    apply_mutation_linkage(row)
     session.add(row)
 
     config = await get_or_create_config(session, tenant_id)
@@ -144,6 +167,7 @@ async def generate_form_3ceb(
     fiscal_year: int,
     created_by: uuid.UUID,
 ) -> TransferPricingDoc:
+    require_mutation_context("Transfer-pricing document generation")
     txns = (
         await session.execute(
             select(ICTransaction)
@@ -209,6 +233,7 @@ async def generate_form_3ceb(
         status="draft",
         created_by=created_by,
     )
+    apply_mutation_linkage(row)
     session.add(row)
     await session.flush()
     return row

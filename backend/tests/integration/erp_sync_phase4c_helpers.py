@@ -15,6 +15,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
+from financeops.db.base import Base
 from financeops.db.rls import set_tenant_context
 
 DEFAULT_TEST_DATABASE_URL = (
@@ -78,6 +80,7 @@ async def erp_sync_phase4c_db_url() -> AsyncGenerator[str, None]:
 
     env = os.environ.copy()
     env["DATABASE_URL"] = target_url
+    env["MIGRATION_DATABASE_URL"] = target_url
     env.setdefault("DEBUG", "false")
     env.setdefault("SECRET_KEY", "test-secret-key")
     env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
@@ -121,6 +124,28 @@ async def erp_sync_phase4c_db_url() -> AsyncGenerator[str, None]:
 @pytest_asyncio.fixture(scope="session")
 async def erp_sync_phase4c_engine(erp_sync_phase4c_db_url: str):
     engine = create_async_engine(erp_sync_phase4c_db_url, echo=False, poolclass=NullPool)
+    async with engine.begin() as conn:
+        missing = []
+        for table_name in ERP_SYNC_TABLES:
+            exists = await conn.scalar(text("SELECT to_regclass(:table_name)"), {"table_name": f"public.{table_name}"})
+            if exists is None:
+                missing.append(table_name)
+        if missing:
+            await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text(append_only_function_sql()))
+        for table_name in ERP_SYNC_TABLES:
+            await conn.execute(text(drop_trigger_sql(table_name)))
+            await conn.execute(text(create_trigger_sql(table_name)))
+            await conn.execute(text(f"ALTER TABLE {table_name} ENABLE ROW LEVEL SECURITY"))
+            await conn.execute(text(f"ALTER TABLE {table_name} FORCE ROW LEVEL SECURITY"))
+            await conn.execute(text(f"DROP POLICY IF EXISTS tenant_isolation ON {table_name}"))
+            await conn.execute(
+                text(
+                    f"CREATE POLICY tenant_isolation ON {table_name} "
+                    "USING (tenant_id = COALESCE(current_setting('app.tenant_id', true), "
+                    "current_setting('app.current_tenant_id', true))::uuid)"
+                )
+            )
     try:
         yield engine
     finally:

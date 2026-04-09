@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-
+import hashlib
+import json
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.service import IntentActor, IntentService
 from financeops.modules.fdd.models import FDDEngagement
 from financeops.modules.working_capital.models import WCSnapshot
-from financeops.modules.working_capital.service import compute_wc_snapshot
 
 
 def _q2(value: Decimal) -> Decimal:
@@ -26,6 +28,31 @@ def _iter_periods(start: date, end: date) -> list[str]:
         else:
             cursor = date(cursor.year, cursor.month + 1, 1)
     return periods
+
+
+def _system_actor(engagement: FDDEngagement, *, period: str) -> IntentActor:
+    return IntentActor(
+        user_id=engagement.created_by,
+        tenant_id=engagement.tenant_id,
+        role="finance_leader",
+        source_channel=IntentSourceChannel.SYSTEM.value,
+        correlation_id=f"fdd-working-capital:{engagement.id}:{period}",
+    )
+
+
+def _idempotency_key(engagement: FDDEngagement, *, period: str) -> str:
+    raw = json.dumps(
+        {
+            "tenant_id": str(engagement.tenant_id),
+            "engagement_id": str(engagement.id),
+            "period": period,
+            "intent_type": IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT.value,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 async def compute_wc_analysis(
@@ -49,8 +76,20 @@ async def compute_wc_analysis(
             )
         ).scalar_one_or_none()
         if snapshot is None:
-            snapshot = await compute_wc_snapshot(session, engagement.tenant_id, period)
-            await session.flush()
+            result = await IntentService(session).submit_intent(
+                intent_type=IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT,
+                actor=_system_actor(engagement, period=period),
+                payload={"period": period},
+                idempotency_key=_idempotency_key(engagement, period=period),
+            )
+            snapshot = (
+                await session.execute(
+                    select(WCSnapshot).where(
+                        WCSnapshot.id == result.record_refs["snapshot_id"],
+                        WCSnapshot.tenant_id == engagement.tenant_id,
+                    )
+                )
+            ).scalar_one()
         nwc_values.append(Decimal(str(snapshot.net_working_capital)))
         dso_values.append(Decimal(str(snapshot.dso_days)))
         dpo_values.append(Decimal(str(snapshot.dpo_days)))

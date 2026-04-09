@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.expense_management.models import ExpenseApproval, ExpenseClaim, ExpensePolicy
 from financeops.modules.expense_management.policy_engine import ExpensePolicyEngine
@@ -42,7 +43,8 @@ async def _get_or_create_policy(session: AsyncSession, tenant_id: uuid.UUID) -> 
     if policy is not None:
         return policy
 
-    policy = ExpensePolicy(
+    require_mutation_context("Expense policy creation")
+    policy = apply_mutation_linkage(ExpensePolicy(
         tenant_id=tenant_id,
         meal_limit_per_day=Decimal("2000.00"),
         travel_limit_per_night=Decimal("8000.00"),
@@ -51,10 +53,18 @@ async def _get_or_create_policy(session: AsyncSession, tenant_id: uuid.UUID) -> 
         weekend_flag_enabled=True,
         round_number_flag_enabled=True,
         personal_merchant_keywords=["swiggy", "zomato", "amazon"],
-    )
+    ))
     session.add(policy)
     await session.flush()
     return policy
+
+
+async def get_policy(session: AsyncSession, tenant_id: uuid.UUID) -> ExpensePolicy | None:
+    return (
+        await session.execute(
+            select(ExpensePolicy).where(ExpensePolicy.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
 
 
 async def _load_claim(session: AsyncSession, tenant_id: uuid.UUID, claim_id: uuid.UUID) -> ExpenseClaim:
@@ -181,6 +191,7 @@ async def submit_claim(
     7. Otherwise: status='submitted'.
     8. Return created claim.
     """
+    require_mutation_context("Expense claim submission")
     policy = await _get_or_create_policy(session, tenant_id)
     engine = ExpensePolicyEngine(policy)
     amount_decimal = Decimal(str(amount))
@@ -204,7 +215,7 @@ async def submit_claim(
     now = datetime.now(UTC)
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
 
-    claim = ExpenseClaim(
+    claim = apply_mutation_linkage(ExpenseClaim(
         tenant_id=tenant_id,
         entity_id=resolved_entity_id,
         location_id=location_id,
@@ -224,10 +235,25 @@ async def submit_claim(
         policy_violation_requires_justification=check.requires_justification,
         justification=justification,
         finance_approved_at=now if auto_approve else None,
-    )
+    ))
     session.add(claim)
     await session.flush()
     return claim
+
+
+async def update_policy(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    *,
+    updates: dict[str, object],
+) -> ExpensePolicy:
+    require_mutation_context("Expense policy update")
+    policy = await _get_or_create_policy(session, tenant_id)
+    for key, value in updates.items():
+        setattr(policy, key, value)
+    policy.updated_at = datetime.now(UTC)
+    await session.flush()
+    return policy
 
 
 async def approve_claim(
@@ -247,19 +273,20 @@ async def approve_claim(
       returned -> status = 'submitted'
     Return updated claim payload.
     """
+    require_mutation_context("Expense claim approval")
     action_value = str(action).strip().lower()
     if action_value not in {"approved", "rejected", "returned"}:
         raise ValidationError("Invalid approval action")
 
     claim = await _load_claim(session, tenant_id, claim_id)
-    approval = ExpenseApproval(
+    approval = apply_mutation_linkage(ExpenseApproval(
         claim_id=claim.id,
         tenant_id=tenant_id,
         approver_id=approver_id,
         approver_role=approver_role,
         action=action_value,
         comments=comments,
-    )
+    ))
     session.add(approval)
     await session.flush()
 

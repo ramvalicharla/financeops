@@ -9,20 +9,46 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.budgeting.service import (
-    approve_budget,
-    create_budget_version,
+    approve_budget as _approve_budget,
+    create_budget_version as _create_budget_version,
     get_budget_vs_actual,
-    upsert_budget_line,
+    upsert_budget_line as _upsert_budget_line,
 )
 
 
 def _months(value: str) -> list[Decimal]:
     return [Decimal(value) for _ in range(12)]
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role=UserRole.finance_leader.value,
+        intent_type=intent_type,
+    )
+
+
+async def create_budget_version(*args, **kwargs):
+    with governed_mutation_context(_governed_context("CREATE_BUDGET_VERSION")):
+        return await _create_budget_version(*args, **kwargs)
+
+
+async def upsert_budget_line(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPSERT_BUDGET_LINE")):
+        return await _upsert_budget_line(*args, **kwargs)
+
+
+async def approve_budget(*args, **kwargs):
+    with governed_mutation_context(_governed_context("APPROVE_BUDGET_VERSION")):
+        return await _approve_budget(*args, **kwargs)
 
 
 async def _create_budget_with_lines(

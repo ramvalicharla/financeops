@@ -35,6 +35,7 @@ _DEFAULT_RULES: dict[str, tuple[str, Decimal | None]] = {
     "PERIOD_UNLOCK": (UserRole.finance_leader.value, None),
     "FX_REVALUATION_RUN": (UserRole.finance_leader.value, None),
     "GST_RETURN_SUBMIT": (UserRole.finance_leader.value, Decimal("100000.0000")),
+    "SUBMIT_GST_RETURN": (UserRole.finance_leader.value, Decimal("100000.0000")),
 }
 
 

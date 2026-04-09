@@ -397,6 +397,8 @@ class MultiEntityConsolidationRun(FinancialBase):
     validation_summary_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
 
@@ -438,6 +440,8 @@ class MultiEntityConsolidationMetricResult(FinancialBase):
     aggregated_value: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     entity_count: Mapped[int] = mapped_column(Integer, nullable=False)
     materiality_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
 
@@ -480,6 +484,8 @@ class MultiEntityConsolidationVarianceResult(FinancialBase):
     variance_value: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     variance_pct: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     materiality_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
 
@@ -523,4 +529,6 @@ class MultiEntityConsolidationEvidenceLink(FinancialBase):
     evidence_ref: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_label: Mapped[str] = mapped_column(String(255), nullable=False)
     evidence_payload_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

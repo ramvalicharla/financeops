@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.budgeting.models import BudgetLineItem
 from financeops.modules.multi_gaap.models import MultiGAAPConfig, MultiGAAPRun
 from financeops.platform.db.models.entities import CpEntity
@@ -76,6 +77,7 @@ async def get_or_create_config(
     if row is not None:
         return row
 
+    require_mutation_context("Multi-GAAP config creation")
     now = datetime.now(UTC)
     row = MultiGAAPConfig(
         tenant_id=tenant_id,
@@ -88,6 +90,7 @@ async def get_or_create_config(
         created_at=now,
         updated_at=now,
     )
+    apply_mutation_linkage(row)
     session.add(row)
     await session.flush()
     return row
@@ -99,6 +102,7 @@ async def update_config(
     updates: dict,
     entity_id: uuid.UUID | None = None,
 ) -> MultiGAAPConfig:
+    require_mutation_context("Multi-GAAP config update")
     row = await get_or_create_config(session, tenant_id, entity_id=entity_id)
     for key in {
         "primary_gaap",
@@ -162,6 +166,7 @@ async def compute_gaap_view(
     created_by: uuid.UUID,
     entity_id: uuid.UUID | None = None,
 ) -> MultiGAAPRun:
+    require_mutation_context("Multi-GAAP view computation")
     resolved_entity_id = await _resolve_entity_id(session, tenant_id, entity_id)
     config = await get_or_create_config(session, tenant_id, entity_id=resolved_entity_id)
     base = await _base_financials(session, tenant_id, resolved_entity_id, period)

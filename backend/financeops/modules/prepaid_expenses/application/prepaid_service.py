@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.prepaid_expenses.application.amortisation_engine import (
     calculate_slm_schedule,
     get_period_amount,
@@ -43,6 +44,7 @@ class PrepaidService:
         entity_id: uuid.UUID,
         data: dict[str, Any],
     ) -> PrepaidSchedule:
+        require_mutation_context("Prepaid schedule creation")
         existing = (
             await self._session.execute(
                 select(PrepaidSchedule.id).where(
@@ -76,6 +78,7 @@ class PrepaidService:
             cost_centre_id=data.get("cost_centre_id"),
             status=str(data.get("status", "ACTIVE")).upper(),
         )
+        apply_mutation_linkage(row)
         self._session.add(row)
         await self._session.flush()
         return row
@@ -86,6 +89,7 @@ class PrepaidService:
         schedule_id: uuid.UUID,
         data: dict[str, Any],
     ) -> PrepaidSchedule:
+        require_mutation_context("Prepaid schedule update")
         row = await self._get_schedule_or_404(tenant_id, schedule_id)
         entries_exist = int(
             (
@@ -127,6 +131,7 @@ class PrepaidService:
             if key in allowed:
                 setattr(row, key, value)
 
+        apply_mutation_linkage(row)
         await self._session.flush()
         return row
 
@@ -219,6 +224,7 @@ class PrepaidService:
         period_start: date,
         period_end: date,
     ) -> list[PrepaidAmortisationEntry]:
+        require_mutation_context("Prepaid amortization posting")
         schedules = (
             await self._session.execute(
                 select(PrepaidSchedule)
@@ -254,7 +260,7 @@ class PrepaidService:
             is_last = amount >= remaining_before
             entry_amount = remaining_before if is_last else amount
 
-            row = PrepaidAmortisationEntry(
+            row = apply_mutation_linkage(PrepaidAmortisationEntry(
                 tenant_id=tenant_id,
                 entity_id=entity_id,
                 schedule_id=schedule.id,
@@ -263,7 +269,7 @@ class PrepaidService:
                 amortisation_amount=entry_amount,
                 is_last_period=is_last,
                 run_reference=run_reference,
-            )
+            ))
             self._session.add(row)
             entries.append(row)
 
@@ -272,6 +278,7 @@ class PrepaidService:
             if schedule.remaining_amount <= Decimal("0"):
                 schedule.remaining_amount = Decimal("0")
                 schedule.status = "FULLY_AMORTISED"
+            apply_mutation_linkage(schedule)
 
         await self._session.flush()
         return entries

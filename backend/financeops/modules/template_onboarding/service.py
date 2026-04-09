@@ -37,6 +37,8 @@ from financeops.modules.scheduled_delivery.infrastructure.repository import (
 )
 from financeops.modules.template_onboarding.models import OnboardingState
 from financeops.modules.template_onboarding.templates import get_template
+from financeops.platform.db.models.entities import CpEntity
+from financeops.platform.db.models.organisations import CpOrganisation
 
 
 class TemplateAlreadyAppliedError(RuntimeError):
@@ -116,6 +118,23 @@ async def apply_template(
     board_repo = BoardPackRepository()
     report_repo = ReportRepository()
     delivery_repo = DeliveryRepository()
+    organisation_id = (
+        await session.execute(
+            select(CpOrganisation.id)
+            .where(CpOrganisation.tenant_id == tenant_id)
+            .order_by(CpOrganisation.created_at.asc(), CpOrganisation.id.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    entity_ids = list(
+        (
+            await session.execute(
+                select(CpEntity.id)
+                .where(CpEntity.tenant_id == tenant_id)
+                .order_by(CpEntity.created_at.asc(), CpEntity.id.asc())
+            )
+        ).scalars()
+    )
 
     section_configs = [
         SectionConfig(
@@ -128,9 +147,13 @@ async def apply_template(
         name=f"{template.name} Board Pack",
         description=template.description,
         section_configs=section_configs,
-        entity_ids=[tenant_id],
+        entity_ids=entity_ids or [tenant_id],
         period_type=PeriodType.MONTHLY,
-        config={"template_id": template.id, "industry": template.industry},
+        config={
+            "template_id": template.id,
+            "industry": template.industry,
+            "organisation_id": str(organisation_id) if organisation_id is not None else None,
+        },
     )
     board_definition = await board_repo.create_definition(
         db=session,
@@ -145,11 +168,15 @@ async def apply_template(
             name=str(report["name"]),
             description=f"Created from onboarding template '{template.name}'",
             metric_keys=[str(metric_key) for metric_key in report["metric_keys"]],
-            filter_config=FilterConfig(entity_ids=[tenant_id]),
+            filter_config=FilterConfig(entity_ids=entity_ids or [tenant_id]),
             group_by=[],
             sort_config=None,
             export_formats=[ReportExportFormat.CSV, ReportExportFormat.PDF],
-            config={"template_id": template.id, "industry": template.industry},
+            config={
+                "template_id": template.id,
+                "industry": template.industry,
+                "organisation_id": str(organisation_id) if organisation_id is not None else None,
+            },
         )
         report_definition = await report_repo.create_definition(
             db=session,

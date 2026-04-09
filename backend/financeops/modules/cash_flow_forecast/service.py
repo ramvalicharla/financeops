@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.modules.cash_flow_forecast.models import CashFlowForecastAssumption, CashFlowForecastRun
 from financeops.modules.expense_management.models import ExpenseClaim
 from financeops.platform.db.models.entities import CpEntity
@@ -119,6 +120,7 @@ async def create_forecast_run(
     cost_centre_id: uuid.UUID | None = None,
     weeks: int = 13,
 ) -> CashFlowForecastRun:
+    require_mutation_context("Cash-flow forecast creation")
     if not _is_monday(base_date):
         raise ValidationError("base_date must be a Monday")
     if weeks <= 0:
@@ -140,13 +142,13 @@ async def create_forecast_run(
         is_published=False,
         created_by=created_by,
     )
+    apply_mutation_linkage(run)
     session.add(run)
     await session.flush()
 
     for week_number in range(1, weeks + 1):
         start_date = base_date + timedelta(days=(week_number - 1) * 7)
-        session.add(
-            CashFlowForecastAssumption(
+        row = CashFlowForecastAssumption(
                 forecast_run_id=run.id,
                 tenant_id=tenant_id,
                 entity_id=resolved_entity_id,
@@ -166,7 +168,8 @@ async def create_forecast_run(
                 net_cash_flow=Decimal("0.00"),
                 closing_balance=Decimal("0.00"),
             )
-        )
+        apply_mutation_linkage(row)
+        session.add(row)
 
     await session.flush()
     await _recompute_weeks(session, run)
@@ -180,6 +183,7 @@ async def update_week_assumptions(
     week_number: int,
     assumption_updates: dict,
 ) -> CashFlowForecastAssumption:
+    require_mutation_context("Cash-flow forecast week update")
     run = await _get_run(session, tenant_id, forecast_run_id)
     row = (
         await session.execute(
@@ -280,6 +284,7 @@ async def seed_from_historical(
     tenant_id: uuid.UUID,
     forecast_run_id: uuid.UUID,
 ) -> list[CashFlowForecastAssumption]:
+    require_mutation_context("Cash-flow historical seeding")
     run = await _get_run(session, tenant_id, forecast_run_id)
     rows = (
         await session.execute(
@@ -324,6 +329,7 @@ async def publish_forecast(
     forecast_run_id: uuid.UUID,
     published_by: uuid.UUID,
 ) -> CashFlowForecastRun:
+    require_mutation_context("Cash-flow forecast publish")
     draft = await _get_run(session, tenant_id, forecast_run_id)
     if draft.status != "draft":
         raise ValidationError("Only draft forecasts can be published")
@@ -340,8 +346,7 @@ async def publish_forecast(
             )
         ).scalars().all()
         for row in source_rows:
-            session.add(
-                CashFlowForecastAssumption(
+            cloned = CashFlowForecastAssumption(
                     forecast_run_id=target_run_id,
                     tenant_id=tenant_id,
                     entity_id=row.entity_id,
@@ -362,7 +367,8 @@ async def publish_forecast(
                     closing_balance=_d(row.closing_balance),
                     notes=row.notes,
                 )
-            )
+            apply_mutation_linkage(cloned)
+            session.add(cloned)
 
     current_published = (
         await session.execute(
@@ -391,6 +397,7 @@ async def publish_forecast(
             is_published=False,
             created_by=published_by,
         )
+        apply_mutation_linkage(superseded)
         session.add(superseded)
         await session.flush()
         await _clone_assumptions(current_published.id, superseded.id)
@@ -409,6 +416,7 @@ async def publish_forecast(
         is_published=True,
         created_by=published_by,
     )
+    apply_mutation_linkage(published)
     session.add(published)
     await session.flush()
     await _clone_assumptions(draft.id, published.id)

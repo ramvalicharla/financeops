@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.fixed_assets.application.depreciation_engine import (
@@ -28,6 +29,16 @@ from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role=UserRole.finance_leader.value,
+        intent_type=intent_type,
+    )
 
 
 async def _create_entity(
@@ -104,17 +115,18 @@ async def _create_asset_class(
     tenant_id: uuid.UUID,
     entity_id: uuid.UUID,
 ) -> uuid.UUID:
-    row = await service.create_asset_class(
-        tenant_id,
-        entity_id,
-        {
-            "name": "Computers",
-            "asset_type": "TANGIBLE",
-            "default_method": "SLM",
-            "default_useful_life_years": 3,
-            "default_residual_pct": Decimal("0.0500"),
-        },
-    )
+    with governed_mutation_context(_governed_context("CREATE_FIXED_ASSET_CLASS")):
+        row = await service.create_asset_class(
+            tenant_id,
+            entity_id,
+            {
+                "name": "Computers",
+                "asset_type": "TANGIBLE",
+                "default_method": "SLM",
+                "default_useful_life_years": 3,
+                "default_residual_pct": Decimal("0.0500"),
+            },
+        )
     return row.id
 
 
@@ -127,23 +139,24 @@ async def _create_asset(
     asset_code: str = "FA-001",
     status: str = "ACTIVE",
 ) -> uuid.UUID:
-    row = await service.create_asset(
-        tenant_id,
-        entity_id,
-        {
-            "asset_class_id": asset_class_id,
-            "asset_code": asset_code,
-            "asset_name": "Engineering Laptop",
-            "description": "Workstation",
-            "purchase_date": date(2026, 1, 1),
-            "capitalisation_date": date(2026, 1, 1),
-            "original_cost": Decimal("1200.0000"),
-            "residual_value": Decimal("0.0000"),
-            "useful_life_years": Decimal("1.0000"),
-            "depreciation_method": "SLM",
-            "status": status,
-        },
-    )
+    with governed_mutation_context(_governed_context("CREATE_FIXED_ASSET")):
+        row = await service.create_asset(
+            tenant_id,
+            entity_id,
+            {
+                "asset_class_id": asset_class_id,
+                "asset_code": asset_code,
+                "asset_name": "Engineering Laptop",
+                "description": "Workstation",
+                "purchase_date": date(2026, 1, 1),
+                "capitalisation_date": date(2026, 1, 1),
+                "original_cost": Decimal("1200.0000"),
+                "residual_value": Decimal("0.0000"),
+                "useful_life_years": Decimal("1.0000"),
+                "depreciation_method": "SLM",
+                "status": status,
+            },
+        )
     return row.id
 
 
@@ -151,17 +164,35 @@ async def _create_asset(
 async def test_create_asset_class(async_session: AsyncSession, test_user: IamUser) -> None:
     entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="FA01")
     service = FixedAssetService(async_session)
-    row = await service.create_asset_class(
-        test_user.tenant_id,
-        entity.id,
-        {
-            "name": "Servers",
-            "asset_type": "TANGIBLE",
-            "default_method": "SLM",
-            "default_useful_life_years": 5,
-        },
-    )
+    with governed_mutation_context(_governed_context("CREATE_FIXED_ASSET_CLASS")):
+        row = await service.create_asset_class(
+            test_user.tenant_id,
+            entity.id,
+            {
+                "name": "Servers",
+                "asset_type": "TANGIBLE",
+                "default_method": "SLM",
+                "default_useful_life_years": 5,
+            },
+        )
     assert row.name == "Servers"
+
+
+@pytest.mark.asyncio
+async def test_asset_service_blocks_direct_mutation(async_session: AsyncSession, test_user: IamUser) -> None:
+    entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="FA00")
+    service = FixedAssetService(async_session)
+    with pytest.raises(Exception):
+        await service.create_asset_class(
+            test_user.tenant_id,
+            entity.id,
+            {
+                "name": "Blocked",
+                "asset_type": "TANGIBLE",
+                "default_method": "SLM",
+                "default_useful_life_years": 5,
+            },
+        )
 
 
 @pytest.mark.asyncio
@@ -263,13 +294,14 @@ async def test_depreciation_run_creates_record(async_session: AsyncSession, test
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
 
-    rows = await service.run_depreciation(
-        tenant_id=test_user.tenant_id,
-        entity_id=entity.id,
-        period_start=date(2026, 1, 1),
-        period_end=date(2026, 12, 31),
-        gaap="INDAS",
-    )
+    with governed_mutation_context(_governed_context("RUN_FIXED_ASSET_DEPRECIATION")):
+        rows = await service.run_depreciation(
+            tenant_id=test_user.tenant_id,
+            entity_id=entity.id,
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 12, 31),
+            gaap="INDAS",
+        )
     assert len(rows) == 1
 
 
@@ -280,8 +312,10 @@ async def test_depreciation_run_idempotent(async_session: AsyncSession, test_use
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
 
-    await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
-    await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
+    with governed_mutation_context(_governed_context("RUN_FIXED_ASSET_DEPRECIATION")):
+        await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
+    with governed_mutation_context(_governed_context("RUN_FIXED_ASSET_DEPRECIATION")):
+        await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
     count = int(
         (
             await async_session.execute(
@@ -305,12 +339,13 @@ async def test_depreciation_run_skips_disposed_assets(async_session: AsyncSessio
         status="DISPOSED",
     )
 
-    rows = await service.run_depreciation(
-        tenant_id=test_user.tenant_id,
-        entity_id=entity.id,
-        period_start=date(2026, 1, 1),
-        period_end=date(2026, 12, 31),
-    )
+    with governed_mutation_context(_governed_context("RUN_FIXED_ASSET_DEPRECIATION")):
+        rows = await service.run_depreciation(
+            tenant_id=test_user.tenant_id,
+            entity_id=entity.id,
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 12, 31),
+        )
     assert len(rows) == 0
 
 
@@ -330,7 +365,8 @@ async def test_period_run_covers_all_active_assets(async_session: AsyncSession, 
         status="DISPOSED",
     )
 
-    rows = await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
+    with governed_mutation_context(_governed_context("RUN_FIXED_ASSET_DEPRECIATION")):
+        rows = await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
     assert len(rows) == 2
 
 
@@ -341,13 +377,14 @@ async def test_proportional_revaluation(async_session: AsyncSession, test_user: 
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     asset_id = await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
 
-    row = await service.post_revaluation(
-        tenant_id=test_user.tenant_id,
-        asset_id=asset_id,
-        fair_value=Decimal("1500.0000"),
-        method="PROPORTIONAL",
-        revaluation_date=date(2026, 12, 31),
-    )
+    with governed_mutation_context(_governed_context("POST_FIXED_ASSET_REVALUATION")):
+        row = await service.post_revaluation(
+            tenant_id=test_user.tenant_id,
+            asset_id=asset_id,
+            fair_value=Decimal("1500.0000"),
+            method="PROPORTIONAL",
+            revaluation_date=date(2026, 12, 31),
+        )
     assert row.revaluation_surplus == Decimal("300.0000")
 
 
@@ -358,13 +395,14 @@ async def test_elimination_revaluation(async_session: AsyncSession, test_user: I
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     asset_id = await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
 
-    row = await service.post_revaluation(
-        tenant_id=test_user.tenant_id,
-        asset_id=asset_id,
-        fair_value=Decimal("900.0000"),
-        method="ELIMINATION",
-        revaluation_date=date(2026, 12, 31),
-    )
+    with governed_mutation_context(_governed_context("POST_FIXED_ASSET_REVALUATION")):
+        row = await service.post_revaluation(
+            tenant_id=test_user.tenant_id,
+            asset_id=asset_id,
+            fair_value=Decimal("900.0000"),
+            method="ELIMINATION",
+            revaluation_date=date(2026, 12, 31),
+        )
     assert row.method == "ELIMINATION"
 
 
@@ -375,14 +413,15 @@ async def test_impairment_loss_calculated_correctly(async_session: AsyncSession,
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     asset_id = await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
 
-    row = await service.post_impairment(
-        tenant_id=test_user.tenant_id,
-        asset_id=asset_id,
-        value_in_use=Decimal("600.0000"),
-        fvlcts=Decimal("550.0000"),
-        discount_rate=Decimal("0.1000"),
-        impairment_date=date(2026, 12, 31),
-    )
+    with governed_mutation_context(_governed_context("POST_FIXED_ASSET_IMPAIRMENT")):
+        row = await service.post_impairment(
+            tenant_id=test_user.tenant_id,
+            asset_id=asset_id,
+            value_in_use=Decimal("600.0000"),
+            fvlcts=Decimal("550.0000"),
+            discount_rate=Decimal("0.1000"),
+            impairment_date=date(2026, 12, 31),
+        )
     assert row.impairment_loss == Decimal("600.0000")
 
 
@@ -393,14 +432,15 @@ async def test_impairment_zero_if_recoverable_exceeds_nbv(async_session: AsyncSe
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     asset_id = await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
 
-    row = await service.post_impairment(
-        tenant_id=test_user.tenant_id,
-        asset_id=asset_id,
-        value_in_use=Decimal("2000.0000"),
-        fvlcts=Decimal("1900.0000"),
-        discount_rate=Decimal("0.1000"),
-        impairment_date=date(2026, 12, 31),
-    )
+    with governed_mutation_context(_governed_context("POST_FIXED_ASSET_IMPAIRMENT")):
+        row = await service.post_impairment(
+            tenant_id=test_user.tenant_id,
+            asset_id=asset_id,
+            value_in_use=Decimal("2000.0000"),
+            fvlcts=Decimal("1900.0000"),
+            discount_rate=Decimal("0.1000"),
+            impairment_date=date(2026, 12, 31),
+        )
     assert row.impairment_loss == Decimal("0")
 
 
@@ -435,7 +475,8 @@ async def test_fixed_asset_register_nbv_correct(async_session: AsyncSession, tes
     service = FixedAssetService(async_session)
     class_id = await _create_asset_class(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     await _create_asset(service, tenant_id=test_user.tenant_id, entity_id=entity.id, asset_class_id=class_id)
-    await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
+    with governed_mutation_context(_governed_context("RUN_FIXED_ASSET_DEPRECIATION")):
+        await service.run_depreciation(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 12, 31), "INDAS")
 
     rows = await service.get_fixed_asset_register(test_user.tenant_id, entity.id, date(2026, 12, 31), "INDAS")
     assert rows[0]["nbv"] == Decimal("0.0000")

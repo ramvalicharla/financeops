@@ -54,4 +54,6 @@ class WorkingCapitalSnapshot(FinancialBase):
     cash_ratio: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
 
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

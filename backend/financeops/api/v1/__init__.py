@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -12,15 +14,40 @@ from financeops.api.deps import (
     get_current_user,
     require_finance_team,
 )
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
+from financeops.db.models.working_capital import WorkingCapitalSnapshot
 from financeops.db.models.users import IamUser
 from financeops.services.working_capital_service import (
-    create_snapshot,
     get_latest_snapshot,
     list_snapshots,
 )
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    service = IntentService(session)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class CreateSnapshotRequest(BaseModel):
@@ -44,32 +71,31 @@ class CreateSnapshotRequest(BaseModel):
 
 @router.post("/snapshots", status_code=status.HTTP_201_CREATED)
 async def create_wc_snapshot(
+    request: Request,
     body: CreateSnapshotRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> dict:
     """Compute and store a working capital snapshot (INSERT ONLY)."""
-    snap = await create_snapshot(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        period_year=body.period_year,
-        period_month=body.period_month,
-        entity_name=body.entity_name,
-        created_by=user.id,
-        cash_and_equivalents=body.cash_and_equivalents,
-        accounts_receivable=body.accounts_receivable,
-        inventory=body.inventory,
-        prepaid_expenses=body.prepaid_expenses,
-        other_current_assets=body.other_current_assets,
-        accounts_payable=body.accounts_payable,
-        accrued_liabilities=body.accrued_liabilities,
-        short_term_debt=body.short_term_debt,
-        other_current_liabilities=body.other_current_liabilities,
-        currency=body.currency,
-        notes=body.notes,
+        user=user,
+        intent_type=IntentType.CREATE_WORKING_CAPITAL_SNAPSHOT,
+        payload=body.model_dump(mode="json"),
     )
-    await session.flush()
-    return _snapshot_to_dict(snap)
+    snap = (
+        await session.execute(
+            select(WorkingCapitalSnapshot).where(
+                WorkingCapitalSnapshot.id == uuid.UUID(str((result.record_refs or {})["snapshot_id"])),
+                WorkingCapitalSnapshot.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    data = _snapshot_to_dict(snap)
+    data["intent_id"] = str(result.intent_id)
+    data["job_id"] = str(result.job_id) if result.job_id else None
+    return data
 
 
 @router.get("/snapshots")
@@ -129,6 +155,8 @@ def _snapshot_to_dict(snap) -> dict:
         "accounts_receivable": str(snap.accounts_receivable),
         "inventory": str(snap.inventory),
         "accounts_payable": str(snap.accounts_payable),
+        "intent_id": str(snap.created_by_intent_id) if getattr(snap, "created_by_intent_id", None) else None,
+        "job_id": str(snap.recorded_by_job_id) if getattr(snap, "recorded_by_job_id", None) else None,
         "chain_hash": snap.chain_hash,
         "created_at": snap.created_at.isoformat(),
     }

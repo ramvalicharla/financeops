@@ -8,11 +8,27 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
 from financeops.modules.working_capital.service import (
-    compute_wc_snapshot,
+    compute_wc_snapshot as _compute_wc_snapshot,
     get_payment_probability,
 )
+
+
+def _governed_context() -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type="COMPUTE_WORKING_CAPITAL_SNAPSHOT",
+    )
+
+
+async def compute_wc_snapshot(*args, **kwargs):
+    with governed_mutation_context(_governed_context()):
+        return await _compute_wc_snapshot(*args, **kwargs)
 
 
 @pytest.mark.asyncio

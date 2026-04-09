@@ -3,14 +3,17 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
-from financeops.modules.working_capital.service import compute_wc_snapshot, get_wc_dashboard
+from financeops.modules.working_capital.service import get_wc_dashboard
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
 
@@ -21,8 +24,56 @@ def _current_period() -> str:
     return datetime.now(UTC).strftime("%Y-%m")
 
 
+async def _ensure_snapshot(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    period: str,
+    entity_id: uuid.UUID | None,
+) -> WCSnapshot:
+    existing = (
+        await session.execute(
+            select(WCSnapshot)
+            .where(
+                WCSnapshot.tenant_id == user.tenant_id,
+                WCSnapshot.period == period,
+                WCSnapshot.entity_id == entity_id,
+            )
+            .order_by(WCSnapshot.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+    result = await IntentService(session).submit_intent(
+        intent_type=IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT,
+        actor=build_intent_actor(request, user),
+        payload={
+            "period": period,
+            "entity_id": str(entity_id) if entity_id else None,
+        },
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT,
+            actor=user,
+            body={"period": period, "entity_id": str(entity_id) if entity_id else None},
+        ),
+    )
+    snapshot_id = uuid.UUID(str((result.record_refs or {})["snapshot_id"]))
+    return (
+        await session.execute(
+            select(WCSnapshot).where(
+                WCSnapshot.id == snapshot_id,
+                WCSnapshot.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+
+
 @router.get("/dashboard")
 async def wc_dashboard(
+    request: Request,
     period: str | None = Query(default=None),
     entity_id: uuid.UUID | None = Query(default=None),
     session: AsyncSession = Depends(get_async_session),
@@ -36,29 +87,19 @@ async def wc_dashboard(
         user_id=user.id,
         user_role=user.role,
     )
-    if (
-        await session.execute(
-            select(WCSnapshot.id).where(
-                WCSnapshot.tenant_id == user.tenant_id,
-                WCSnapshot.period == target_period,
-                WCSnapshot.entity_id == entity_id,
-            )
-        )
-    ).scalar_one_or_none() is None:
-        await compute_wc_snapshot(
-            session,
-            tenant_id=user.tenant_id,
-            period=target_period,
-            entity_id=entity_id,
-            requester_user_id=user.id,
-            requester_user_role=user.role.value,
-        )
-        await session.flush()
+    await _ensure_snapshot(
+        request,
+        session,
+        user=user,
+        period=target_period,
+        entity_id=entity_id,
+    )
     return await get_wc_dashboard(session, user.tenant_id, period=target_period)
 
 
 @router.get("/ar")
 async def list_ar(
+    request: Request,
     period: str | None = Query(default=None),
     aging_bucket: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
@@ -79,8 +120,13 @@ async def list_ar(
         )
     ).scalar_one_or_none()
     if snapshot is None:
-        snapshot = await compute_wc_snapshot(session, user.tenant_id, target_period)
-        await session.flush()
+        snapshot = await _ensure_snapshot(
+            request,
+            session,
+            user=user,
+            period=target_period,
+            entity_id=None,
+        )
 
     stmt = select(ARLineItem).where(
         ARLineItem.tenant_id == user.tenant_id,
@@ -117,6 +163,7 @@ async def list_ar(
 
 @router.get("/ap")
 async def list_ap(
+    request: Request,
     period: str | None = Query(default=None),
     aging_bucket: str | None = Query(default=None),
     discount_only: bool = Query(default=False),
@@ -138,8 +185,13 @@ async def list_ap(
         )
     ).scalar_one_or_none()
     if snapshot is None:
-        snapshot = await compute_wc_snapshot(session, user.tenant_id, target_period)
-        await session.flush()
+        snapshot = await _ensure_snapshot(
+            request,
+            session,
+            user=user,
+            period=target_period,
+            entity_id=None,
+        )
 
     stmt = select(APLineItem).where(
         APLineItem.tenant_id == user.tenant_id,

@@ -424,6 +424,7 @@ async def test_t_403_board_pack_generate_storage_path_convention(
         period_start: date,
         period_end: date,
         triggered_by: uuid.UUID,
+        run_metadata: dict[str, object] | None = None,
     ) -> SimpleNamespace:
         del self, db
         run_id = uuid.uuid4()
@@ -432,6 +433,7 @@ async def test_t_403_board_pack_generate_storage_path_convention(
         captured["definition_id"] = definition_id
         captured["period_start"] = period_start
         captured["period_end"] = period_end
+        captured["run_metadata"] = run_metadata or {}
         return SimpleNamespace(
             id=run_id,
             tenant_id=tenant_id,
@@ -448,18 +450,47 @@ async def test_t_403_board_pack_generate_storage_path_convention(
             created_at=datetime.now(UTC),
         )
 
+    async def _fake_get_run(
+        self,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> SimpleNamespace:
+        del self, db
+        if captured.get("run_id") != run_id:
+            return None
+        return SimpleNamespace(
+            id=run_id,
+            tenant_id=tenant_id,
+            definition_id=captured["definition_id"],
+            period_start=captured["period_start"],
+            period_end=captured["period_end"],
+            status="PENDING",
+            triggered_by=test_user.id,
+            started_at=None,
+            completed_at=None,
+            error_message=None,
+            chain_hash=None,
+            run_metadata=captured.get("run_metadata", {}),
+            created_at=datetime.now(UTC),
+        )
+
     queued_calls: list[tuple[str, str]] = []
 
     def _fake_delay(run_id: str, tenant_id: str) -> None:
         queued_calls.append((run_id, tenant_id))
 
     monkeypatch.setattr(
-        "financeops.modules.board_pack_generator.api.routes.BoardPackRepository.get_definition",
+        "financeops.modules.board_pack_generator.infrastructure.repository.BoardPackRepository.get_definition",
         _fake_get_definition,
     )
     monkeypatch.setattr(
-        "financeops.modules.board_pack_generator.api.routes.BoardPackRepository.create_run",
+        "financeops.modules.board_pack_generator.infrastructure.repository.BoardPackRepository.create_run",
         _fake_create_run,
+    )
+    monkeypatch.setattr(
+        "financeops.modules.board_pack_generator.api.routes.BoardPackRepository.get_run",
+        _fake_get_run,
     )
     monkeypatch.setattr(
         "financeops.modules.board_pack_generator.api.routes.generate_board_pack_task.delay",

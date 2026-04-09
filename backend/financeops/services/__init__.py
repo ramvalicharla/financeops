@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.working_capital import WorkingCapitalSnapshot
 from financeops.utils.chain_hash import compute_chain_hash, get_previous_hash_locked
 
@@ -46,6 +47,7 @@ async def create_snapshot(
     Compute working capital metrics and store as an immutable snapshot (INSERT ONLY).
     All ratios are computed at write time from the supplied components.
     """
+    require_mutation_context("Working capital snapshot creation")
     total_current_assets = (
         cash_and_equivalents
         + accounts_receivable
@@ -79,7 +81,7 @@ async def create_snapshot(
     }
     chain_hash = compute_chain_hash(record_data, previous_hash)
 
-    snap = WorkingCapitalSnapshot(
+    snap = apply_mutation_linkage(WorkingCapitalSnapshot(
         tenant_id=tenant_id,
         period_year=period_year,
         period_month=period_month,
@@ -104,7 +106,7 @@ async def create_snapshot(
         notes=notes,
         chain_hash=chain_hash,
         previous_hash=previous_hash,
-    )
+    ))
     session.add(snap)
     await session.flush()
     log.info(

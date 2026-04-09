@@ -40,6 +40,8 @@ async def test_create_bank_statement(
     assert response.status_code == 201
     data = response.json()["data"]
     assert "statement_id" in data
+    assert data["intent_id"]
+    assert data["job_id"]
     assert data["bank_name"] == "HDFC Bank"
     assert data["status"] == "pending"
 
@@ -85,6 +87,8 @@ async def test_add_bank_transaction(
     assert txn_resp.status_code == 201
     data = txn_resp.json()["data"]
     assert "transaction_id" in data
+    assert data["intent_id"]
+    assert data["job_id"]
     assert data["match_status"] == "unmatched"
 
 
@@ -132,6 +136,8 @@ async def test_run_bank_reconciliation(
     assert run_resp.status_code == 201
     data = run_resp.json()["data"]
     assert "open_items_created" in data
+    assert data["intent_id"]
+    assert data["job_id"]
     assert data["open_items_created"] == 1
 
 

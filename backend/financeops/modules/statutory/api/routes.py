@@ -4,11 +4,15 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.statutory.models import StatutoryFiling, StatutoryRegisterEntry
 from financeops.modules.statutory.service import add_register_entry, get_compliance_calendar, get_register, list_filings, mark_as_filed
@@ -16,6 +20,27 @@ from financeops.platform.services.tenancy.entity_access import assert_entity_acc
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/statutory", tags=["statutory"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class MarkFiledRequest(BaseModel):
@@ -91,6 +116,7 @@ async def _resolve_entity_id(
 
 @router.get("/calendar")
 async def calendar_endpoint(
+    request: Request,
     fiscal_year: int,
     entity_id: uuid.UUID | None = None,
     session: AsyncSession = Depends(get_async_session),
@@ -98,6 +124,28 @@ async def calendar_endpoint(
 ) -> list[dict]:
     resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
+    existing_count = int(
+        (
+            await session.execute(
+                select(func.count())
+                .select_from(StatutoryFiling)
+                .where(
+                    StatutoryFiling.tenant_id == user.tenant_id,
+                    StatutoryFiling.entity_id == resolved_entity_id,
+                    StatutoryFiling.due_date >= date(fiscal_year, 1, 1),
+                    StatutoryFiling.due_date <= date(fiscal_year, 12, 31),
+                )
+            )
+        ).scalar_one()
+    )
+    if existing_count == 0:
+        await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.ENSURE_STATUTORY_FILINGS,
+            payload={"entity_id": str(resolved_entity_id), "fiscal_year": fiscal_year},
+        )
     rows = await get_compliance_calendar(
         session,
         tenant_id=user.tenant_id,
@@ -154,6 +202,7 @@ async def filings_endpoint(
 
 @router.post("/filings/{filing_id}/file")
 async def mark_filed_endpoint(
+    request: Request,
     filing_id: uuid.UUID,
     body: MarkFiledRequest,
     entity_id: uuid.UUID | None = None,
@@ -167,15 +216,30 @@ async def mark_filed_endpoint(
             raise HTTPException(status_code=404, detail="Filing not found") from exc
         raise
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    row = await mark_as_filed(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        filing_id=filing_id,
-        filed_date=body.filed_date,
-        filing_reference=body.filing_reference,
-        entity_id=resolved_entity_id,
+        user=user,
+        intent_type=IntentType.MARK_STATUTORY_FILING,
+        payload={
+            "filing_id": str(filing_id),
+            "filed_date": body.filed_date.isoformat(),
+            "filing_reference": body.filing_reference,
+            "entity_id": str(resolved_entity_id),
+        },
     )
-    return _serialize_filing(row)
+    row = (
+        await session.execute(
+            select(StatutoryFiling).where(
+                StatutoryFiling.id == uuid.UUID(str((result.record_refs or {})["filing_id"])),
+                StatutoryFiling.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_filing(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/registers/{register_type}", response_model=Paginated[dict])
@@ -211,6 +275,7 @@ async def register_endpoint(
 
 @router.post("/registers/{register_type}")
 async def add_register_endpoint(
+    request: Request,
     register_type: str,
     body: AddRegisterEntryRequest,
     entity_id: uuid.UUID | None = None,
@@ -219,19 +284,34 @@ async def add_register_endpoint(
 ) -> dict:
     resolved_entity_id = await _resolve_entity_id(session, user, entity_id)
     await assert_entity_access(session, user.tenant_id, resolved_entity_id, user.id, user.role)
-    row = await add_register_entry(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        register_type=register_type,
-        entry_date=body.entry_date,
-        entry_description=body.entry_description,
-        entity_id=resolved_entity_id,
-        folio_number=body.folio_number,
-        amount=body.amount,
-        currency=body.currency,
-        reference_document=body.reference_document,
+        user=user,
+        intent_type=IntentType.ADD_STATUTORY_REGISTER_ENTRY,
+        payload={
+            "register_type": register_type,
+            "entry_date": body.entry_date.isoformat(),
+            "entry_description": body.entry_description,
+            "entity_id": str(resolved_entity_id),
+            "folio_number": body.folio_number,
+            "amount": str(body.amount) if body.amount is not None else None,
+            "currency": body.currency,
+            "reference_document": body.reference_document,
+        },
     )
-    return _serialize_register(row)
+    row = (
+        await session.execute(
+            select(StatutoryRegisterEntry).where(
+                StatutoryRegisterEntry.id == uuid.UUID(str((result.record_refs or {})["entry_id"])),
+                StatutoryRegisterEntry.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_register(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 __all__ = ["router"]

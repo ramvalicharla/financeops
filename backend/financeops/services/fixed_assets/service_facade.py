@@ -8,6 +8,7 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError
+from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.fixed_assets import (
     AssetDepreciationSchedule,
     AssetDisposal,
@@ -215,6 +216,7 @@ async def create_run(
     request_payload: dict[str, Any],
     correlation_id: str,
 ) -> dict[str, Any]:
+    require_mutation_context("Fixed-assets run creation")
     payload = FarRunRequest.model_validate(request_payload)
     canonical_payload = _canonical_request_payload(payload)
     signature = build_request_signature(canonical_payload)

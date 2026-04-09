@@ -10,6 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
+from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
 from financeops.db.models.board_pack_generator import (
     BoardPackGeneratorArtifact,
     BoardPackGeneratorDefinition,
@@ -60,23 +61,35 @@ class BoardPackRepository:
             updated_at=now,
             is_active=True,
         )
+        table_columns = row.__table__.c
+        organisation_id = schema.config.get("organisation_id")
         # Compatibility with shared board_pack_definitions table used by
         # narrative/definition models that require financial lineage fields.
-        if hasattr(row, "organisation_id"):
-            row.organisation_id = tenant_id
-        if hasattr(row, "board_pack_code"):
+        if "organisation_id" in table_columns:
+            row.organisation_id = (
+                uuid.UUID(str(organisation_id))
+                if organisation_id not in {None, ""}
+                else tenant_id
+            )
+        if "board_pack_code" in table_columns:
             row.board_pack_code = compat_board_pack_code
-        if hasattr(row, "board_pack_name"):
+        if "board_pack_name" in table_columns:
             row.board_pack_name = schema.name
-        if hasattr(row, "version_token"):
+        if "version_token" in table_columns:
             row.version_token = compat_version_token
-        if hasattr(row, "effective_from"):
+        if "effective_from" in table_columns:
             row.effective_from = now.date()
-        if hasattr(row, "status"):
+        if "status" in table_columns:
             row.status = "candidate"
-        if hasattr(row, "chain_hash"):
+        if "audience_scope" in table_columns:
+            row.audience_scope = "board"
+        if "section_order_json" in table_columns:
+            row.section_order_json = {}
+        if "inclusion_config_json" in table_columns:
+            row.inclusion_config_json = {}
+        if "chain_hash" in table_columns:
             row.chain_hash = compat_chain_hash
-        if hasattr(row, "previous_hash"):
+        if "previous_hash" in table_columns:
             row.previous_hash = GENESIS_HASH
         db.add(row)
         await db.flush()
@@ -169,6 +182,7 @@ class BoardPackRepository:
         period_start: date,
         period_end: date,
         triggered_by: uuid.UUID,
+        run_metadata: dict[str, Any] | None = None,
     ) -> BoardPackGeneratorRun:
         run_id = uuid.uuid4()
         row = BoardPackGeneratorRun(
@@ -179,9 +193,11 @@ class BoardPackRepository:
             period_end=period_end,
             status="PENDING",
             triggered_by=triggered_by,
-            run_metadata={"origin_run_id": str(run_id)},
+            run_metadata={"origin_run_id": str(run_id), **(run_metadata or {})},
             created_at=datetime.now(UTC),
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
         return row

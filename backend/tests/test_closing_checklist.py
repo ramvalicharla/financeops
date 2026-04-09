@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
@@ -20,13 +21,38 @@ from financeops.modules.closing_checklist.models import (
 )
 from financeops.modules.closing_checklist.service import (
     DependencyNotMetError,
-    auto_complete_task,
+    auto_complete_task as _auto_complete_task,
     compute_progress,
-    get_or_create_run,
+    get_or_create_run as _get_or_create_run,
     period_end_date,
-    update_task_status,
+    update_task_status as _update_task_status,
 )
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role=UserRole.finance_leader.value,
+        intent_type=intent_type,
+    )
+
+
+async def get_or_create_run(*args, **kwargs):
+    with governed_mutation_context(_governed_context("ENSURE_CHECKLIST_RUN")):
+        return await _get_or_create_run(*args, **kwargs)
+
+
+async def update_task_status(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPDATE_CHECKLIST_TASK_STATUS")):
+        return await _update_task_status(*args, **kwargs)
+
+
+async def auto_complete_task(*args, **kwargs):
+    with governed_mutation_context(_governed_context("AUTO_COMPLETE_CHECKLIST_TASKS")):
+        return await _auto_complete_task(*args, **kwargs)
 
 
 async def _seed_default_template(

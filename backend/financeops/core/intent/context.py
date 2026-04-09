@@ -4,6 +4,7 @@ import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from typing import Any
 
 from financeops.core.exceptions import ValidationError
 
@@ -43,3 +44,12 @@ def require_mutation_context(operation: str) -> MutationContext:
             f"{operation} is governed by the intent pipeline and cannot run without an active intent/job context."
         )
     return context
+
+
+def apply_mutation_linkage(record: Any) -> Any:
+    context = require_mutation_context("Governed financial mutation")
+    if hasattr(record, "created_by_intent_id") and getattr(record, "created_by_intent_id", None) is None:
+        setattr(record, "created_by_intent_id", context.intent_id)
+    if hasattr(record, "recorded_by_job_id"):
+        setattr(record, "recorded_by_job_id", context.job_id)
+    return record

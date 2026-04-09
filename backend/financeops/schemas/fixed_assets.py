@@ -143,6 +143,8 @@ class FarRunAcceptedResponse(BaseModel):
     workflow_id: str
     status: str
     correlation_id: str
+    intent_id: str | None = None
+    job_id: str | None = None
 
 
 class FarRunStatusResponse(BaseModel):

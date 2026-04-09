@@ -7,21 +7,42 @@ import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser
 from financeops.modules.transfer_pricing.models import ICTransaction, TransferPricingDoc
 from financeops.modules.transfer_pricing.service import (
-    add_transaction,
+    add_transaction as _add_transaction,
     check_3ceb_applicability,
     compute_arm_length_adjustment,
-    generate_form_3ceb,
+    generate_form_3ceb as _generate_form_3ceb,
 )
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type=intent_type,
+    )
+
+
+async def add_transaction(*args, **kwargs):
+    with governed_mutation_context(_governed_context("ADD_TRANSFER_PRICING_TRANSACTION")):
+        return await _add_transaction(*args, **kwargs)
+
+
+async def generate_form_3ceb(*args, **kwargs):
+    with governed_mutation_context(_governed_context("GENERATE_TRANSFER_PRICING_DOC")):
+        return await _generate_form_3ceb(*args, **kwargs)
 
 
 @pytest.mark.asyncio

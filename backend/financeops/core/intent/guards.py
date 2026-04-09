@@ -105,6 +105,46 @@ class GuardEngine:
         if intent_type in {
             IntentType.CREATE_ERP_SYNC_RUN.value,
             IntentType.CREATE_NORMALIZATION_RUN.value,
+            IntentType.IMPORT_BANK_STATEMENT.value,
+            IntentType.GENERATE_REPORT.value,
+            IntentType.GENERATE_BOARD_PACK.value,
+            IntentType.CREATE_BUDGET_VERSION.value,
+            IntentType.UPSERT_BUDGET_LINE.value,
+            IntentType.APPROVE_BUDGET_VERSION.value,
+            IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT.value,
+            IntentType.CREATE_CHECKLIST_TEMPLATE.value,
+            IntentType.ENSURE_CHECKLIST_RUN.value,
+            IntentType.UPDATE_CHECKLIST_TASK_STATUS.value,
+            IntentType.ASSIGN_CHECKLIST_TASK.value,
+            IntentType.AUTO_COMPLETE_CHECKLIST_TASKS.value,
+            IntentType.CREATE_MONTHEND_CHECKLIST.value,
+            IntentType.ADD_MONTHEND_TASK.value,
+            IntentType.UPDATE_MONTHEND_TASK_STATUS.value,
+            IntentType.CLOSE_MONTHEND_CHECKLIST.value,
+            IntentType.CREATE_FORECAST_RUN.value,
+            IntentType.UPDATE_FORECAST_ASSUMPTION.value,
+            IntentType.COMPUTE_FORECAST_LINES.value,
+            IntentType.PUBLISH_FORECAST.value,
+            IntentType.CREATE_CASH_FLOW_FORECAST.value,
+            IntentType.UPDATE_CASH_FLOW_WEEK.value,
+            IntentType.PUBLISH_CASH_FLOW_FORECAST.value,
+            IntentType.COMPUTE_TAX_PROVISION.value,
+            IntentType.UPSERT_TAX_POSITION.value,
+            IntentType.ADD_TRANSFER_PRICING_TRANSACTION.value,
+            IntentType.GENERATE_TRANSFER_PRICING_DOC.value,
+            IntentType.ENSURE_EXPENSE_POLICY.value,
+            IntentType.SUBMIT_EXPENSE_CLAIM.value,
+            IntentType.UPDATE_EXPENSE_POLICY.value,
+            IntentType.APPROVE_EXPENSE_CLAIM.value,
+            IntentType.ENSURE_MULTI_GAAP_CONFIG.value,
+            IntentType.UPDATE_MULTI_GAAP_CONFIG.value,
+            IntentType.COMPUTE_MULTI_GAAP_VIEW.value,
+            IntentType.ENSURE_STATUTORY_FILINGS.value,
+            IntentType.MARK_STATUTORY_FILING.value,
+            IntentType.ADD_STATUTORY_REGISTER_ENTRY.value,
+            IntentType.CREATE_COVENANT_DEFINITION.value,
+            IntentType.UPDATE_COVENANT_DEFINITION.value,
+            IntentType.CHECK_COVENANTS.value,
         }:
             return None
         if intent_type in {IntentType.POST_JOURNAL.value, IntentType.REVERSE_JOURNAL.value}:
@@ -116,6 +156,7 @@ class GuardEngine:
         return intent_type in {
             IntentType.CREATE_ERP_SYNC_RUN.value,
             IntentType.CREATE_NORMALIZATION_RUN.value,
+            IntentType.IMPORT_BANK_STATEMENT.value,
         }
 
     @staticmethod
@@ -134,6 +175,10 @@ class GuardEngine:
     ) -> tuple[int | None, int | None]:
         if payload.get("journal_date"):
             return int(str(payload["journal_date"])[:4]), int(str(payload["journal_date"])[5:7])
+        period_year = payload.get("period_year")
+        period_number = payload.get("period_number", payload.get("period_month"))
+        if period_year is not None and period_number is not None:
+            return int(period_year), int(period_number)
         if target_journal is not None:
             return target_journal.fiscal_year, target_journal.fiscal_period
         return None, None

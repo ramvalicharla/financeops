@@ -39,6 +39,8 @@ async def test_create_gst_return(
     assert response.status_code == 201
     data = response.json()["data"]
     assert "return_id" in data
+    assert data["intent_id"]
+    assert data["job_id"]
     assert data["return_type"] == "GSTR1"
     assert data["total_tax"] == "18000"
 
@@ -80,6 +82,8 @@ async def test_run_gst_reconciliation(
     assert recon_resp.status_code == 201
     data = recon_resp.json()["data"]
     assert "breaks_found" in data
+    assert data["intent_id"]
+    assert data["job_id"]
     assert data["breaks_found"] == 0
 
 

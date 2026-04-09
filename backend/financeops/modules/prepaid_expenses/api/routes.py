@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.prepaid_expenses.api.schemas import (
     PrepaidAmortisationEntryResponse,
@@ -16,10 +20,36 @@ from financeops.modules.prepaid_expenses.api.schemas import (
     PrepaidScheduleUpdateRequest,
 )
 from financeops.modules.prepaid_expenses.application.prepaid_service import PrepaidService
+from financeops.modules.prepaid_expenses.models import PrepaidAmortisationEntry
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/prepaid", tags=["prepaid"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    service = IntentService(session)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        target_id=target_id,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+    )
 
 
 @router.get("", response_model=Paginated[PrepaidScheduleResponse])
@@ -57,18 +87,24 @@ async def get_schedules(
 
 @router.post("", response_model=PrepaidScheduleResponse)
 async def create_schedule(
+    request: Request,
     body: PrepaidScheduleCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> PrepaidScheduleResponse:
     await assert_entity_access(session, user.tenant_id, body.entity_id, user.id, user.role)
     service = PrepaidService(session)
-    row = await service.create_schedule(
-        tenant_id=user.tenant_id,
-        entity_id=body.entity_id,
-        data=body.model_dump(exclude={"entity_id"}),
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.CREATE_PREPAID_SCHEDULE,
+        payload=body.model_dump(mode="json"),
     )
-    return PrepaidScheduleResponse.model_validate(row, from_attributes=True)
+    row = await service.get_schedule(user.tenant_id, uuid.UUID(str((result.record_refs or {})["schedule_id"])))
+    return PrepaidScheduleResponse.model_validate(row, from_attributes=True).model_copy(
+        update={"intent_id": result.intent_id, "job_id": result.job_id}
+    )
 
 
 @router.get("/{schedule_id}", response_model=PrepaidScheduleResponse)
@@ -85,6 +121,7 @@ async def get_schedule(
 
 @router.patch("/{schedule_id}", response_model=PrepaidScheduleResponse)
 async def patch_schedule(
+    request: Request,
     schedule_id: uuid.UUID,
     body: PrepaidScheduleUpdateRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -93,12 +130,18 @@ async def patch_schedule(
     service = PrepaidService(session)
     current = await service.get_schedule(user.tenant_id, schedule_id)
     await assert_entity_access(session, user.tenant_id, current.entity_id, user.id, user.role)
-    row = await service.update_schedule(
-        tenant_id=user.tenant_id,
-        schedule_id=schedule_id,
-        data=body.model_dump(exclude_unset=True),
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.UPDATE_PREPAID_SCHEDULE,
+        payload={**body.model_dump(mode="json", exclude_unset=True), "entity_id": str(current.entity_id)},
+        target_id=schedule_id,
     )
-    return PrepaidScheduleResponse.model_validate(row, from_attributes=True)
+    row = await service.get_schedule(user.tenant_id, schedule_id)
+    return PrepaidScheduleResponse.model_validate(row, from_attributes=True).model_copy(
+        update={"intent_id": result.intent_id, "job_id": result.job_id}
+    )
 
 
 @router.get("/{schedule_id}/schedule", response_model=list[PrepaidScheduleLineResponse])
@@ -140,19 +183,38 @@ async def get_entries(
 
 @router.post("/run-period", response_model=list[PrepaidAmortisationEntryResponse])
 async def run_period(
+    request: Request,
     body: PrepaidRunPeriodRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> list[PrepaidAmortisationEntryResponse]:
     await assert_entity_access(session, user.tenant_id, body.entity_id, user.id, user.role)
-    service = PrepaidService(session)
-    rows = await service.run_period(
-        tenant_id=user.tenant_id,
-        entity_id=body.entity_id,
-        period_start=body.period_start,
-        period_end=body.period_end,
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.POST_PREPAID_AMORTIZATION,
+        payload=body.model_dump(mode="json"),
     )
-    return [PrepaidAmortisationEntryResponse.model_validate(item, from_attributes=True) for item in rows]
+    entry_ids = [uuid.UUID(str(value)) for value in ((result.record_refs or {}).get("entry_ids") or [])]
+    rows = []
+    if entry_ids:
+        rows = list(
+            (
+                await session.execute(
+                    select(PrepaidAmortisationEntry).where(
+                        PrepaidAmortisationEntry.tenant_id == user.tenant_id,
+                        PrepaidAmortisationEntry.id.in_(entry_ids),
+                    )
+                )
+            ).scalars().all()
+        )
+    return [
+        PrepaidAmortisationEntryResponse.model_validate(item, from_attributes=True).model_copy(
+            update={"intent_id": result.intent_id, "job_id": result.job_id}
+        )
+        for item in rows
+    ]
 
 
 __all__ = ["router"]

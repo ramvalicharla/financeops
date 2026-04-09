@@ -9,8 +9,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
-from financeops.modules.expense_management.service import submit_claim
+from financeops.modules.expense_management.service import submit_claim as _submit_claim
 from financeops.modules.search.indexers.anomaly_indexer import index_anomaly
 from financeops.modules.search.indexers.expense_indexer import index_expense
 from financeops.modules.search.models import SearchIndexEntry
@@ -20,6 +21,21 @@ from financeops.modules.search.service import reindex_tenant, search, upsert_ind
 def _auth_headers(user) -> dict[str, str]:  # type: ignore[no-untyped-def]
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _expense_context() -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type="SUBMIT_EXPENSE_CLAIM",
+    )
+
+
+async def submit_claim(*args, **kwargs):
+    with governed_mutation_context(_expense_context()):
+        return await _submit_claim(*args, **kwargs)
 
 
 @dataclass

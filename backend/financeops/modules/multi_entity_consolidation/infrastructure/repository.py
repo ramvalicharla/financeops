@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.multi_entity_consolidation import (
     ConsolidationAdjustmentDefinition,
     ConsolidationRuleDefinition,
@@ -490,6 +491,7 @@ class MultiEntityConsolidationRepository:
         return list(result.scalars().all())
 
     async def create_run(self, **values: Any) -> MultiEntityConsolidationRun:
+        require_mutation_context("Consolidation run creation")
         return await AuditWriter.insert_financial_record(
             self._session,
             model_class=MultiEntityConsolidationRun,
@@ -578,6 +580,7 @@ class MultiEntityConsolidationRepository:
         rows: Iterable[dict[str, Any]],
         created_by: uuid.UUID,
     ) -> list[MultiEntityConsolidationMetricResult]:
+        require_mutation_context("Consolidation metric result creation")
         created: list[MultiEntityConsolidationMetricResult] = []
         for payload in rows:
             row = await AuditWriter.insert_financial_record(
@@ -605,6 +608,7 @@ class MultiEntityConsolidationRepository:
         rows: Iterable[dict[str, Any]],
         created_by: uuid.UUID,
     ) -> list[MultiEntityConsolidationVarianceResult]:
+        require_mutation_context("Consolidation variance result creation")
         created: list[MultiEntityConsolidationVarianceResult] = []
         for payload in rows:
             row = await AuditWriter.insert_financial_record(
@@ -632,6 +636,7 @@ class MultiEntityConsolidationRepository:
         rows: Iterable[dict[str, Any]],
         created_by: uuid.UUID,
     ) -> list[MultiEntityConsolidationEvidenceLink]:
+        require_mutation_context("Consolidation evidence creation")
         created: list[MultiEntityConsolidationEvidenceLink] = []
         for payload in rows:
             row = await AuditWriter.insert_financial_record(

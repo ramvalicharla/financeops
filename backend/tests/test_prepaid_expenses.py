@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import ValidationError
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.prepaid_expenses.application.amortisation_engine import calculate_slm_schedule
@@ -21,6 +22,16 @@ from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role=UserRole.finance_leader.value,
+        intent_type=intent_type,
+    )
 
 
 async def _create_entity(async_session: AsyncSession, *, tenant_id: uuid.UUID, suffix: str) -> CpEntity:
@@ -97,22 +108,23 @@ async def _create_schedule(
     coverage_end: date = date(2026, 12, 31),
     status: str = "ACTIVE",
 ):
-    return await service.create_schedule(
-        tenant_id,
-        entity_id,
-        {
-            "reference_number": reference,
-            "description": "Annual subscription",
-            "prepaid_type": "SUBSCRIPTION",
-            "vendor_name": "SaaS Vendor",
-            "invoice_number": "INV-001",
-            "total_amount": total_amount,
-            "coverage_start": coverage_start,
-            "coverage_end": coverage_end,
-            "amortisation_method": "SLM",
-            "status": status,
-        },
-    )
+    with governed_mutation_context(_governed_context("CREATE_PREPAID_SCHEDULE")):
+        return await service.create_schedule(
+            tenant_id,
+            entity_id,
+            {
+                "reference_number": reference,
+                "description": "Annual subscription",
+                "prepaid_type": "SUBSCRIPTION",
+                "vendor_name": "SaaS Vendor",
+                "invoice_number": "INV-001",
+                "total_amount": total_amount,
+                "coverage_start": coverage_start,
+                "coverage_end": coverage_end,
+                "amortisation_method": "SLM",
+                "status": status,
+            },
+        )
 
 
 @pytest.mark.asyncio
@@ -121,6 +133,29 @@ async def test_create_schedule(async_session: AsyncSession, test_user: IamUser) 
     service = PrepaidService(async_session)
     row = await _create_schedule(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
     assert row.reference_number == "PP-001"
+
+
+@pytest.mark.asyncio
+async def test_prepaid_service_blocks_direct_mutation(async_session: AsyncSession, test_user: IamUser) -> None:
+    entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="PP00")
+    service = PrepaidService(async_session)
+    with pytest.raises(ValidationError):
+        await service.create_schedule(
+            test_user.tenant_id,
+            entity.id,
+            {
+                "reference_number": "PP-BLOCK",
+                "description": "Blocked",
+                "prepaid_type": "SUBSCRIPTION",
+                "vendor_name": "Vendor",
+                "invoice_number": "INV-BLOCK",
+                "total_amount": Decimal("1200.0000"),
+                "coverage_start": date(2026, 1, 1),
+                "coverage_end": date(2026, 12, 31),
+                "amortisation_method": "SLM",
+                "status": "ACTIVE",
+            },
+        )
 
 
 @pytest.mark.asyncio
@@ -170,12 +205,13 @@ async def test_run_period_creates_entries(async_session: AsyncSession, test_user
     entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="PP03")
     service = PrepaidService(async_session)
     await _create_schedule(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
-    rows = await service.run_period(
-        tenant_id=test_user.tenant_id,
-        entity_id=entity.id,
-        period_start=date(2026, 1, 1),
-        period_end=date(2026, 1, 31),
-    )
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        rows = await service.run_period(
+            tenant_id=test_user.tenant_id,
+            entity_id=entity.id,
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 1, 31),
+        )
     assert len(rows) == 1
 
 
@@ -184,8 +220,10 @@ async def test_run_period_idempotent(async_session: AsyncSession, test_user: Iam
     entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="PP04")
     service = PrepaidService(async_session)
     schedule = await _create_schedule(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
-    first = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
-    second = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        first = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        second = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     entries = await service.get_entries(test_user.tenant_id, schedule.id, 0, 10)
     assert len(first) == 1
     assert len(second) == 1
@@ -197,7 +235,8 @@ async def test_run_period_updates_amortised_amount(async_session: AsyncSession, 
     entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="PP05")
     service = PrepaidService(async_session)
     schedule = await _create_schedule(service, tenant_id=test_user.tenant_id, entity_id=entity.id)
-    await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     refreshed = await service.get_schedule(test_user.tenant_id, schedule.id)
     assert refreshed.amortised_amount > Decimal("0")
 
@@ -215,7 +254,8 @@ async def test_run_period_sets_fully_amortised_status(async_session: AsyncSessio
         coverage_start=date(2026, 1, 1),
         coverage_end=date(2026, 1, 31),
     )
-    await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     refreshed = await service.get_schedule(test_user.tenant_id, schedule.id)
     assert refreshed.status == "FULLY_AMORTISED"
 
@@ -231,7 +271,8 @@ async def test_run_period_skips_cancelled_schedules(async_session: AsyncSession,
         reference="PP-007",
         status="CANCELLED",
     )
-    rows = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        rows = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     assert len(rows) == 0
 
 
@@ -247,7 +288,8 @@ async def test_get_schedule_shows_past_and_future(async_session: AsyncSession, t
         coverage_start=date(2026, 1, 1),
         coverage_end=date(2026, 3, 31),
     )
-    await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     rows = await service.get_amortisation_schedule(test_user.tenant_id, schedule.id)
     assert any(item["is_actual"] for item in rows)
     assert any(not item["is_actual"] for item in rows)
@@ -265,8 +307,10 @@ async def test_get_entries_pagination_respects_limit(async_session: AsyncSession
         coverage_start=date(2026, 1, 1),
         coverage_end=date(2026, 4, 30),
     )
-    await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
-    await service.run_period(test_user.tenant_id, entity.id, date(2026, 2, 1), date(2026, 2, 28))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        await service.run_period(test_user.tenant_id, entity.id, date(2026, 2, 1), date(2026, 2, 28))
     payload = await service.get_entries(test_user.tenant_id, schedule.id, skip=0, limit=1)
     assert len(payload["items"]) == 1
     assert payload["has_more"] is True
@@ -294,7 +338,8 @@ async def test_run_period_ignores_outside_coverage(async_session: AsyncSession, 
         coverage_start=date(2026, 4, 1),
         coverage_end=date(2026, 4, 30),
     )
-    rows = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        rows = await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     assert len(rows) == 0
 
 
@@ -303,11 +348,12 @@ async def test_schedule_update_non_financial_fields_allowed(async_session: Async
     entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="PP12")
     service = PrepaidService(async_session)
     schedule = await _create_schedule(service, tenant_id=test_user.tenant_id, entity_id=entity.id, reference="PP-013")
-    updated = await service.update_schedule(
-        tenant_id=test_user.tenant_id,
-        schedule_id=schedule.id,
-        data={"description": "Updated description"},
-    )
+    with governed_mutation_context(_governed_context("UPDATE_PREPAID_SCHEDULE")):
+        updated = await service.update_schedule(
+            tenant_id=test_user.tenant_id,
+            schedule_id=schedule.id,
+            data={"description": "Updated description"},
+        )
     assert updated.description == "Updated description"
 
 
@@ -316,13 +362,15 @@ async def test_schedule_update_financial_fields_blocked_after_entries(async_sess
     entity = await _create_entity(async_session, tenant_id=test_user.tenant_id, suffix="PP13")
     service = PrepaidService(async_session)
     schedule = await _create_schedule(service, tenant_id=test_user.tenant_id, entity_id=entity.id, reference="PP-014")
-    await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
+    with governed_mutation_context(_governed_context("POST_PREPAID_AMORTIZATION")):
+        await service.run_period(test_user.tenant_id, entity.id, date(2026, 1, 1), date(2026, 1, 31))
     with pytest.raises(ValidationError):
-        await service.update_schedule(
-            tenant_id=test_user.tenant_id,
-            schedule_id=schedule.id,
-            data={"total_amount": Decimal("999.0000")},
-        )
+        with governed_mutation_context(_governed_context("UPDATE_PREPAID_SCHEDULE")):
+            await service.update_schedule(
+                tenant_id=test_user.tenant_id,
+                schedule_id=schedule.id,
+                data={"total_amount": Decimal("999.0000")},
+            )
 
 
 @pytest.mark.asyncio

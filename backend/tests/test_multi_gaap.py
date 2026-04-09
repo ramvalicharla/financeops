@@ -1,22 +1,54 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import uuid
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.models.users import IamUser
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.multi_gaap.models import MultiGAAPRun
-from financeops.modules.multi_gaap.service import compute_gaap_view, get_gaap_comparison, get_or_create_config, update_config
+from financeops.modules.multi_gaap.service import (
+    compute_gaap_view as _compute_gaap_view,
+    get_gaap_comparison,
+    get_or_create_config as _get_or_create_config,
+    update_config as _update_config,
+)
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
+
+
+def _governed_context(intent_type: str) -> MutationContext:
+    return MutationContext(
+        intent_id=uuid.uuid4(),
+        job_id=uuid.uuid4(),
+        actor_user_id=None,
+        actor_role="finance_leader",
+        intent_type=intent_type,
+    )
+
+
+async def get_or_create_config(*args, **kwargs):
+    with governed_mutation_context(_governed_context("ENSURE_MULTI_GAAP_CONFIG")):
+        return await _get_or_create_config(*args, **kwargs)
+
+
+async def update_config(*args, **kwargs):
+    with governed_mutation_context(_governed_context("UPDATE_MULTI_GAAP_CONFIG")):
+        return await _update_config(*args, **kwargs)
+
+
+async def compute_gaap_view(*args, **kwargs):
+    with governed_mutation_context(_governed_context("COMPUTE_MULTI_GAAP_VIEW")):
+        return await _compute_gaap_view(*args, **kwargs)
 
 
 async def _seed_budget(async_session: AsyncSession, test_user: IamUser, annual_total: Decimal) -> None:

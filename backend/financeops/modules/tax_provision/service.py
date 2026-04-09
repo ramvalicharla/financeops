@@ -9,6 +9,7 @@ from sqlalchemy import and_, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.mis_manager import MisDataSnapshot, MisNormalizedLine
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.tax_provision.models import TaxPosition, TaxProvisionRun
@@ -109,6 +110,7 @@ async def upsert_tax_position(
     tax_rate: Decimal,
     description: str | None = None,
 ) -> TaxPosition:
+    require_mutation_context("Tax position upsert")
     now = datetime.now(UTC)
     carrying = _money(carrying_amount)
     base = _money(tax_base)
@@ -138,6 +140,7 @@ async def upsert_tax_position(
             created_at=now,
             updated_at=now,
         )
+        apply_mutation_linkage(row)
         session.add(row)
     else:
         row.position_type = position_type
@@ -163,6 +166,7 @@ async def compute_tax_provision(
     requester_user_id: uuid.UUID | None = None,
     requester_user_role: str | None = None,
 ) -> TaxProvisionRun:
+    require_mutation_context("Tax provision computation")
     if entity_id is not None and requester_user_id is not None and requester_user_role is not None:
         await assert_entity_access(
             session=session,
@@ -244,6 +248,7 @@ async def compute_tax_provision(
         effective_tax_rate=effective_rate,
         created_by=created_by,
     )
+    apply_mutation_linkage(row)
     session.add(row)
     await session.flush()
     return row

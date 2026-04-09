@@ -53,6 +53,8 @@ class GstReturn(FinancialBase):
     sgst_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     cess_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
     total_tax: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     filing_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # status: draft / filed / reconciled
@@ -94,6 +96,8 @@ class GstReconItem(FinancialBase):
     value_a: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     value_b: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
     difference: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     # status: open / explained / resolved
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

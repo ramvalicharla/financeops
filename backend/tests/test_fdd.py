@@ -29,6 +29,7 @@ from financeops.modules.fdd.service import (
     get_engagement_report,
     run_engagement,
 )
+from financeops.modules.working_capital.models import WCSnapshot
 from financeops.services.credit_service import add_credits
 
 
@@ -54,6 +55,44 @@ async def _create_default_engagement(async_session: AsyncSession, user: IamUser)
         ],
         created_by=user.id,
     )
+
+
+async def _seed_wc_snapshot(
+    async_session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    period: str,
+    nwc: Decimal,
+    dso: Decimal = Decimal("10.00"),
+    dpo: Decimal = Decimal("8.00"),
+) -> None:
+    year, month = map(int, period.split("-"))
+    async_session.add(
+        WCSnapshot(
+            tenant_id=tenant_id,
+            period=period,
+            entity_id=None,
+            snapshot_date=date(year, month, 28),
+            ar_total=Decimal("100.00"),
+            ar_current=Decimal("40.00"),
+            ar_30=Decimal("30.00"),
+            ar_60=Decimal("20.00"),
+            ar_90=Decimal("10.00"),
+            dso_days=dso,
+            ap_total=Decimal("50.00"),
+            ap_current=Decimal("20.00"),
+            ap_30=Decimal("15.00"),
+            ap_60=Decimal("10.00"),
+            ap_90=Decimal("5.00"),
+            dpo_days=dpo,
+            inventory_days=Decimal("0.00"),
+            ccc_days=dso - dpo,
+            net_working_capital=nwc,
+            current_ratio=Decimal("1.5000"),
+            quick_ratio=Decimal("1.2000"),
+        )
+    )
+    await async_session.flush()
 
 
 def _contains_float(value: Any) -> bool:
@@ -216,17 +255,10 @@ async def test_qoe_ebitda_cagr_is_decimal(async_session: AsyncSession, test_user
 async def test_wc_analysis_nwc_peg_is_decimal(
     async_session: AsyncSession,
     test_user: IamUser,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def _fake_snapshot(*args, **kwargs):  # noqa: ANN001, ANN002
-        del args, kwargs
-        return SimpleNamespace(
-            net_working_capital=Decimal("100.00"),
-            dso_days=Decimal("10.00"),
-            dpo_days=Decimal("8.00"),
-        )
-
-    monkeypatch.setattr(working_capital_analysis, "compute_wc_snapshot", _fake_snapshot)
+    await _seed_wc_snapshot(async_session, tenant_id=test_user.tenant_id, period="2025-01", nwc=Decimal("100.00"))
+    await _seed_wc_snapshot(async_session, tenant_id=test_user.tenant_id, period="2025-02", nwc=Decimal("100.00"))
+    await _seed_wc_snapshot(async_session, tenant_id=test_user.tenant_id, period="2025-03", nwc=Decimal("100.00"))
     engagement = FDDEngagement(
         tenant_id=test_user.tenant_id,
         engagement_name="wc",
@@ -244,20 +276,10 @@ async def test_wc_analysis_nwc_peg_is_decimal(
 async def test_wc_analysis_average_nwc_correct(
     async_session: AsyncSession,
     test_user: IamUser,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    values = iter([Decimal("100.00"), Decimal("120.00"), Decimal("110.00")])
-
-    async def _fake_snapshot(*args, **kwargs):  # noqa: ANN001, ANN002
-        del args, kwargs
-        value = next(values)
-        return SimpleNamespace(
-            net_working_capital=value,
-            dso_days=Decimal("10.00"),
-            dpo_days=Decimal("8.00"),
-        )
-
-    monkeypatch.setattr(working_capital_analysis, "compute_wc_snapshot", _fake_snapshot)
+    await _seed_wc_snapshot(async_session, tenant_id=test_user.tenant_id, period="2025-01", nwc=Decimal("100.00"))
+    await _seed_wc_snapshot(async_session, tenant_id=test_user.tenant_id, period="2025-02", nwc=Decimal("120.00"))
+    await _seed_wc_snapshot(async_session, tenant_id=test_user.tenant_id, period="2025-03", nwc=Decimal("110.00"))
     engagement = FDDEngagement(
         tenant_id=test_user.tenant_id,
         engagement_name="wc",

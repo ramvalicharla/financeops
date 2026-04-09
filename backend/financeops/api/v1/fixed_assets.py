@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
-from financeops.config import settings
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.platform.services.enforcement.interceptors import (
     validate_optional_control_plane_token,
@@ -24,7 +25,6 @@ from financeops.schemas.fixed_assets import (
     FixedAssetDrillResponse,
 )
 from financeops.services.fixed_assets import (
-    create_run,
     get_asset_drilldown,
     get_depreciation_drilldown,
     get_disposal_drilldown,
@@ -33,15 +33,32 @@ from financeops.services.fixed_assets import (
     get_results,
     get_run_status,
 )
-from financeops.temporal.client import get_temporal_client
-from financeops.temporal.fixed_assets_workflows import (
-    FixedAssetsWorkflow,
-    FixedAssetsWorkflowInput,
-)
 
 router = APIRouter(
     dependencies=[Depends(validate_optional_control_plane_token(module_code="fixed_assets"))]
 )
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    service = IntentService(session)
+    return await service.submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 @router.post("/run", response_model=FarRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -52,36 +69,26 @@ async def start_fixed_assets_run_endpoint(
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
     correlation_id = str(getattr(request.state, "correlation_id", "") or "")
-    run = await create_run(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        initiated_by=user.id,
-        request_payload=body.model_dump(mode="json"),
-        correlation_id=correlation_id,
+        user=user,
+        intent_type=IntentType.RUN_FIXED_ASSET_WORKFLOW,
+        payload={
+            "request_payload": body.model_dump(mode="json"),
+            "period_year": body.period_year,
+            "period_number": body.period_month,
+            "correlation_id": correlation_id,
+        },
     )
-    await session.flush()
-
-    if run["created_new"]:
-        temporal_client = await get_temporal_client()
-        await temporal_client.start_workflow(
-            FixedAssetsWorkflow.run,
-            FixedAssetsWorkflowInput(
-                run_id=str(run["run_id"]),
-                tenant_id=str(user.tenant_id),
-                correlation_id=correlation_id,
-                requested_by=str(user.id),
-                config_hash=str(run["request_signature"]),
-            ),
-            id=str(run["workflow_id"]),
-            task_queue=settings.TEMPORAL_TASK_QUEUE,
-            execution_timeout=timedelta(minutes=20),
-        )
-
+    record_refs = result.record_refs or {}
     return {
-        "run_id": str(run["run_id"]),
-        "workflow_id": str(run["workflow_id"]),
-        "status": "accepted" if run["created_new"] else str(run["status"]),
+        "run_id": str(record_refs["run_id"]),
+        "workflow_id": str(record_refs["workflow_id"]),
+        "status": str(record_refs.get("status") or "accepted"),
         "correlation_id": correlation_id,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id else None,
     }
 
 

@@ -4,29 +4,54 @@ import uuid
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.expense_management.models import ExpenseApproval, ExpenseClaim, ExpensePolicy
 from financeops.modules.expense_management.service import (
     JustificationRequiredError,
     PolicyViolationError,
-    _get_or_create_policy,
-    approve_claim,
+    get_policy as get_policy_record,
     get_expense_analytics,
     resolve_claim_status,
-    submit_claim,
 )
 from financeops.modules.notifications.service import send_notification
 from financeops.platform.services.tenancy.entity_access import assert_entity_access, get_entities_for_user
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+        target_id=target_id,
+    )
 
 
 class SubmitExpenseRequest(BaseModel):
@@ -119,6 +144,7 @@ async def _resolve_entity_for_user(
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def submit_expense(
+    request: Request,
     body: SubmitExpenseRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -126,30 +152,36 @@ async def submit_expense(
     amount = _decimal_or_422(body.amount, "amount")
     resolved_entity_id = await _resolve_entity_for_user(session, user, body.entity_id)
     try:
-        claim = await submit_claim(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            submitted_by=user.id,
-            vendor_name=body.vendor_name,
-            description=body.description,
-            category=body.category,
-            amount=amount,
-            currency=body.currency,
-            claim_date=body.claim_date,
-            has_receipt=body.has_receipt,
-            receipt_url=body.receipt_url,
-            justification=body.justification,
-            location_id=body.location_id,
-            cost_centre_id=body.cost_centre_id,
-            entity_id=resolved_entity_id,
+            user=user,
+            intent_type=IntentType.SUBMIT_EXPENSE_CLAIM,
+            payload={
+                **body.model_dump(mode="json", exclude_none=True),
+                "entity_id": str(resolved_entity_id),
+                "amount": str(amount),
+            },
         )
     except PolicyViolationError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
     except JustificationRequiredError as exc:
         raise HTTPException(status_code=422, detail=exc.message) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
 
-    await session.flush()
-    return await _serialize_claim(session, claim)
+    claim = (
+        await session.execute(
+            select(ExpenseClaim).where(
+                ExpenseClaim.id == uuid.UUID(str((result.record_refs or {})["claim_id"])),
+                ExpenseClaim.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = await _serialize_claim(session, claim)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("")
@@ -243,10 +275,22 @@ async def analytics(
 
 @router.get("/policy")
 async def get_policy(
+    request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    policy = await _get_or_create_policy(session, user.tenant_id)
+    policy = await get_policy_record(session, user.tenant_id)
+    if policy is None:
+        await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.ENSURE_EXPENSE_POLICY,
+            payload={},
+        )
+        policy = await get_policy_record(session, user.tenant_id)
+    if policy is None:
+        raise HTTPException(status_code=500, detail="Expense policy was not created")
     return {
         "id": str(policy.id),
         "tenant_id": str(policy.tenant_id),
@@ -262,30 +306,38 @@ async def get_policy(
 
 @router.patch("/policy")
 async def patch_policy(
+    request: Request,
     body: PolicyPatchRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    policy = await _get_or_create_policy(session, user.tenant_id)
-
+    updates: dict[str, object] = {}
     if body.meal_limit_per_day is not None:
-        policy.meal_limit_per_day = _decimal_or_422(body.meal_limit_per_day, "meal_limit_per_day")
+        updates["meal_limit_per_day"] = str(_decimal_or_422(body.meal_limit_per_day, "meal_limit_per_day"))
     if body.travel_limit_per_night is not None:
-        policy.travel_limit_per_night = _decimal_or_422(body.travel_limit_per_night, "travel_limit_per_night")
+        updates["travel_limit_per_night"] = str(_decimal_or_422(body.travel_limit_per_night, "travel_limit_per_night"))
     if body.receipt_required_above is not None:
-        policy.receipt_required_above = _decimal_or_422(body.receipt_required_above, "receipt_required_above")
+        updates["receipt_required_above"] = str(_decimal_or_422(body.receipt_required_above, "receipt_required_above"))
     if body.auto_approve_below is not None:
-        policy.auto_approve_below = _decimal_or_422(body.auto_approve_below, "auto_approve_below")
+        updates["auto_approve_below"] = str(_decimal_or_422(body.auto_approve_below, "auto_approve_below"))
     if body.weekend_flag_enabled is not None:
-        policy.weekend_flag_enabled = body.weekend_flag_enabled
+        updates["weekend_flag_enabled"] = body.weekend_flag_enabled
     if body.round_number_flag_enabled is not None:
-        policy.round_number_flag_enabled = body.round_number_flag_enabled
+        updates["round_number_flag_enabled"] = body.round_number_flag_enabled
     if body.personal_merchant_keywords is not None:
-        policy.personal_merchant_keywords = body.personal_merchant_keywords
+        updates["personal_merchant_keywords"] = body.personal_merchant_keywords
 
-    policy.updated_at = datetime.now(UTC)
-    await session.flush()
-    return await get_policy(session=session, user=user)
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.UPDATE_EXPENSE_POLICY,
+        payload={"updates": updates},
+    )
+    payload = await get_policy(request=request, session=session, user=user)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/{claim_id}")
@@ -341,6 +393,7 @@ async def get_expense_claim(
 
 @router.post("/{claim_id}/approve")
 async def approve_expense_claim(
+    request: Request,
     claim_id: uuid.UUID,
     body: ApproveExpenseRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -350,14 +403,16 @@ async def approve_expense_claim(
         raise HTTPException(status_code=403, detail="Manager or Finance Leader role required")
 
     try:
-        payload = await approve_claim(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            claim_id=claim_id,
-            approver_id=user.id,
-            approver_role=user.role.value,
-            action=body.action,
-            comments=body.comments,
+            user=user,
+            intent_type=IntentType.APPROVE_EXPENSE_CLAIM,
+            payload={
+                "claim_id": str(claim_id),
+                "action": body.action,
+                "comments": body.comments,
+            },
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
@@ -387,11 +442,13 @@ async def approve_expense_claim(
                 title=f"Expense {action_value}: {claim.vendor_name}",
                 body=f"Your expense claim has been {action_value}.",
                 action_url=f"/expenses/{claim.id}",
-                metadata={"claim_id": str(claim.id), "status": payload.get("status")},
+                metadata={"claim_id": str(claim.id), "status": (result.record_refs or {}).get("status")},
             )
         except Exception:
             pass
 
-    await session.flush()
+    payload = dict(result.record_refs or {})
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
     return payload
 

@@ -71,6 +71,8 @@ class FaAssetClass(Base):
         nullable=True,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), default=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -141,6 +143,8 @@ class FaAsset(Base):
     disposal_proceeds: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     gaap_overrides: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"), default=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -192,6 +196,8 @@ class FaDepreciationRun(Base):
     accumulated_dep: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     run_reference: Mapped[str] = mapped_column(String(100), nullable=False)
     is_reversal: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), default=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -232,6 +238,8 @@ class FaRevaluation(Base):
     fair_value: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     revaluation_surplus: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     method: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
@@ -272,6 +280,8 @@ class FaImpairment(Base):
     fvlcts: Mapped[Decimal | None] = mapped_column(Numeric(20, 4), nullable=True)
     impairment_loss: Mapped[Decimal] = mapped_column(Numeric(20, 4), nullable=False)
     discount_rate: Mapped[Decimal | None] = mapped_column(Numeric(7, 4), nullable=True)
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 

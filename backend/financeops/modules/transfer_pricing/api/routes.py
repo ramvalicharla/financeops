@@ -4,12 +4,15 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.transfer_pricing.models import ICTransaction, TransferPricingDoc
 from financeops.modules.transfer_pricing.service import (
@@ -22,6 +25,27 @@ from financeops.modules.transfer_pricing.service import (
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/transfer-pricing", tags=["transfer_pricing"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class AddTransactionRequest(BaseModel):
@@ -100,26 +124,30 @@ async def applicability_endpoint(
 
 @router.post("/transactions")
 async def add_transaction_endpoint(
+    request: Request,
     body: AddTransactionRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    row = await add_transaction(
+    result = await _submit_intent(
+        request,
         session,
-        tenant_id=user.tenant_id,
-        fiscal_year=body.fiscal_year,
-        transaction_type=body.transaction_type,
-        related_party_name=body.related_party_name,
-        related_party_country=body.related_party_country,
-        transaction_amount=body.transaction_amount,
-        currency=body.currency,
-        pricing_method=body.pricing_method,
-        is_international=body.is_international,
-        arm_length_price=body.arm_length_price,
-        actual_price=body.actual_price,
-        description=body.description,
+        user=user,
+        intent_type=IntentType.ADD_TRANSFER_PRICING_TRANSACTION,
+        payload=body.model_dump(mode="json"),
     )
-    return _serialize_txn(row)
+    row = (
+        await session.execute(
+            select(ICTransaction).where(
+                ICTransaction.id == uuid.UUID(str((result.record_refs or {})["transaction_id"])),
+                ICTransaction.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_txn(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/transactions", response_model=Paginated[dict])
@@ -151,12 +179,30 @@ async def list_transactions_endpoint(
 
 @router.post("/generate-3ceb")
 async def generate_3ceb_endpoint(
+    request: Request,
     body: Generate3CEBRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    row = await generate_form_3ceb(session, tenant_id=user.tenant_id, fiscal_year=body.fiscal_year, created_by=user.id)
-    return _serialize_doc(row)
+    result = await _submit_intent(
+        request,
+        session,
+        user=user,
+        intent_type=IntentType.GENERATE_TRANSFER_PRICING_DOC,
+        payload=body.model_dump(mode="json"),
+    )
+    row = (
+        await session.execute(
+            select(TransferPricingDoc).where(
+                TransferPricingDoc.id == uuid.UUID(str((result.record_refs or {})["document_id"])),
+                TransferPricingDoc.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_doc(row)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/documents", response_model=Paginated[dict])

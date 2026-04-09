@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from openpyxl import Workbook
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -13,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
 from financeops.modules.budgeting.service import (
@@ -26,6 +29,27 @@ from financeops.platform.services.tenancy.entity_access import assert_entity_acc
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/budget", tags=["budgeting"])
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+        ),
+    )
 
 
 class CreateVersionRequest(BaseModel):
@@ -124,23 +148,33 @@ def _serialize_vs_actual(payload: dict) -> dict:
 
 @router.post("/versions", status_code=status.HTTP_201_CREATED)
 async def create_version(
+    request: Request,
     body: CreateVersionRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
     try:
-        version = await create_budget_version(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            fiscal_year=body.fiscal_year,
-            version_name=body.version_name,
-            created_by=user.id,
-            copy_from_version_id=body.copy_from_version_id,
+            user=user,
+            intent_type=IntentType.CREATE_BUDGET_VERSION,
+            payload=body.model_dump(mode="json"),
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
-    await session.flush()
-    return _serialize_version(version)
+    version = (
+        await session.execute(
+            select(BudgetVersion).where(
+                BudgetVersion.id == uuid.UUID(str((result.record_refs or {})["version_id"])),
+                BudgetVersion.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_version(version)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/versions")
@@ -199,6 +233,7 @@ async def get_version(
 
 @router.post("/versions/{version_id}/lines", status_code=status.HTTP_201_CREATED)
 async def add_line(
+    request: Request,
     version_id: uuid.UUID,
     body: AddLineRequest,
     session: AsyncSession = Depends(get_async_session),
@@ -213,43 +248,64 @@ async def add_line(
     )
     monthly_values = [_to_decimal(value, "monthly_values") for value in body.monthly_values]
     try:
-        line = await upsert_budget_line(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            budget_version_id=version_id,
-            mis_line_item=body.mis_line_item,
-            mis_category=body.mis_category,
-            monthly_values=monthly_values,
-            basis=body.basis,
-            entity_id=body.entity_id,
-            requester_user_id=user.id,
-            requester_user_role=user.role.value,
+            user=user,
+            intent_type=IntentType.UPSERT_BUDGET_LINE,
+            payload={
+                **body.model_dump(mode="json"),
+                "budget_version_id": str(version_id),
+                "monthly_values": [format(value, "f") for value in monthly_values],
+            },
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
     except (ValidationError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(getattr(exc, "message", str(exc)))) from exc
-    await session.flush()
-    return _serialize_line(line)
+    line = (
+        await session.execute(
+            select(BudgetLineItem).where(
+                BudgetLineItem.id == uuid.UUID(str((result.record_refs or {})["line_id"])),
+                BudgetLineItem.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_line(line)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.post("/versions/{version_id}/approve")
 async def approve(
+    request: Request,
     version_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
     try:
-        version = await approve_budget(
+        result = await _submit_intent(
+            request,
             session,
-            tenant_id=user.tenant_id,
-            budget_version_id=version_id,
-            approved_by=user.id,
+            user=user,
+            intent_type=IntentType.APPROVE_BUDGET_VERSION,
+            payload={"budget_version_id": str(version_id)},
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
-    await session.flush()
-    return _serialize_version(version)
+    version = (
+        await session.execute(
+            select(BudgetVersion).where(
+                BudgetVersion.id == uuid.UUID(str((result.record_refs or {})["version_id"])),
+                BudgetVersion.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_version(version)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
 
 
 @router.get("/vs-actual")
