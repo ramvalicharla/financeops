@@ -41,6 +41,7 @@ from financeops.modules.fixed_assets import models as fixed_assets_models  # noq
 from financeops.modules.prepaid_expenses import models as prepaid_expenses_models  # noqa: F401
 from financeops.modules.invoice_classifier import models as invoice_classifier_models  # noqa: F401
 from financeops.modules.locations import models as locations_models  # noqa: F401
+from financeops.db.models import control_plane_phase4 as control_plane_phase4_models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

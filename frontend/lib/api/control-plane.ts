@@ -92,6 +92,83 @@ export interface AirlockMutationResult {
   checksum_sha256: string | null
 }
 
+export interface TimelineEvent {
+  timeline_type: string
+  occurred_at: string
+  subject_type: string | null
+  subject_id: string | null
+  module_key: string | null
+  entity_id?: string | null
+  actor_user_id?: string | null
+  payload: Record<string, unknown> | null
+}
+
+export interface GovernanceSnapshotInput {
+  snapshot_input_id: string
+  input_type: string
+  input_ref: string
+  input_hash: string | null
+  input_payload: Record<string, unknown> | null
+}
+
+export interface GovernanceSnapshot {
+  snapshot_id: string
+  module_key: string
+  snapshot_kind: string
+  subject_type: string
+  subject_id: string
+  entity_id: string | null
+  version_no: number
+  determinism_hash: string
+  replay_supported: boolean
+  trigger_event: string | null
+  snapshot_at: string | null
+  payload: Record<string, unknown> | null
+  comparison_payload: Record<string, unknown> | null
+  inputs?: GovernanceSnapshotInput[]
+  metadata?: Record<string, unknown>
+  replay?: Record<string, unknown>
+}
+
+export interface SnapshotComparison {
+  left_snapshot_id: string
+  right_snapshot_id: string
+  same_subject: boolean
+  same_hash: boolean
+  left_hash: string
+  right_hash: string
+  left_version: number
+  right_version: number
+  comparison: {
+    left: Record<string, unknown> | null
+    right: Record<string, unknown> | null
+  }
+}
+
+export interface LineageGraph {
+  subject_type: string
+  subject_id: string
+  forward: {
+    root_run_id?: string
+    nodes: Array<Record<string, unknown>>
+    edges: Array<Record<string, unknown>>
+  }
+  reverse: {
+    root_run_id?: string
+    nodes: Array<Record<string, unknown>>
+    edges: Array<Record<string, unknown>>
+  }
+}
+
+export interface ImpactSummary {
+  subject_type: string
+  subject_id: string
+  impacted_count: number
+  impacted_reports_count: number
+  warning: string
+  impacted_nodes: Array<Record<string, unknown>>
+}
+
 export const listControlPlaneEntities = async (): Promise<ControlPlaneEntity[]> => {
   const response = await apiClient.get<ControlPlaneEntity[]>("/api/v1/platform/entities")
   return response.data
@@ -176,4 +253,118 @@ export const rejectAirlockItem = async (
     { reason },
   )
   return response.data
+}
+
+export const listTimeline = async (params?: {
+  entity_id?: string
+  subject_type?: string
+  subject_id?: string
+  limit?: number
+}): Promise<TimelineEvent[]> => {
+  const search = new URLSearchParams()
+  if (params?.entity_id) search.set("entity_id", params.entity_id)
+  if (params?.subject_type) search.set("subject_type", params.subject_type)
+  if (params?.subject_id) search.set("subject_id", params.subject_id)
+  if (params?.limit !== undefined) search.set("limit", String(params.limit))
+  const suffix = search.toString()
+  const response = await apiClient.get<TimelineEvent[]>(
+    `/api/v1/platform/control-plane/timeline${suffix ? `?${suffix}` : ""}`,
+  )
+  return response.data
+}
+
+export const exportTimeline = async (params?: {
+  entity_id?: string
+  subject_type?: string
+  subject_id?: string
+  limit?: number
+}): Promise<Blob> => {
+  const search = new URLSearchParams()
+  if (params?.entity_id) search.set("entity_id", params.entity_id)
+  if (params?.subject_type) search.set("subject_type", params.subject_type)
+  if (params?.subject_id) search.set("subject_id", params.subject_id)
+  if (params?.limit !== undefined) search.set("limit", String(params.limit))
+  const suffix = search.toString()
+  const response = await apiClient.get(
+    `/api/v1/platform/control-plane/timeline/export${suffix ? `?${suffix}` : ""}`,
+    { responseType: "blob" },
+  )
+  return response.data as Blob
+}
+
+export const getDeterminism = async (subjectType: string, subjectId: string): Promise<GovernanceSnapshot> => {
+  const search = new URLSearchParams({ subject_type: subjectType, subject_id: subjectId })
+  const response = await apiClient.get<GovernanceSnapshot>(
+    `/api/v1/platform/control-plane/determinism?${search.toString()}`,
+  )
+  return response.data
+}
+
+export const getLineage = async (subjectType: string, subjectId: string): Promise<LineageGraph> => {
+  const search = new URLSearchParams({ subject_type: subjectType, subject_id: subjectId })
+  const response = await apiClient.get<LineageGraph>(
+    `/api/v1/platform/control-plane/lineage?${search.toString()}`,
+  )
+  return response.data
+}
+
+export const getImpact = async (subjectType: string, subjectId: string): Promise<ImpactSummary> => {
+  const search = new URLSearchParams({ subject_type: subjectType, subject_id: subjectId })
+  const response = await apiClient.get<ImpactSummary>(
+    `/api/v1/platform/control-plane/impact?${search.toString()}`,
+  )
+  return response.data
+}
+
+export const listSnapshots = async (params?: {
+  entity_id?: string
+  subject_type?: string
+  limit?: number
+}): Promise<GovernanceSnapshot[]> => {
+  const search = new URLSearchParams()
+  if (params?.entity_id) search.set("entity_id", params.entity_id)
+  if (params?.subject_type) search.set("subject_type", params.subject_type)
+  if (params?.limit !== undefined) search.set("limit", String(params.limit))
+  const suffix = search.toString()
+  const response = await apiClient.get<GovernanceSnapshot[]>(
+    `/api/v1/platform/control-plane/snapshots${suffix ? `?${suffix}` : ""}`,
+  )
+  return response.data
+}
+
+export const createManualSnapshot = async (
+  subjectType: string,
+  subjectId: string,
+): Promise<GovernanceSnapshot> => {
+  const response = await apiClient.post<GovernanceSnapshot>(
+    "/api/v1/platform/control-plane/snapshots/manual",
+    { subject_type: subjectType, subject_id: subjectId },
+  )
+  return response.data
+}
+
+export const getSnapshot = async (snapshotId: string): Promise<GovernanceSnapshot> => {
+  const response = await apiClient.get<GovernanceSnapshot>(
+    `/api/v1/platform/control-plane/snapshots/${snapshotId}`,
+  )
+  return response.data
+}
+
+export const compareSnapshots = async (
+  snapshotId: string,
+  otherSnapshotId: string,
+): Promise<SnapshotComparison> => {
+  const response = await apiClient.get<SnapshotComparison>(
+    `/api/v1/platform/control-plane/snapshots/${snapshotId}/compare/${otherSnapshotId}`,
+  )
+  return response.data
+}
+
+export const getAuditPack = async (subjectType: string, subjectId: string): Promise<Blob> => {
+  const search = new URLSearchParams({ subject_type: subjectType, subject_id: subjectId })
+  const response = await apiClient.get(
+    `/api/v1/platform/control-plane/audit-pack?${search.toString()}`,
+    { responseType: "blob" },
+  )
+  return response.data as Blob
 }

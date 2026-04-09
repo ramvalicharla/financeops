@@ -174,6 +174,17 @@ class BoardPackGenerateService:
                 completed_at=datetime.now(UTC),
                 chain_hash=assembled_pack.chain_hash,
             )
+            mutation_context = get_mutation_context()
+            from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+            await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+                tenant_id=tenant_id,
+                actor_user_id=(mutation_context.actor_user_id if mutation_context else None) or running_run.triggered_by,
+                actor_role=(mutation_context.actor_role if mutation_context else None) or "system",
+                subject_type="board_pack_run",
+                subject_id=str(running_run.id),
+                trigger_event="board_pack_generation_complete",
+            )
             await db.commit()
             return assembled_pack
         except Exception as exc:

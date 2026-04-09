@@ -11,6 +11,8 @@ import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { Topbar } from "@/components/layout/Topbar"
 import { IntentPanel } from "@/components/panels/IntentPanel"
 import { JobPanel } from "@/components/panels/JobPanel"
+import { TimelinePanel } from "@/components/panels/TimelinePanel"
+import { DeterminismPanel } from "@/components/panels/DeterminismPanel"
 import { SearchProvider } from "@/components/search/SearchProvider"
 
 export default async function DashboardLayout({
@@ -90,6 +92,8 @@ export default async function DashboardLayout({
           </main>
           <IntentPanel />
           <JobPanel />
+          <TimelinePanel />
+          <DeterminismPanel />
         </SearchProvider>
       </div>
     </div>

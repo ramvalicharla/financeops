@@ -144,6 +144,7 @@ export function Topbar({
   const dismissBillingWarning = useUIStore((state) => state.dismissBillingWarning)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
+  const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const entitiesQuery = useQuery({
     queryKey: ["control-plane-entities"],
     queryFn: listControlPlaneEntities,
@@ -295,6 +296,17 @@ export function Topbar({
                 type="button"
                 onClick={() => {
                   setMobileActionsOpen(false)
+                  openTimelinePanel()
+                }}
+                className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
+              >
+                <span>Timeline</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileActionsOpen(false)
                   openJobPanel()
                 }}
                 className="flex w-full items-center justify-between rounded-md border border-border px-3 py-2 text-sm text-muted-foreground hover:text-foreground"
@@ -343,6 +355,14 @@ export function Topbar({
               {activeEntity?.entity_name ?? "No active entity"}
             </p>
           </div>
+
+          <button
+            type="button"
+            onClick={() => openTimelinePanel()}
+            className="rounded-md border border-border px-3 py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            Timeline
+          </button>
 
           <button
             type="button"

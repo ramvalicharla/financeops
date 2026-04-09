@@ -435,6 +435,16 @@ async def lock_period_endpoint(
             entity_id=body.org_entity_id,
             payload=payload,
         )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        await Phase4ControlPlaneService(session).ensure_snapshot_for_subject(
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type="accounting_period",
+            subject_id=str(payload["period_id"]),
+            trigger_event="period_close",
+        )
         observe_governance_operation(operation="lock_period", status="success")
         return payload
     except Exception:
@@ -510,6 +520,16 @@ async def unlock_period_endpoint(
             actor=actor,
             entity_id=body.org_entity_id,
             payload=payload,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        await Phase4ControlPlaneService(session).ensure_snapshot_for_subject(
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type="accounting_period",
+            subject_id=str(payload["period_id"]),
+            trigger_event="period_reopen",
         )
         observe_governance_operation(operation="unlock_period", status="success")
         return payload

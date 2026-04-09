@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from financeops.db.models.intent_pipeline import (
     CanonicalJob,
 )
 from financeops.db.models.users import IamUser
+from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 from financeops.shared_kernel.response import ok
 
 router = APIRouter()
@@ -96,6 +98,10 @@ def _serialize_airlock_item(item: AirlockItem) -> dict[str, Any]:
         "metadata": item.metadata_json,
         "findings": item.findings_json,
     }
+
+
+def _phase4_service(session: AsyncSession) -> Phase4ControlPlaneService:
+    return Phase4ControlPlaneService(session)
 
 
 @router.get("/intents")
@@ -277,3 +283,205 @@ async def reject_airlock_item_endpoint(
         },
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
+
+
+@router.get("/timeline")
+async def list_timeline_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+    entity_id: uuid.UUID | None = Query(default=None),
+    subject_type: str | None = Query(default=None),
+    subject_id: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+) -> dict[str, Any]:
+    payload = await _phase4_service(session).build_timeline(
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        limit=limit,
+    )
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/timeline/export")
+async def export_timeline_endpoint(
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+    entity_id: uuid.UUID | None = Query(default=None),
+    subject_type: str | None = Query(default=None),
+    subject_id: str | None = Query(default=None),
+    limit: int = Query(default=500, ge=1, le=2000),
+) -> Response:
+    payload = await _phase4_service(session).build_timeline(
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        limit=limit,
+    )
+    return Response(
+        content=json.dumps(payload, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=timeline-export.json"},
+    )
+
+
+@router.get("/determinism")
+async def get_determinism_endpoint(
+    request: Request,
+    subject_type: str = Query(...),
+    subject_id: str = Query(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    try:
+        payload = await _phase4_service(session).build_determinism_summary(
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/lineage")
+async def get_lineage_endpoint(
+    request: Request,
+    subject_type: str = Query(...),
+    subject_id: str = Query(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    try:
+        payload = await _phase4_service(session).build_lineage(
+            tenant_id=user.tenant_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/impact")
+async def get_impact_endpoint(
+    request: Request,
+    subject_type: str = Query(...),
+    subject_id: str = Query(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    try:
+        payload = await _phase4_service(session).build_impact(
+            tenant_id=user.tenant_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/snapshots")
+async def list_snapshots_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+    entity_id: uuid.UUID | None = Query(default=None),
+    subject_type: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> dict[str, Any]:
+    payload = await _phase4_service(session).list_snapshots(
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        subject_type=subject_type,
+        limit=limit,
+    )
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.post("/snapshots/manual")
+async def create_manual_snapshot_endpoint(
+    body: dict[str, Any],
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    subject_type = str(body.get("subject_type") or "").strip()
+    subject_id = str(body.get("subject_id") or "").strip()
+    if not subject_type or not subject_id:
+        raise HTTPException(status_code=422, detail="subject_type and subject_id are required")
+    payload = await _phase4_service(session).create_manual_snapshot(
+        tenant_id=user.tenant_id,
+        actor_user_id=user.id,
+        actor_role=user.role.value,
+        subject_type=subject_type,
+        subject_id=subject_id,
+        trigger_event="manual_snapshot",
+    )
+    await session.flush()
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/snapshots/{snapshot_id}")
+async def get_snapshot_endpoint(
+    snapshot_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    payload = await _phase4_service(session).get_snapshot(
+        tenant_id=user.tenant_id,
+        snapshot_id=snapshot_id,
+    )
+    if payload is None:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/snapshots/{snapshot_id}/compare/{other_snapshot_id}")
+async def compare_snapshots_endpoint(
+    snapshot_id: uuid.UUID,
+    other_snapshot_id: uuid.UUID,
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    try:
+        payload = await _phase4_service(session).compare_snapshots(
+            tenant_id=user.tenant_id,
+            left_snapshot_id=snapshot_id,
+            right_snapshot_id=other_snapshot_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/audit-pack")
+async def get_audit_pack_endpoint(
+    subject_type: str = Query(...),
+    subject_id: str = Query(...),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> Response:
+    try:
+        payload = await _phase4_service(session).build_audit_pack(
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(
+        content=json.dumps(payload, indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": "attachment; filename=audit-pack.json"},
+    )

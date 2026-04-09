@@ -315,6 +315,16 @@ class RunService:
             rows=evidence_rows,
             created_by=created_by,
         )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        await Phase4ControlPlaneService(self._repository._session).ensure_snapshot_for_subject(
+            tenant_id=tenant_id,
+            actor_user_id=created_by,
+            actor_role="system",
+            subject_type="multi_entity_consolidation_run",
+            subject_id=str(run.id),
+            trigger_event="consolidation_run_complete",
+        )
         summary = await self._repository.summarize_run(tenant_id=tenant_id, run_id=run_id)
         return {
             "run_id": str(run.id),

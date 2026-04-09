@@ -118,6 +118,17 @@ class ReportRunService:
                 row_count=len(rows),
                 result_hash=result_hash,
             )
+            mutation_context = get_mutation_context()
+            from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+            await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+                tenant_id=tenant_id,
+                actor_user_id=(mutation_context.actor_user_id if mutation_context else None) or running_run.triggered_by,
+                actor_role=(mutation_context.actor_role if mutation_context else None) or "system",
+                subject_type="report_run",
+                subject_id=str(completed_run.id),
+                trigger_event="report_generation_complete",
+            )
             await db.commit()
             return {
                 "run_id": str(completed_run.id),

@@ -133,6 +133,9 @@ __all__ = [
     "AirlockEvent",
     "GovernanceApprovalPolicy",
     "CanonicalGovernanceEvent",
+    "GovernanceSnapshot",
+    "GovernanceSnapshotInput",
+    "GovernanceSnapshotMetadata",
     "AnalyticsSnapshot",
     "AnalyticsMetric",
     "AnalyticsVariance",
@@ -359,6 +362,18 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "CanonicalGovernanceEvent": (
         "financeops.db.models.governance_control",
         "CanonicalGovernanceEvent",
+    ),
+    "GovernanceSnapshot": (
+        "financeops.db.models.control_plane_phase4",
+        "GovernanceSnapshot",
+    ),
+    "GovernanceSnapshotInput": (
+        "financeops.db.models.control_plane_phase4",
+        "GovernanceSnapshotInput",
+    ),
+    "GovernanceSnapshotMetadata": (
+        "financeops.db.models.control_plane_phase4",
+        "GovernanceSnapshotMetadata",
     ),
     "AnalyticsSnapshot": (
         "financeops.db.models.analytics_layer",

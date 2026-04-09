@@ -91,6 +91,23 @@ from financeops.db.models.governance_control import (  # noqa: F401
     CanonicalGovernanceEvent,
     GovernanceApprovalPolicy,
 )
+from financeops.db.models.control_plane_phase4 import (  # noqa: F401
+    GovernanceSnapshot,
+    GovernanceSnapshotInput,
+    GovernanceSnapshotMetadata,
+)
+from financeops.db.models.accounting_vendor import (  # noqa: F401
+    AccountingAttachment,
+    AccountingDuplicateFingerprint,
+    AccountingVendor,
+    ErpAttachmentLink,
+)
+from financeops.db.models.accounting_notifications import (  # noqa: F401
+    AccountingAPAgeingSnapshot,
+    AccountingAuditExportRun,
+    AccountingNotificationEvent,
+    ApprovalReminderRun,
+)
 from financeops.db.models.consolidation import (  # noqa: F401
     ConsolidationElimination,
     ConsolidationEntity,
