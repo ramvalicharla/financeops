@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 from typing import Any
 
+from financeops.core.intent.context import require_mutation_context
 from financeops.modules.board_pack_narrative_engine.application.inclusion_service import (
     InclusionService,
 )
@@ -63,6 +64,7 @@ class RunService:
         source_anomaly_run_ids: list[uuid.UUID],
         created_by: uuid.UUID,
     ) -> dict[str, Any]:
+        require_mutation_context("Board pack narrative run creation")
         self._validation_service.validate_run_inputs(
             source_metric_run_ids=source_metric_run_ids,
             source_risk_run_ids=source_risk_run_ids,
@@ -197,6 +199,7 @@ class RunService:
         run_id: uuid.UUID,
         actor_user_id: uuid.UUID,
     ) -> dict[str, Any]:
+        require_mutation_context("Board pack narrative run execution")
         run = await self._repository.get_board_pack_run(tenant_id=tenant_id, run_id=run_id)
         if run is None:
             raise ValueError("Board pack run not found")

@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.core.exceptions import AuthorizationError
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.ai_cfo_layer.application.anomaly_service import detect_anomalies
@@ -201,7 +202,8 @@ async def narrative_async_endpoint(
     _assert_access(user)
     if from_date is None or to_date is None:
         from_date, to_date = _default_window()
-    task = generate_narrative_async_task.delay(
+    task = JobDispatcher().enqueue_task(
+        generate_narrative_async_task,
         tenant_id=str(user.tenant_id),
         actor_user_id=str(user.id),
         org_entity_id=str(org_entity_id) if org_entity_id else None,

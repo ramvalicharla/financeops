@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.users import IamUser
 from financeops.modules.auto_trigger.models import PipelineRun, PipelineStepLog
 from financeops.modules.auto_trigger.pipeline import (
@@ -194,7 +195,8 @@ async def trigger_pipeline_run(
         tenant_id=user.tenant_id,
         sync_run_id=body.sync_run_id,
     )
-    trigger_post_sync_pipeline.delay(
+    JobDispatcher().enqueue_task(
+        trigger_post_sync_pipeline,
         tenant_id=str(user.tenant_id),
         sync_run_id=str(body.sync_run_id),
     )

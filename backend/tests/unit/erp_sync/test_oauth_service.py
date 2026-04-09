@@ -260,12 +260,11 @@ async def test_consume_oauth_callback_persists_organization_id_and_appends_conne
             new_callable=AsyncMock,
         ) as mock_append_version,
         patch(
-            "financeops.modules.erp_sync.application.oauth_service.httpx.AsyncClient",
-            return_value=_DummyClient(
-                _DummyResponse(
-                    200,
-                    {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600},
-                )
+            "financeops.modules.erp_sync.application.oauth_service.post_form_request",
+            new_callable=AsyncMock,
+            return_value=_DummyResponse(
+                200,
+                {"access_token": "new-access", "refresh_token": "new-refresh", "expires_in": 3600},
             ),
         ),
     ):
@@ -326,12 +325,11 @@ async def test_refresh_connection_token_preserves_organization_id_and_appends_co
             new_callable=AsyncMock,
         ) as mock_append_version,
         patch(
-            "financeops.modules.erp_sync.application.oauth_service.httpx.AsyncClient",
-            return_value=_DummyClient(
-                _DummyResponse(
-                    200,
-                    {"access_token": "refreshed-access", "expires_in": 3600},
-                )
+            "financeops.modules.erp_sync.application.oauth_service.post_form_request",
+            new_callable=AsyncMock,
+            return_value=_DummyResponse(
+                200,
+                {"access_token": "refreshed-access", "expires_in": 3600},
             ),
         ),
     ):

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, require_finance_team
+from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
 from financeops.core.governance.airlock import (
     AirlockActor,
     AirlockAdmissionService,
 )
+from financeops.db.models.accounting_governance import AccountingPeriod
 from financeops.db.models.governance_control import AirlockItem
 from financeops.db.models.intent_pipeline import (
     CanonicalIntent,
@@ -20,6 +22,8 @@ from financeops.db.models.intent_pipeline import (
     CanonicalJob,
 )
 from financeops.db.models.users import IamUser
+from financeops.platform.db.models.modules import CpModuleRegistry
+from financeops.platform.db.models.tenant_module_enablement import CpTenantModuleEnablement
 from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 from financeops.shared_kernel.response import ok
 
@@ -102,6 +106,92 @@ def _serialize_airlock_item(item: AirlockItem) -> dict[str, Any]:
 
 def _phase4_service(session: AsyncSession) -> Phase4ControlPlaneService:
     return Phase4ControlPlaneService(session)
+
+
+async def _enabled_modules(session: AsyncSession, *, tenant_id: uuid.UUID) -> list[dict[str, Any]]:
+    as_of = datetime.now(UTC)
+    rows = (
+        await session.execute(
+            select(CpModuleRegistry, CpTenantModuleEnablement)
+            .join(
+                CpTenantModuleEnablement,
+                CpTenantModuleEnablement.module_id == CpModuleRegistry.id,
+            )
+            .where(
+                CpTenantModuleEnablement.tenant_id == tenant_id,
+                CpTenantModuleEnablement.enabled.is_(True),
+                CpTenantModuleEnablement.effective_from <= as_of,
+                (
+                    CpTenantModuleEnablement.effective_to.is_(None)
+                    | (CpTenantModuleEnablement.effective_to > as_of)
+                ),
+                CpModuleRegistry.is_active.is_(True),
+            )
+            .order_by(CpModuleRegistry.module_code.asc(), CpTenantModuleEnablement.effective_from.desc())
+        )
+    ).all()
+    enabled: dict[str, dict[str, Any]] = {}
+    for module_row, enablement_row in rows:
+        enabled.setdefault(
+            module_row.module_code,
+            {
+                "module_id": str(module_row.id),
+                "module_code": module_row.module_code,
+                "module_name": module_row.module_name,
+                "engine_context": module_row.engine_context,
+                "is_financial_impacting": bool(module_row.is_financial_impacting),
+                "effective_from": enablement_row.effective_from.isoformat(),
+            },
+        )
+    return list(enabled.values())
+
+
+async def _current_period(session: AsyncSession, *, tenant_id: uuid.UUID) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    period = (
+        await session.execute(
+            select(AccountingPeriod)
+            .where(
+                AccountingPeriod.tenant_id == tenant_id,
+                AccountingPeriod.fiscal_year == now.year,
+                AccountingPeriod.period_number == now.month,
+                AccountingPeriod.org_entity_id.is_(None),
+            )
+            .order_by(AccountingPeriod.created_at.desc())
+        )
+    ).scalar_one_or_none()
+    if period is None:
+        return {
+            "period_label": f"{now.year:04d}-{now.month:02d}",
+            "fiscal_year": now.year,
+            "period_number": now.month,
+            "source": "server_clock",
+            "period_id": None,
+            "status": None,
+        }
+    return {
+        "period_label": f"{period.fiscal_year:04d}-{period.period_number:02d}",
+        "fiscal_year": period.fiscal_year,
+        "period_number": period.period_number,
+        "source": "accounting_period",
+        "period_id": str(period.id),
+        "status": period.status,
+    }
+
+
+@router.get("/context")
+async def get_control_plane_context_endpoint(
+    request: Request,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    payload = {
+        "tenant_id": str(user.tenant_id),
+        "tenant_slug": getattr(user, "tenant_slug", None),
+        "enabled_modules": await _enabled_modules(session, tenant_id=user.tenant_id),
+        "current_period": await _current_period(session, tenant_id=user.tenant_id),
+    }
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
 @router.get("/intents")
@@ -349,6 +439,29 @@ async def get_determinism_endpoint(
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 
+@router.get("/determinism/verify")
+async def verify_determinism_endpoint(
+    request: Request,
+    subject_type: str = Query(...),
+    subject_id: str = Query(...),
+    expected_hash: str | None = Query(default=None),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    try:
+        payload = await _phase4_service(session).verify_determinism_hash(
+            tenant_id=user.tenant_id,
+            actor_user_id=user.id,
+            actor_role=user.role.value,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            expected_hash=expected_hash,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
 @router.get("/lineage")
 async def get_lineage_endpoint(
     request: Request,
@@ -410,7 +523,7 @@ async def create_manual_snapshot_endpoint(
     body: dict[str, Any],
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-    user: IamUser = Depends(require_finance_team),
+    user: IamUser = Depends(require_finance_leader),
 ) -> dict[str, Any]:
     subject_type = str(body.get("subject_type") or "").strip()
     subject_id = str(body.get("subject_id") or "").strip()

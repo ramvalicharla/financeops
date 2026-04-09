@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from financeops.core.exceptions import NotFoundError, ValidationError
+from financeops.core.governance.events import GovernanceActor, emit_governance_event
 from financeops.core.intent.context import require_mutation_context
 from financeops.db.models.accounting_jv import (
     AccountingJVAggregate,
@@ -29,7 +30,6 @@ from financeops.modules.accounting_layer.application.governance_service import (
     enforce_maker_checker_for_approval,
     enforce_reviewer_policy,
     get_approval_policy,
-    record_governance_event,
 )
 from financeops.modules.accounting_layer.domain.schemas import (
     JournalActionResponse,
@@ -60,6 +60,30 @@ def _utcnow() -> datetime:
 def _compute_hash(content: str, previous_hash: str | None) -> str:
     payload = f"{previous_hash or ''}:{content}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+async def _emit_journal_governance_event(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    entity_id: uuid.UUID | None,
+    actor_user_id: uuid.UUID,
+    actor_role: str | None,
+    action: str,
+    target_id: str,
+    payload: dict[str, object],
+) -> None:
+    await emit_governance_event(
+        db,
+        tenant_id=tenant_id,
+        module_key="journal_workflow",
+        subject_type="journal",
+        subject_id=target_id,
+        event_type=str(action or "").strip().upper(),
+        actor=GovernanceActor(user_id=actor_user_id, role=actor_role),
+        entity_id=entity_id,
+        payload=payload,
+    )
 
 
 @dataclass(frozen=True)
@@ -157,12 +181,12 @@ async def create_journal_draft(
             "journal_number": jv.jv_number,
         },
     )
-    await record_governance_event(
+    await _emit_journal_governance_event(
         db,
         tenant_id=tenant_id,
         entity_id=entity.id,
         actor_user_id=created_by,
-        module="journal_workflow",
+        actor_role=None,
         action="journal_draft_create",
         target_id=str(jv.id),
         payload={
@@ -231,12 +255,12 @@ async def approve_journal(
         actor_role="ACCOUNTING_APPROVER",
         comment="Approved via /accounting/journals/{id}/approve",
     )
-    await record_governance_event(
+    await _emit_journal_governance_event(
         db,
         tenant_id=tenant_id,
         entity_id=jv.entity_id,
         actor_user_id=acted_by,
-        module="journal_workflow",
+        actor_role=actor_role,
         action="journal_approve",
         target_id=str(jv.id),
         payload={
@@ -291,12 +315,12 @@ async def submit_journal(
         actor_role=actor_role or "ACCOUNTING_SUBMITTER",
         comment="Submitted via /accounting/journals/{id}/submit",
     )
-    await record_governance_event(
+    await _emit_journal_governance_event(
         db,
         tenant_id=tenant_id,
         entity_id=jv.entity_id,
         actor_user_id=acted_by,
-        module="journal_workflow",
+        actor_role=actor_role,
         action="journal_submit",
         target_id=str(jv.id),
         payload={
@@ -349,12 +373,12 @@ async def review_journal(
         actor_role=actor_role or "ACCOUNTING_REVIEWER",
         comment="Reviewed via /accounting/journals/{id}/review",
     )
-    await record_governance_event(
+    await _emit_journal_governance_event(
         db,
         tenant_id=tenant_id,
         entity_id=jv.entity_id,
         actor_user_id=acted_by,
-        module="journal_workflow",
+        actor_role=actor_role,
         action="journal_review",
         target_id=str(jv.id),
         payload={
@@ -441,12 +465,12 @@ async def post_journal(
         actor_role="ACCOUNTING_POSTER",
         comment="Posted via /accounting/journals/{id}/post",
     )
-    await record_governance_event(
+    await _emit_journal_governance_event(
         db,
         tenant_id=tenant_id,
         entity_id=jv.entity_id,
         actor_user_id=acted_by,
-        module="journal_workflow",
+        actor_role=actor_role,
         action="journal_post",
         target_id=str(jv.id),
         payload={
@@ -562,12 +586,12 @@ async def reverse_journal(
         actor_role=actor_role or "ACCOUNTING_POSTER",
         comment=f"Reversed via {reversal.jv_number}",
     )
-    await record_governance_event(
+    await _emit_journal_governance_event(
         db,
         tenant_id=tenant_id,
         entity_id=original.entity_id,
         actor_user_id=acted_by,
-        module="journal_workflow",
+        actor_role=actor_role,
         action="journal_reverse",
         target_id=str(original.id),
         payload={

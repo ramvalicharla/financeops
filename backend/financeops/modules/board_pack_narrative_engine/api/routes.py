@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.board_pack_narrative_engine.api.schemas import (
     BoardPackDefinitionCreateRequest,
@@ -41,6 +44,7 @@ from financeops.modules.board_pack_narrative_engine.infrastructure.token_builder
 from financeops.modules.board_pack_narrative_engine.policies.control_plane_policy import (
     board_pack_control_plane_dependency,
 )
+from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 
 router = APIRouter()
 
@@ -53,6 +57,46 @@ def _build_service(session: AsyncSession) -> RunService:
         section_service=SectionService(),
         narrative_service=NarrativeService(),
     )
+
+
+async def _submit_intent(
+    request: Request,
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    intent_type: IntentType,
+    payload: dict,
+    target_id: uuid.UUID | None = None,
+):
+    return await IntentService(session).submit_intent(
+        intent_type=intent_type,
+        actor=build_intent_actor(request, user),
+        payload=payload,
+        target_id=target_id,
+        idempotency_key=build_idempotency_key(
+            request,
+            intent_type=intent_type,
+            actor=user,
+            body=payload,
+            target_id=target_id,
+        ),
+    )
+
+
+async def _snapshot_refs(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    subject_type: str,
+    subject_id: uuid.UUID,
+) -> list[str]:
+    snapshots = await Phase4ControlPlaneService(session).list_subject_snapshots(
+        tenant_id=tenant_id,
+        subject_type=subject_type,
+        subject_id=str(subject_id),
+        limit=10,
+    )
+    return [str(row["snapshot_id"]) for row in snapshots]
 
 
 @router.post(
@@ -68,30 +112,26 @@ def _build_service(session: AsyncSession) -> RunService:
     ],
 )
 async def create_definition(
+    request: Request,
     body: BoardPackDefinitionCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     repository = BoardPackNarrativeRepository(session)
-    version_token = build_definition_version_token(
-        DefinitionVersionTokenInput(rows=[body.model_dump(mode="json")])
-    )
     try:
-        row = await repository.create_board_pack_definition(
-            tenant_id=user.tenant_id,
-            organisation_id=body.organisation_id,
-            board_pack_code=body.board_pack_code,
-            board_pack_name=body.board_pack_name,
-            audience_scope=body.audience_scope,
-            section_order_json=body.section_order_json,
-            inclusion_config_json=body.inclusion_config_json,
-            version_token=version_token,
-            effective_from=body.effective_from,
-            effective_to=body.effective_to,
-            supersedes_id=body.supersedes_id,
-            status=body.status,
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CREATE_BOARD_PACK_NARRATIVE_DEFINITION,
+            payload=body.model_dump(mode="json"),
         )
+        row = await repository.get_board_pack_definition(
+            tenant_id=user.tenant_id,
+            definition_id=uuid.UUID(str((result.record_refs or {})["definition_id"])),
+        )
+        if row is None:
+            raise RuntimeError("Governed board pack definition was not created")
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
@@ -100,6 +140,8 @@ async def create_definition(
         "board_pack_code": row.board_pack_code,
         "version_token": row.version_token,
         "status": row.status,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id is not None else None,
     }
 
 
@@ -178,34 +220,26 @@ async def list_definition_versions(
     ],
 )
 async def create_section(
+    request: Request,
     body: BoardPackSectionCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     repository = BoardPackNarrativeRepository(session)
-    version_token = build_definition_version_token(
-        DefinitionVersionTokenInput(rows=[body.model_dump(mode="json")])
-    )
     try:
-        row = await repository.create_section_definition(
-            tenant_id=user.tenant_id,
-            organisation_id=body.organisation_id,
-            section_code=body.section_code,
-            section_name=body.section_name,
-            section_type=body.section_type,
-            render_logic_json=body.render_logic_json,
-            section_order_default=body.section_order_default,
-            narrative_template_ref=body.narrative_template_ref,
-            risk_inclusion_rule_json=body.risk_inclusion_rule_json,
-            anomaly_inclusion_rule_json=body.anomaly_inclusion_rule_json,
-            metric_inclusion_rule_json=body.metric_inclusion_rule_json,
-            version_token=version_token,
-            effective_from=body.effective_from,
-            effective_to=body.effective_to,
-            supersedes_id=body.supersedes_id,
-            status=body.status,
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CREATE_BOARD_PACK_SECTION_DEFINITION,
+            payload=body.model_dump(mode="json"),
         )
+        row = await repository.get_section_definition(
+            tenant_id=user.tenant_id,
+            section_id=uuid.UUID(str((result.record_refs or {})["section_id"])),
+        )
+        if row is None:
+            raise RuntimeError("Governed board pack section was not created")
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
@@ -214,6 +248,8 @@ async def create_section(
         "section_code": row.section_code,
         "version_token": row.version_token,
         "status": row.status,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id is not None else None,
     }
 
 
@@ -294,31 +330,26 @@ async def list_section_versions(
     ],
 )
 async def create_narrative_template(
+    request: Request,
     body: NarrativeTemplateCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     repository = BoardPackNarrativeRepository(session)
-    version_token = build_definition_version_token(
-        DefinitionVersionTokenInput(rows=[body.model_dump(mode="json")])
-    )
     try:
-        row = await repository.create_narrative_template(
-            tenant_id=user.tenant_id,
-            organisation_id=body.organisation_id,
-            template_code=body.template_code,
-            template_name=body.template_name,
-            template_type=body.template_type,
-            template_text=body.template_text,
-            template_body_json=body.template_body_json,
-            placeholder_schema_json=body.placeholder_schema_json,
-            version_token=version_token,
-            effective_from=body.effective_from,
-            effective_to=body.effective_to,
-            supersedes_id=body.supersedes_id,
-            status=body.status,
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CREATE_NARRATIVE_TEMPLATE,
+            payload=body.model_dump(mode="json"),
         )
+        row = await repository.get_narrative_template(
+            tenant_id=user.tenant_id,
+            template_id=uuid.UUID(str((result.record_refs or {})["template_id"])),
+        )
+        if row is None:
+            raise RuntimeError("Governed narrative template was not created")
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
@@ -327,6 +358,8 @@ async def create_narrative_template(
         "template_code": row.template_code,
         "version_token": row.version_token,
         "status": row.status,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id is not None else None,
     }
 
 
@@ -404,29 +437,26 @@ async def list_narrative_template_versions(
     ],
 )
 async def create_inclusion_rule(
+    request: Request,
     body: InclusionRuleCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     repository = BoardPackNarrativeRepository(session)
-    version_token = build_definition_version_token(
-        DefinitionVersionTokenInput(rows=[body.model_dump(mode="json")])
-    )
     try:
-        row = await repository.create_inclusion_rule(
-            tenant_id=user.tenant_id,
-            organisation_id=body.organisation_id,
-            rule_code=body.rule_code,
-            rule_name=body.rule_name,
-            rule_type=body.rule_type,
-            inclusion_logic_json=body.inclusion_logic_json,
-            version_token=version_token,
-            effective_from=body.effective_from,
-            effective_to=body.effective_to,
-            supersedes_id=body.supersedes_id,
-            status=body.status,
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CREATE_BOARD_PACK_INCLUSION_RULE,
+            payload=body.model_dump(mode="json"),
         )
+        row = await repository.get_inclusion_rule(
+            tenant_id=user.tenant_id,
+            rule_id=uuid.UUID(str((result.record_refs or {})["rule_id"])),
+        )
+        if row is None:
+            raise RuntimeError("Governed inclusion rule was not created")
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
@@ -435,6 +465,8 @@ async def create_inclusion_rule(
         "rule_code": row.rule_code,
         "version_token": row.version_token,
         "status": row.status,
+        "intent_id": str(result.intent_id),
+        "job_id": str(result.job_id) if result.job_id is not None else None,
     }
 
 
@@ -512,24 +544,35 @@ async def list_inclusion_rule_versions(
     response_model=BoardPackRunCreateResponse,
 )
 async def create_run(
+    request: Request,
     body: BoardPackRunCreateRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     try:
-        payload = await _build_service(session).create_run(
-            tenant_id=user.tenant_id,
-            organisation_id=body.organisation_id,
-            reporting_period=body.reporting_period,
-            source_metric_run_ids=body.source_metric_run_ids,
-            source_risk_run_ids=body.source_risk_run_ids,
-            source_anomaly_run_ids=body.source_anomaly_run_ids,
-            created_by=user.id,
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.CREATE_BOARD_PACK_NARRATIVE_RUN,
+            payload=body.model_dump(mode="json"),
         )
+        run_id = uuid.UUID(str((result.record_refs or {})["run_id"]))
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
-    return payload
+    return {
+        **dict(result.record_refs or {}),
+        "intent_id": result.intent_id,
+        "job_id": result.job_id,
+        "determinism_hash": (result.record_refs or {}).get("determinism_hash"),
+        "snapshot_refs": await _snapshot_refs(
+            session,
+            tenant_id=user.tenant_id,
+            subject_type="board_pack_run",
+            subject_id=run_id,
+        ),
+    }
 
 
 @router.post(
@@ -544,20 +587,37 @@ async def create_run(
     response_model=BoardPackRunExecuteResponse,
 )
 async def execute_run(
+    request: Request,
     id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
     try:
-        payload = await _build_service(session).execute_run(
-            tenant_id=user.tenant_id, run_id=id, actor_user_id=user.id
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.EXECUTE_BOARD_PACK_NARRATIVE_RUN,
+            payload={},
+            target_id=id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail="internal_error") from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail="internal_error") from exc
     await session.flush()
-    return payload
+    return {
+        **dict(result.record_refs or {}),
+        "intent_id": result.intent_id,
+        "job_id": result.job_id,
+        "determinism_hash": (result.record_refs or {}).get("determinism_hash"),
+        "snapshot_refs": await _snapshot_refs(
+            session,
+            tenant_id=user.tenant_id,
+            subject_type="board_pack_run",
+            subject_id=id,
+        ),
+    }
 
 
 @router.get(

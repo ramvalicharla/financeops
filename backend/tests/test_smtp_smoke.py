@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-
 import pytest
 
 from financeops.config import Settings, settings
@@ -158,12 +156,12 @@ async def test_email_delivery_succeeds_when_smtp_not_required(
         password="",
     )
 
-    async def fake_to_thread(_fn: Callable[[], None]) -> None:
+    async def fake_send(*args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         raise OSError("smtp unavailable")
 
     from financeops.modules.scheduled_delivery.application import delivery_service as module
 
-    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(module, "send_smtp_message", fake_send)
 
     service = DeliveryService()
     await service._dispatch_email(**_email_payload())
@@ -184,44 +182,18 @@ async def test_email_delivery_guard_fires_before_network(
 
     from financeops.modules.scheduled_delivery.application import delivery_service as module
 
-    to_thread_called = {"value": False}
-    smtp_called = {"value": False}
+    send_called = {"value": False}
 
-    async def fake_to_thread(fn: Callable[[], None]) -> None:
-        to_thread_called["value"] = True
-        fn()
+    async def fake_send(*args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+        send_called["value"] = True
 
-    class DummySMTP:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            smtp_called["value"] = True
-
-        def __enter__(self) -> "DummySMTP":
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        def ehlo(self) -> None:
-            return None
-
-        def starttls(self) -> None:
-            return None
-
-        def login(self, _user: str, _password: str) -> None:
-            return None
-
-        def send_message(self, _message) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-    monkeypatch.setattr(module.asyncio, "to_thread", fake_to_thread)
-    monkeypatch.setattr(module.smtplib, "SMTP", DummySMTP)
+    monkeypatch.setattr(module, "send_smtp_message", fake_send)
 
     service = DeliveryService()
     with pytest.raises(RuntimeError):
         await service._dispatch_email(**_email_payload())
 
-    assert to_thread_called["value"] is False
-    assert smtp_called["value"] is False
+    assert send_called["value"] is False
 
 
 def test_smtp_error_message_is_actionable(monkeypatch: pytest.MonkeyPatch) -> None:

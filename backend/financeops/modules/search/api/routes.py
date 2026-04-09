@@ -8,6 +8,7 @@ from celery.result import AsyncResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.users import IamUser
 from financeops.modules.search.service import search
 from financeops.modules.search.tasks import reindex_search_index
@@ -44,7 +45,10 @@ async def reindex_endpoint(
     del session
     task_id: str
     try:
-        task = reindex_search_index.delay(tenant_id=str(user.tenant_id))
+        task = JobDispatcher().enqueue_task(
+            reindex_search_index,
+            tenant_id=str(user.tenant_id),
+        )
         task_id = str(task.id)
     except Exception as exc:  # noqa: BLE001
         log.warning("search_reindex_enqueue_failed tenant=%s error=%s", user.tenant_id, exc)

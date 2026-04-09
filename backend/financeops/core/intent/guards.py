@@ -15,6 +15,9 @@ from financeops.core.governance.guards import (
 )
 from financeops.core.intent.enums import GuardResultStatus, IntentType
 from financeops.db.models.accounting_jv import AccountingJVAggregate, EntryType, JVStatus
+from financeops.db.models.board_pack_generator import BoardPackGeneratorDefinition
+from financeops.db.models.board_pack_narrative_engine import BoardPackRun
+from financeops.db.models.custom_report_builder import ReportDefinition
 from financeops.db.models.intent_pipeline import CanonicalIntent
 
 
@@ -39,7 +42,7 @@ class GuardEvaluationResult:
         return [result for result in self.results if result.result == GuardResultStatus.FAIL]
 
 
-class GuardEngine:
+class IntentGuardAdapter:
     def __init__(self) -> None:
         self._universal = UniversalGuardEngine()
 
@@ -52,6 +55,11 @@ class GuardEngine:
     ) -> GuardEvaluationResult:
         payload = dict(intent.payload_json or {})
         target_journal = await self._get_target_journal(db, intent.target_id, intent.tenant_id)
+        target_type, target_exists = await self._resolve_target_scope(
+            db,
+            intent=intent,
+            target_journal=target_journal,
+        )
         period_year, period_number = self._resolve_period(intent=intent, payload=payload, target_journal=target_journal)
         universal = await self._universal.evaluate_mutation(
             db,
@@ -62,9 +70,9 @@ class GuardEngine:
                 actor_user_id=intent.requested_by_user_id,
                 actor_role=actor_role,
                 entity_id=intent.entity_id,
-                target_type="journal" if intent.target_id is not None else None,
+                target_type=target_type,
                 target_id=intent.target_id,
-                target_exists=target_journal is not None if intent.target_id is not None else None,
+                target_exists=target_exists,
                 state_valid=self._state_valid(intent=intent, target_journal=target_journal),
                 immutable_ok=self._immutable_ok(intent=intent, target_journal=target_journal),
                 admitted_airlock_item_id=self._admitted_airlock_item_id(payload=payload),
@@ -106,8 +114,23 @@ class GuardEngine:
             IntentType.CREATE_ERP_SYNC_RUN.value,
             IntentType.CREATE_NORMALIZATION_RUN.value,
             IntentType.IMPORT_BANK_STATEMENT.value,
+            IntentType.CREATE_REPORT_DEFINITION.value,
+            IntentType.UPDATE_REPORT_DEFINITION.value,
+            IntentType.DEACTIVATE_REPORT_DEFINITION.value,
             IntentType.GENERATE_REPORT.value,
+            IntentType.CREATE_BOARD_PACK_DEFINITION.value,
+            IntentType.UPDATE_BOARD_PACK_DEFINITION.value,
+            IntentType.DEACTIVATE_BOARD_PACK_DEFINITION.value,
+            IntentType.CREATE_BOARD_PACK_NARRATIVE_DEFINITION.value,
+            IntentType.CREATE_BOARD_PACK_SECTION_DEFINITION.value,
+            IntentType.CREATE_NARRATIVE_TEMPLATE.value,
+            IntentType.CREATE_BOARD_PACK_INCLUSION_RULE.value,
+            IntentType.CREATE_BOARD_PACK_NARRATIVE_RUN.value,
+            IntentType.EXECUTE_BOARD_PACK_NARRATIVE_RUN.value,
             IntentType.GENERATE_BOARD_PACK.value,
+            IntentType.START_LEGACY_CONSOLIDATION_RUN.value,
+            IntentType.BATCH_MUTATION.value,
+            IntentType.RETRY_BATCH_MUTATION.value,
             IntentType.CREATE_BUDGET_VERSION.value,
             IntentType.UPSERT_BUDGET_LINE.value,
             IntentType.APPROVE_BUDGET_VERSION.value,
@@ -268,3 +291,58 @@ class GuardEngine:
             )
         )
         return result.scalar_one_or_none()
+
+    @staticmethod
+    async def _resolve_target_scope(
+        db: AsyncSession,
+        *,
+        intent: CanonicalIntent,
+        target_journal: AccountingJVAggregate | None,
+    ) -> tuple[str | None, bool | None]:
+        if intent.target_id is None:
+            return None, None
+        if intent.intent_type in {
+            IntentType.UPDATE_REPORT_DEFINITION.value,
+            IntentType.DEACTIVATE_REPORT_DEFINITION.value,
+        }:
+            exists = (
+                await db.execute(
+                    select(ReportDefinition.id).where(
+                        ReportDefinition.id == intent.target_id,
+                        ReportDefinition.tenant_id == intent.tenant_id,
+                    )
+                )
+            ).scalar_one_or_none() is not None
+            return "report_definition", exists
+        if intent.intent_type == IntentType.CREATE_BOARD_PACK_NARRATIVE_DEFINITION.value:
+            return "board_pack_definition", None
+        if intent.intent_type == IntentType.CREATE_BOARD_PACK_SECTION_DEFINITION.value:
+            return "board_pack_section_definition", None
+        if intent.intent_type == IntentType.CREATE_NARRATIVE_TEMPLATE.value:
+            return "narrative_template", None
+        if intent.intent_type == IntentType.CREATE_BOARD_PACK_INCLUSION_RULE.value:
+            return "board_pack_inclusion_rule", None
+        if intent.intent_type in {
+            IntentType.UPDATE_BOARD_PACK_DEFINITION.value,
+            IntentType.DEACTIVATE_BOARD_PACK_DEFINITION.value,
+        }:
+            exists = (
+                await db.execute(
+                    select(BoardPackGeneratorDefinition.id).where(
+                        BoardPackGeneratorDefinition.id == intent.target_id,
+                        BoardPackGeneratorDefinition.tenant_id == intent.tenant_id,
+                    )
+                )
+            ).scalar_one_or_none() is not None
+            return "board_pack_definition", exists
+        if intent.intent_type == IntentType.EXECUTE_BOARD_PACK_NARRATIVE_RUN.value:
+            exists = (
+                await db.execute(
+                    select(BoardPackRun.id).where(
+                        BoardPackRun.tenant_id == intent.tenant_id,
+                        BoardPackRun.id == intent.target_id,
+                    )
+                )
+            ).scalar_one_or_none() is not None
+            return "board_pack_run", exists
+        return "journal", target_journal is not None

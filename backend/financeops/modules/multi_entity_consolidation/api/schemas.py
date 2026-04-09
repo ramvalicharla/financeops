@@ -96,6 +96,8 @@ class ConsolidationRunCreateResponse(BaseModel):
     idempotent: bool
     intent_id: uuid.UUID | None = None
     job_id: uuid.UUID | None = None
+    determinism_hash: str | None = None
+    snapshot_refs: list[str] = Field(default_factory=list)
 
 
 class ConsolidationRunExecuteResponse(BaseModel):
@@ -108,3 +110,5 @@ class ConsolidationRunExecuteResponse(BaseModel):
     idempotent: bool
     intent_id: uuid.UUID | None = None
     job_id: uuid.UUID | None = None
+    determinism_hash: str | None = None
+    snapshot_refs: list[str] = Field(default_factory=list)

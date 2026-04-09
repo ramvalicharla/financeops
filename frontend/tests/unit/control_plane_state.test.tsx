@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { ModuleTabs } from "@/components/layout/ModuleTabs"
+import { ContextBar } from "@/components/layout/ContextBar"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -11,6 +12,39 @@ const mockPathname = vi.fn(() => "/erp/sync")
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
+}))
+
+vi.mock("@/lib/api/control-plane", () => ({
+  getControlPlaneContext: vi.fn(async () => ({
+    tenant_id: "tenant-1",
+    tenant_slug: "acme",
+    enabled_modules: [
+      {
+        module_id: "mod-erp",
+        module_code: "erp_sync",
+        module_name: "ERP Sync",
+        engine_context: "finance",
+        is_financial_impacting: true,
+        effective_from: "2026-04-01T00:00:00Z",
+      },
+    ],
+    current_period: {
+      period_label: "2026-04",
+      fiscal_year: 2026,
+      period_number: 4,
+      source: "accounting_period",
+      period_id: "period-1",
+      status: "OPEN",
+    },
+  })),
+  listControlPlaneEntities: vi.fn(async () => [
+    {
+      id: "entity-1",
+      entity_code: "ACME-001",
+      entity_name: "Acme India",
+      organisation_id: "org-1",
+    },
+  ]),
 }))
 
 describe("control plane state", () => {
@@ -65,6 +99,28 @@ describe("control plane state", () => {
     await waitFor(() => {
       expect(useControlPlaneStore.getState().current_module).toBe("ERP")
     })
-    expect(useControlPlaneStore.getState().current_period).toBe("2026-04")
+    await waitFor(() => {
+      expect(useControlPlaneStore.getState().current_period).toBe("2026-04")
+      expect(screen.getByText("ERP")).toBeInTheDocument()
+    })
+    expect(screen.queryByText("Accounting")).not.toBeInTheDocument()
+  })
+
+  it("hydrates current period from backend context instead of browser time", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+
+    useControlPlaneStore.setState({ current_period: null })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ContextBar tenantSlug="acme" />
+      </QueryClientProvider>,
+    )
+
+    await waitFor(() => {
+      expect(useControlPlaneStore.getState().current_period).toBe("2026-04")
+    })
   })
 })

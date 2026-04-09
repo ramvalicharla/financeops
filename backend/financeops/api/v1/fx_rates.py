@@ -15,6 +15,7 @@ from financeops.api.deps import (
     require_finance_team,
 )
 from financeops.config import settings
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.users import IamUser
 from financeops.schemas.fx_rates import (
     ApplyMonthEndRequest,
@@ -42,7 +43,6 @@ from financeops.services.fx import (
     list_fx_rates,
     list_manual_monthly_rates,
 )
-from financeops.temporal.client import get_temporal_client
 from financeops.temporal.fx_workflows import (
     FxFetchWorkflow,
     FxFetchWorkflowInput,
@@ -198,12 +198,11 @@ async def fetch_live_rates_endpoint(
         quote_currency=body.quote_currency,
         rate_date=(body.rate_date.isoformat() if body.rate_date else None),
     )
-    temporal_client = await get_temporal_client()
     workflow_id = f"fx-fetch-{uuid.uuid4()}"
-    result = await temporal_client.execute_workflow(
+    result = await JobDispatcher().execute_temporal_workflow(
         FxFetchWorkflow.run,
         workflow_input,
-        id=workflow_id,
+        workflow_id=workflow_id,
         task_queue=settings.TEMPORAL_TASK_QUEUE,
         run_timeout=timedelta(seconds=90),
     )
@@ -362,12 +361,11 @@ async def apply_month_end_endpoint(
         lines=[line.model_dump() for line in body.lines],
         approval_reason=body.approval_reason,
     )
-    temporal_client = await get_temporal_client()
     workflow_id = f"fx-month-end-{uuid.uuid4()}"
-    result = await temporal_client.execute_workflow(
+    result = await JobDispatcher().execute_temporal_workflow(
         FxMonthEndApplyWorkflow.run,
         workflow_input,
-        id=workflow_id,
+        workflow_id=workflow_id,
         task_queue=settings.TEMPORAL_TASK_QUEUE,
         run_timeout=timedelta(seconds=120),
     )

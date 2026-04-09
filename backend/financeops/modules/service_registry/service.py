@@ -4,13 +4,13 @@ from datetime import UTC, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
-import httpx
 from httpx import ASGITransport
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry
 from financeops.observability.celery_monitor import get_celery_monitor
+from financeops.services.network_runtime import request_with_client
 
 _ALLOWED_ROUTE_STATUSES = {200, 204, 401, 403, 405, 422}
 _QUEUE_NAMES = (
@@ -110,16 +110,21 @@ async def _check_route_prefix(route_prefix: str | None) -> bool:
             transport = ASGITransport(app=app, raise_app_exceptions=False, lifespan="off")
         except TypeError:
             transport = ASGITransport(app=app, raise_app_exceptions=False)
-        async with httpx.AsyncClient(
-            transport=transport,
-            base_url="http://financeops.internal",
+        head_response = await request_with_client(
+            "HEAD",
+            url=route_prefix,
             timeout=5.0,
-        ) as client:
-            head_response = await client.head(route_prefix)
-            if head_response.status_code in _ALLOWED_ROUTE_STATUSES:
-                return True
-            options_response = await client.options(route_prefix)
-            return options_response.status_code in _ALLOWED_ROUTE_STATUSES
+            client_kwargs={"transport": transport, "base_url": "http://financeops.internal"},
+        )
+        if head_response.status_code in _ALLOWED_ROUTE_STATUSES:
+            return True
+        options_response = await request_with_client(
+            "OPTIONS",
+            url=route_prefix,
+            timeout=5.0,
+            client_kwargs={"transport": transport, "base_url": "http://financeops.internal"},
+        )
+        return options_response.status_code in _ALLOWED_ROUTE_STATUSES
     except Exception:
         return False
 

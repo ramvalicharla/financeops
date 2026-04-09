@@ -41,6 +41,8 @@ class ReportRepository:
             updated_at=datetime.now(UTC),
             is_active=True,
         )
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
         return row
@@ -103,6 +105,8 @@ class ReportRepository:
         if "is_active" in updates and updates["is_active"] is not None:
             row.is_active = bool(updates["is_active"])
         row.updated_at = datetime.now(UTC)
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         await db.flush()
         return row
 

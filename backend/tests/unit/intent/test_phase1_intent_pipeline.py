@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import ValidationError
-from financeops.core.intent.enums import IntentEventType, IntentSourceChannel, IntentType
+from financeops.core.intent.enums import IntentEventType, IntentSourceChannel, IntentStatus, IntentType
 from financeops.core.intent.service import IntentActor, IntentService
 from financeops.core.security import hash_password
 from financeops.db.models.accounting_jv import AccountingJVAggregate
@@ -246,3 +246,131 @@ async def test_direct_domain_mutation_is_blocked_without_intent_context(
             decision="APPROVED",
             expected_version=1,
         )
+
+
+@pytest.mark.asyncio
+async def test_batch_intent_tracks_parent_child_partial_success_and_retry(
+    async_session: AsyncSession,
+    test_user,
+) -> None:
+    await _seed_accounts(async_session, test_user.tenant_id)
+    entity = await _default_entity(async_session, test_user.tenant_id)
+    leader_actor = IntentActor(
+        user_id=test_user.id,
+        tenant_id=test_user.tenant_id,
+        role=test_user.role.value,
+        source_channel=IntentSourceChannel.API.value,
+    )
+    service = IntentService(async_session)
+    created = await service.submit_intent(
+        intent_type=IntentType.CREATE_JOURNAL,
+        actor=leader_actor,
+        payload=_payload(entity.id),
+        idempotency_key="batch-journal-create",
+    )
+    journal_id = uuid.UUID(str(created.record_refs["journal_id"]))
+    await service.submit_intent(
+        intent_type=IntentType.SUBMIT_JOURNAL,
+        actor=leader_actor,
+        payload={},
+        target_id=journal_id,
+        idempotency_key="batch-journal-submit",
+    )
+    await service.submit_intent(
+        intent_type=IntentType.REVIEW_JOURNAL,
+        actor=leader_actor,
+        payload={},
+        target_id=journal_id,
+        idempotency_key="batch-journal-review",
+    )
+    approver_user = IamUser(
+        tenant_id=test_user.tenant_id,
+        email="batch-approver@example.com",
+        hashed_password=hash_password("TestPass123!"),
+        full_name="Batch Approver",
+        role=UserRole.finance_leader,
+        is_active=True,
+        mfa_enabled=False,
+    )
+    async_session.add(approver_user)
+    await async_session.flush()
+    approver_actor = IntentActor(
+        user_id=approver_user.id,
+        tenant_id=approver_user.tenant_id,
+        role=approver_user.role.value,
+        source_channel=IntentSourceChannel.API.value,
+    )
+    await service.submit_intent(
+        intent_type=IntentType.APPROVE_JOURNAL,
+        actor=approver_actor,
+        payload={},
+        target_id=journal_id,
+        idempotency_key="batch-journal-approve",
+    )
+
+    finance_team_user = IamUser(
+        tenant_id=test_user.tenant_id,
+        email="batch-team@example.com",
+        hashed_password=hash_password("TestPass123!"),
+        full_name="Batch Finance Team",
+        role=UserRole.finance_team,
+        is_active=True,
+        mfa_enabled=False,
+    )
+    async_session.add(finance_team_user)
+    await async_session.flush()
+    team_actor = IntentActor(
+        user_id=finance_team_user.id,
+        tenant_id=finance_team_user.tenant_id,
+        role=finance_team_user.role.value,
+        source_channel=IntentSourceChannel.API.value,
+    )
+
+    batch_result = await service.submit_intent(
+        intent_type=IntentType.BATCH_MUTATION,
+        actor=team_actor,
+        payload={
+            "items": [
+                {
+                    "intent_type": IntentType.CREATE_JOURNAL.value,
+                    "payload": _payload(entity.id),
+                },
+                    {
+                        "intent_type": IntentType.POST_JOURNAL.value,
+                        "payload": {},
+                        "target_id": str(journal_id),
+                    },
+            ]
+        },
+        idempotency_key="batch-parent",
+    )
+
+    batch_parent = (
+        await async_session.execute(select(CanonicalIntent).where(CanonicalIntent.id == batch_result.intent_id))
+    ).scalar_one()
+    assert batch_parent.status == IntentStatus.PARTIAL_SUCCESS.value
+    child_intents = (
+        await async_session.execute(
+            select(CanonicalIntent)
+            .where(CanonicalIntent.parent_intent_id == batch_parent.id)
+            .order_by(CanonicalIntent.requested_at.asc(), CanonicalIntent.id.asc())
+        )
+    ).scalars().all()
+    assert len(child_intents) == 2
+    assert {child.intent_type for child in child_intents} == {
+        IntentType.CREATE_JOURNAL.value,
+        IntentType.POST_JOURNAL.value,
+    }
+    assert (batch_parent.record_refs_json or {}).get("failed_count") == 1
+
+    retry_result = await service.retry_batch_intent(
+        parent_intent_id=batch_parent.id,
+        actor=approver_actor,
+        idempotency_key="batch-parent-retry",
+    )
+    retry_parent = (
+        await async_session.execute(select(CanonicalIntent).where(CanonicalIntent.id == retry_result.intent_id))
+    ).scalar_one()
+    assert retry_parent.parent_intent_id == batch_parent.id
+    assert retry_parent.status == IntentStatus.RECORDED.value
+    assert (retry_parent.record_refs_json or {}).get("failed_count") == 0

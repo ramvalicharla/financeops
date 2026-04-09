@@ -19,6 +19,7 @@ from financeops.modules.accounting_ingestion.domain.schemas import (
     NormalisedExtractionResult,
 )
 from financeops.platform.db.models.entities import CpEntity
+from financeops.services.network_runtime import create_textract_client
 from financeops.utils.gstin import validate_gstin
 
 logger = logging.getLogger(__name__)
@@ -50,9 +51,7 @@ class TextractProvider(DocumentExtractor):
         self._region = region
 
     def _get_client(self) -> Any:
-        import boto3
-
-        return boto3.client("textract", region_name=self._region)
+        return create_textract_client(self._region)
 
     def _to_decimal(self, value: str | None) -> Decimal | None:
         if not value:

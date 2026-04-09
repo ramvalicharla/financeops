@@ -47,6 +47,12 @@ class CanonicalIntent(UUIDBase):
     module_key: Mapped[str] = mapped_column(String(64), nullable=False)
     target_type: Mapped[str] = mapped_column(String(64), nullable=False)
     target_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    parent_intent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("canonical_intents.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     status: Mapped[str] = mapped_column(String(32), nullable=False, default=IntentStatus.DRAFT.value)
     requested_by_user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

@@ -24,10 +24,8 @@ Secret storage audit findings (pre-implementation):
    - For rotation-generated webhook secrets, secrets.token_urlsafe(32) is used.
 """
 
-import asyncio
 import json
 import secrets
-import smtplib
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -42,6 +40,7 @@ from financeops.db.models.scheduled_delivery import DeliverySchedule
 from financeops.db.rls import clear_tenant_context, get_current_tenant_from_db, set_tenant_context
 from financeops.modules.secret_rotation.models import SecretRotationLog
 from financeops.services.audit_writer import AuditWriter
+from financeops.services.network_runtime import probe_smtp_connection
 
 PLATFORM_TENANT_ID = uuid.UUID(int=0)
 _ALLOWED_SECRET_TYPES = {"smtp", "webhook_signing", "erp_api_key"}
@@ -469,17 +468,6 @@ async def rotate_smtp_credentials(
     if not password_value:
         raise ValueError("smtp_password must not be empty")
 
-    def _probe() -> None:
-        port_value = int(getattr(settings, "SMTP_PORT", 587) or 587)
-        with smtplib.SMTP(host=host_value, port=port_value, timeout=15) as smtp:
-            smtp.ehlo()
-            try:
-                smtp.starttls()
-                smtp.ehlo()
-            except smtplib.SMTPException:
-                pass
-            smtp.login(user_value, password_value)
-
     initiated_at = datetime.now(UTC)
     old_password_hint = _secret_hint(str(getattr(settings, "SMTP_PASSWORD", "") or ""))
     new_password_hint = _secret_hint(password_value)
@@ -500,7 +488,13 @@ async def rotate_smtp_credentials(
         )
 
         try:
-            await asyncio.to_thread(_probe)
+            await probe_smtp_connection(
+                host=host_value,
+                port=int(getattr(settings, "SMTP_PORT", 587) or 587),
+                user=user_value,
+                password=password_value,
+                timeout=15,
+            )
             completed_at = datetime.now(UTC)
             await _append_rotation_event(
                 session,

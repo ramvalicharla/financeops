@@ -76,6 +76,10 @@ class BoardPackRunCreateResponse(BaseModel):
     run_token: str
     status: str
     idempotent: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
+    determinism_hash: str | None = None
+    snapshot_refs: list[str] = Field(default_factory=list)
 
 
 class BoardPackRunExecuteResponse(BaseModel):
@@ -86,3 +90,7 @@ class BoardPackRunExecuteResponse(BaseModel):
     narrative_count: int
     evidence_count: int
     idempotent: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
+    determinism_hash: str | None = None
+    snapshot_refs: list[str] = Field(default_factory=list)

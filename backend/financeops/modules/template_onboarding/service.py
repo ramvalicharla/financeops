@@ -7,6 +7,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.enums import IntentSourceChannel, IntentType
+from financeops.core.intent.service import IntentActor, IntentService
 from financeops.modules.board_pack_generator.domain.enums import PeriodType, SectionType
 from financeops.modules.board_pack_generator.domain.pack_definition import (
     PackDefinitionSchema,
@@ -19,9 +21,6 @@ from financeops.modules.custom_report_builder.domain.enums import ReportExportFo
 from financeops.modules.custom_report_builder.domain.filter_dsl import (
     FilterConfig,
     ReportDefinitionSchema,
-)
-from financeops.modules.custom_report_builder.infrastructure.repository import (
-    ReportRepository,
 )
 from financeops.modules.scheduled_delivery.domain.enums import (
     ChannelType,
@@ -116,7 +115,6 @@ async def apply_template(
         raise TemplateAlreadyAppliedError("Template already applied for tenant")
 
     board_repo = BoardPackRepository()
-    report_repo = ReportRepository()
     delivery_repo = DeliveryRepository()
     organisation_id = (
         await session.execute(
@@ -155,12 +153,28 @@ async def apply_template(
             "organisation_id": str(organisation_id) if organisation_id is not None else None,
         },
     )
-    board_definition = await board_repo.create_definition(
+    intent_service = IntentService(session)
+    actor = IntentActor(
+        user_id=user_id,
+        tenant_id=tenant_id,
+        role="finance_leader",
+        source_channel=IntentSourceChannel.SYSTEM.value,
+        request_id=None,
+        correlation_id=f"template-onboarding:{template.id}",
+    )
+    board_result = await intent_service.submit_intent(
+        intent_type=IntentType.CREATE_BOARD_PACK_DEFINITION,
+        actor=actor,
+        payload=board_schema.model_dump(mode="json"),
+        idempotency_key=f"template-onboarding:{template.id}:board-pack",
+    )
+    board_definition = await board_repo.get_definition(
         db=session,
         tenant_id=tenant_id,
-        schema=board_schema,
-        created_by=user_id,
+        definition_id=uuid.UUID(str((board_result.record_refs or {})["definition_id"])),
     )
+    if board_definition is None:
+        raise RuntimeError("Governed board pack definition was not created")
 
     report_definition_ids: list[str] = []
     for report in template.report_definitions:
@@ -178,13 +192,16 @@ async def apply_template(
                 "organisation_id": str(organisation_id) if organisation_id is not None else None,
             },
         )
-        report_definition = await report_repo.create_definition(
-            db=session,
-            tenant_id=tenant_id,
-            schema=report_schema,
-            created_by=user_id,
+        report_result = await intent_service.submit_intent(
+            intent_type=IntentType.CREATE_REPORT_DEFINITION,
+            actor=actor,
+            payload={
+                **report_schema.model_dump(mode="json"),
+                "entity_ids": [str(entity_id) for entity_id in report_schema.filter_config.entity_ids],
+            },
+            idempotency_key=f"template-onboarding:{template.id}:report:{report['name']}",
         )
-        report_definition_ids.append(str(report_definition.id))
+        report_definition_ids.append(str((report_result.record_refs or {})["definition_id"]))
 
     schedule_config = template.delivery_schedule
     recipients = [

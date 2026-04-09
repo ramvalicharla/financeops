@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import asyncio
 import hmac
 import json
 import logging
-import smtplib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -13,10 +11,10 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.core.security import decrypt_field
 from financeops.db.models.scheduled_delivery import DeliveryLog, DeliverySchedule
 from financeops.modules.scheduled_delivery.domain.enums import (
@@ -27,6 +25,7 @@ from financeops.modules.scheduled_delivery.domain.enums import (
 from financeops.modules.scheduled_delivery.infrastructure.repository import (
     DeliveryRepository,
 )
+from financeops.services.network_runtime import post_bytes, send_smtp_message
 
 if TYPE_CHECKING:
     from financeops.modules.board_pack_generator.infrastructure.repository import (
@@ -232,6 +231,7 @@ class DeliveryService:
         from financeops.modules.custom_report_builder.tasks import run_custom_report_task
 
         schedule_type = ScheduleType(schedule.schedule_type)
+        dispatcher = JobDispatcher()
         board_pack_repository = self._board_pack_repository or BoardPackRepository()
         report_repository = self._report_repository or ReportRepository()
         if schedule_type == ScheduleType.BOARD_PACK:
@@ -252,7 +252,7 @@ class DeliveryService:
                 period_end=period_end,
                 triggered_by=schedule.created_by,
             )
-            generate_board_pack_task.delay(str(run.id), str(tenant_id))
+            dispatcher.enqueue_task(generate_board_pack_task, str(run.id), str(tenant_id))
             return SourceRunInfo(source_run_id=run.id, source_type=schedule_type)
 
         if schedule_type == ScheduleType.REPORT:
@@ -270,7 +270,7 @@ class DeliveryService:
                 definition_id=schedule.source_definition_id,
                 triggered_by=schedule.created_by,
             )
-            run_custom_report_task.delay(str(run.id), str(tenant_id))
+            dispatcher.enqueue_task(run_custom_report_task, str(run.id), str(tenant_id))
             return SourceRunInfo(source_run_id=run.id, source_type=schedule_type)
 
         raise DeliveryConfigurationError(f"Unsupported schedule type: {schedule.schedule_type}")
@@ -295,37 +295,32 @@ class DeliveryService:
 
         _assert_smtp_configured()
 
-        def _send() -> None:
-            message = EmailMessage()
-            message["Subject"] = subject
-            message["From"] = str(getattr(settings, "SMTP_USER", "")) or "no-reply@financeops.local"
-            message["To"] = recipient
-            message.set_content(body)
-            message.add_attachment(
-                attachment,
-                maintype="application",
-                subtype="octet-stream",
-                filename=filename,
-            )
+        message = EmailMessage()
+        message["Subject"] = subject
+        message["From"] = str(getattr(settings, "SMTP_USER", "")) or "no-reply@financeops.local"
+        message["To"] = recipient
+        message.set_content(body)
+        message.add_attachment(
+            attachment,
+            maintype="application",
+            subtype="octet-stream",
+            filename=filename,
+        )
 
-            host = str(getattr(settings, "SMTP_HOST", "localhost") or "localhost")
-            port = int(getattr(settings, "SMTP_PORT", 587) or 587)
-            user = str(getattr(settings, "SMTP_USER", "") or "")
-            password = str(getattr(settings, "SMTP_PASSWORD", "") or "")
-
-            with smtplib.SMTP(host=host, port=port, timeout=30) as smtp:
-                smtp.ehlo()
-                try:
-                    smtp.starttls()
-                    smtp.ehlo()
-                except smtplib.SMTPException:
-                    pass
-                if user and password:
-                    smtp.login(user, password)
-                smtp.send_message(message)
+        host = str(getattr(settings, "SMTP_HOST", "localhost") or "localhost")
+        port = int(getattr(settings, "SMTP_PORT", 587) or 587)
+        user = str(getattr(settings, "SMTP_USER", "") or "")
+        password = str(getattr(settings, "SMTP_PASSWORD", "") or "")
 
         try:
-            await asyncio.to_thread(_send)
+            await send_smtp_message(
+                message,
+                host=host,
+                port=port,
+                user=user,
+                password=password,
+                timeout=30,
+            )
         except Exception as exc:
             if bool(getattr(settings, "SMTP_REQUIRED", False)):
                 raise
@@ -350,9 +345,13 @@ class DeliveryService:
             digest = hmac.new(secret.encode("utf-8"), body, sha256).hexdigest()
             headers["X-Signature-256"] = f"sha256={digest}"
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(url=url, content=body, headers=headers)
-            response.raise_for_status()
+        response = await post_bytes(
+            url=url,
+            body=body,
+            headers=headers,
+            timeout=30.0,
+        )
+        response.raise_for_status()
 
     def _current_month_period(self) -> tuple[date, date]:
         now = datetime.now(UTC).date()

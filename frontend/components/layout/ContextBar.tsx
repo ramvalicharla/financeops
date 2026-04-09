@@ -1,8 +1,8 @@
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { listControlPlaneEntities } from "@/lib/api/control-plane"
+import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -26,10 +26,23 @@ export function ContextBar({ tenantSlug }: ContextBarProps) {
   const currentModule = useControlPlaneStore((state) => state.current_module)
   const currentPeriod = useControlPlaneStore((state) => state.current_period)
   const currentOrg = useControlPlaneStore((state) => state.current_org) ?? tenantSlug
+  const setCurrentPeriod = useControlPlaneStore((state) => state.setCurrentPeriod)
   const entitiesQuery = useQuery({
     queryKey: ["control-plane-entities"],
     queryFn: listControlPlaneEntities,
   })
+  const contextQuery = useQuery({
+    queryKey: ["control-plane-context"],
+    queryFn: getControlPlaneContext,
+    staleTime: 60_000,
+  })
+
+  useEffect(() => {
+    const period = contextQuery.data?.current_period.period_label
+    if (period) {
+      setCurrentPeriod(period)
+    }
+  }, [contextQuery.data?.current_period.period_label, setCurrentPeriod])
 
   const activeEntity = useMemo(
     () => entitiesQuery.data?.find((entity) => entity.id === activeEntityId) ?? null,
@@ -46,7 +59,7 @@ export function ContextBar({ tenantSlug }: ContextBarProps) {
         <span>&rarr;</span>
         <span>Module: {currentModule ?? "Dashboard"}</span>
         <span>&rarr;</span>
-        <span>Period: {periodLabel(currentPeriod)}</span>
+        <span>Period: {periodLabel(currentPeriod ?? "Unavailable")}</span>
       </div>
     </div>
   )

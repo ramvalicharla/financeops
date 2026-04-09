@@ -106,6 +106,8 @@ class BoardPackGeneratorDefinition(Base):
         server_default=text("now()"),
         onupdate=text("now()"),
     )
+    created_by_intent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    recorded_by_job_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,

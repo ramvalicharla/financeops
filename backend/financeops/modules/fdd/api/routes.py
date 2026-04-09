@@ -10,6 +10,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_leader
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.core.exceptions import InsufficientCreditsError, NotFoundError, ValidationError
 from financeops.db.models.users import IamUser
 from financeops.modules.fdd.models import FDDEngagement, FDDFinding, FDDSection
@@ -210,7 +211,11 @@ async def run_engagement_endpoint(
     await session.flush()
 
     try:
-        async_result = run_fdd_engagement_task.delay(str(user.tenant_id), str(engagement_id))
+        async_result = JobDispatcher().enqueue_task(
+            run_fdd_engagement_task,
+            str(user.tenant_id),
+            str(engagement_id),
+        )
         task_id = str(getattr(async_result, "id", "")) or str(uuid.uuid4())
     except Exception:  # noqa: BLE001
         task_id = str(uuid.uuid4())

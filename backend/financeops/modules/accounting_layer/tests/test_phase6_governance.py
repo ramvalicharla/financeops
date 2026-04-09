@@ -212,7 +212,7 @@ async def test_submit_journal_emits_governance_audit_event(monkeypatch: pytest.M
     monkeypatch.setattr(journal_service, "_get_journal_aggregate", AsyncMock(return_value=jv))
     monkeypatch.setattr(journal_service, "assert_period_allows_modification", AsyncMock(return_value=None))
     monkeypatch.setattr(journal_service, "_append_state_event", AsyncMock(return_value=None))
-    monkeypatch.setattr(journal_service, "record_governance_event", record_event_mock)
+    monkeypatch.setattr(journal_service, "_emit_journal_governance_event", record_event_mock)
 
     with governed_mutation_context(
         MutationContext(

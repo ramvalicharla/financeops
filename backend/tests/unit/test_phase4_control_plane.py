@@ -169,3 +169,67 @@ async def test_resolve_accounting_period_subject_returns_hashable_payload() -> N
     assert payload["subject_type"] == "accounting_period"
     assert payload["subject_id"] == str(period_id)
     assert payload["determinism_hash"]
+
+
+@pytest.mark.asyncio
+async def test_verify_determinism_hash_compares_expected_hash(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = Phase4ControlPlaneService(SimpleNamespace(execute=AsyncMock()))
+    monkeypatch.setattr(
+        service,
+        "build_determinism_summary",
+        AsyncMock(
+            return_value={
+                "snapshot_id": "snapshot-1",
+                "determinism_hash": "hash-1",
+                "replay_supported": True,
+                "replay": {"recomputed_hash": "hash-1", "matches": True},
+            }
+        ),
+    )
+
+    payload = await service.verify_determinism_hash(
+        tenant_id=uuid.uuid4(),
+        actor_user_id=uuid.uuid4(),
+        actor_role="finance_leader",
+        subject_type="report_run",
+        subject_id="run-1",
+        expected_hash="hash-1",
+    )
+
+    assert payload["matches_expected"] is True
+    assert payload["matches_replay"] is True
+    assert payload["snapshot_id"] == "snapshot-1"
+
+
+@pytest.mark.asyncio
+async def test_resolve_report_definition_subject_returns_hashable_payload() -> None:
+    tenant_id = uuid.uuid4()
+    definition_id = uuid.uuid4()
+    session = AsyncMock()
+    session.execute = AsyncMock(
+        return_value=_scalar_result(
+            SimpleNamespace(
+                id=definition_id,
+                tenant_id=tenant_id,
+                name="Revenue report",
+                description="desc",
+                metric_keys=["mis.kpi.revenue"],
+                filter_config={},
+                group_by=[],
+                sort_config={},
+                export_formats=["CSV"],
+                config={},
+                is_active=True,
+            )
+        )
+    )
+
+    payload = await Phase4ControlPlaneService(session)._resolve_report_definition_subject(
+        tenant_id=tenant_id,
+        subject_id=str(definition_id),
+    )
+
+    assert payload is not None
+    assert payload["subject_type"] == "report_definition"
+    assert payload["subject_id"] == str(definition_id)
+    assert payload["determinism_hash"]

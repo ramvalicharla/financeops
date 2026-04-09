@@ -169,8 +169,34 @@ export interface ImpactSummary {
   impacted_nodes: Array<Record<string, unknown>>
 }
 
+export interface ControlPlaneContext {
+  tenant_id: string
+  tenant_slug: string | null
+  enabled_modules: Array<{
+    module_id: string
+    module_code: string
+    module_name: string
+    engine_context: string
+    is_financial_impacting: boolean
+    effective_from: string
+  }>
+  current_period: {
+    period_label: string
+    fiscal_year: number
+    period_number: number
+    source: string
+    period_id: string | null
+    status: string | null
+  }
+}
+
 export const listControlPlaneEntities = async (): Promise<ControlPlaneEntity[]> => {
   const response = await apiClient.get<ControlPlaneEntity[]>("/api/v1/platform/entities")
+  return response.data
+}
+
+export const getControlPlaneContext = async (): Promise<ControlPlaneContext> => {
+  const response = await apiClient.get<ControlPlaneContext>("/api/v1/platform/control-plane/context")
   return response.data
 }
 

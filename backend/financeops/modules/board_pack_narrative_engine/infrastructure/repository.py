@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
 from financeops.db.models.anomaly_pattern_engine import AnomalyResult, AnomalyRun
 from financeops.db.models.board_pack_narrative_engine import (
     BoardPackDefinition,
@@ -40,6 +41,12 @@ class BoardPackNarrativeRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
+    @staticmethod
+    def _apply_governed_linkage(record: Any) -> Any:
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(record)
+        return record
+
     async def create_board_pack_definition(
         self,
         *,
@@ -57,7 +64,7 @@ class BoardPackNarrativeRepository:
         status: str,
         created_by: uuid.UUID,
     ) -> BoardPackDefinition:
-        return await AuditWriter.insert_financial_record(
+        row = await AuditWriter.insert_financial_record(
             self._session,
             model_class=BoardPackDefinition,
             tenant_id=tenant_id,
@@ -84,6 +91,7 @@ class BoardPackNarrativeRepository:
                 resource_name=board_pack_code,
             ),
         )
+        return self._apply_governed_linkage(row)
 
     async def list_board_pack_definitions(self, *, tenant_id: uuid.UUID) -> list[BoardPackDefinition]:
         result = await self._session.execute(
@@ -150,7 +158,7 @@ class BoardPackNarrativeRepository:
         status: str,
         created_by: uuid.UUID,
     ) -> BoardPackSectionDefinition:
-        return await AuditWriter.insert_financial_record(
+        row = await AuditWriter.insert_financial_record(
             self._session,
             model_class=BoardPackSectionDefinition,
             tenant_id=tenant_id,
@@ -181,6 +189,7 @@ class BoardPackNarrativeRepository:
                 resource_name=section_code,
             ),
         )
+        return self._apply_governed_linkage(row)
 
     async def list_section_definitions(self, *, tenant_id: uuid.UUID) -> list[BoardPackSectionDefinition]:
         result = await self._session.execute(
@@ -244,7 +253,7 @@ class BoardPackNarrativeRepository:
         status: str,
         created_by: uuid.UUID,
     ) -> NarrativeTemplate:
-        return await AuditWriter.insert_financial_record(
+        row = await AuditWriter.insert_financial_record(
             self._session,
             model_class=NarrativeTemplate,
             tenant_id=tenant_id,
@@ -272,6 +281,7 @@ class BoardPackNarrativeRepository:
                 resource_name=template_code,
             ),
         )
+        return self._apply_governed_linkage(row)
 
     async def list_narrative_templates(self, *, tenant_id: uuid.UUID) -> list[NarrativeTemplate]:
         result = await self._session.execute(
@@ -333,7 +343,7 @@ class BoardPackNarrativeRepository:
         status: str,
         created_by: uuid.UUID,
     ) -> BoardPackInclusionRule:
-        return await AuditWriter.insert_financial_record(
+        row = await AuditWriter.insert_financial_record(
             self._session,
             model_class=BoardPackInclusionRule,
             tenant_id=tenant_id,
@@ -359,6 +369,7 @@ class BoardPackNarrativeRepository:
                 resource_name=rule_code,
             ),
         )
+        return self._apply_governed_linkage(row)
 
     async def list_inclusion_rules(self, *, tenant_id: uuid.UUID) -> list[BoardPackInclusionRule]:
         result = await self._session.execute(
@@ -627,7 +638,7 @@ class BoardPackNarrativeRepository:
         validation_summary_json: dict[str, Any],
         created_by: uuid.UUID,
     ) -> BoardPackRun:
-        return await AuditWriter.insert_financial_record(
+        row = await AuditWriter.insert_financial_record(
             self._session,
             model_class=BoardPackRun,
             tenant_id=tenant_id,
@@ -655,6 +666,7 @@ class BoardPackNarrativeRepository:
                 resource_name=run_token,
             ),
         )
+        return self._apply_governed_linkage(row)
 
     async def get_board_pack_run(
         self, *, tenant_id: uuid.UUID, run_id: uuid.UUID
@@ -673,7 +685,7 @@ class BoardPackNarrativeRepository:
         row: ComputedBoardPack,
         created_by: uuid.UUID,
     ) -> BoardPackResult:
-        return await AuditWriter.insert_financial_record(
+        row = await AuditWriter.insert_financial_record(
             self._session,
             model_class=BoardPackResult,
             tenant_id=tenant_id,
@@ -695,6 +707,7 @@ class BoardPackNarrativeRepository:
                 resource_name=row.board_pack_code,
             ),
         )
+        return self._apply_governed_linkage(row)
 
     async def insert_section_results(
         self,
@@ -707,7 +720,8 @@ class BoardPackNarrativeRepository:
         inserted: list[BoardPackSectionResult] = []
         for row in rows:
             inserted.append(
-                await AuditWriter.insert_financial_record(
+                self._apply_governed_linkage(
+                    await AuditWriter.insert_financial_record(
                     self._session,
                     model_class=BoardPackSectionResult,
                     tenant_id=tenant_id,
@@ -729,6 +743,7 @@ class BoardPackNarrativeRepository:
                         resource_name=row.section_code,
                     ),
                 )
+                )
             )
         return inserted
 
@@ -744,7 +759,8 @@ class BoardPackNarrativeRepository:
         inserted: list[BoardPackNarrativeBlock] = []
         for row in rows:
             inserted.append(
-                await AuditWriter.insert_financial_record(
+                self._apply_governed_linkage(
+                    await AuditWriter.insert_financial_record(
                     self._session,
                     model_class=BoardPackNarrativeBlock,
                     tenant_id=tenant_id,
@@ -770,6 +786,7 @@ class BoardPackNarrativeRepository:
                         resource_name=row.narrative_template_code,
                     ),
                 )
+                )
             )
         return inserted
 
@@ -784,7 +801,8 @@ class BoardPackNarrativeRepository:
         inserted: list[BoardPackEvidenceLink] = []
         for row in rows:
             inserted.append(
-                await AuditWriter.insert_financial_record(
+                self._apply_governed_linkage(
+                    await AuditWriter.insert_financial_record(
                     self._session,
                     model_class=BoardPackEvidenceLink,
                     tenant_id=tenant_id,
@@ -812,6 +830,7 @@ class BoardPackNarrativeRepository:
                         resource_type="board_pack_evidence_link",
                         resource_name=row["evidence_type"],
                     ),
+                )
                 )
             )
         return inserted

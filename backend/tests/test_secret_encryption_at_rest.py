@@ -267,25 +267,16 @@ async def test_webhook_hmac_signing_works_after_encryption(
         def raise_for_status(self) -> None:
             return None
 
-    class _FakeAsyncClient:
-        def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        async def __aenter__(self):  # type: ignore[no-untyped-def]
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        async def post(self, *, url: str, content: bytes, headers: dict[str, str]):  # type: ignore[no-untyped-def]
-            captured["url"] = url
-            captured["content"] = content
-            captured["headers"] = headers
-            return _FakeResponse()
+    async def _fake_post_bytes(*, url: str, body: bytes, headers: dict[str, str], timeout: float = 30.0):  # type: ignore[no-untyped-def]
+        _ = timeout
+        captured["url"] = url
+        captured["content"] = body
+        captured["headers"] = headers
+        return _FakeResponse()
 
     from financeops.modules.scheduled_delivery.application import delivery_service as delivery_service_module
 
-    monkeypatch.setattr(delivery_service_module.httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr(delivery_service_module, "post_bytes", _fake_post_bytes)
 
     service = DeliveryService()
     resolved_secret = service._webhook_secret(schedule)

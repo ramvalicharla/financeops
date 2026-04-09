@@ -9,7 +9,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import ValidationError
-from financeops.core.intent.enums import IntentType
+from financeops.core.intent.enums import IntentStatus, IntentType
 from financeops.db.models.intent_pipeline import CanonicalIntent
 from financeops.modules.accounting_layer.application.journal_service import (
     approve_journal,
@@ -25,6 +25,7 @@ from financeops.modules.accounting_layer.domain.schemas import JournalCreate
 @dataclass(frozen=True)
 class ExecutorResult:
     record_refs: dict[str, Any]
+    final_status: str | None = None
 
 
 class BaseIntentExecutor:
@@ -772,6 +773,86 @@ class RunPrepaidWorkflowExecutor(BaseIntentExecutor):
         )
 
 
+class StartLegacyConsolidationRunExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.config import settings
+        from financeops.services.consolidation import EntitySnapshotMapping, create_or_get_run
+        from financeops.temporal.client import get_temporal_client
+        from financeops.temporal.consolidation_workflows import (
+            ConsolidationWorkflow,
+            ConsolidationWorkflowInput,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        correlation_id = str(payload.get("correlation_id") or "")
+        run = await create_or_get_run(
+            db,
+            tenant_id=intent.tenant_id,
+            initiated_by=intent.requested_by_user_id,
+            period_year=int(payload["period_year"]),
+            period_month=int(payload["period_month"]),
+            parent_currency=str(payload["parent_currency"]),
+            rate_mode=str(payload["rate_mode"]),
+            mappings=[
+                EntitySnapshotMapping(
+                    entity_id=uuid.UUID(str(item["entity_id"])),
+                    snapshot_id=uuid.UUID(str(item["snapshot_id"])),
+                )
+                for item in payload.get("entity_snapshots", [])
+            ],
+            amount_tolerance_parent=(
+                Decimal(str(payload["amount_tolerance_parent"]))
+                if payload.get("amount_tolerance_parent") not in {None, ""}
+                else None
+            ),
+            fx_explained_tolerance_parent=(
+                Decimal(str(payload["fx_explained_tolerance_parent"]))
+                if payload.get("fx_explained_tolerance_parent") not in {None, ""}
+                else None
+            ),
+            timing_tolerance_days=int(payload["timing_tolerance_days"])
+            if payload.get("timing_tolerance_days") not in {None, ""}
+            else None,
+            correlation_id=correlation_id,
+        )
+        if run.created_new:
+            temporal_client = await get_temporal_client()
+            await temporal_client.start_workflow(
+                ConsolidationWorkflow.run,
+                ConsolidationWorkflowInput(
+                    run_id=str(run.run_id),
+                    tenant_id=str(intent.tenant_id),
+                    correlation_id=correlation_id,
+                    requested_by=str(intent.requested_by_user_id),
+                    config_hash=str(run.request_signature),
+                ),
+                id=str(run.workflow_id),
+                task_queue=settings.TEMPORAL_TASK_QUEUE,
+                execution_timeout=timedelta(minutes=15),
+            )
+        await db.flush()
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="run",
+            subject_id=str(run.run_id),
+            trigger_event="legacy_consolidation_run_accepted",
+        )
+        return ExecutorResult(
+            record_refs={
+                "run_id": str(run.run_id),
+                "workflow_id": str(run.workflow_id),
+                "status": "accepted" if run.created_new else str(run.status),
+                "created_new": bool(run.created_new),
+                "correlation_id": correlation_id,
+                "determinism_hash": snapshot.determinism_hash,
+                "snapshot_refs": [str(snapshot.id)],
+            }
+        )
+
+
 class RunConsolidationExecutor(BaseIntentExecutor):
     async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
         from financeops.modules.multi_entity_consolidation.application.adjustment_service import AdjustmentService
@@ -781,6 +862,7 @@ class RunConsolidationExecutor(BaseIntentExecutor):
         from financeops.modules.multi_entity_consolidation.application.run_service import RunService
         from financeops.modules.multi_entity_consolidation.application.validation_service import ValidationService
         from financeops.modules.multi_entity_consolidation.infrastructure.repository import MultiEntityConsolidationRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 
         payload = dict(intent.payload_json or {})
         service = RunService(
@@ -798,7 +880,21 @@ class RunConsolidationExecutor(BaseIntentExecutor):
             source_run_refs=list(payload.get("source_run_refs") or []),
             created_by=intent.requested_by_user_id,
         )
-        return ExecutorResult(record_refs=result)
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="multi_entity_consolidation_run",
+            subject_id=str(result["run_id"]),
+            trigger_event="consolidation_run_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                **result,
+                "determinism_hash": snapshot.determinism_hash,
+                "snapshot_refs": [str(snapshot.id)],
+            }
+        )
 
 
 class ExecuteConsolidationExecutor(BaseIntentExecutor):
@@ -810,6 +906,7 @@ class ExecuteConsolidationExecutor(BaseIntentExecutor):
         from financeops.modules.multi_entity_consolidation.application.run_service import RunService
         from financeops.modules.multi_entity_consolidation.application.validation_service import ValidationService
         from financeops.modules.multi_entity_consolidation.infrastructure.repository import MultiEntityConsolidationRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 
         if intent.target_id is None:
             raise ValidationError("EXECUTE_CONSOLIDATION intent requires a target run.")
@@ -826,7 +923,118 @@ class ExecuteConsolidationExecutor(BaseIntentExecutor):
             run_id=intent.target_id,
             created_by=intent.requested_by_user_id,
         )
-        return ExecutorResult(record_refs=result)
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="multi_entity_consolidation_run",
+            subject_id=str(intent.target_id),
+            trigger_event="consolidation_run_complete",
+        )
+        return ExecutorResult(
+            record_refs={
+                **result,
+                "determinism_hash": snapshot.determinism_hash,
+                "snapshot_refs": [str(snapshot.id)],
+            }
+        )
+
+
+class CreateReportDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.custom_report_builder.domain.filter_dsl import ReportDefinitionSchema
+        from financeops.modules.custom_report_builder.infrastructure.repository import ReportRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        schema = ReportDefinitionSchema.model_validate(payload)
+        repo = ReportRepository()
+        row = await repo.create_definition(
+            db=db,
+            tenant_id=intent.tenant_id,
+            schema=schema,
+            created_by=intent.requested_by_user_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="report_definition",
+            subject_id=str(row.id),
+            trigger_event="report_definition_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "is_active": bool(row.is_active),
+            }
+        )
+
+
+class UpdateReportDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.custom_report_builder.infrastructure.repository import ReportRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        if intent.target_id is None:
+            raise ValidationError("UPDATE_REPORT_DEFINITION intent requires a target definition.")
+        payload = dict(intent.payload_json or {})
+        repo = ReportRepository()
+        row = await repo.update_definition(
+            db=db,
+            tenant_id=intent.tenant_id,
+            definition_id=intent.target_id,
+            updates=dict(payload.get("updates") or {}),
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="report_definition",
+            subject_id=str(row.id),
+            trigger_event="report_definition_updated",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "is_active": bool(row.is_active),
+            }
+        )
+
+
+class DeactivateReportDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.custom_report_builder.infrastructure.repository import ReportRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        if intent.target_id is None:
+            raise ValidationError("DEACTIVATE_REPORT_DEFINITION intent requires a target definition.")
+        repo = ReportRepository()
+        row = await repo.deactivate_definition(
+            db=db,
+            tenant_id=intent.tenant_id,
+            definition_id=intent.target_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="report_definition",
+            subject_id=str(row.id),
+            trigger_event="report_definition_deactivated",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "is_active": bool(row.is_active),
+            }
+        )
 
 
 class GenerateReportExecutor(BaseIntentExecutor):
@@ -865,6 +1073,432 @@ class GenerateReportExecutor(BaseIntentExecutor):
         run_custom_report_task.delay(str(run.id), str(intent.tenant_id))
         return ExecutorResult(
             record_refs={"run_id": str(run.id), "definition_id": str(definition.id), "status": run.status}
+        )
+
+
+class CreateBoardPackDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_generator.domain.pack_definition import PackDefinitionSchema
+        from financeops.modules.board_pack_generator.infrastructure.repository import BoardPackRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        schema = PackDefinitionSchema.model_validate(payload)
+        repo = BoardPackRepository()
+        row = await repo.create_definition(
+            db=db,
+            tenant_id=intent.tenant_id,
+            schema=schema,
+            created_by=intent.requested_by_user_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_definition",
+            subject_id=str(row.id),
+            trigger_event="board_pack_definition_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "is_active": bool(row.is_active),
+            }
+        )
+
+
+class CreateBoardPackNarrativeDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_narrative_engine.infrastructure.repository import (
+            BoardPackNarrativeRepository,
+        )
+        from financeops.modules.board_pack_narrative_engine.domain.value_objects import (
+            DefinitionVersionTokenInput,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.token_builder import (
+            build_definition_version_token,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        version_token = build_definition_version_token(DefinitionVersionTokenInput(rows=[payload]))
+        row = await BoardPackNarrativeRepository(db).create_board_pack_definition(
+            tenant_id=intent.tenant_id,
+            organisation_id=_uuid_value(payload, "organisation_id"),
+            board_pack_code=str(payload["board_pack_code"]),
+            board_pack_name=str(payload["board_pack_name"]),
+            audience_scope=str(payload.get("audience_scope") or "board"),
+            section_order_json=dict(payload.get("section_order_json") or {}),
+            inclusion_config_json=dict(payload.get("inclusion_config_json") or {}),
+            version_token=version_token,
+            effective_from=date.fromisoformat(str(payload["effective_from"])),
+            effective_to=(
+                date.fromisoformat(str(payload["effective_to"]))
+                if payload.get("effective_to") not in {None, ""}
+                else None
+            ),
+            supersedes_id=_optional_uuid_value(payload, "supersedes_id"),
+            status=str(payload.get("status") or "candidate"),
+            created_by=intent.requested_by_user_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_definition",
+            subject_id=str(row.id),
+            trigger_event="board_pack_narrative_definition_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "version_token": row.version_token,
+                "status": row.status,
+            }
+        )
+
+
+class CreateBoardPackSectionDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_narrative_engine.domain.value_objects import (
+            DefinitionVersionTokenInput,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.repository import (
+            BoardPackNarrativeRepository,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.token_builder import (
+            build_definition_version_token,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        version_token = build_definition_version_token(DefinitionVersionTokenInput(rows=[payload]))
+        row = await BoardPackNarrativeRepository(db).create_section_definition(
+            tenant_id=intent.tenant_id,
+            organisation_id=_uuid_value(payload, "organisation_id"),
+            section_code=str(payload["section_code"]),
+            section_name=str(payload["section_name"]),
+            section_type=str(payload["section_type"]),
+            render_logic_json=dict(payload.get("render_logic_json") or {}),
+            section_order_default=int(payload["section_order_default"]),
+            narrative_template_ref=(
+                None if payload.get("narrative_template_ref") in {None, ""} else str(payload["narrative_template_ref"])
+            ),
+            risk_inclusion_rule_json=dict(payload.get("risk_inclusion_rule_json") or {}),
+            anomaly_inclusion_rule_json=dict(payload.get("anomaly_inclusion_rule_json") or {}),
+            metric_inclusion_rule_json=dict(payload.get("metric_inclusion_rule_json") or {}),
+            version_token=version_token,
+            effective_from=date.fromisoformat(str(payload["effective_from"])),
+            effective_to=(
+                date.fromisoformat(str(payload["effective_to"]))
+                if payload.get("effective_to") not in {None, ""}
+                else None
+            ),
+            supersedes_id=_optional_uuid_value(payload, "supersedes_id"),
+            status=str(payload.get("status") or "candidate"),
+            created_by=intent.requested_by_user_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_section_definition",
+            subject_id=str(row.id),
+            trigger_event="board_pack_section_definition_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                "section_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "version_token": row.version_token,
+                "status": row.status,
+            }
+        )
+
+
+class CreateNarrativeTemplateExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_narrative_engine.domain.value_objects import (
+            DefinitionVersionTokenInput,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.repository import (
+            BoardPackNarrativeRepository,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.token_builder import (
+            build_definition_version_token,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        version_token = build_definition_version_token(DefinitionVersionTokenInput(rows=[payload]))
+        row = await BoardPackNarrativeRepository(db).create_narrative_template(
+            tenant_id=intent.tenant_id,
+            organisation_id=_uuid_value(payload, "organisation_id"),
+            template_code=str(payload["template_code"]),
+            template_name=str(payload["template_name"]),
+            template_type=str(payload["template_type"]),
+            template_text=str(payload["template_text"]),
+            template_body_json=dict(payload.get("template_body_json") or {}),
+            placeholder_schema_json=dict(payload.get("placeholder_schema_json") or {}),
+            version_token=version_token,
+            effective_from=date.fromisoformat(str(payload["effective_from"])),
+            effective_to=(
+                date.fromisoformat(str(payload["effective_to"]))
+                if payload.get("effective_to") not in {None, ""}
+                else None
+            ),
+            supersedes_id=_optional_uuid_value(payload, "supersedes_id"),
+            status=str(payload.get("status") or "candidate"),
+            created_by=intent.requested_by_user_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="narrative_template",
+            subject_id=str(row.id),
+            trigger_event="narrative_template_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                "template_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "version_token": row.version_token,
+                "status": row.status,
+            }
+        )
+
+
+class CreateBoardPackInclusionRuleExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_narrative_engine.domain.value_objects import (
+            DefinitionVersionTokenInput,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.repository import (
+            BoardPackNarrativeRepository,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.token_builder import (
+            build_definition_version_token,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        version_token = build_definition_version_token(DefinitionVersionTokenInput(rows=[payload]))
+        row = await BoardPackNarrativeRepository(db).create_inclusion_rule(
+            tenant_id=intent.tenant_id,
+            organisation_id=_uuid_value(payload, "organisation_id"),
+            rule_code=str(payload["rule_code"]),
+            rule_name=str(payload["rule_name"]),
+            rule_type=str(payload["rule_type"]),
+            inclusion_logic_json=dict(payload.get("inclusion_logic_json") or {}),
+            version_token=version_token,
+            effective_from=date.fromisoformat(str(payload["effective_from"])),
+            effective_to=(
+                date.fromisoformat(str(payload["effective_to"]))
+                if payload.get("effective_to") not in {None, ""}
+                else None
+            ),
+            supersedes_id=_optional_uuid_value(payload, "supersedes_id"),
+            status=str(payload.get("status") or "candidate"),
+            created_by=intent.requested_by_user_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_inclusion_rule",
+            subject_id=str(row.id),
+            trigger_event="board_pack_inclusion_rule_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                "rule_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "version_token": row.version_token,
+                "status": row.status,
+            }
+        )
+
+
+class CreateBoardPackNarrativeRunExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_narrative_engine.application.inclusion_service import (
+            InclusionService,
+        )
+        from financeops.modules.board_pack_narrative_engine.application.narrative_service import (
+            NarrativeService,
+        )
+        from financeops.modules.board_pack_narrative_engine.application.run_service import RunService
+        from financeops.modules.board_pack_narrative_engine.application.section_service import (
+            SectionService,
+        )
+        from financeops.modules.board_pack_narrative_engine.application.validation_service import (
+            ValidationService,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.repository import (
+            BoardPackNarrativeRepository,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        payload = dict(intent.payload_json or {})
+        service = RunService(
+            repository=BoardPackNarrativeRepository(db),
+            validation_service=ValidationService(),
+            inclusion_service=InclusionService(),
+            section_service=SectionService(),
+            narrative_service=NarrativeService(),
+        )
+        result = await service.create_run(
+            tenant_id=intent.tenant_id,
+            organisation_id=_uuid_value(payload, "organisation_id"),
+            reporting_period=date.fromisoformat(str(payload["reporting_period"])),
+            source_metric_run_ids=[uuid.UUID(str(value)) for value in list(payload.get("source_metric_run_ids") or [])],
+            source_risk_run_ids=[uuid.UUID(str(value)) for value in list(payload.get("source_risk_run_ids") or [])],
+            source_anomaly_run_ids=[uuid.UUID(str(value)) for value in list(payload.get("source_anomaly_run_ids") or [])],
+            created_by=intent.requested_by_user_id,
+        )
+        run_id = uuid.UUID(str(result["run_id"]))
+        await db.flush()
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_run",
+            subject_id=str(run_id),
+            trigger_event="board_pack_narrative_run_created",
+        )
+        return ExecutorResult(
+            record_refs={
+                **result,
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+            }
+        )
+
+
+class ExecuteBoardPackNarrativeRunExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_narrative_engine.application.inclusion_service import (
+            InclusionService,
+        )
+        from financeops.modules.board_pack_narrative_engine.application.narrative_service import (
+            NarrativeService,
+        )
+        from financeops.modules.board_pack_narrative_engine.application.run_service import RunService
+        from financeops.modules.board_pack_narrative_engine.application.section_service import (
+            SectionService,
+        )
+        from financeops.modules.board_pack_narrative_engine.application.validation_service import (
+            ValidationService,
+        )
+        from financeops.modules.board_pack_narrative_engine.infrastructure.repository import (
+            BoardPackNarrativeRepository,
+        )
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        if intent.target_id is None:
+            raise ValidationError("EXECUTE_BOARD_PACK_NARRATIVE_RUN intent requires a target run.")
+        service = RunService(
+            repository=BoardPackNarrativeRepository(db),
+            validation_service=ValidationService(),
+            inclusion_service=InclusionService(),
+            section_service=SectionService(),
+            narrative_service=NarrativeService(),
+        )
+        result = await service.execute_run(
+            tenant_id=intent.tenant_id,
+            run_id=intent.target_id,
+            actor_user_id=intent.requested_by_user_id,
+        )
+        await db.flush()
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_run",
+            subject_id=str(intent.target_id),
+            trigger_event="board_pack_narrative_run_executed",
+        )
+        return ExecutorResult(
+            record_refs={
+                **result,
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+            }
+        )
+
+
+class UpdateBoardPackDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_generator.infrastructure.repository import BoardPackRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        if intent.target_id is None:
+            raise ValidationError("UPDATE_BOARD_PACK_DEFINITION intent requires a target definition.")
+        payload = dict(intent.payload_json or {})
+        updates = dict(payload.get("updates") or {})
+        if "section_types" in updates and updates["section_types"] is not None:
+            updates["section_types"] = [str(value) for value in updates["section_types"]]
+        repo = BoardPackRepository()
+        row = await repo.update_definition(
+            db=db,
+            tenant_id=intent.tenant_id,
+            definition_id=intent.target_id,
+            updates=updates,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_definition",
+            subject_id=str(row.id),
+            trigger_event="board_pack_definition_updated",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "is_active": bool(row.is_active),
+            }
+        )
+
+
+class DeactivateBoardPackDefinitionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.board_pack_generator.infrastructure.repository import BoardPackRepository
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        if intent.target_id is None:
+            raise ValidationError("DEACTIVATE_BOARD_PACK_DEFINITION intent requires a target definition.")
+        repo = BoardPackRepository()
+        row = await repo.deactivate_definition(
+            db=db,
+            tenant_id=intent.tenant_id,
+            definition_id=intent.target_id,
+        )
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type="board_pack_definition",
+            subject_id=str(row.id),
+            trigger_event="board_pack_definition_deactivated",
+        )
+        return ExecutorResult(
+            record_refs={
+                "definition_id": str(row.id),
+                "snapshot_id": str(snapshot.id),
+                "determinism_hash": snapshot.determinism_hash,
+                "is_active": bool(row.is_active),
+            }
         )
 
 
@@ -1675,6 +2309,151 @@ class CheckCovenantsExecutor(BaseIntentExecutor):
         )
 
 
+class BatchMutationExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.core.intent.service import IntentActor, IntentService
+
+        payload = dict(intent.payload_json or {})
+        items = list(payload.get("items") or [])
+        actor = IntentActor(
+            user_id=intent.requested_by_user_id,
+            tenant_id=intent.tenant_id,
+            role=intent.requested_by_role,
+            source_channel=intent.source_channel,
+        )
+        service = IntentService(db)
+        child_results: list[dict[str, Any]] = []
+        failed_items: list[dict[str, Any]] = []
+
+        for index, item in enumerate(items):
+            item_payload = dict(item.get("payload") or {})
+            item_type = IntentType(str(item["intent_type"]))
+            item_target_id = (
+                uuid.UUID(str(item["target_id"])) if item.get("target_id") not in {None, ""} else None
+            )
+            item_key = str(item.get("idempotency_key") or f"{intent.idempotency_key}:{index}")
+            try:
+                child = await service.submit_intent(
+                    intent_type=item_type,
+                    actor=actor,
+                    payload=item_payload,
+                    idempotency_key=item_key,
+                    target_id=item_target_id,
+                    parent_intent_id=intent.id,
+                )
+                child_results.append(
+                    {
+                        "index": index,
+                        "intent_id": str(child.intent_id),
+                        "job_id": str(child.job_id) if child.job_id else None,
+                        "status": child.status,
+                        "next_action": child.next_action,
+                        "record_refs": child.record_refs,
+                    }
+                )
+            except Exception as exc:
+                failed_items.append(
+                    {
+                        "index": index,
+                        "intent_type": item_type.value,
+                        "payload": item_payload,
+                        "target_id": str(item_target_id) if item_target_id else None,
+                        "error": str(exc),
+                        "idempotency_key": item_key,
+                    }
+                )
+
+        return ExecutorResult(
+            record_refs={
+                "batch_intent_id": str(intent.id),
+                "child_results": child_results,
+                "failed_items": failed_items,
+                "success_count": len(child_results),
+                "failed_count": len(failed_items),
+            },
+            final_status=IntentStatus.PARTIAL_SUCCESS.value if failed_items else IntentStatus.RECORDED.value,
+        )
+
+
+class RetryBatchMutationExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from sqlalchemy import select
+
+        from financeops.core.intent.service import IntentActor, IntentService
+        from financeops.db.models.intent_pipeline import CanonicalIntent as CanonicalIntentModel
+
+        payload = dict(intent.payload_json or {})
+        parent_id = uuid.UUID(str(payload["parent_intent_id"]))
+        parent = (
+            await db.execute(
+                select(CanonicalIntentModel).where(
+                    CanonicalIntentModel.tenant_id == intent.tenant_id,
+                    CanonicalIntentModel.id == parent_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if parent is None:
+            raise ValidationError("Batch parent intent not found.")
+
+        failed_items = list((parent.record_refs_json or {}).get("failed_items") or [])
+        actor = IntentActor(
+            user_id=intent.requested_by_user_id,
+            tenant_id=intent.tenant_id,
+            role=intent.requested_by_role,
+            source_channel=intent.source_channel,
+        )
+        service = IntentService(db)
+        child_results: list[dict[str, Any]] = []
+        remaining_failures: list[dict[str, Any]] = []
+
+        for index, item in enumerate(failed_items):
+            item_payload = dict(item.get("payload") or {})
+            item_type = IntentType(str(item["intent_type"]))
+            item_target_id = (
+                uuid.UUID(str(item["target_id"])) if item.get("target_id") not in {None, ""} else None
+            )
+            retry_key = f"{intent.idempotency_key}:{index}"
+            try:
+                child = await service.submit_intent(
+                    intent_type=item_type,
+                    actor=actor,
+                    payload=item_payload,
+                    idempotency_key=retry_key,
+                    target_id=item_target_id,
+                    parent_intent_id=intent.id,
+                )
+                child_results.append(
+                    {
+                        "index": index,
+                        "intent_id": str(child.intent_id),
+                        "job_id": str(child.job_id) if child.job_id else None,
+                        "status": child.status,
+                        "next_action": child.next_action,
+                        "record_refs": child.record_refs,
+                    }
+                )
+            except Exception as exc:
+                remaining_failures.append(
+                    {
+                        **item,
+                        "error": str(exc),
+                        "idempotency_key": retry_key,
+                    }
+                )
+
+        return ExecutorResult(
+            record_refs={
+                "batch_intent_id": str(intent.id),
+                "retried_parent_intent_id": str(parent.id),
+                "child_results": child_results,
+                "failed_items": remaining_failures,
+                "success_count": len(child_results),
+                "failed_count": len(remaining_failures),
+            },
+            final_status=IntentStatus.PARTIAL_SUCCESS.value if remaining_failures else IntentStatus.RECORDED.value,
+        )
+
+
 class MutationExecutorRegistry:
     def __init__(self) -> None:
         self._executors: dict[str, BaseIntentExecutor] = {
@@ -1706,9 +2485,22 @@ class MutationExecutorRegistry:
             IntentType.UPDATE_PREPAID_SCHEDULE.value: UpdatePrepaidScheduleExecutor(),
             IntentType.POST_PREPAID_AMORTIZATION.value: PostPrepaidAmortizationExecutor(),
             IntentType.RUN_PREPAID_WORKFLOW.value: RunPrepaidWorkflowExecutor(),
+            IntentType.START_LEGACY_CONSOLIDATION_RUN.value: StartLegacyConsolidationRunExecutor(),
             IntentType.RUN_CONSOLIDATION.value: RunConsolidationExecutor(),
             IntentType.EXECUTE_CONSOLIDATION.value: ExecuteConsolidationExecutor(),
+            IntentType.CREATE_REPORT_DEFINITION.value: CreateReportDefinitionExecutor(),
+            IntentType.UPDATE_REPORT_DEFINITION.value: UpdateReportDefinitionExecutor(),
+            IntentType.DEACTIVATE_REPORT_DEFINITION.value: DeactivateReportDefinitionExecutor(),
             IntentType.GENERATE_REPORT.value: GenerateReportExecutor(),
+            IntentType.CREATE_BOARD_PACK_DEFINITION.value: CreateBoardPackDefinitionExecutor(),
+            IntentType.CREATE_BOARD_PACK_NARRATIVE_DEFINITION.value: CreateBoardPackNarrativeDefinitionExecutor(),
+            IntentType.CREATE_BOARD_PACK_SECTION_DEFINITION.value: CreateBoardPackSectionDefinitionExecutor(),
+            IntentType.CREATE_NARRATIVE_TEMPLATE.value: CreateNarrativeTemplateExecutor(),
+            IntentType.CREATE_BOARD_PACK_INCLUSION_RULE.value: CreateBoardPackInclusionRuleExecutor(),
+            IntentType.CREATE_BOARD_PACK_NARRATIVE_RUN.value: CreateBoardPackNarrativeRunExecutor(),
+            IntentType.EXECUTE_BOARD_PACK_NARRATIVE_RUN.value: ExecuteBoardPackNarrativeRunExecutor(),
+            IntentType.UPDATE_BOARD_PACK_DEFINITION.value: UpdateBoardPackDefinitionExecutor(),
+            IntentType.DEACTIVATE_BOARD_PACK_DEFINITION.value: DeactivateBoardPackDefinitionExecutor(),
             IntentType.GENERATE_BOARD_PACK.value: GenerateBoardPackExecutor(),
             IntentType.CREATE_WORKING_CAPITAL_SNAPSHOT.value: CreateWorkingCapitalSnapshotExecutor(),
             IntentType.CREATE_BUDGET_VERSION.value: CreateBudgetVersionExecutor(),
@@ -1748,6 +2540,8 @@ class MutationExecutorRegistry:
             IntentType.CREATE_COVENANT_DEFINITION.value: CreateCovenantDefinitionExecutor(),
             IntentType.UPDATE_COVENANT_DEFINITION.value: UpdateCovenantDefinitionExecutor(),
             IntentType.CHECK_COVENANTS.value: CheckCovenantsExecutor(),
+            IntentType.BATCH_MUTATION.value: BatchMutationExecutor(),
+            IntentType.RETRY_BATCH_MUTATION.value: RetryBatchMutationExecutor(),
         }
 
     def resolve(self, intent_type: str) -> BaseIntentExecutor:

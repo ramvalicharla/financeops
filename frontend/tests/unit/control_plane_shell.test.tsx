@@ -47,6 +47,28 @@ vi.mock("@/lib/api/control-plane", () => ({
       organisation_id: "org-1",
     },
   ]),
+  getControlPlaneContext: vi.fn(async () => ({
+    tenant_id: "tenant-1",
+    tenant_slug: "acme",
+    enabled_modules: [
+      {
+        module_id: "mod-1",
+        module_code: "accounting_layer",
+        module_name: "Accounting",
+        engine_context: "finance",
+        is_financial_impacting: true,
+        effective_from: "2026-04-01T00:00:00Z",
+      },
+    ],
+    current_period: {
+      period_label: "2026-04",
+      fiscal_year: 2026,
+      period_number: 4,
+      source: "accounting_period",
+      period_id: "period-1",
+      status: "OPEN",
+    },
+  })),
 }))
 
 const renderWithQueryClient = (ui: ReactNode) => {
@@ -107,8 +129,8 @@ describe("control plane shell", () => {
 
     expect(screen.getAllByText("FinanceOps").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Jobs")[0]).toBeInTheDocument()
-    expect(screen.getByText("Accounting")).toBeInTheDocument()
     await waitFor(() => {
+      expect(screen.getByText("Accounting")).toBeInTheDocument()
       expect(screen.getByText(/Period: Apr 2026/i)).toBeInTheDocument()
     })
   })

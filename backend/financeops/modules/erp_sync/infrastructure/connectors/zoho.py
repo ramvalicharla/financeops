@@ -15,6 +15,7 @@ from financeops.modules.erp_sync.infrastructure.connectors.http_backoff import (
     with_backoff,
 )
 from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
+from financeops.services.network_runtime import get_request, post_form_request
 
 
 class AuthenticationError(ExtractionError):
@@ -138,11 +139,15 @@ class ZohoConnector(AbstractConnector):
     ) -> dict[str, Any]:
         headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
         url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await with_backoff(
-                lambda: client.get(url, headers=headers, params=params or {}),
-                context=f"ZOHO:{endpoint}",
-            )
+        response = await with_backoff(
+            lambda: get_request(
+                url=url,
+                headers=headers,
+                params=params or {},
+                timeout=30.0,
+            ),
+            context=f"ZOHO:{endpoint}",
+        )
         if response.status_code in {401, 403}:
             raise AuthenticationError(
                 f"Zoho API auth error ({response.status_code}) for {endpoint}"
@@ -190,16 +195,16 @@ class ZohoConnector(AbstractConnector):
                 "Zoho refresh requires refresh_token, client_id and client_secret"
             )
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                self.ZOHO_TOKEN_URL,
-                data={
-                    "grant_type": "refresh_token",
-                    "client_id": client_id,
-                    "client_secret": client_secret,
-                    "refresh_token": refresh_token,
-                },
-            )
+        response = await post_form_request(
+            url=self.ZOHO_TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "refresh_token": refresh_token,
+            },
+            timeout=30.0,
+        )
         data = response.json()
         if response.status_code >= 400 or "access_token" not in data:
             raise AuthenticationError(f"Zoho token refresh failed: {data}")

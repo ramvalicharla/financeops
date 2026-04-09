@@ -78,6 +78,8 @@ class ConsolidationRunAcceptedResponse(BaseModel):
     workflow_id: str
     status: str
     correlation_id: str
+    determinism_hash: str | None = None
+    snapshot_refs: list[str] = []
 
 
 class ConsolidationRunStatusResponse(BaseModel):

@@ -23,6 +23,7 @@ from financeops.modules.custom_report_builder.domain.filter_dsl import (
 from financeops.modules.custom_report_builder.infrastructure.repository import (
     ReportRepository,
 )
+from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 
@@ -53,7 +54,9 @@ async def _create_definition(client: AsyncClient, token: str) -> dict:
 @pytest.mark.asyncio
 async def test_t_141_create_report_definition_returns_201(
     async_client: AsyncClient,
+    async_session: AsyncSession,
     test_access_token: str,
+    test_user,
 ) -> None:
     response = await async_client.post(
         "/api/v1/reports/definitions",
@@ -61,7 +64,15 @@ async def test_t_141_create_report_definition_returns_201(
         json=_definition_payload(),
     )
     assert response.status_code == 201
-    assert response.json()["data"]["id"]
+    payload = response.json()["data"]
+    assert payload["id"]
+    assert payload["intent_id"]
+    assert payload["job_id"]
+    await set_tenant_context(async_session, test_user.tenant_id)
+    row = await async_session.get(ReportDefinition, uuid.UUID(payload["id"]))
+    assert row is not None
+    assert row.created_by_intent_id is not None
+    assert row.recorded_by_job_id is not None
 
 
 @pytest.mark.integration
@@ -240,6 +251,14 @@ async def test_t_145_get_run_result_returns_result_data(
         result_hash="a" * 64,
         export_paths={},
     )
+    await Phase4ControlPlaneService(async_session).ensure_snapshot_for_subject(
+        tenant_id=test_user.tenant_id,
+        actor_user_id=test_user.id,
+        actor_role=test_user.role.value,
+        subject_type="report_run",
+        subject_id=str(run.id),
+        trigger_event="report_generation_complete",
+    )
     await async_session.commit()
 
     response = await async_client.get(
@@ -247,7 +266,36 @@ async def test_t_145_get_run_result_returns_result_data(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 200
-    assert response.json()["data"]["result_data"]
+    payload = response.json()["data"]
+    assert payload["result_data"]
+    assert payload["snapshot_refs"]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_t_145b_update_definition_uses_governed_pipeline(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_access_token: str,
+    test_user,
+) -> None:
+    definition = await _create_definition(async_client, test_access_token)
+
+    response = await async_client.patch(
+        f"/api/v1/reports/definitions/{definition['id']}",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+        json={"description": "updated via intent"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["intent_id"]
+    assert payload["job_id"]
+    assert payload["description"] == "updated via intent"
+    await set_tenant_context(async_session, test_user.tenant_id)
+    row = await async_session.get(ReportDefinition, uuid.UUID(definition["id"]))
+    assert row is not None
+    assert row.recorded_by_job_id is not None
 
 
 @pytest.mark.integration

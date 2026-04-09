@@ -91,6 +91,8 @@ class BoardPackRepository:
             row.chain_hash = compat_chain_hash
         if "previous_hash" in table_columns:
             row.previous_hash = GENESIS_HASH
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
         return row
@@ -158,6 +160,8 @@ class BoardPackRepository:
         if "is_active" in updates and updates["is_active"] is not None:
             definition.is_active = bool(updates["is_active"])
         definition.updated_at = datetime.now(UTC)
+        if get_mutation_context() is not None:
+            apply_mutation_linkage(definition)
         await db.flush()
         return definition
 

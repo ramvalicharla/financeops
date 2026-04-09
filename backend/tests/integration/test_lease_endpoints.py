@@ -79,7 +79,7 @@ async def test_lease_run_status_and_results_endpoints(
     stub_temporal = _StubTemporalClient()
 
     with patch(
-        "financeops.api.v1.lease.get_temporal_client",
+        "financeops.temporal.client.get_temporal_client",
         new=AsyncMock(return_value=stub_temporal),
     ):
         response = await async_client.post(

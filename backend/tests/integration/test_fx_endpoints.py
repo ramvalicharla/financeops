@@ -102,7 +102,7 @@ async def test_fx_fetch_live_endpoint_uses_temporal(
     test_access_token: str,
 ):
     with patch(
-        "financeops.api.v1.fx_rates.get_temporal_client",
+        "financeops.temporal.client.get_temporal_client",
         new=AsyncMock(return_value=_StubTemporalClient()),
     ):
         response = await async_client.post(
@@ -122,7 +122,7 @@ async def test_fx_fetch_live_endpoint_surfaces_degraded_status(
     test_access_token: str,
 ):
     with patch(
-        "financeops.api.v1.fx_rates.get_temporal_client",
+        "financeops.temporal.client.get_temporal_client",
         new=AsyncMock(return_value=_StubTemporalClientDegraded()),
     ):
         response = await async_client.post(
@@ -218,7 +218,7 @@ async def test_apply_month_end_endpoint_uses_temporal(
     test_access_token: str,
 ):
     with patch(
-        "financeops.api.v1.fx_rates.get_temporal_client",
+        "financeops.temporal.client.get_temporal_client",
         new=AsyncMock(return_value=_StubTemporalClient()),
     ):
         response = await async_client.post(

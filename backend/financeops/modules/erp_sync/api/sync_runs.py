@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, require_finance_team
 from financeops.config import limiter, settings
 from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.core.intent.enums import IntentSourceChannel, IntentType
 from financeops.core.intent.service import IntentActor, IntentService
 from financeops.db.models.erp_sync import (
@@ -115,7 +116,8 @@ async def create_sync_run(
         await session.flush()
         if str((result.record_refs or {}).get("sync_run_status", "")).lower() == "completed":
             try:
-                trigger_post_sync_pipeline.delay(
+                JobDispatcher().enqueue_task(
+                    trigger_post_sync_pipeline,
                     tenant_id=str(user.tenant_id),
                     sync_run_id=str((result.record_refs or {})["sync_run_id"]),
                 )

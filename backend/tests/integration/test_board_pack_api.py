@@ -11,9 +11,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.security import hash_password
+from financeops.db.models.board_pack_generator import BoardPackGeneratorDefinition
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
+from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 pytest_plugins: tuple[str, ...] = ()
@@ -281,7 +283,15 @@ async def test_t_040_create_definition_returns_201(
     )
 
     assert response.status_code == 201
-    assert response.json()["data"]["id"]
+    payload = response.json()["data"]
+    assert payload["id"]
+    assert payload["intent_id"]
+    assert payload["job_id"]
+    await set_tenant_context(async_session, test_user.tenant_id)
+    row = await async_session.get(BoardPackGeneratorDefinition, uuid.UUID(payload["id"]))
+    assert row is not None
+    assert row.created_by_intent_id is not None
+    assert row.recorded_by_job_id is not None
 
 
 @pytest.mark.integration
@@ -438,6 +448,50 @@ async def test_t_042_list_runs_returns_latest_row_per_origin_run_id(
     data = response.json()["data"]
     assert len(data) == 1
     assert data[0]["status"] == "COMPLETE"
+    assert data[0]["determinism_hash"] == "f" * 64
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_t_042b_get_run_includes_snapshot_refs(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_access_token: str,
+    test_user,
+) -> None:
+    await _relax_board_pack_schema(async_session)
+    from financeops.modules.board_pack_generator.infrastructure.repository import BoardPackRepository
+
+    definition = await _create_definition(async_client, test_access_token, test_user.tenant_id)
+    await set_tenant_context(async_session, test_user.tenant_id)
+    repo = BoardPackRepository()
+    run = await repo.create_run(
+        db=async_session,
+        tenant_id=test_user.tenant_id,
+        definition_id=uuid.UUID(definition["id"]),
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 1, 31),
+        triggered_by=test_user.id,
+    )
+    run.chain_hash = "c" * 64
+    await Phase4ControlPlaneService(async_session).ensure_snapshot_for_subject(
+        tenant_id=test_user.tenant_id,
+        actor_user_id=test_user.id,
+        actor_role=test_user.role.value,
+        subject_type="board_pack_run",
+        subject_id=str(run.id),
+        trigger_event="board_pack_generation_complete",
+    )
+    await async_session.commit()
+
+    response = await async_client.get(
+        f"/api/v1/board-packs/runs/{run.id}",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["determinism_hash"] == "c" * 64
+    assert payload["snapshot_refs"]
 
 
 @pytest.mark.integration
@@ -572,6 +626,33 @@ async def test_t_045_delete_definition_then_active_only_list_returns_404(
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert list_response.status_code == 404
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_t_045b_update_definition_uses_governed_pipeline(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_access_token: str,
+    test_user,
+) -> None:
+    await _relax_board_pack_schema(async_session)
+    definition = await _create_definition(async_client, test_access_token, test_user.tenant_id)
+
+    response = await async_client.patch(
+        f"/api/v1/board-packs/definitions/{definition['id']}",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+        json={"description": "updated via intent"},
+    )
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["intent_id"]
+    assert payload["job_id"]
+    assert payload["description"] == "updated via intent"
+    await set_tenant_context(async_session, test_user.tenant_id)
+    row = await async_session.get(BoardPackGeneratorDefinition, uuid.UUID(definition["id"]))
+    assert row is not None
+    assert row.recorded_by_job_id is not None
 
 
 @pytest.mark.integration

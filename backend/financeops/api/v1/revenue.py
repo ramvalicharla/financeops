@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import require_finance_leader, require_finance_team, get_async_session
 from financeops.config import settings
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.users import IamUser
 from financeops.schemas.revenue import (
     RevenueContractDrillResponse,
@@ -28,7 +29,6 @@ from financeops.services.revenue import (
     get_run_status,
     get_schedule_drilldown,
 )
-from financeops.temporal.client import get_temporal_client
 from financeops.temporal.revenue_workflows import (
     RevenueRecognitionWorkflow,
     RevenueRecognitionWorkflowInput,
@@ -55,8 +55,7 @@ async def start_revenue_run_endpoint(
     await session.flush()
 
     if run["created_new"]:
-        temporal_client = await get_temporal_client()
-        await temporal_client.start_workflow(
+        await JobDispatcher().start_temporal_workflow(
             RevenueRecognitionWorkflow.run,
             RevenueRecognitionWorkflowInput(
                 run_id=str(run["run_id"]),
@@ -65,7 +64,7 @@ async def start_revenue_run_endpoint(
                 requested_by=str(user.id),
                 config_hash=str(run["request_signature"]),
             ),
-            id=str(run["workflow_id"]),
+            workflow_id=str(run["workflow_id"]),
             task_queue=settings.TEMPORAL_TASK_QUEUE,
             execution_timeout=timedelta(minutes=15),
         )

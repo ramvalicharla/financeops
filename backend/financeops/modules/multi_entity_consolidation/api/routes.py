@@ -685,6 +685,8 @@ async def create_run(
         idempotent=bool(response["idempotent"]),
         intent_id=result.intent_id,
         job_id=result.job_id,
+        determinism_hash=response.get("determinism_hash"),
+        snapshot_refs=list(response.get("snapshot_refs") or []),
     )
 
 
@@ -728,6 +730,8 @@ async def execute_run(
         idempotent=bool(response["idempotent"]),
         intent_id=result.intent_id,
         job_id=result.job_id,
+        determinism_hash=response.get("determinism_hash"),
+        snapshot_refs=list(response.get("snapshot_refs") or []),
     )
 
 

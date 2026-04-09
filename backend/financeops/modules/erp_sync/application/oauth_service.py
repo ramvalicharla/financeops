@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlencode
 
-import httpx
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +21,7 @@ from financeops.modules.erp_sync.application.connection_service import (
 )
 from financeops.modules.erp_sync.infrastructure.secret_store import secret_store
 from financeops.services.audit_writer import AuditWriter
+from financeops.services.network_runtime import post_form_request
 
 SESSION_TTL_MINUTES = 15
 
@@ -348,8 +348,11 @@ async def consume_oauth_callback(
         "client_secret": client_secret,
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(config["token_url"], data=token_payload)
+    response = await post_form_request(
+        url=str(config["token_url"]),
+        data=token_payload,
+        timeout=30.0,
+    )
 
     if response.status_code != 200:
         raise ValidationError(
@@ -434,8 +437,11 @@ async def refresh_connection_token(
         "client_secret": client_secret,
     }
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(config["token_url"], data=refresh_payload)
+    response = await post_form_request(
+        url=str(config["token_url"]),
+        data=refresh_payload,
+        timeout=30.0,
+    )
 
     if response.status_code != 200:
         raise AuthenticationError(f"Token refresh failed: HTTP {response.status_code}")

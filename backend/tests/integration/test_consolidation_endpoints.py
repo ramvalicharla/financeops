@@ -120,7 +120,7 @@ async def test_consolidation_run_status_results_and_export_endpoints(
     stub_temporal = _StubTemporalClient()
 
     with patch(
-        "financeops.api.v1.consolidation.get_temporal_client",
+        "financeops.temporal.client.get_temporal_client",
         new=AsyncMock(return_value=stub_temporal),
     ):
         run_response = await async_client.post(
@@ -140,6 +140,8 @@ async def test_consolidation_run_status_results_and_export_endpoints(
     run_payload = run_response.json()["data"]
     run_id = run_payload["run_id"]
     assert run_payload["status"] == "accepted"
+    assert run_payload["determinism_hash"]
+    assert run_payload["snapshot_refs"]
     assert stub_temporal.started
 
     status_response = await async_client.get(

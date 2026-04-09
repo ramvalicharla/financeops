@@ -3,6 +3,7 @@ from __future__ import annotations
 import smtplib
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -576,30 +577,7 @@ async def test_rotate_smtp_validates_connection(
 
     from financeops.modules.secret_rotation import service as rotation_service
 
-    class _SMTP:
-        def __init__(self, *args, **kwargs) -> None:
-            return None
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        def ehlo(self) -> None:
-            return None
-
-        def starttls(self) -> None:
-            return None
-
-        def login(self, user: str, password: str) -> None:
-            return None
-
-    async def _run_to_thread(func, *args, **kwargs):  # type: ignore[no-untyped-def]
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(rotation_service.smtplib, "SMTP", _SMTP)
-    monkeypatch.setattr(rotation_service.asyncio, "to_thread", _run_to_thread)
+    monkeypatch.setattr(rotation_service, "probe_smtp_connection", AsyncMock(return_value=None))
 
     result = await rotate_smtp_credentials(
         async_session,
@@ -622,30 +600,7 @@ async def test_rotate_smtp_logs_rotation(
 
     from financeops.modules.secret_rotation import service as rotation_service
 
-    class _SMTP:
-        def __init__(self, *args, **kwargs) -> None:
-            return None
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        def ehlo(self) -> None:
-            return None
-
-        def starttls(self) -> None:
-            return None
-
-        def login(self, user: str, password: str) -> None:
-            return None
-
-    async def _run_to_thread(func, *args, **kwargs):  # type: ignore[no-untyped-def]
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(rotation_service.smtplib, "SMTP", _SMTP)
-    monkeypatch.setattr(rotation_service.asyncio, "to_thread", _run_to_thread)
+    monkeypatch.setattr(rotation_service, "probe_smtp_connection", AsyncMock(return_value=None))
 
     await rotate_smtp_credentials(
         async_session,
@@ -679,30 +634,11 @@ async def test_rotate_smtp_fails_on_bad_credentials(
 
     from financeops.modules.secret_rotation import service as rotation_service
 
-    class _SMTP:
-        def __init__(self, *args, **kwargs) -> None:
-            return None
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        def ehlo(self) -> None:
-            return None
-
-        def starttls(self) -> None:
-            return None
-
-        def login(self, user: str, password: str) -> None:
-            raise smtplib.SMTPAuthenticationError(535, b"auth failed")
-
-    async def _run_to_thread(func, *args, **kwargs):  # type: ignore[no-untyped-def]
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(rotation_service.smtplib, "SMTP", _SMTP)
-    monkeypatch.setattr(rotation_service.asyncio, "to_thread", _run_to_thread)
+    monkeypatch.setattr(
+        rotation_service,
+        "probe_smtp_connection",
+        AsyncMock(side_effect=RuntimeError("auth failed")),
+    )
 
     with pytest.raises(RuntimeError):
         await rotate_smtp_credentials(
@@ -737,30 +673,7 @@ async def test_rotate_smtp_returns_action_required(
 
     from financeops.modules.secret_rotation import service as rotation_service
 
-    class _SMTP:
-        def __init__(self, *args, **kwargs) -> None:
-            return None
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
-            return None
-
-        def ehlo(self) -> None:
-            return None
-
-        def starttls(self) -> None:
-            return None
-
-        def login(self, user: str, password: str) -> None:
-            return None
-
-    async def _run_to_thread(func, *args, **kwargs):  # type: ignore[no-untyped-def]
-        return func(*args, **kwargs)
-
-    monkeypatch.setattr(rotation_service.smtplib, "SMTP", _SMTP)
-    monkeypatch.setattr(rotation_service.asyncio, "to_thread", _run_to_thread)
+    monkeypatch.setattr(rotation_service, "probe_smtp_connection", AsyncMock(return_value=None))
 
     result = await rotate_smtp_credentials(
         async_session,

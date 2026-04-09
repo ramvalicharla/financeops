@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.scheduled_delivery import DeliveryLog, DeliverySchedule
 from financeops.db.models.users import IamUser
 from financeops.modules.scheduled_delivery.domain.enums import (
@@ -234,7 +235,7 @@ async def trigger_schedule(
     if not existing.is_active:
         raise HTTPException(status_code=400, detail="Schedule is inactive")
 
-    deliver_schedule_task.delay(str(id), str(user.tenant_id))
+    JobDispatcher().enqueue_task(deliver_schedule_task, str(id), str(user.tenant_id))
     return TriggerResponse(schedule_id=str(id), status="triggered")
 
 

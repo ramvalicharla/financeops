@@ -17,7 +17,7 @@ export interface IntentPanelState {
 interface ControlPlaneState {
   current_org: string | null
   current_module: string | null
-  current_period: string
+  current_period: string | null
   active_panel: ControlPlanePanel
   selected_intent_id: string | null
   selected_job_id: string | null
@@ -26,7 +26,7 @@ interface ControlPlaneState {
   intent_payload: IntentPanelState | null
   setCurrentOrg: (org: string | null) => void
   setCurrentModule: (module: string | null) => void
-  setCurrentPeriod: (period: string) => void
+  setCurrentPeriod: (period: string | null) => void
   openIntentPanel: (payload: IntentPanelState) => void
   openJobPanel: (jobId?: string | null) => void
   openTimelinePanel: (subjectType?: string | null, subjectId?: string | null) => void
@@ -34,18 +34,12 @@ interface ControlPlaneState {
   closePanel: () => void
 }
 
-const currentPeriodLabel = () => {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, "0")
-  return `${now.getFullYear()}-${month}`
-}
-
 export const useControlPlaneStore = create<ControlPlaneState>()(
   persist(
     (set) => ({
       current_org: null,
       current_module: null,
-      current_period: currentPeriodLabel(),
+      current_period: null,
       active_panel: null,
       selected_intent_id: null,
       selected_job_id: null,

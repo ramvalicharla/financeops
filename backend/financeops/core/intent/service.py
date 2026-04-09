@@ -18,7 +18,7 @@ from financeops.core.intent.enums import (
     IntentStatus,
     NextAction,
 )
-from financeops.core.intent.guards import GuardEngine
+from financeops.core.intent.guards import IntentGuardAdapter
 from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalIntentEvent
 from financeops.platform.db.models.entities import CpEntity
@@ -61,8 +61,21 @@ def _intent_metadata(intent_type: IntentType, *, has_target: bool) -> tuple[str,
         IntentType.RUN_PREPAID_WORKFLOW: ("prepaid", "prepaid_run"),
         IntentType.RUN_CONSOLIDATION: ("multi_entity_consolidation", "consolidation_run"),
         IntentType.EXECUTE_CONSOLIDATION: ("multi_entity_consolidation", "consolidation_run"),
+        IntentType.CREATE_REPORT_DEFINITION: ("custom_report_builder", "report_definition"),
+        IntentType.UPDATE_REPORT_DEFINITION: ("custom_report_builder", "report_definition"),
+        IntentType.DEACTIVATE_REPORT_DEFINITION: ("custom_report_builder", "report_definition"),
         IntentType.GENERATE_REPORT: ("custom_report_builder", "report_run"),
+        IntentType.CREATE_BOARD_PACK_DEFINITION: ("board_pack_generator", "board_pack_definition"),
+        IntentType.UPDATE_BOARD_PACK_DEFINITION: ("board_pack_generator", "board_pack_definition"),
+        IntentType.DEACTIVATE_BOARD_PACK_DEFINITION: ("board_pack_generator", "board_pack_definition"),
+        IntentType.CREATE_BOARD_PACK_NARRATIVE_DEFINITION: ("board_pack_narrative_engine", "board_pack_definition"),
+        IntentType.CREATE_BOARD_PACK_SECTION_DEFINITION: ("board_pack_narrative_engine", "board_pack_section_definition"),
+        IntentType.CREATE_NARRATIVE_TEMPLATE: ("board_pack_narrative_engine", "narrative_template"),
+        IntentType.CREATE_BOARD_PACK_INCLUSION_RULE: ("board_pack_narrative_engine", "board_pack_inclusion_rule"),
+        IntentType.CREATE_BOARD_PACK_NARRATIVE_RUN: ("board_pack_narrative_engine", "board_pack_run"),
+        IntentType.EXECUTE_BOARD_PACK_NARRATIVE_RUN: ("board_pack_narrative_engine", "board_pack_run"),
         IntentType.GENERATE_BOARD_PACK: ("board_pack_generator", "board_pack_run"),
+        IntentType.START_LEGACY_CONSOLIDATION_RUN: ("consolidation", "consolidation_run"),
         IntentType.CREATE_WORKING_CAPITAL_SNAPSHOT: ("working_capital", "working_capital_snapshot"),
         IntentType.CREATE_BUDGET_VERSION: ("budgeting", "budget_version"),
         IntentType.UPSERT_BUDGET_LINE: ("budgeting", "budget_line"),
@@ -101,6 +114,8 @@ def _intent_metadata(intent_type: IntentType, *, has_target: bool) -> tuple[str,
         IntentType.CREATE_COVENANT_DEFINITION: ("debt_covenants", "covenant_definition"),
         IntentType.UPDATE_COVENANT_DEFINITION: ("debt_covenants", "covenant_definition"),
         IntentType.CHECK_COVENANTS: ("debt_covenants", "covenant_check_run"),
+        IntentType.BATCH_MUTATION: ("control_plane", "batch_intent"),
+        IntentType.RETRY_BATCH_MUTATION: ("control_plane", "batch_intent"),
     }
     if intent_type in metadata:
         module_key, target_type = metadata[intent_type]
@@ -134,12 +149,12 @@ class IntentService:
         self,
         db: AsyncSession,
         *,
-        guard_engine: GuardEngine | None = None,
+        guard_engine: IntentGuardAdapter | None = None,
         approval_resolver: ApprovalResolver | None = None,
         dispatcher: JobDispatcher | None = None,
     ) -> None:
         self._db = db
-        self._guards = guard_engine or GuardEngine()
+        self._guards = guard_engine or IntentGuardAdapter()
         self._approvals = approval_resolver or ApprovalResolver()
         self._dispatcher = dispatcher or JobDispatcher()
 
@@ -151,6 +166,7 @@ class IntentService:
         payload: dict[str, Any] | None,
         idempotency_key: str,
         target_id: uuid.UUID | None = None,
+        parent_intent_id: uuid.UUID | None = None,
     ) -> IntentSubmissionResult:
         intent = await self._find_existing_intent(
             tenant_id=actor.tenant_id,
@@ -175,6 +191,7 @@ class IntentService:
             entity=entity,
             target_id=target_id,
             idempotency_key=idempotency_key,
+            parent_intent_id=parent_intent_id,
         )
         await self.submit_existing_intent(intent, actor=actor)
         await self.validate_intent(intent, actor=actor)
@@ -214,6 +231,7 @@ class IntentService:
         entity: CpEntity,
         target_id: uuid.UUID | None,
         idempotency_key: str,
+        parent_intent_id: uuid.UUID | None = None,
     ) -> CanonicalIntent:
         intent = CanonicalIntent(
             id=uuid.uuid4(),
@@ -224,6 +242,7 @@ class IntentService:
             module_key=_intent_metadata(intent_type, has_target=target_id is not None)[0],
             target_type=_intent_metadata(intent_type, has_target=target_id is not None)[1],
             target_id=target_id,
+            parent_intent_id=parent_intent_id,
             status=IntentStatus.DRAFT.value,
             requested_by_user_id=actor.user_id,
             requested_by_role=actor.role,
@@ -377,7 +396,7 @@ class IntentService:
         )
 
         try:
-            record_refs = await self._dispatcher.execute(self._db, intent=intent, job=job)
+            execution_result = await self._dispatcher.execute(self._db, intent=intent, job=job)
         except Exception as exc:
             job.status = JobStatus.FAILED.value
             job.failed_at = _utcnow()
@@ -389,8 +408,12 @@ class IntentService:
             intent.updated_at = _utcnow()
             await self._db.flush()
             raise
-        await self.mark_executed(intent, job_id=job.id, result=record_refs)
-        await self.mark_recorded(intent, record_refs=record_refs)
+        await self.mark_executed(intent, job_id=job.id, result=execution_result.record_refs)
+        await self.mark_recorded(
+            intent,
+            record_refs=execution_result.record_refs,
+            final_status=execution_result.final_status,
+        )
         return job
 
     async def mark_executed(
@@ -419,9 +442,10 @@ class IntentService:
         intent: CanonicalIntent,
         *,
         record_refs: dict[str, Any],
+        final_status: str | None = None,
     ) -> CanonicalIntent:
         from_status = intent.status
-        intent.status = IntentStatus.RECORDED.value
+        intent.status = final_status or IntentStatus.RECORDED.value
         intent.recorded_at = _utcnow()
         intent.record_refs_json = record_refs
         intent.updated_at = _utcnow()
@@ -434,6 +458,22 @@ class IntentService:
             payload=record_refs,
         )
         return intent
+
+    async def retry_batch_intent(
+        self,
+        *,
+        parent_intent_id: uuid.UUID,
+        actor: IntentActor,
+        idempotency_key: str,
+    ) -> IntentSubmissionResult:
+        payload = {"parent_intent_id": str(parent_intent_id)}
+        return await self.submit_intent(
+            intent_type=IntentType.RETRY_BATCH_MUTATION,
+            actor=actor,
+            payload=payload,
+            idempotency_key=idempotency_key,
+            parent_intent_id=parent_intent_id,
+        )
 
     async def _find_existing_intent(
         self,
@@ -473,8 +513,23 @@ class IntentService:
             result = await self._db.execute(stmt)
             entity = result.scalar_one_or_none()
             if entity is None:
-                raise ValidationError("Entity does not belong to tenant.")
-            return entity
+                if intent_type not in {
+                    IntentType.CREATE_REPORT_DEFINITION,
+                    IntentType.UPDATE_REPORT_DEFINITION,
+                    IntentType.DEACTIVATE_REPORT_DEFINITION,
+                    IntentType.CREATE_BOARD_PACK_DEFINITION,
+                    IntentType.UPDATE_BOARD_PACK_DEFINITION,
+                    IntentType.DEACTIVATE_BOARD_PACK_DEFINITION,
+                    IntentType.CREATE_BOARD_PACK_NARRATIVE_DEFINITION,
+                    IntentType.CREATE_BOARD_PACK_SECTION_DEFINITION,
+                    IntentType.CREATE_NARRATIVE_TEMPLATE,
+                    IntentType.CREATE_BOARD_PACK_INCLUSION_RULE,
+                    IntentType.BATCH_MUTATION,
+                    IntentType.RETRY_BATCH_MUTATION,
+                }:
+                    raise ValidationError("Entity does not belong to tenant.")
+            else:
+                return entity
 
         if intent_type == IntentType.CREATE_JOURNAL:
             raise ValidationError("org_entity_id is required.")

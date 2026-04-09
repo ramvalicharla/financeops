@@ -9,8 +9,8 @@ from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from financeops.api.deps import require_finance_leader
 from financeops.config import settings
+from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.users import IamUser
-from financeops.temporal.client import get_temporal_client
 from financeops.workflows.month_end_close.workflow import (
     MonthEndCloseInput,
     MonthEndCloseWorkflow,
@@ -28,22 +28,22 @@ async def trigger_month_end_close(
     body: CloseTriggerRequest,
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
-    temporal_client = await get_temporal_client()
+    dispatcher = JobDispatcher()
     workflow_id = f"month-end-close-{user.tenant_id}-{body.period}"
     payload = MonthEndCloseInput(
         tenant_id=str(user.tenant_id),
         period=body.period,
     )
     try:
-        handle = await temporal_client.start_workflow(
+        handle = await dispatcher.start_temporal_workflow(
             MonthEndCloseWorkflow.run,
             payload,
-            id=workflow_id,
+            workflow_id=workflow_id,
             task_queue=settings.TEMPORAL_TASK_QUEUE,
             execution_timeout=timedelta(minutes=90),
         )
     except WorkflowAlreadyStartedError:
-        handle = temporal_client.get_workflow_handle(workflow_id)
+        handle = await dispatcher.get_temporal_workflow_handle(workflow_id)
 
     return {
         "workflow_id": handle.id,
@@ -58,8 +58,7 @@ async def get_month_end_close_status(
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
     _ = user
-    temporal_client = await get_temporal_client()
-    handle = temporal_client.get_workflow_handle(workflow_id)
+    handle = await JobDispatcher().get_temporal_workflow_handle(workflow_id)
     try:
         description = await handle.describe()
     except Exception as exc:
@@ -87,4 +86,3 @@ async def get_month_end_close_status(
         "status": mapped,
         "result": result_payload,
     }
-

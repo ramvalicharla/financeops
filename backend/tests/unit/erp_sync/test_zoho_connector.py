@@ -87,11 +87,13 @@ class TestZohoTokenLifecycle:
             "client_secret": "secret",
             "token_expires_at": (datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
         }
+        async def fake_post_form_request(*, url: str, data: dict[str, Any], timeout: float = 30.0) -> _DummyResponse:
+            _ = (url, data, timeout)
+            return _DummyResponse(200, {"access_token": "new-token", "expires_in": 3600})
+
         monkeypatch.setattr(
-            "financeops.modules.erp_sync.infrastructure.connectors.zoho.httpx.AsyncClient",
-            lambda timeout=30.0: _DummyClient(
-                post_response=_DummyResponse(200, {"access_token": "new-token", "expires_in": 3600})
-            ),
+            "financeops.modules.erp_sync.infrastructure.connectors.zoho.post_form_request",
+            fake_post_form_request,
         )
         token = await ZohoConnector()._get_valid_token(creds)
         assert token == "new-token"

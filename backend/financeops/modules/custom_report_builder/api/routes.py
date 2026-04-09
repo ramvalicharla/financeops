@@ -36,10 +36,17 @@ from financeops.modules.custom_report_builder.domain.metric_registry import (
 from financeops.modules.custom_report_builder.infrastructure.repository import (
     ReportRepository,
 )
+from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
 from financeops.modules.custom_report_builder.tasks import run_custom_report_task  # compatibility import
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/reports", tags=["reports"])
+
+
+def _intent_payload_from_schema(schema: ReportDefinitionSchema) -> dict[str, Any]:
+    payload = schema.model_dump(mode="json")
+    payload["entity_ids"] = [str(entity_id) for entity_id in schema.filter_config.entity_ids]
+    return payload
 
 
 async def _submit_intent(
@@ -106,6 +113,8 @@ class DefinitionResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     is_active: bool
+    intent_id: uuid.UUID | None = None
+    job_id: uuid.UUID | None = None
 
 
 class RunRequest(BaseModel):
@@ -128,6 +137,8 @@ class RunResponse(BaseModel):
     run_metadata: dict[str, Any]
     intent_id: uuid.UUID | None = None
     job_id: uuid.UUID | None = None
+    determinism_hash: str | None = None
+    snapshot_refs: list[str] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -142,6 +153,7 @@ class ResultResponse(BaseModel):
     export_path_csv: str | None = None
     export_path_excel: str | None = None
     export_path_pdf: str | None = None
+    snapshot_refs: list[str] = Field(default_factory=list)
     created_at: datetime
 
 
@@ -158,25 +170,95 @@ def _to_definition_schema(body: CreateDefinitionRequest) -> ReportDefinitionSche
     )
 
 
+async def _snapshot_refs(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    subject_type: str,
+    subject_id: uuid.UUID,
+) -> list[str]:
+    snapshots = await Phase4ControlPlaneService(db).list_subject_snapshots(
+        tenant_id=tenant_id,
+        subject_type=subject_type,
+        subject_id=str(subject_id),
+        limit=10,
+    )
+    return [str(row["snapshot_id"]) for row in snapshots]
+
+
+async def _build_definition_response(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    row: ReportDefinition,
+    intent_id: uuid.UUID | None = None,
+    job_id: uuid.UUID | None = None,
+) -> DefinitionResponse:
+    return DefinitionResponse.model_validate(row).model_copy(
+        update={
+            "intent_id": intent_id,
+            "job_id": job_id,
+        }
+    )
+
+
+async def _build_run_response(
+    db: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    row: ReportRun,
+    intent_id: uuid.UUID | None = None,
+    job_id: uuid.UUID | None = None,
+) -> RunResponse:
+    result = await ReportRepository().get_result_for_run(db=db, tenant_id=tenant_id, run_id=row.id)
+    return RunResponse.model_validate(row).model_copy(
+        update={
+            "intent_id": intent_id,
+            "job_id": job_id,
+            "determinism_hash": result.result_hash if result is not None else None,
+            "snapshot_refs": await _snapshot_refs(
+                db,
+                tenant_id=tenant_id,
+                subject_type="report_run",
+                subject_id=row.id,
+            ),
+        }
+    )
+
+
 @router.post("/definitions", response_model=DefinitionResponse, status_code=status.HTTP_201_CREATED)
 async def create_definition(
+    request: Request,
     body: CreateDefinitionRequest,
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> DefinitionResponse:
-    repo = ReportRepository()
     try:
         schema = _to_definition_schema(body)
     except ValidationError as exc:
         raise HTTPException(status_code=422, detail=exc.errors()) from exc
-    row = await repo.create_definition(
+    result = await _submit_intent(
+        request,
+        db,
+        user=user,
+        intent_type=IntentType.CREATE_REPORT_DEFINITION,
+        payload=_intent_payload_from_schema(schema),
+    )
+    repo = ReportRepository()
+    row = await repo.get_definition(
         db=db,
         tenant_id=user.tenant_id,
-        schema=schema,
-        created_by=user.id,
+        definition_id=uuid.UUID(str((result.record_refs or {})["definition_id"])),
     )
-    await db.commit()
-    return DefinitionResponse.model_validate(row)
+    if row is None:
+        raise HTTPException(status_code=500, detail="Definition was not created")
+    return await _build_definition_response(
+        db,
+        tenant_id=user.tenant_id,
+        row=row,
+        intent_id=result.intent_id,
+        job_id=result.job_id,
+    )
 
 
 @router.get("/definitions", response_model=Paginated[DefinitionResponse] | list[DefinitionResponse])
@@ -217,11 +299,12 @@ async def get_definition(
     row = await repo.get_definition(db=db, tenant_id=user.tenant_id, definition_id=id)
     if row is None:
         raise HTTPException(status_code=404, detail="Definition not found")
-    return DefinitionResponse.model_validate(row)
+    return await _build_definition_response(db, tenant_id=user.tenant_id, row=row)
 
 
 @router.patch("/definitions/{id}", response_model=DefinitionResponse)
 async def update_definition(
+    request: Request,
     id: uuid.UUID,
     body: UpdateDefinitionRequest,
     db: AsyncSession = Depends(get_async_session),
@@ -232,26 +315,33 @@ async def update_definition(
     if existing is None:
         raise HTTPException(status_code=404, detail="Definition not found")
 
-    updates = body.model_dump(exclude_unset=True)
-    if "filter_config" in updates and updates["filter_config"] is not None:
-        updates["filter_config"] = updates["filter_config"]
-    if "sort_config" in updates and updates["sort_config"] is not None:
-        updates["sort_config"] = updates["sort_config"]
-    if "export_formats" in updates and updates["export_formats"] is not None:
-        updates["export_formats"] = [fmt.value for fmt in updates["export_formats"]]
-
-    row = await repo.update_definition(
-        db=db,
-        tenant_id=user.tenant_id,
-        definition_id=id,
-        updates=updates,
+    updates = body.model_dump(exclude_unset=True, mode="json")
+    result = await _submit_intent(
+        request,
+        db,
+        user=user,
+        intent_type=IntentType.UPDATE_REPORT_DEFINITION,
+        target_id=id,
+        payload={
+            "entity_ids": [str(entity_id) for entity_id in existing.filter_config.get("entity_ids", [])],
+            "updates": updates,
+        },
     )
-    await db.commit()
-    return DefinitionResponse.model_validate(row)
+    row = await repo.get_definition(db=db, tenant_id=user.tenant_id, definition_id=id)
+    if row is None:
+        raise HTTPException(status_code=500, detail="Definition update did not persist")
+    return await _build_definition_response(
+        db,
+        tenant_id=user.tenant_id,
+        row=row,
+        intent_id=result.intent_id,
+        job_id=result.job_id,
+    )
 
 
 @router.delete("/definitions/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_definition(
+    request: Request,
     id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -260,8 +350,17 @@ async def delete_definition(
     row = await repo.get_definition(db=db, tenant_id=user.tenant_id, definition_id=id)
     if row is None:
         raise HTTPException(status_code=404, detail="Definition not found")
-    await repo.deactivate_definition(db=db, tenant_id=user.tenant_id, definition_id=id)
-    await db.commit()
+    await _submit_intent(
+        request,
+        db,
+        user=user,
+        intent_type=IntentType.DEACTIVATE_REPORT_DEFINITION,
+        target_id=id,
+        payload={
+            "definition_id": str(id),
+            "entity_ids": [str(entity_id) for entity_id in row.filter_config.get("entity_ids", [])],
+        },
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -300,8 +399,12 @@ async def run_report(
     )
     if run is None:
         raise HTTPException(status_code=500, detail="Report run was not created")
-    return RunResponse.model_validate(run).model_copy(
-        update={"intent_id": result.intent_id, "job_id": result.job_id}
+    return await _build_run_response(
+        db,
+        tenant_id=user.tenant_id,
+        row=run,
+        intent_id=result.intent_id,
+        job_id=result.job_id,
     )
 
 
@@ -330,7 +433,7 @@ async def list_runs(
         limit=limit + offset,
     )
     paged_rows = rows[offset : offset + limit]
-    data = [RunResponse.model_validate(row) for row in paged_rows]
+    data = [await _build_run_response(db, tenant_id=user.tenant_id, row=row) for row in paged_rows]
     if "limit" not in request.query_params and "offset" not in request.query_params:
         return data
     return Paginated[RunResponse](data=data, total=int(total), limit=limit, offset=offset)
@@ -346,7 +449,7 @@ async def get_run(
     row = await repo.get_run(db=db, tenant_id=user.tenant_id, run_id=id)
     if row is None:
         raise HTTPException(status_code=404, detail="Run not found")
-    return RunResponse.model_validate(row)
+    return await _build_run_response(db, tenant_id=user.tenant_id, row=row)
 
 
 @router.get("/runs/{id}/result", response_model=ResultResponse)
@@ -363,7 +466,16 @@ async def get_result(
     result = await repo.get_result_for_run(db=db, tenant_id=user.tenant_id, run_id=id)
     if result is None:
         raise HTTPException(status_code=404, detail="Result not found")
-    return ResultResponse.model_validate(result)
+    return ResultResponse.model_validate(result).model_copy(
+        update={
+            "snapshot_refs": await _snapshot_refs(
+                db,
+                tenant_id=user.tenant_id,
+                subject_type="report_run",
+                subject_id=id,
+            )
+        }
+    )
 
 
 @router.get("/runs/{id}/download/{fmt}")

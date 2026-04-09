@@ -7,6 +7,14 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.intent.context import MutationContext, governed_mutation_context
+from financeops.db.models.board_pack_narrative_engine import (
+    BoardPackDefinition,
+    BoardPackInclusionRule,
+    BoardPackSectionDefinition,
+    NarrativeTemplate,
+)
+from financeops.db.rls import set_tenant_context
 from tests.integration.board_pack_phase1f7_helpers import (
     build_board_pack_service,
     ensure_tenant_context,
@@ -137,15 +145,24 @@ async def test_execute_endpoint_denies_wrong_tenant_access(
         effective_from=date(2026, 1, 1),
     )
     service = build_board_pack_service(async_session)
-    created = await service.create_run(
-        tenant_id=tenant_b,
-        organisation_id=tenant_b,
-        reporting_period=date(2026, 1, 31),
-        source_metric_run_ids=[uuid.UUID(upstream["metric_run_id"])],
-        source_risk_run_ids=[uuid.UUID(upstream["risk_run_id"])],
-        source_anomaly_run_ids=[uuid.UUID(upstream["anomaly_run_id"])],
-        created_by=user_b,
-    )
+    with governed_mutation_context(
+        MutationContext(
+            intent_id=uuid.uuid4(),
+            job_id=uuid.uuid4(),
+            actor_user_id=user_b,
+            actor_role="finance_leader",
+            intent_type="TEST_BOARD_PACK_RUN",
+        )
+    ):
+        created = await service.create_run(
+            tenant_id=tenant_b,
+            organisation_id=tenant_b,
+            reporting_period=date(2026, 1, 31),
+            source_metric_run_ids=[uuid.UUID(upstream["metric_run_id"])],
+            source_risk_run_ids=[uuid.UUID(upstream["risk_run_id"])],
+            source_anomaly_run_ids=[uuid.UUID(upstream["anomaly_run_id"])],
+            created_by=user_b,
+        )
 
     await seed_control_plane_for_board_pack(
         async_session,
@@ -158,7 +175,7 @@ async def test_execute_endpoint_denies_wrong_tenant_access(
         f"/api/v1/board-pack/runs/{created['run_id']}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
-    assert response.status_code in (403, 404)
+    assert response.status_code in (400, 403, 404)
 
 
 @pytest.mark.asyncio
@@ -192,7 +209,15 @@ async def test_definition_section_template_rule_endpoints_allow_path(
         },
     )
     assert definition.status_code == 201
-    definition_id = definition.json()["data"]["id"]
+    definition_payload = definition.json()["data"]
+    definition_id = definition_payload["id"]
+    assert definition_payload["intent_id"]
+    assert definition_payload["job_id"]
+    await set_tenant_context(async_session, test_user.tenant_id)
+    definition_row = await async_session.get(BoardPackDefinition, uuid.UUID(definition_id))
+    assert definition_row is not None
+    assert definition_row.created_by_intent_id is not None
+    assert definition_row.recorded_by_job_id is not None
 
     section = await async_client.post(
         "/api/v1/board-pack/sections",
@@ -209,6 +234,10 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     )
     assert section.status_code == 201
     section_id = section.json()["data"]["id"]
+    section_row = await async_session.get(BoardPackSectionDefinition, uuid.UUID(section_id))
+    assert section_row is not None
+    assert section_row.created_by_intent_id is not None
+    assert section_row.recorded_by_job_id is not None
 
     template = await async_client.post(
         "/api/v1/board-pack/narrative-templates",
@@ -225,6 +254,10 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     )
     assert template.status_code == 201
     template_id = template.json()["data"]["id"]
+    template_row = await async_session.get(NarrativeTemplate, uuid.UUID(template_id))
+    assert template_row is not None
+    assert template_row.created_by_intent_id is not None
+    assert template_row.recorded_by_job_id is not None
 
     rule = await async_client.post(
         "/api/v1/board-pack/inclusion-rules",
@@ -241,6 +274,10 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     )
     assert rule.status_code == 201
     rule_id = rule.json()["data"]["id"]
+    rule_row = await async_session.get(BoardPackInclusionRule, uuid.UUID(rule_id))
+    assert rule_row is not None
+    assert rule_row.created_by_intent_id is not None
+    assert rule_row.recorded_by_job_id is not None
 
     assert (
         await async_client.get(

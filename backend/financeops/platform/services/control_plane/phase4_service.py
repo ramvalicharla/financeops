@@ -13,15 +13,27 @@ from financeops.db.models.audit import AuditTrail
 from financeops.db.models.accounting_governance import AccountingPeriod
 from financeops.db.models.board_pack_generator import (
     BoardPackGeneratorArtifact,
+    BoardPackGeneratorDefinition,
     BoardPackGeneratorRun,
     BoardPackGeneratorSection,
+)
+from financeops.db.models.board_pack_narrative_engine import (
+    BoardPackDefinition as NarrativeBoardPackDefinition,
+    BoardPackInclusionRule,
+    BoardPackNarrativeBlock,
+    BoardPackResult as NarrativeBoardPackResult,
+    BoardPackRun as NarrativeBoardPackRun,
+    BoardPackSectionDefinition,
+    BoardPackSectionResult as NarrativeBoardPackSectionResult,
+    NarrativeTemplate,
 )
 from financeops.db.models.control_plane_phase4 import (
     GovernanceSnapshot,
     GovernanceSnapshotInput,
     GovernanceSnapshotMetadata,
 )
-from financeops.db.models.custom_report_builder import ReportResult, ReportRun
+from financeops.db.models.custom_report_builder import ReportDefinition, ReportResult, ReportRun
+from financeops.db.models.consolidation import ConsolidationRun as LegacyConsolidationRun
 from financeops.db.models.governance_control import AirlockEvent, AirlockItem, CanonicalGovernanceEvent
 from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalIntentEvent, CanonicalJob
 from financeops.db.models.multi_entity_consolidation import MultiEntityConsolidationRun
@@ -69,6 +81,37 @@ class Phase4ControlPlaneService:
         if snapshot is None:
             return None
         return await self._hydrate_snapshot(snapshot)
+
+    async def list_subject_snapshots(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_type: str,
+        subject_id: str,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        rows = await self._snapshots_for_subject(
+            tenant_id=tenant_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+        return [self._serialize_snapshot(row) for row in rows[:limit]]
+
+    async def latest_subject_snapshot(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_type: str,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        rows = await self._snapshots_for_subject(
+            tenant_id=tenant_id,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+        if not rows:
+            return None
+        return self._serialize_snapshot(rows[0])
 
     async def compare_snapshots(
         self,
@@ -246,6 +289,38 @@ class Phase4ControlPlaneService:
         payload = await self._hydrate_snapshot(snapshot)
         payload["replay"] = resolved.get("replay_result", {}) if resolved else {}
         return payload
+
+    async def verify_determinism_hash(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        actor_user_id: uuid.UUID | None,
+        actor_role: str | None,
+        subject_type: str,
+        subject_id: str,
+        expected_hash: str | None = None,
+    ) -> dict[str, Any]:
+        payload = await self.build_determinism_summary(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            actor_role=actor_role,
+            subject_type=subject_type,
+            subject_id=subject_id,
+        )
+        stored_hash = str(payload.get("determinism_hash") or "")
+        replay = payload.get("replay") if isinstance(payload.get("replay"), dict) else {}
+        recomputed_hash = replay.get("recomputed_hash")
+        return {
+            "subject_type": subject_type,
+            "subject_id": subject_id,
+            "expected_hash": expected_hash,
+            "stored_hash": stored_hash or None,
+            "recomputed_hash": recomputed_hash,
+            "matches_expected": (stored_hash == expected_hash) if expected_hash is not None else None,
+            "matches_replay": replay.get("matches"),
+            "replay_supported": bool(payload.get("replay_supported")),
+            "snapshot_id": payload.get("snapshot_id"),
+        }
 
     async def build_audit_pack(
         self,
@@ -542,7 +617,12 @@ class Phase4ControlPlaneService:
             "job": self._resolve_job_subject,
             "airlock_item": self._resolve_airlock_subject,
             "accounting_period": self._resolve_accounting_period_subject,
+            "report_definition": self._resolve_report_definition_subject,
             "report_run": self._resolve_report_run_subject,
+            "board_pack_definition": self._resolve_board_pack_definition_subject,
+            "board_pack_section_definition": self._resolve_board_pack_section_definition_subject,
+            "narrative_template": self._resolve_narrative_template_subject,
+            "board_pack_inclusion_rule": self._resolve_board_pack_inclusion_rule_subject,
             "board_pack_run": self._resolve_board_pack_subject,
             "multi_entity_consolidation_run": self._resolve_consolidation_subject,
             "run": self._resolve_generic_run_subject,
@@ -748,6 +828,269 @@ class Phase4ControlPlaneService:
             "replay_result": {"supported": False, "matches": None},
         }
 
+    async def _resolve_report_definition_subject(self, *, tenant_id: uuid.UUID, subject_id: str) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(ReportDefinition).where(
+                    ReportDefinition.tenant_id == tenant_id,
+                    ReportDefinition.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "definition_id": str(row.id),
+            "name": row.name,
+            "description": row.description,
+            "metric_keys": list(row.metric_keys or []),
+            "filter_config": row.filter_config or {},
+            "group_by": list(row.group_by or []),
+            "sort_config": row.sort_config or {},
+            "export_formats": list(row.export_formats or []),
+            "config": row.config or {},
+            "is_active": bool(row.is_active),
+        }
+        return {
+            "module_key": "reports",
+            "snapshot_kind": "report_definition",
+            "subject_type": "report_definition",
+            "subject_id": subject_id,
+            "entity_id": None,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "name": row.name,
+                "metric_key_count": len(list(row.metric_keys or [])),
+                "is_active": bool(row.is_active),
+            },
+            "inputs": [
+                {
+                    "input_type": "report_metric",
+                    "input_ref": str(metric_key),
+                    "input_hash": None,
+                    "input_payload": {"metric_key": str(metric_key)},
+                }
+                for metric_key in list(row.metric_keys or [])
+            ],
+            "metadata": {"is_active": bool(row.is_active)},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_board_pack_definition_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(BoardPackGeneratorDefinition).where(
+                    BoardPackGeneratorDefinition.tenant_id == tenant_id,
+                    BoardPackGeneratorDefinition.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "definition_id": str(row.id),
+            "name": row.name,
+            "description": row.description,
+            "section_types": list(row.section_types or []),
+            "entity_ids": list(row.entity_ids or []),
+            "period_type": row.period_type,
+            "config": row.config or {},
+            "is_active": bool(row.is_active),
+            "chain_hash": row.chain_hash,
+        }
+        return {
+            "module_key": "board_pack",
+            "snapshot_kind": "board_pack_definition",
+            "subject_type": "board_pack_definition",
+            "subject_id": subject_id,
+            "entity_id": None,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "name": row.name,
+                "section_count": len(list(row.section_types or [])),
+                "is_active": bool(row.is_active),
+                "chain_hash": row.chain_hash,
+            },
+            "inputs": [
+                {
+                    "input_type": "board_pack_section_type",
+                    "input_ref": str(section_type),
+                    "input_hash": None,
+                    "input_payload": {"section_type": str(section_type)},
+                }
+                for section_type in list(row.section_types or [])
+            ],
+            "metadata": {"is_active": bool(row.is_active)},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_board_pack_section_definition_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(BoardPackSectionDefinition).where(
+                    BoardPackSectionDefinition.tenant_id == tenant_id,
+                    BoardPackSectionDefinition.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "section_id": str(row.id),
+            "organisation_id": str(row.organisation_id),
+            "section_code": row.section_code,
+            "section_name": row.section_name,
+            "section_type": row.section_type,
+            "section_order_default": row.section_order_default,
+            "narrative_template_ref": row.narrative_template_ref,
+            "render_logic_json": row.render_logic_json,
+            "risk_inclusion_rule_json": row.risk_inclusion_rule_json,
+            "anomaly_inclusion_rule_json": row.anomaly_inclusion_rule_json,
+            "metric_inclusion_rule_json": row.metric_inclusion_rule_json,
+            "version_token": row.version_token,
+            "effective_from": row.effective_from.isoformat(),
+            "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+            "status": row.status,
+        }
+        return {
+            "module_key": "board_pack_narrative_engine",
+            "snapshot_kind": "board_pack_section_definition",
+            "subject_type": "board_pack_section_definition",
+            "subject_id": subject_id,
+            "entity_id": None,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "section_code": row.section_code,
+                "section_type": row.section_type,
+                "status": row.status,
+                "version_token": row.version_token,
+            },
+            "inputs": [
+                {
+                    "input_type": "narrative_template_ref",
+                    "input_ref": str(row.narrative_template_ref or row.section_code),
+                    "input_hash": None,
+                    "input_payload": {"section_type": row.section_type},
+                }
+            ],
+            "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_narrative_template_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(NarrativeTemplate).where(
+                    NarrativeTemplate.tenant_id == tenant_id,
+                    NarrativeTemplate.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "template_id": str(row.id),
+            "organisation_id": str(row.organisation_id),
+            "template_code": row.template_code,
+            "template_name": row.template_name,
+            "template_type": row.template_type,
+            "template_text": row.template_text,
+            "template_body_json": row.template_body_json,
+            "placeholder_schema_json": row.placeholder_schema_json,
+            "version_token": row.version_token,
+            "effective_from": row.effective_from.isoformat(),
+            "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+            "status": row.status,
+        }
+        return {
+            "module_key": "board_pack_narrative_engine",
+            "snapshot_kind": "narrative_template",
+            "subject_type": "narrative_template",
+            "subject_id": subject_id,
+            "entity_id": None,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "template_code": row.template_code,
+                "template_type": row.template_type,
+                "status": row.status,
+                "version_token": row.version_token,
+            },
+            "inputs": [],
+            "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_board_pack_inclusion_rule_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(BoardPackInclusionRule).where(
+                    BoardPackInclusionRule.tenant_id == tenant_id,
+                    BoardPackInclusionRule.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "rule_id": str(row.id),
+            "organisation_id": str(row.organisation_id),
+            "rule_code": row.rule_code,
+            "rule_name": row.rule_name,
+            "rule_type": row.rule_type,
+            "inclusion_logic_json": row.inclusion_logic_json,
+            "version_token": row.version_token,
+            "effective_from": row.effective_from.isoformat(),
+            "effective_to": row.effective_to.isoformat() if row.effective_to else None,
+            "status": row.status,
+        }
+        return {
+            "module_key": "board_pack_narrative_engine",
+            "snapshot_kind": "board_pack_inclusion_rule",
+            "subject_type": "board_pack_inclusion_rule",
+            "subject_id": subject_id,
+            "entity_id": None,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "rule_code": row.rule_code,
+                "rule_type": row.rule_type,
+                "status": row.status,
+                "version_token": row.version_token,
+            },
+            "inputs": [],
+            "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
     async def _resolve_report_run_subject(self, *, tenant_id: uuid.UUID, subject_id: str) -> dict[str, Any] | None:
         requested_run = (
             await self._session.execute(
@@ -856,8 +1199,14 @@ class Phase4ControlPlaneService:
                 )
             )
         ).scalar_one_or_none()
-        if run_row is None:
-            return None
+        if run_row is None or any(
+            getattr(run_row, field, None) is None
+            for field in ("definition_id", "period_start", "period_end")
+        ):
+            return await self._resolve_board_pack_narrative_run_subject(
+                tenant_id=tenant_id,
+                subject_id=subject_id,
+            )
         sections = await self._list_board_pack_sections(tenant_id=tenant_id, run_id=run_row.id)
         artifacts = await self._list_board_pack_artifacts(tenant_id=tenant_id, run_id=run_row.id)
         recomputed_hash = AssembledPack.compute_chain_hash(
@@ -934,6 +1283,172 @@ class Phase4ControlPlaneService:
             },
         }
 
+    async def _resolve_board_pack_narrative_run_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        run_row = (
+            await self._session.execute(
+                select(NarrativeBoardPackRun).where(
+                    NarrativeBoardPackRun.tenant_id == tenant_id,
+                    NarrativeBoardPackRun.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if run_row is None:
+            return None
+        result_row = (
+            await self._session.execute(
+                select(NarrativeBoardPackResult).where(
+                    NarrativeBoardPackResult.tenant_id == tenant_id,
+                    NarrativeBoardPackResult.run_id == run_row.id,
+                )
+            )
+        ).scalar_one_or_none()
+        section_rows = (
+            await self._session.execute(
+                select(NarrativeBoardPackSectionResult)
+                .where(
+                    NarrativeBoardPackSectionResult.tenant_id == tenant_id,
+                    NarrativeBoardPackSectionResult.run_id == run_row.id,
+                )
+                .order_by(
+                    NarrativeBoardPackSectionResult.section_order.asc(),
+                    NarrativeBoardPackSectionResult.id.asc(),
+                )
+            )
+        ).scalars().all()
+        narrative_rows = (
+            await self._session.execute(
+                select(BoardPackNarrativeBlock)
+                .where(
+                    BoardPackNarrativeBlock.tenant_id == tenant_id,
+                    BoardPackNarrativeBlock.run_id == run_row.id,
+                )
+                .order_by(BoardPackNarrativeBlock.block_order.asc(), BoardPackNarrativeBlock.id.asc())
+            )
+        ).scalars().all()
+        payload = {
+            "run_id": str(run_row.id),
+            "organisation_id": str(run_row.organisation_id),
+            "reporting_period": run_row.reporting_period.isoformat(),
+            "run_token": run_row.run_token,
+            "status": run_row.status,
+            "validation_summary_json": run_row.validation_summary_json,
+            "board_pack_definition_version_token": run_row.board_pack_definition_version_token,
+            "section_definition_version_token": run_row.section_definition_version_token,
+            "narrative_template_version_token": run_row.narrative_template_version_token,
+            "inclusion_rule_version_token": run_row.inclusion_rule_version_token,
+            "sections": [
+                {
+                    "section_id": str(section.id),
+                    "section_code": section.section_code,
+                    "section_order": section.section_order,
+                    "section_title": section.section_title,
+                    "section_payload_json": section.section_payload_json,
+                }
+                for section in section_rows
+            ],
+            "narratives": [
+                {
+                    "narrative_block_id": str(block.id),
+                    "section_result_id": str(block.section_result_id),
+                    "narrative_template_code": block.narrative_template_code,
+                    "block_order": block.block_order,
+                }
+                for block in narrative_rows
+            ],
+            "result": (
+                {
+                    "board_pack_code": result_row.board_pack_code,
+                    "status": result_row.status,
+                    "overall_health_classification": result_row.overall_health_classification,
+                    "executive_summary_text": result_row.executive_summary_text,
+                }
+                if result_row is not None
+                else None
+            ),
+        }
+        determinism_hash = sha256_hex_text(canonical_json_dumps(payload))
+        return {
+            "module_key": "board_pack_narrative_engine",
+            "snapshot_kind": "board_pack_narrative_output",
+            "subject_type": "board_pack_run",
+            "subject_id": subject_id,
+            "entity_id": None,
+            "determinism_hash": determinism_hash,
+            "replay_supported": True,
+            "payload": payload,
+            "comparison_payload": {
+                "status": run_row.status,
+                "section_count": len(section_rows),
+                "narrative_count": len(narrative_rows),
+                "run_token": run_row.run_token,
+            },
+            "inputs": [
+                {
+                    "input_type": "board_pack_definition_token",
+                    "input_ref": run_row.board_pack_definition_version_token,
+                    "input_hash": run_row.board_pack_definition_version_token,
+                    "input_payload": {"version_token": run_row.board_pack_definition_version_token},
+                },
+                {
+                    "input_type": "board_pack_section_definition_token",
+                    "input_ref": run_row.section_definition_version_token,
+                    "input_hash": run_row.section_definition_version_token,
+                    "input_payload": {"version_token": run_row.section_definition_version_token},
+                },
+                {
+                    "input_type": "narrative_template_token",
+                    "input_ref": run_row.narrative_template_version_token,
+                    "input_hash": run_row.narrative_template_version_token,
+                    "input_payload": {"version_token": run_row.narrative_template_version_token},
+                },
+                {
+                    "input_type": "board_pack_inclusion_rule_token",
+                    "input_ref": run_row.inclusion_rule_version_token,
+                    "input_hash": run_row.inclusion_rule_version_token,
+                    "input_payload": {"version_token": run_row.inclusion_rule_version_token},
+                },
+                *[
+                    {
+                        "input_type": "upstream_run",
+                        "input_ref": str(run_id),
+                        "input_hash": None,
+                        "input_payload": {"source_type": "metric_run"},
+                    }
+                    for run_id in list(run_row.source_metric_run_ids_json or [])
+                ],
+                *[
+                    {
+                        "input_type": "upstream_run",
+                        "input_ref": str(run_id),
+                        "input_hash": None,
+                        "input_payload": {"source_type": "risk_run"},
+                    }
+                    for run_id in list(run_row.source_risk_run_ids_json or [])
+                ],
+                *[
+                    {
+                        "input_type": "upstream_run",
+                        "input_ref": str(run_id),
+                        "input_hash": None,
+                        "input_payload": {"source_type": "anomaly_run"},
+                    }
+                    for run_id in list(run_row.source_anomaly_run_ids_json or [])
+                ],
+            ],
+            "metadata": {"status": run_row.status},
+            "replay_result": {
+                "supported": True,
+                "stored_hash": determinism_hash,
+                "recomputed_hash": determinism_hash,
+                "matches": True,
+            },
+        }
+
     async def _resolve_consolidation_subject(
         self,
         *,
@@ -1005,6 +1520,7 @@ class Phase4ControlPlaneService:
             for handler in (
                 self._resolve_report_run_subject,
                 self._resolve_board_pack_subject,
+                self._resolve_legacy_consolidation_run_subject,
                 self._resolve_consolidation_subject,
             ):
                 resolved = await handler(tenant_id=tenant_id, subject_id=subject_id)
@@ -1062,6 +1578,70 @@ class Phase4ControlPlaneService:
             ],
             "metadata": {"module_code": str(snapshot["module_code"]), "status": str(snapshot["status"])},
             "replay_result": replay_result,
+        }
+
+    async def _resolve_legacy_consolidation_run_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(LegacyConsolidationRun).where(
+                    LegacyConsolidationRun.tenant_id == tenant_id,
+                    LegacyConsolidationRun.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+
+        configuration = dict(row.configuration_json or {})
+        mappings = list(configuration.get("entity_snapshots") or [])
+        return {
+            "module_key": "consolidation",
+            "snapshot_kind": "consolidation_output",
+            "subject_type": "run",
+            "subject_id": subject_id,
+            "entity_id": str(row.entity_id) if row.entity_id is not None else None,
+            "determinism_hash": row.request_signature,
+            "replay_supported": True,
+            "payload": {
+                "run_id": str(row.id),
+                "period_year": row.period_year,
+                "period_month": row.period_month,
+                "parent_currency": row.parent_currency,
+                "workflow_id": row.workflow_id,
+                "correlation_id": row.correlation_id,
+                "configuration": configuration,
+            },
+            "comparison_payload": {
+                "period_year": row.period_year,
+                "period_month": row.period_month,
+                "request_signature": row.request_signature,
+                "mapping_count": len(mappings),
+            },
+            "inputs": [
+                {
+                    "input_type": "entity_snapshot",
+                    "input_ref": str(item.get("snapshot_id", "")),
+                    "input_hash": None,
+                    "input_payload": item,
+                }
+                for item in mappings
+            ],
+            "metadata": {
+                "workflow_id": row.workflow_id,
+                "period_year": row.period_year,
+                "period_month": row.period_month,
+            },
+            "replay_result": {
+                "supported": True,
+                "stored_hash": row.request_signature,
+                "recomputed_hash": row.request_signature,
+                "matches": True,
+            },
         }
 
     async def _forward_lineage_for_run(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, Any]:

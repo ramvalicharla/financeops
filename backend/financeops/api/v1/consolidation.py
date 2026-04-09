@@ -14,6 +14,10 @@ from financeops.api.deps import (
 )
 from financeops.config import settings
 from financeops.core.exceptions import ValidationError
+from financeops.core.governance.events import GovernanceActor, emit_governance_event
+from financeops.core.intent.api import build_idempotency_key, build_intent_actor
+from financeops.core.intent.enums import IntentType
+from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.closing_checklist.service import run_auto_complete_for_event
 from financeops.schemas.consolidation import (
@@ -58,13 +62,7 @@ from financeops.observability.workflow_signals import (
 )
 from financeops.modules.accounting_layer.application.governance_service import (
     assert_group_period_not_hard_closed,
-    record_governance_event,
     resolve_effective_period_lock,
-)
-from financeops.temporal.client import get_temporal_client
-from financeops.temporal.consolidation_workflows import (
-    ConsolidationWorkflow,
-    ConsolidationWorkflowInput,
 )
 
 router = APIRouter()
@@ -120,49 +118,56 @@ async def start_consolidation_run_endpoint(
         if period_lock.is_hard_closed:
             raise ValidationError("Period is HARD_CLOSED. Consolidation rerun is blocked.")
 
-        run = await create_or_get_run(
-            # Legacy consolidated run is blocked when tenant-level period is hard-closed.
-            # Entity-scoped lock checks are handled by group-consolidation path.
-            session,
-            tenant_id=user.tenant_id,
-            initiated_by=user.id,
-            period_year=body.period_year,
-            period_month=body.period_month,
-            parent_currency=body.parent_currency,
-            rate_mode=body.rate_mode.value,
-            mappings=[
-                EntitySnapshotMapping(entity_id=item.entity_id, snapshot_id=item.snapshot_id)
-                for item in body.entity_snapshots
-            ],
-            amount_tolerance_parent=body.amount_tolerance_parent,
-            fx_explained_tolerance_parent=body.fx_explained_tolerance_parent,
-            timing_tolerance_days=body.timing_tolerance_days,
-            correlation_id=correlation_id,
-        )
-        await session.flush()
-
-        if run.created_new:
-            temporal_client = await get_temporal_client()
-            await temporal_client.start_workflow(
-                ConsolidationWorkflow.run,
-                ConsolidationWorkflowInput(
-                    run_id=str(run.run_id),
-                    tenant_id=str(user.tenant_id),
-                    correlation_id=correlation_id,
-                    requested_by=str(user.id),
-                    config_hash=run.request_signature,
+        governed = await IntentService(session).submit_intent(
+            intent_type=IntentType.START_LEGACY_CONSOLIDATION_RUN,
+            actor=build_intent_actor(request, user),
+            payload={
+                "period_year": body.period_year,
+                "period_month": body.period_month,
+                "parent_currency": body.parent_currency,
+                "rate_mode": body.rate_mode.value,
+                "entity_snapshots": [
+                    {"entity_id": str(item.entity_id), "snapshot_id": str(item.snapshot_id)}
+                    for item in body.entity_snapshots
+                ],
+                "amount_tolerance_parent": (
+                    str(body.amount_tolerance_parent) if body.amount_tolerance_parent is not None else None
                 ),
-                id=run.workflow_id,
-                task_queue=settings.TEMPORAL_TASK_QUEUE,
-                execution_timeout=timedelta(minutes=15),
-            )
-
-        payload = {
-            "run_id": str(run.run_id),
-            "workflow_id": run.workflow_id,
-            "status": "accepted" if run.created_new else run.status,
-            "correlation_id": correlation_id,
-        }
+                "fx_explained_tolerance_parent": (
+                    str(body.fx_explained_tolerance_parent)
+                    if body.fx_explained_tolerance_parent is not None
+                    else None
+                ),
+                "timing_tolerance_days": body.timing_tolerance_days,
+                "correlation_id": correlation_id,
+            },
+            idempotency_key=build_idempotency_key(
+                request,
+                intent_type=IntentType.START_LEGACY_CONSOLIDATION_RUN,
+                actor=user,
+                body={
+                    "period_year": body.period_year,
+                    "period_month": body.period_month,
+                    "parent_currency": body.parent_currency,
+                    "rate_mode": body.rate_mode.value,
+                    "entity_snapshots": [
+                        {"entity_id": str(item.entity_id), "snapshot_id": str(item.snapshot_id)}
+                        for item in body.entity_snapshots
+                    ],
+                    "amount_tolerance_parent": (
+                        str(body.amount_tolerance_parent) if body.amount_tolerance_parent is not None else None
+                    ),
+                    "fx_explained_tolerance_parent": (
+                        str(body.fx_explained_tolerance_parent)
+                        if body.fx_explained_tolerance_parent is not None
+                        else None
+                    ),
+                    "timing_tolerance_days": body.timing_tolerance_days,
+                    "correlation_id": correlation_id,
+                },
+            ),
+        )
+        payload = dict(governed.record_refs or {})
         complete_workflow(timer, status="accepted", extra={"run_id": payload["run_id"]})
         return payload
     except Exception as exc:
@@ -251,14 +256,15 @@ async def get_consolidation_translation_endpoint(
             as_of_date=as_of_date,
             initiated_by=user.id,
         )
-        await record_governance_event(
+        await emit_governance_event(
             session,
             tenant_id=user.tenant_id,
+            module_key="period_close",
+            subject_type="consolidation_translation",
+            subject_id=str(payload.get("translation_run_id") or org_group_id),
+            event_type="CONSOLIDATION_TRANSLATE",
+            actor=GovernanceActor(user_id=user.id, role=user.role.value),
             entity_id=None,
-            actor_user_id=user.id,
-            module="period_close",
-            action="consolidation_translate",
-            target_id=str(org_group_id),
             payload={
                 "org_group_id": str(org_group_id),
                 "as_of_date": as_of_date.isoformat(),
