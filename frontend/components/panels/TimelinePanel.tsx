@@ -1,7 +1,7 @@
 "use client"
 
 import { useQuery } from "@tanstack/react-query"
-import { exportTimeline, listTimeline } from "@/lib/api/control-plane"
+import { exportTimeline, getTimelineSemantics, listTimeline } from "@/lib/api/control-plane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { Button } from "@/components/ui/button"
@@ -34,13 +34,23 @@ export function TimelinePanel() {
       }),
     enabled: activePanel === "timeline",
   })
+  const semanticsQuery = useQuery({
+    queryKey: ["control-plane-timeline-semantics"],
+    queryFn: getTimelineSemantics,
+    enabled: activePanel === "timeline",
+  })
+  const timelineTitle = semanticsQuery.data?.title ?? "Timeline Panel"
+  const timelineDescription =
+    semanticsQuery.data?.description ?? "Control-plane events returned by the backend timeline API."
+  const emptyState =
+    semanticsQuery.data?.empty_state ?? "No control-plane events in the current scope."
 
   return (
     <Sheet
       open={activePanel === "timeline"}
       onClose={closePanel}
-      title="Timeline Panel"
-      description="Unified append-only chain across governance, jobs, records, and evidence."
+      title={timelineTitle}
+      description={timelineDescription}
       width="max-w-3xl"
     >
       <div className="space-y-4">
@@ -76,7 +86,7 @@ export function TimelinePanel() {
         ) : query.error ? (
           <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load timeline.</p>
         ) : !(query.data?.length ?? 0) ? (
-          <p className="text-sm text-muted-foreground">No timeline events in the current scope.</p>
+          <p className="text-sm text-muted-foreground">{emptyState}</p>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border">
             <table className="min-w-full divide-y divide-border text-sm">
@@ -84,6 +94,8 @@ export function TimelinePanel() {
                 <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <th className="px-4 py-2">Event</th>
                   <th className="px-4 py-2">Time</th>
+                  <th className="px-4 py-2">Who</th>
+                  <th className="px-4 py-2">What Changed</th>
                   <th className="px-4 py-2">Subject</th>
                   <th className="px-4 py-2">Module</th>
                 </tr>
@@ -91,8 +103,18 @@ export function TimelinePanel() {
               <tbody className="divide-y divide-border">
                 {(query.data ?? []).map((event, index) => (
                   <tr key={`${event.timeline_type}-${event.occurred_at}-${index}`}>
-                    <td className="px-4 py-2 text-foreground">{event.timeline_type}</td>
+                    <td className="px-4 py-2">
+                      <span className="rounded-full border border-border bg-background px-3 py-1 text-xs text-foreground">
+                        {event.timeline_type}
+                      </span>
+                    </td>
                     <td className="px-4 py-2 text-muted-foreground">{event.occurred_at}</td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {String(event.actor_user_id ?? "system")}
+                    </td>
+                    <td className="px-4 py-2 text-muted-foreground">
+                      {event.payload ? JSON.stringify(event.payload).slice(0, 90) : "No payload details"}
+                    </td>
                     <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
                       {event.subject_type ?? "-"}:{event.subject_id ?? "-"}
                     </td>

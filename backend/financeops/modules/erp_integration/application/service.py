@@ -45,6 +45,8 @@ from financeops.modules.erp_integration.schemas import (
 from financeops.platform.db.models.entities import CpEntity
 from financeops.services.audit_writer import AuditWriter
 
+MAX_SYNC_JOB_RETRIES = 3
+
 
 def _utcnow() -> datetime:
     return datetime.now(tz=timezone.utc)
@@ -198,6 +200,8 @@ class ErpIntegrationService:
         retry_count = 0
         if body.retry_of_job_id is not None:
             previous = await self.get_job(tenant_id=tenant_id, job_id=body.retry_of_job_id)
+            if previous.retry_count >= MAX_SYNC_JOB_RETRIES:
+                raise ValidationError("ERP sync retry limit reached.")
             retry_count = previous.retry_count + 1
 
         job = ErpSyncJob(

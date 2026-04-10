@@ -129,4 +129,32 @@ describe("usePolling", () => {
 
     expect(fetchFn).not.toHaveBeenCalled()
   })
+
+  it("stops polling after reaching the maximum attempts", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(undefined)
+    const onMaxAttemptsReached = vi.fn()
+    renderHook(() =>
+      usePolling(fetchFn, 1000, true, { maxAttempts: 3, onMaxAttemptsReached }),
+    )
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(1000)
+      await Promise.resolve()
+    })
+    await act(async () => {
+      vi.advanceTimersByTime(5000)
+      await Promise.resolve()
+    })
+
+    expect(fetchFn).toHaveBeenCalledTimes(3)
+    expect(onMaxAttemptsReached).toHaveBeenCalledTimes(1)
+  })
 })

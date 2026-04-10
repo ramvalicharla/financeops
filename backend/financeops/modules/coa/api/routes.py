@@ -293,6 +293,8 @@ async def upload_coa(
     file: UploadFile = File(...),
     template_id: uuid.UUID = Form(...),
     mode: str = Form(default="APPEND"),
+    origin_source: str | None = Form(default=None),
+    onboarding_step: str | None = Form(default=None),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> CoaUploadResponse:
@@ -311,7 +313,12 @@ async def upload_coa(
         session,
         source_type="coa_upload",
         actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
-        metadata={"template_id": str(template_id), "mode": upload_mode.value},
+        metadata={
+            "template_id": str(template_id),
+            "mode": upload_mode.value,
+            **({"source": origin_source} if origin_source else {}),
+            **({"onboarding_step": onboarding_step} if onboarding_step else {}),
+        },
         content=file_bytes,
         file_name=file.filename or "coa_upload.csv",
         source_reference=str(template_id),
@@ -361,6 +368,8 @@ async def upload_coa(
 async def validate_coa(
     request: Request,
     file: UploadFile = File(...),
+    origin_source: str | None = Form(default=None),
+    onboarding_step: str | None = Form(default=None),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
 ) -> CoaValidateResponse:
@@ -374,7 +383,11 @@ async def validate_coa(
         session,
         source_type="coa_validate_upload",
         actor=AirlockActor(user_id=user.id, tenant_id=user.tenant_id, role=user.role.value),
-        metadata={"operation": "validate_only"},
+        metadata={
+            "operation": "validate_only",
+            **({"source": origin_source} if origin_source else {}),
+            **({"onboarding_step": onboarding_step} if onboarding_step else {}),
+        },
         content=file_bytes,
         file_name=file.filename or "coa_upload.csv",
         source_reference=file.filename or "coa_upload.csv",

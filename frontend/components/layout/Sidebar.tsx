@@ -10,7 +10,8 @@ import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_co
 import { Button } from "@/components/ui/button"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
-import { listControlPlaneEntities } from "@/lib/api/control-plane"
+import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
+import { resolveControlPlaneModule } from "@/lib/control-plane"
 import {
   ADMIN_NAV_ITEMS,
   ADVISORY_NAV_ITEMS,
@@ -21,7 +22,6 @@ import {
   SETTINGS_NAV_ITEMS,
   TRUST_NAV_ITEMS,
 } from "@/lib/config/navigation"
-import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { filterNavigationItems } from "@/lib/ui-access"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
@@ -57,11 +57,20 @@ export function Sidebar({
   const setTenant = useTenantStore((state) => state.setTenant)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
-  const currentOrg = useControlPlaneStore((state) => state.current_org)
-  const setCurrentOrg = useControlPlaneStore((state) => state.setCurrentOrg)
+  const activeWorkspace = resolveControlPlaneModule(pathname).key
   const entitiesQuery = useQuery({
     queryKey: ["control-plane-entities"],
     queryFn: listControlPlaneEntities,
+  })
+  const contextQuery = useQuery({
+    queryKey: ["control-plane-context", activeEntityId, activeWorkspace],
+    queryFn: () =>
+      getControlPlaneContext({
+        entity_id: activeEntityId ?? undefined,
+        workspace: activeWorkspace,
+        module: activeWorkspace,
+      }),
+    staleTime: 60_000,
   })
 
   useEffect(() => {
@@ -74,10 +83,6 @@ export function Sidebar({
       active_entity_id: entityRoles.at(0)?.entity_id ?? null,
     })
   }, [entityRoles, orgSetupComplete, orgSetupStep, setTenant, tenantId, tenantSlug])
-
-  useEffect(() => {
-    setCurrentOrg(tenantSlug)
-  }, [setCurrentOrg, tenantSlug])
 
   useEffect(() => {
     if (!activeEntityId && entitiesQuery.data?.[0]?.id) {
@@ -182,6 +187,12 @@ export function Sidebar({
   const reconciliationItem = visibleNavItems.find(
     (item) => "children" in item,
   ) as NavigationGroupItem | undefined
+  const organizationLabel =
+    contextQuery.isLoading
+      ? "Loading..."
+      : contextQuery.data?.current_organisation.organisation_name ??
+        contextQuery.data?.tenant_slug ??
+        "Unavailable"
 
   return (
     <>
@@ -201,23 +212,27 @@ export function Sidebar({
         )}
       >
         <div className="border-b border-border px-4 py-4">
-          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
             FinanceOps
           </p>
-          <div className="mt-3 rounded-md border border-border bg-background p-3">
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Org</p>
-            <select
-              aria-label="Current organisation"
-              className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-              value={currentOrg ?? tenantSlug}
-              onChange={(event) => setCurrentOrg(event.target.value)}
-            >
-              <option value={currentOrg ?? tenantSlug}>{currentOrg ?? tenantSlug}</option>
-            </select>
+          <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Organization</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{organizationLabel}</p>
+              </div>
+              <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                Backend
+              </span>
+            </div>
+            <div className="mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3 text-sm text-muted-foreground">
+              <p>Entity: {contextQuery.data?.current_entity.entity_name ?? "Unavailable"}</p>
+              <p>Workspace: {contextQuery.data?.current_module.module_name ?? "Unavailable"}</p>
+            </div>
           </div>
         </div>
 
-        <nav aria-label="Main navigation" className="flex-1 space-y-2 overflow-y-auto p-3">
+        <nav aria-label="Main navigation" className="flex-1 space-y-3 overflow-y-auto p-3">
           <SidebarNavGroup
             closeSidebar={closeSidebar}
             items={primaryNavItems}
@@ -280,7 +295,7 @@ export function Sidebar({
 
         <div className="space-y-3 border-t border-border p-3">
           <EntitySwitcher entityRoles={entityOptions} />
-          <div className="rounded-md border border-border bg-background p-3">
+          <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
             <div className="mb-2 flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium">
                 {initials}

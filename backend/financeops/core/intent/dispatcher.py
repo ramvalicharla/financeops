@@ -4,8 +4,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ValidationError
 from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.intent.enums import JobRunnerType, JobStatus
 from financeops.core.intent.executors import MutationExecutorRegistry
@@ -14,6 +16,9 @@ from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalJob
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+DEFAULT_MAX_JOB_RETRIES = 3
 
 
 class JobDispatcher:
@@ -85,7 +90,7 @@ class JobDispatcher:
             idempotency_key=intent.idempotency_key,
             requested_at=_utcnow(),
             retry_count=0,
-            max_retries=0,
+            max_retries=DEFAULT_MAX_JOB_RETRIES,
         )
         db.add(job)
         await db.flush()
@@ -98,23 +103,46 @@ class JobDispatcher:
         intent: CanonicalIntent,
         job: CanonicalJob,
     ):
+        persisted_job = (
+            await db.execute(
+                select(CanonicalJob).where(CanonicalJob.id == job.id).with_for_update()
+            )
+        ).scalar_one()
+        if persisted_job.status == JobStatus.RUNNING.value:
+            raise ValidationError("Job is already running; worker re-entry blocked.")
+        if persisted_job.status != JobStatus.PENDING.value:
+            raise ValidationError(
+                f"Job cannot execute from status '{persisted_job.status}'."
+            )
+
         executor = self._executors.resolve(intent.intent_type)
-        job.status = JobStatus.RUNNING.value
-        job.started_at = _utcnow()
+        persisted_job.status = JobStatus.RUNNING.value
+        persisted_job.started_at = _utcnow()
         await db.flush()
 
-        with governed_mutation_context(
-            MutationContext(
-                intent_id=intent.id,
-                job_id=job.id,
-                actor_user_id=intent.requested_by_user_id,
-                actor_role=intent.requested_by_role,
-                intent_type=intent.intent_type,
+        try:
+            with governed_mutation_context(
+                MutationContext(
+                    intent_id=intent.id,
+                    job_id=job.id,
+                    actor_user_id=intent.requested_by_user_id,
+                    actor_role=intent.requested_by_role,
+                    intent_type=intent.intent_type,
+                )
+            ):
+                result = await executor.execute(db, intent=intent)
+        except Exception as exc:
+            persisted_job.status = JobStatus.FAILED.value
+            persisted_job.failed_at = _utcnow()
+            persisted_job.error_message = str(exc)[:2000]
+            persisted_job.retry_count = min(
+                persisted_job.retry_count + 1,
+                persisted_job.max_retries,
             )
-        ):
-            result = await executor.execute(db, intent=intent)
+            await db.flush()
+            raise
 
-        job.status = JobStatus.SUCCEEDED.value
-        job.finished_at = _utcnow()
+        persisted_job.status = JobStatus.SUCCEEDED.value
+        persisted_job.finished_at = _utcnow()
         await db.flush()
         return result

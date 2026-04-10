@@ -22,12 +22,24 @@ from financeops.db.models.intent_pipeline import (
     CanonicalJob,
 )
 from financeops.db.models.users import IamUser
+from financeops.modules.org_setup.models import OrgGroup
 from financeops.platform.db.models.modules import CpModuleRegistry
 from financeops.platform.db.models.tenant_module_enablement import CpTenantModuleEnablement
 from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+from financeops.platform.services.tenancy.entity_access import get_entities_for_user
 from financeops.shared_kernel.response import ok
 
 router = APIRouter()
+
+_WORKSPACE_LABELS: dict[str, str] = {
+    "dashboard": "Dashboard",
+    "erp": "ERP",
+    "accounting": "Accounting",
+    "reconciliation": "Reconciliation",
+    "close": "Close",
+    "reports": "Reports",
+    "settings": "Settings",
+}
 
 
 def _serialize_intent(intent: CanonicalIntent) -> dict[str, Any]:
@@ -60,6 +72,7 @@ def _serialize_intent(intent: CanonicalIntent) -> dict[str, Any]:
 
 
 def _serialize_job(job: CanonicalJob, *, entity_id: uuid.UUID | None, intent_id: uuid.UUID) -> dict[str, Any]:
+    retry_supported = False
     return {
         "job_id": str(job.id),
         "intent_id": str(intent_id),
@@ -77,6 +90,17 @@ def _serialize_job(job: CanonicalJob, *, entity_id: uuid.UUID | None, intent_id:
         "error_code": job.error_code,
         "error_message": job.error_message,
         "error_details": job.error_details_json,
+        "capabilities": {
+            "retry": {
+                "supported": retry_supported,
+                "allowed": retry_supported and job.status in {"FAILED", "ERROR"},
+                "reason": (
+                    "Not supported in current backend contract"
+                    if not retry_supported
+                    else None
+                ),
+            }
+        },
     }
 
 
@@ -179,16 +203,163 @@ async def _current_period(session: AsyncSession, *, tenant_id: uuid.UUID) -> dic
     }
 
 
+async def _current_organisation(session: AsyncSession, *, tenant_id: uuid.UUID) -> dict[str, Any]:
+    group = (
+        await session.execute(
+            select(OrgGroup)
+            .where(OrgGroup.tenant_id == tenant_id)
+            .order_by(OrgGroup.created_at.asc(), OrgGroup.id.asc())
+        )
+    ).scalars().first()
+    if group is None:
+        return {
+            "organisation_id": None,
+            "organisation_name": None,
+            "source": "unavailable",
+        }
+    return {
+        "organisation_id": str(group.id),
+        "organisation_name": group.group_name,
+        "source": "org_group",
+    }
+
+
+async def _current_entity(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    user_role: str,
+    requested_entity_id: uuid.UUID | None,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    entities = await get_entities_for_user(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        user_role=user_role,
+    )
+    available_entities = [
+        {
+            "entity_id": str(entity.id),
+            "entity_code": entity.entity_code,
+            "entity_name": entity.entity_name,
+        }
+        for entity in entities
+    ]
+    if not entities:
+        return (
+            {
+                "entity_id": None,
+                "entity_code": None,
+                "entity_name": None,
+                "source": "unavailable",
+            },
+            available_entities,
+        )
+
+    selected = None
+    source = "default_access_scope"
+    if requested_entity_id is not None:
+        for entity in entities:
+            if entity.id == requested_entity_id:
+                selected = entity
+                source = "requested_entity"
+                break
+    if selected is None:
+        selected = entities[0]
+    return (
+        {
+            "entity_id": str(selected.id),
+            "entity_code": selected.entity_code,
+            "entity_name": selected.entity_name,
+            "source": source,
+        },
+        available_entities,
+    )
+
+
+def _current_workspace(
+    *,
+    enabled_modules: list[dict[str, Any]],
+    requested_workspace: str | None,
+    requested_module: str | None,
+) -> dict[str, Any]:
+    candidate = (requested_module or requested_workspace or "").strip()
+    if candidate and candidate in _WORKSPACE_LABELS:
+        return {
+            "module_key": candidate,
+            "module_name": _WORKSPACE_LABELS[candidate],
+            "module_code": None,
+            "source": "requested_workspace",
+        }
+    if candidate:
+        for enabled in enabled_modules:
+            if candidate in {str(enabled["module_code"]), str(enabled["module_name"])}:
+                return {
+                    "module_key": str(enabled["module_code"]),
+                    "module_name": str(enabled["module_name"]),
+                    "module_code": str(enabled["module_code"]),
+                    "source": "requested_module",
+                }
+    if enabled_modules:
+        first = enabled_modules[0]
+        return {
+            "module_key": str(first["module_code"]),
+            "module_name": str(first["module_name"]),
+            "module_code": str(first["module_code"]),
+            "source": "enabled_module_default",
+        }
+    return {
+        "module_key": None,
+        "module_name": None,
+        "module_code": None,
+        "source": "unavailable",
+    }
+
+
+def _timeline_semantics_payload() -> dict[str, Any]:
+    return {
+        "title": "Timeline",
+        "description": "Control-plane events returned by the backend timeline API.",
+        "empty_state": "No control-plane events in the current scope.",
+        "semantics": {
+            "authoritative": True,
+            "append_only_guarantee": False,
+            "compliance_grade": False,
+            "label_mode": "control_plane_events",
+        },
+    }
+
+
 @router.get("/context")
 async def get_control_plane_context_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
+    entity_id: uuid.UUID | None = Query(default=None),
+    workspace: str | None = Query(default=None),
+    module: str | None = Query(default=None),
 ) -> dict[str, Any]:
+    enabled_modules = await _enabled_modules(session, tenant_id=user.tenant_id)
+    current_entity, available_entities = await _current_entity(
+        session,
+        tenant_id=user.tenant_id,
+        user_id=user.id,
+        user_role=user.role.value,
+        requested_entity_id=entity_id,
+    )
     payload = {
         "tenant_id": str(user.tenant_id),
         "tenant_slug": getattr(user, "tenant_slug", None),
-        "enabled_modules": await _enabled_modules(session, tenant_id=user.tenant_id),
+        "enabled_modules": enabled_modules,
+        "current_organisation": await _current_organisation(session, tenant_id=user.tenant_id),
+        "current_entity": current_entity,
+        "available_entities": available_entities,
+        "current_module": _current_workspace(
+            enabled_modules=enabled_modules,
+            requested_workspace=workspace,
+            requested_module=module,
+        ),
         "current_period": await _current_period(session, tenant_id=user.tenant_id),
     }
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
@@ -392,6 +563,18 @@ async def list_timeline_endpoint(
         subject_id=subject_id,
         limit=limit,
     )
+    return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
+
+
+@router.get("/timeline/semantics")
+async def get_timeline_semantics_endpoint(
+    request: Request,
+    user: IamUser = Depends(require_finance_team),
+) -> dict[str, Any]:
+    payload = {
+        **_timeline_semantics_payload(),
+        "viewer_role": user.role.value,
+    }
     return ok(payload, request_id=getattr(request.state, "request_id", None)).model_dump(mode="json")
 
 

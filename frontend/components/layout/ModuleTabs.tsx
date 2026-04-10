@@ -2,11 +2,11 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { CONTROL_PLANE_MODULE_TABS, resolveControlPlaneModule } from "@/lib/control-plane"
-import { useControlPlaneStore } from "@/lib/store/controlPlane"
+import { useTenantStore } from "@/lib/store/tenant"
 import { cn } from "@/lib/utils"
 
 const MODULE_TAB_REGISTRY: Record<string, string[]> = {
@@ -26,11 +26,16 @@ const MODULE_TAB_REGISTRY: Record<string, string[]> = {
 
 export function ModuleTabs() {
   const pathname = usePathname() ?? ""
-  const setCurrentModule = useControlPlaneStore((state) => state.setCurrentModule)
   const activeModule = resolveControlPlaneModule(pathname)
+  const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context"],
-    queryFn: getControlPlaneContext,
+    queryKey: ["control-plane-context", activeEntityId, activeModule.key],
+    queryFn: () =>
+      getControlPlaneContext({
+        entity_id: activeEntityId ?? undefined,
+        workspace: activeModule.key,
+        module: activeModule.key,
+      }),
     staleTime: 60_000,
   })
 
@@ -39,21 +44,41 @@ export function ModuleTabs() {
     [contextQuery.data?.enabled_modules],
   )
   const visibleTabs = useMemo(
-    () =>
-      CONTROL_PLANE_MODULE_TABS.filter((tab) => {
+    () => {
+      if (!contextQuery.data) {
+        return []
+      }
+      return CONTROL_PLANE_MODULE_TABS.filter((tab) => {
         const requiredCodes = MODULE_TAB_REGISTRY[tab.key] ?? []
         return requiredCodes.length === 0 || requiredCodes.some((code) => enabledModuleCodes.has(code))
-      }),
-    [enabledModuleCodes],
+      })
+    },
+    [contextQuery.data, enabledModuleCodes],
   )
-
-  useEffect(() => {
-    setCurrentModule(activeModule.label)
-  }, [activeModule.label, setCurrentModule])
 
   return (
     <div className="border-b border-border bg-background/90 px-4 md:px-6">
-      <nav aria-label="Module tabs" className="flex gap-2 overflow-x-auto py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+            Workspace Modules
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {contextQuery.isLoading
+              ? "Waiting for backend module context."
+              : `Tabs are filtered by backend-enabled modules. Backend workspace: ${contextQuery.data?.current_module.module_name ?? "Unavailable"}.`}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            {visibleTabs.length} visible
+          </span>
+          <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            Viewing: {activeModule.label}
+          </span>
+        </div>
+      </div>
+      <nav aria-label="Module tabs" className="flex gap-2 overflow-x-auto pb-4">
         {visibleTabs.map((tab) => {
           const isActive = tab.key === activeModule.key
           return (
@@ -61,10 +86,10 @@ export function ModuleTabs() {
               key={tab.key}
               href={tab.href}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-sm transition-colors",
+                "rounded-full border px-4 py-2 text-sm transition-colors",
                 isActive
-                  ? "border-foreground bg-foreground text-background"
-                  : "border-border bg-card text-muted-foreground hover:text-foreground",
+                  ? "border-foreground bg-foreground text-background shadow-sm"
+                  : "border-border bg-card text-muted-foreground hover:border-[hsl(var(--brand-primary)/0.3)] hover:text-foreground",
               )}
             >
               {tab.label}

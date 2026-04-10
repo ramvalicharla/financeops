@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -9,8 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser, UserRole
+from financeops.platform.db.models.entities import CpEntity
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry
 from financeops.modules.service_registry.service import (
+    detect_dependency_cycles,
     ensure_registry_seeded,
     get_service_dashboard,
     run_health_checks,
@@ -22,6 +26,19 @@ router = APIRouter(prefix="/platform/services", tags=["service-registry"])
 
 class ModuleToggleRequest(BaseModel):
     is_enabled: bool
+
+
+class ModuleToggleValidationRequest(BaseModel):
+    is_enabled: bool
+    entity_id: uuid.UUID | None = None
+
+
+class ModuleToggleValidationResponse(BaseModel):
+    success: bool
+    failure: bool
+    reason: str | None
+    module_name: str
+    entity_id: str | None
 
 
 def _require_platform_admin(user: IamUser) -> IamUser:
@@ -166,10 +183,96 @@ async def toggle_module_endpoint(
     ).scalar_one_or_none()
     if row is None:
         raise HTTPException(status_code=404, detail="module not found")
+    if body.is_enabled:
+        rows = (
+            await session.execute(select(ModuleRegistry).order_by(ModuleRegistry.module_name.asc()))
+        ).scalars().all()
+        dependency_cycles = detect_dependency_cycles(list(rows))
+        cyclic_modules = {name for cycle in dependency_cycles for name in cycle}
+        if row.module_name in cyclic_modules:
+            raise HTTPException(
+                status_code=409,
+                detail="module dependency cycle detected; enable blocked",
+            )
 
     row.is_enabled = body.is_enabled
     await session.flush()
     return _serialize_module(row)
+
+
+@router.post("/modules/{module_name}/toggle/validate", response_model=ModuleToggleValidationResponse)
+async def validate_toggle_module_endpoint(
+    module_name: str,
+    body: ModuleToggleValidationRequest,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> ModuleToggleValidationResponse:
+    _require_platform_owner(user)
+    await ensure_registry_seeded(session)
+    row = (
+        await session.execute(
+            select(ModuleRegistry).where(ModuleRegistry.module_name == module_name)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return ModuleToggleValidationResponse(
+            success=False,
+            failure=True,
+            reason="Module is not registered in the current backend contract.",
+            module_name=module_name,
+            entity_id=str(body.entity_id) if body.entity_id else None,
+        )
+
+    rows = (
+        await session.execute(select(ModuleRegistry).order_by(ModuleRegistry.module_name.asc()))
+    ).scalars().all()
+    dependency_cycles = detect_dependency_cycles(list(rows))
+    cyclic_modules = {name for cycle in dependency_cycles for name in cycle}
+    if body.is_enabled and row.module_name in cyclic_modules:
+        return ModuleToggleValidationResponse(
+            success=False,
+            failure=True,
+            reason="Module dependency cycle detected; enable blocked until registry graph is acyclic.",
+            module_name=row.module_name,
+            entity_id=str(body.entity_id) if body.entity_id else None,
+        )
+
+    if body.is_enabled and body.entity_id is not None:
+        entity_filters = [CpEntity.id == body.entity_id, CpEntity.deactivated_at.is_(None)]
+        if user.role not in {UserRole.super_admin, UserRole.platform_owner, UserRole.platform_admin}:
+            entity_filters.append(CpEntity.tenant_id == user.tenant_id)
+        entity = (
+            await session.execute(
+                select(CpEntity.id).where(
+                    *entity_filters,
+                )
+            )
+        ).scalar_one_or_none()
+        if entity is None:
+            return ModuleToggleValidationResponse(
+                success=False,
+                failure=True,
+                reason="Select an active entity before enabling a module during onboarding.",
+                module_name=row.module_name,
+                entity_id=str(body.entity_id),
+            )
+
+    if body.is_enabled and row.health_status == "unhealthy":
+        return ModuleToggleValidationResponse(
+            success=False,
+            failure=True,
+            reason="Module cannot be enabled while backend health is unhealthy.",
+            module_name=row.module_name,
+            entity_id=str(body.entity_id) if body.entity_id else None,
+        )
+
+    return ModuleToggleValidationResponse(
+        success=True,
+        failure=False,
+        reason=None,
+        module_name=row.module_name,
+        entity_id=str(body.entity_id) if body.entity_id else None,
+    )
 
 
 __all__ = ["router"]

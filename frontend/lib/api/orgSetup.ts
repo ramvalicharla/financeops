@@ -33,6 +33,19 @@ export interface OrgGroup {
   updated_at: string | null
 }
 
+export interface ReviewRow {
+  label: string
+  value: string
+}
+
+export interface SetupIntentDraft<TStep extends string = string> {
+  draft_id: string
+  step: TStep
+  status: "draft"
+  review_rows: ReviewRow[]
+  payload: Record<string, unknown>
+}
+
 export type EntityType =
   | "WHOLLY_OWNED_SUBSIDIARY"
   | "JOINT_VENTURE"
@@ -205,6 +218,34 @@ export interface Step2EntityPayload {
   tax_rate?: string | null
 }
 
+export interface Step1ConfirmResponse {
+  draft_id: string
+  step: "create_organization"
+  status: "confirmed"
+  review_rows: ReviewRow[]
+  group: OrgGroup
+}
+
+export interface Step2ConfirmResponse {
+  draft_id: string
+  step: "create_entity"
+  status: "confirmed"
+  review_rows: ReviewRow[]
+  entities: OrgEntity[]
+}
+
+export interface ModuleSelectionReview {
+  draft_id: string
+  step: "review_module_selection"
+  status: "draft"
+  review_rows: ReviewRow[]
+  payload: {
+    module_names: string[]
+    tenant_id: string
+  }
+  review_only: true
+}
+
 export interface OwnershipPayload {
   parent_entity_id: string
   child_entity_id: string
@@ -236,12 +277,63 @@ export const submitOrgSetupStep1 = async (payload: Step1Payload): Promise<OrgGro
   return response.data.group
 }
 
+export const createOrgSetupStep1Draft = async (
+  payload: Step1Payload,
+): Promise<SetupIntentDraft<"create_organization">> => {
+  const response = await apiClient.post<SetupIntentDraft<"create_organization">>(
+    "/api/v1/org-setup/step1/draft",
+    payload,
+  )
+  return response.data
+}
+
+export const confirmOrgSetupStep1Draft = async (
+  draftId: string,
+): Promise<Step1ConfirmResponse> => {
+  const response = await apiClient.post<Step1ConfirmResponse>(
+    "/api/v1/org-setup/step1/confirm",
+    { draft_id: draftId },
+  )
+  return response.data
+}
+
 export const submitOrgSetupStep2 = async (payload: {
   group_id: string
   entities: Step2EntityPayload[]
 }): Promise<OrgEntity[]> => {
   const response = await apiClient.post<{ entities: OrgEntity[] }>("/api/v1/org-setup/step2", payload)
   return response.data.entities
+}
+
+export const createOrgSetupStep2Draft = async (payload: {
+  group_id: string
+  entities: Step2EntityPayload[]
+}): Promise<SetupIntentDraft<"create_entity">> => {
+  const response = await apiClient.post<SetupIntentDraft<"create_entity">>(
+    "/api/v1/org-setup/step2/draft",
+    payload,
+  )
+  return response.data
+}
+
+export const confirmOrgSetupStep2Draft = async (
+  draftId: string,
+): Promise<Step2ConfirmResponse> => {
+  const response = await apiClient.post<Step2ConfirmResponse>(
+    "/api/v1/org-setup/step2/confirm",
+    { draft_id: draftId },
+  )
+  return response.data
+}
+
+export const reviewOrgSetupModuleSelection = async (payload: {
+  module_names: string[]
+}): Promise<ModuleSelectionReview> => {
+  const response = await apiClient.post<ModuleSelectionReview>(
+    "/api/v1/org-setup/step3/modules/review",
+    payload,
+  )
+  return response.data
 }
 
 export const submitOrgSetupStep3 = async (payload: {

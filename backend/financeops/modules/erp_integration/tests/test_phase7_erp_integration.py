@@ -420,6 +420,39 @@ async def test_run_sync_job_marks_failed_and_increments_retry(
 
 
 @pytest.mark.asyncio
+async def test_run_sync_job_rejects_retry_storm_after_max_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AsyncMock()
+    service = ErpIntegrationService(session)
+
+    connector_row = SimpleNamespace(
+        id=uuid.uuid4(),
+        org_entity_id=uuid.uuid4(),
+        erp_type="MANUAL",
+        connection_config={},
+        last_sync_at=None,
+    )
+    actor = SimpleNamespace(id=uuid.uuid4())
+
+    monkeypatch.setattr(service, "_get_connector", AsyncMock(return_value=connector_row))
+    monkeypatch.setattr(service, "get_job", AsyncMock(return_value=SimpleNamespace(retry_count=3)))
+
+    with pytest.raises(ValidationError, match="retry limit"):
+        await service.run_sync_job(
+            tenant_id=uuid.uuid4(),
+            actor=actor,
+            body=SyncRunRequest(
+                erp_connector_id=connector_row.id,
+                sync_type=ErpSyncType.IMPORT,
+                module=ErpSyncModule.COA,
+                payload={},
+                retry_of_job_id=uuid.uuid4(),
+            ),
+        )
+
+
+@pytest.mark.asyncio
 async def test_create_connector_route_commits_transaction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

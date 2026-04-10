@@ -8,6 +8,7 @@ import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
 import { useUIStore } from "@/lib/store/ui"
 import { shouldSignOutOnUnauthorized } from "@/lib/api/auth-unauthorized"
+import { consumeAuthRecoveryAttempt } from "@/lib/api/auth-loop-guard"
 import { readSessionForApi } from "@/lib/api/session-cache"
 import type { ApiResponse } from "@/types/api"
 
@@ -157,7 +158,10 @@ apiClient.interceptors.response.use(
     const envelopeError = error.response?.data?.error
 
     if (shouldSignOutOnUnauthorized(error, BASE_URL)) {
-      await signOut({ callbackUrl: "/login" })
+      const requestPath = error.config?.url ?? ""
+      if (consumeAuthRecoveryAttempt("sign_out", requestPath)) {
+        await signOut({ callbackUrl: "/login" })
+      }
       return Promise.reject(error)
     }
 
@@ -189,7 +193,9 @@ apiClient.interceptors.response.use(
         }
         if (typeof window !== "undefined") {
           const nextPath = `${window.location.pathname}${window.location.search}`
-          window.location.assign(`/org-setup?next=${encodeURIComponent(nextPath)}`)
+          if (consumeAuthRecoveryAttempt("org_setup_redirect", nextPath)) {
+            window.location.assign(`/org-setup?next=${encodeURIComponent(nextPath)}`)
+          }
         }
         return Promise.reject(new Error("ORG_SETUP_REQUIRED"))
       }

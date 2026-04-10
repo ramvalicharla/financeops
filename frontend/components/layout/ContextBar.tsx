@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
+import { usePathname } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
-import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
-import { useControlPlaneStore } from "@/lib/store/controlPlane"
+import { getControlPlaneContext } from "@/lib/api/control-plane"
+import { resolveControlPlaneModule } from "@/lib/control-plane"
 import { useTenantStore } from "@/lib/store/tenant"
 
 interface ContextBarProps {
@@ -21,45 +21,56 @@ const periodLabel = (value: string) => {
   })
 }
 
-export function ContextBar({ tenantSlug }: ContextBarProps) {
+export function ContextBar({ tenantSlug: _tenantSlug }: ContextBarProps) {
+  const pathname = usePathname() ?? ""
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
-  const currentModule = useControlPlaneStore((state) => state.current_module)
-  const currentPeriod = useControlPlaneStore((state) => state.current_period)
-  const currentOrg = useControlPlaneStore((state) => state.current_org) ?? tenantSlug
-  const setCurrentPeriod = useControlPlaneStore((state) => state.setCurrentPeriod)
-  const entitiesQuery = useQuery({
-    queryKey: ["control-plane-entities"],
-    queryFn: listControlPlaneEntities,
-  })
+  const workspace = resolveControlPlaneModule(pathname).key
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context"],
-    queryFn: getControlPlaneContext,
+    queryKey: ["control-plane-context", activeEntityId, workspace],
+    queryFn: () =>
+      getControlPlaneContext({
+        entity_id: activeEntityId ?? undefined,
+        workspace,
+        module: workspace,
+      }),
     staleTime: 60_000,
   })
-
-  useEffect(() => {
-    const period = contextQuery.data?.current_period.period_label
-    if (period) {
-      setCurrentPeriod(period)
-    }
-  }, [contextQuery.data?.current_period.period_label, setCurrentPeriod])
-
-  const activeEntity = useMemo(
-    () => entitiesQuery.data?.find((entity) => entity.id === activeEntityId) ?? null,
-    [activeEntityId, entitiesQuery.data],
-  )
+  const organizationLabel = contextQuery.isLoading
+    ? "Loading..."
+    : contextQuery.data?.current_organisation.organisation_name ??
+      contextQuery.data?.tenant_slug ??
+      "Unavailable"
+  const periodValue = contextQuery.data?.current_period.period_label
+  const moduleLabel = contextQuery.isLoading
+    ? "Loading..."
+    : contextQuery.data?.current_module.module_name ?? "Unavailable"
+  const entityLabel = contextQuery.isLoading
+    ? "Loading..."
+    : contextQuery.data?.current_entity.entity_name ?? "Unavailable"
 
   return (
-    <div className="border-b border-border bg-card/60 px-4 py-3 md:px-6">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <span className="font-medium text-foreground">Context</span>
-        <span>Org: {currentOrg}</span>
-        <span>&rarr;</span>
-        <span>Entity: {activeEntity?.entity_name ?? "No active entity"}</span>
-        <span>&rarr;</span>
-        <span>Module: {currentModule ?? "Dashboard"}</span>
-        <span>&rarr;</span>
-        <span>Period: {periodLabel(currentPeriod ?? "Unavailable")}</span>
+    <div className="border-b border-border bg-card/70 px-4 py-3 md:px-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          Active Context
+        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-sm text-foreground">
+            Org <span className="ml-1 font-semibold">{organizationLabel}</span>
+          </span>
+          <span className="text-muted-foreground">&rarr;</span>
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-sm text-foreground">
+            Entity <span className="ml-1 font-semibold">{entityLabel}</span>
+          </span>
+          <span className="text-muted-foreground">&rarr;</span>
+          <span className="rounded-full border border-border bg-background px-3 py-1 text-sm text-foreground">
+            Modules <span className="ml-1 font-semibold">{moduleLabel}</span>
+          </span>
+          <span className="text-muted-foreground">&rarr;</span>
+          <span className="rounded-full border border-[hsl(var(--brand-primary)/0.28)] bg-[hsl(var(--brand-primary)/0.08)] px-3 py-1 text-sm text-foreground">
+            Period <span className="ml-1 font-semibold">{periodLabel(periodValue ?? "Unavailable")}</span>
+          </span>
+        </div>
       </div>
     </div>
   )

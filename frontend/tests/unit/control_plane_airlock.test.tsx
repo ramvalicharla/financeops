@@ -56,7 +56,7 @@ describe("airlock ui", () => {
         admitted_at: null,
         rejected_at: null,
         rejection_reason: null,
-        metadata: { source: "erp" },
+        metadata: { source: "onboarding", onboarding_step: "upload_initial_data" },
         findings: [],
       },
     ])
@@ -78,7 +78,7 @@ describe("airlock ui", () => {
       admitted_at: null,
       rejected_at: null,
       rejection_reason: null,
-      metadata: { source: "erp" },
+      metadata: { source: "onboarding", onboarding_step: "upload_initial_data" },
       findings: [{ guard_code: "mime_valid", message: "PASS" }],
     })
     admitAirlockItem.mockResolvedValue({
@@ -99,7 +99,9 @@ describe("airlock ui", () => {
     renderWithProviders(<AirlockQueue />)
 
     expect(await screen.findByText("airlock-1")).toBeInTheDocument()
-    expect(screen.getByText("erp_sync_upload")).toBeInTheDocument()
+    expect(screen.getByText(/erp_sync_upload/i)).toBeInTheDocument()
+    expect(screen.getByText(/origin: onboarding \(upload_initial_data\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/not usable until the backend confirms admission/i)).toBeInTheDocument()
   })
 
   it("renders review findings and calls admit/reject backend hooks", async () => {
@@ -107,14 +109,26 @@ describe("airlock ui", () => {
     renderWithProviders(<AirlockReview itemId="airlock-1" />)
 
     expect(await screen.findByText(/mime_valid/i)).toBeInTheDocument()
+    expect(screen.getByText(/onboarding \(upload_initial_data\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/not admitted yet/i)).toBeInTheDocument()
 
     await user.click(screen.getByRole("button", { name: "Admit" }))
     await waitFor(() => expect(admitAirlockItem).toHaveBeenCalledWith("airlock-1"))
+    expect(screen.queryByText(/confirmed by backend admission/i)).not.toBeInTheDocument()
 
     await user.type(screen.getByPlaceholderText(/optional reason/i), "needs correction")
     await user.click(screen.getByRole("button", { name: "Reject" }))
     await waitFor(() =>
       expect(rejectAirlockItem).toHaveBeenCalledWith("airlock-1", "needs correction"),
     )
+  })
+
+  it("shows queue error guidance when the backend request fails", async () => {
+    listAirlockItems.mockRejectedValueOnce(new Error("queue unavailable"))
+
+    renderWithProviders(<AirlockQueue />)
+
+    expect(await screen.findByText(/airlock queue failed to load/i)).toBeInTheDocument()
+    expect(screen.getByText(/queue unavailable/i)).toBeInTheDocument()
   })
 })

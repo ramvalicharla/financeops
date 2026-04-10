@@ -61,6 +61,13 @@ export interface ControlPlaneJob {
   error_code: string | null
   error_message: string | null
   error_details: Record<string, unknown> | null
+  capabilities: {
+    retry: {
+      supported: boolean
+      allowed: boolean
+      reason: string | null
+    }
+  }
 }
 
 export interface AirlockItem {
@@ -101,6 +108,19 @@ export interface TimelineEvent {
   entity_id?: string | null
   actor_user_id?: string | null
   payload: Record<string, unknown> | null
+}
+
+export interface TimelineSemantics {
+  title: string
+  description: string
+  empty_state: string
+  semantics: {
+    authoritative: boolean
+    append_only_guarantee: boolean
+    compliance_grade: boolean
+    label_mode: string
+  }
+  viewer_role: string
 }
 
 export interface GovernanceSnapshotInput {
@@ -148,6 +168,11 @@ export interface SnapshotComparison {
 export interface LineageGraph {
   subject_type: string
   subject_id: string
+  semantics?: {
+    authoritative: boolean
+    source: string
+    mode: string
+  }
   forward: {
     root_run_id?: string
     nodes: Array<Record<string, unknown>>
@@ -163,6 +188,11 @@ export interface LineageGraph {
 export interface ImpactSummary {
   subject_type: string
   subject_id: string
+  semantics?: {
+    authoritative: boolean
+    source: string
+    mode: string
+  }
   impacted_count: number
   impacted_reports_count: number
   warning: string
@@ -172,6 +202,28 @@ export interface ImpactSummary {
 export interface ControlPlaneContext {
   tenant_id: string
   tenant_slug: string | null
+  current_organisation: {
+    organisation_id: string | null
+    organisation_name: string | null
+    source: string
+  }
+  current_entity: {
+    entity_id: string | null
+    entity_code: string | null
+    entity_name: string | null
+    source: string
+  }
+  available_entities: Array<{
+    entity_id: string
+    entity_code: string
+    entity_name: string
+  }>
+  current_module: {
+    module_key: string | null
+    module_name: string | null
+    module_code: string | null
+    source: string
+  }
   enabled_modules: Array<{
     module_id: string
     module_code: string
@@ -195,8 +247,19 @@ export const listControlPlaneEntities = async (): Promise<ControlPlaneEntity[]> 
   return response.data
 }
 
-export const getControlPlaneContext = async (): Promise<ControlPlaneContext> => {
-  const response = await apiClient.get<ControlPlaneContext>("/api/v1/platform/control-plane/context")
+export const getControlPlaneContext = async (params?: {
+  entity_id?: string
+  workspace?: string
+  module?: string
+}): Promise<ControlPlaneContext> => {
+  const search = new URLSearchParams()
+  if (params?.entity_id) search.set("entity_id", params.entity_id)
+  if (params?.workspace) search.set("workspace", params.workspace)
+  if (params?.module) search.set("module", params.module)
+  const suffix = search.toString()
+  const response = await apiClient.get<ControlPlaneContext>(
+    `/api/v1/platform/control-plane/context${suffix ? `?${suffix}` : ""}`,
+  )
   return response.data
 }
 
@@ -295,6 +358,13 @@ export const listTimeline = async (params?: {
   const suffix = search.toString()
   const response = await apiClient.get<TimelineEvent[]>(
     `/api/v1/platform/control-plane/timeline${suffix ? `?${suffix}` : ""}`,
+  )
+  return response.data
+}
+
+export const getTimelineSemantics = async (): Promise<TimelineSemantics> => {
+  const response = await apiClient.get<TimelineSemantics>(
+    "/api/v1/platform/control-plane/timeline/semantics",
   )
   return response.data
 }

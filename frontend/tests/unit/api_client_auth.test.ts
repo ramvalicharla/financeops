@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { shouldSignOutOnUnauthorized } from "../../lib/api/auth-unauthorized"
 import {
+  consumeAuthRecoveryAttempt,
+  resetAuthRecoveryGuardForTests,
+} from "../../lib/api/auth-loop-guard"
+import {
   readSessionForApi,
   resetApiSessionCacheForTests,
 } from "../../lib/api/session-cache"
@@ -20,6 +24,7 @@ vi.mock("next-auth/react", async () => {
 describe("api client auth handling", () => {
   beforeEach(() => {
     resetApiSessionCacheForTests()
+    resetAuthRecoveryGuardForTests()
     getSessionMock.mockReset()
   })
 
@@ -97,5 +102,11 @@ describe("api client auth handling", () => {
     expect(second).toEqual({ access_token: "token-1" })
     expect(third).toEqual({ access_token: "token-1" })
     expect(getSessionMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("blocks repeated auth recovery after the maximum attempts", () => {
+    expect(consumeAuthRecoveryAttempt("sign_out", "/api/v1/sync/runs", 1_000)).toBe(true)
+    expect(consumeAuthRecoveryAttempt("sign_out", "/api/v1/sync/runs", 2_000)).toBe(true)
+    expect(consumeAuthRecoveryAttempt("sign_out", "/api/v1/sync/runs", 3_000)).toBe(false)
   })
 })

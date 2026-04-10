@@ -254,6 +254,38 @@ async def test_step1_returns_group_id(async_client: AsyncClient, test_user: IamU
 
 
 @pytest.mark.asyncio
+async def test_step1_draft_and_confirm_flow(async_client: AsyncClient, test_user: IamUser) -> None:
+    draft_response = await async_client.post(
+        "/api/v1/org-setup/step1/draft",
+        headers=_auth_headers(test_user),
+        json={
+            "group_name": "Acme Draft",
+            "country_of_incorp": "India",
+            "country_code": "IN",
+            "functional_currency": "INR",
+            "reporting_currency": "INR",
+        },
+    )
+
+    assert draft_response.status_code == 200
+    draft_payload = draft_response.json()["data"]
+    assert draft_payload["status"] == "draft"
+    assert draft_payload["step"] == "create_organization"
+    assert draft_payload["draft_id"]
+
+    confirm_response = await async_client.post(
+        "/api/v1/org-setup/step1/confirm",
+        headers=_auth_headers(test_user),
+        json={"draft_id": draft_payload["draft_id"]},
+    )
+
+    assert confirm_response.status_code == 200
+    confirmed = confirm_response.json()["data"]
+    assert confirmed["status"] == "confirmed"
+    assert confirmed["group"]["group_name"] == "Acme Draft"
+
+
+@pytest.mark.asyncio
 async def test_step1_second_submit_returns_updated_group(async_client: AsyncClient, test_user: IamUser) -> None:
     first = await async_client.post(
         "/api/v1/org-setup/step1",
@@ -288,6 +320,91 @@ async def test_step2_creates_entities(async_session: AsyncSession, test_user: Ia
     group, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
     assert group.id
     assert entity.id
+
+
+@pytest.mark.asyncio
+async def test_step2_draft_and_confirm_flow(async_client: AsyncClient, test_user: IamUser) -> None:
+    step1_response = await async_client.post(
+        "/api/v1/org-setup/step1",
+        headers=_auth_headers(test_user),
+        json={
+            "group_name": "Acme",
+            "country_of_incorp": "India",
+            "country_code": "IN",
+            "functional_currency": "INR",
+            "reporting_currency": "INR",
+        },
+    )
+    group_id = step1_response.json()["data"]["group"]["id"]
+
+    draft_response = await async_client.post(
+        "/api/v1/org-setup/step2/draft",
+        headers=_auth_headers(test_user),
+        json={
+            "group_id": group_id,
+            "entities": [
+                {
+                    "legal_name": "Acme India Pvt Ltd",
+                    "display_name": "Acme India",
+                    "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                    "country_code": "IN",
+                    "state_code": "KA",
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                }
+            ],
+        },
+    )
+
+    assert draft_response.status_code == 200
+    draft_payload = draft_response.json()["data"]
+    assert draft_payload["status"] == "draft"
+    assert draft_payload["step"] == "create_entity"
+
+    confirm_response = await async_client.post(
+        "/api/v1/org-setup/step2/confirm",
+        headers=_auth_headers(test_user),
+        json={"draft_id": draft_payload["draft_id"]},
+    )
+
+    assert confirm_response.status_code == 200
+    confirmed = confirm_response.json()["data"]
+    assert confirmed["status"] == "confirmed"
+    assert confirmed["entities"][0]["legal_name"] == "Acme India Pvt Ltd"
+
+
+@pytest.mark.asyncio
+async def test_step3_module_review_returns_review_only_payload(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
+    from financeops.modules.service_registry.models import ModuleRegistry
+
+    async_session.add(
+        ModuleRegistry(
+            module_name="accounting_layer",
+            description="Accounting workspace",
+            route_prefix="/accounting",
+            depends_on=[],
+        )
+    )
+    await async_session.flush()
+
+    response = await async_client.post(
+        "/api/v1/org-setup/step3/modules/review",
+        headers=_auth_headers(test_user),
+        json={"module_names": ["accounting_layer"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["step"] == "review_module_selection"
+    assert payload["status"] == "draft"
+    assert payload["review_only"] is True
+    assert payload["payload"]["module_names"] == ["accounting_layer"]
 
 
 @pytest.mark.asyncio

@@ -287,19 +287,39 @@ export const uploadCoaFile = async (payload: {
   file: File
   template_id: string
   mode: CoaUploadMode
+  origin_source?: string
+  onboarding_step?: string
 }): Promise<CoaUploadResult> => {
   const formData = new FormData()
   formData.append("file", payload.file)
   formData.append("template_id", payload.template_id)
   formData.append("mode", payload.mode)
+  if (payload.origin_source) {
+    formData.append("origin_source", payload.origin_source)
+  }
+  if (payload.onboarding_step) {
+    formData.append("onboarding_step", payload.onboarding_step)
+  }
 
   const response = await apiClient.post<CoaUploadResult>("/api/v1/coa/upload", formData)
   return response.data
 }
 
-export const validateCoaFile = async (file: File): Promise<CoaValidationResult> => {
+export const validateCoaFile = async (
+  file: File,
+  options?: {
+    origin_source?: string
+    onboarding_step?: string
+  },
+): Promise<CoaValidationResult> => {
   const formData = new FormData()
   formData.append("file", file)
+  if (options?.origin_source) {
+    formData.append("origin_source", options.origin_source)
+  }
+  if (options?.onboarding_step) {
+    formData.append("onboarding_step", options.onboarding_step)
+  }
   const response = await apiClient.post<CoaValidationResult>("/api/v1/coa/validate", formData)
   return response.data
 }

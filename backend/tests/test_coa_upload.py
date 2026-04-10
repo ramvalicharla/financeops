@@ -6,11 +6,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from httpx import AsyncClient
 from openpyxl import Workbook
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import ValidationError
+from financeops.core.security import create_access_token
 from financeops.db.models.users import IamUser
 from financeops.modules.coa.application.coa_upload_service import CoaUploadService
 from financeops.modules.coa.application.tenant_coa_resolver import TenantCoaResolver
@@ -24,6 +26,11 @@ from financeops.modules.coa.models import (
     TenantCoaAccount,
 )
 from financeops.modules.coa.seeds.runner import run_coa_seeds
+
+
+def _auth_headers(user: IamUser) -> dict[str, str]:
+    token = create_access_token(user.id, user.tenant_id, user.role.value)
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture(autouse=True)
@@ -79,6 +86,60 @@ async def test_validate_only_detects_duplicate_ledger_code(async_session: AsyncS
     assert result["total_rows"] == 2
     assert result["invalid_rows"] == 1
     assert "duplicate ledger_code in upload" in result["errors"][0]["errors"]
+
+
+@pytest.mark.asyncio
+async def test_validate_route_tags_onboarding_upload_metadata(
+    async_client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    test_user: IamUser,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def _submit_external_input(self, db, **kwargs):  # type: ignore[no-untyped-def]
+        captured["metadata"] = kwargs.get("metadata")
+        return SimpleNamespace(
+            item_id=uuid.uuid4(),
+            status="QUARANTINED",
+            quarantine_ref=None,
+            checksum_sha256="abc123",
+            admitted=False,
+        )
+
+    async def _admit_airlock_item(self, db, **kwargs):  # type: ignore[no-untyped-def]
+        return SimpleNamespace(
+            item_id=kwargs["item_id"],
+            status="ADMITTED",
+            quarantine_ref=None,
+            checksum_sha256="abc123",
+            admitted=True,
+        )
+
+    monkeypatch.setattr(
+        "financeops.core.governance.airlock.AirlockAdmissionService.submit_external_input",
+        _submit_external_input,
+    )
+    monkeypatch.setattr(
+        "financeops.core.governance.airlock.AirlockAdmissionService.admit_airlock_item",
+        _admit_airlock_item,
+    )
+
+    response = await async_client.post(
+        "/api/v1/coa/validate",
+        headers=_auth_headers(test_user),
+        data={
+            "origin_source": "onboarding",
+            "onboarding_step": "upload_initial_data",
+        },
+        files={"file": ("coa.csv", b"ledger,dr,cr\nCash,1,0\n", "text/csv")},
+    )
+
+    assert response.status_code == 200
+    assert captured["metadata"] == {
+        "operation": "validate_only",
+        "source": "onboarding",
+        "onboarding_step": "upload_initial_data",
+    }
 
 
 @pytest.mark.asyncio

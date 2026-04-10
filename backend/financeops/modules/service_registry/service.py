@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry
 from financeops.observability.celery_monitor import get_celery_monitor
 from financeops.services.network_runtime import request_with_client
+
+logger = logging.getLogger(__name__)
 
 _ALLOWED_ROUTE_STATUSES = {200, 204, 401, 403, 405, 422}
 _QUEUE_NAMES = (
@@ -139,6 +142,41 @@ def _depends_on_healthy(module: ModuleRegistry, status_by_module: dict[str, str]
     return True
 
 
+def detect_dependency_cycles(rows: list[ModuleRegistry]) -> list[list[str]]:
+    by_module = {row.module_name: list(row.depends_on or []) for row in rows}
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = []
+    cycles: list[list[str]] = []
+
+    def visit(module_name: str) -> None:
+        if module_name in visited:
+            return
+        if module_name in visiting:
+            try:
+                start_index = stack.index(module_name)
+            except ValueError:
+                start_index = 0
+            cycle = stack[start_index:] + [module_name]
+            if cycle not in cycles:
+                cycles.append(cycle)
+            return
+
+        visiting.add(module_name)
+        stack.append(module_name)
+        for dependency in by_module.get(module_name, []):
+            if dependency in by_module:
+                visit(str(dependency))
+        stack.pop()
+        visiting.remove(module_name)
+        visited.add(module_name)
+
+    for module_name in sorted(by_module):
+        visit(module_name)
+
+    return cycles
+
+
 async def run_health_checks(session: AsyncSession) -> dict[str, Any]:
     await ensure_registry_seeded(session)
     rows = (
@@ -151,12 +189,18 @@ async def run_health_checks(session: AsyncSession) -> dict[str, Any]:
         row.module_name: str(row.health_status or "unknown")
         for row in rows
     }
+    dependency_cycles = detect_dependency_cycles(list(rows))
+    cyclic_modules = {name for cycle in dependency_cycles for name in cycle}
+    if dependency_cycles:
+        logger.error("service_registry_dependency_cycle_detected cycles=%s", dependency_cycles)
 
     for row in rows:
         route_ok_by_module[row.module_name] = await _check_route_prefix(row.route_prefix)
 
     for row in rows:
-        if not row.is_enabled:
+        if row.module_name in cyclic_modules:
+            next_status = "unhealthy"
+        elif not row.is_enabled:
             next_status = "unknown"
         else:
             route_ok = route_ok_by_module.get(row.module_name, False)
@@ -192,7 +236,7 @@ async def run_health_checks(session: AsyncSession) -> dict[str, Any]:
         )
 
     await session.flush()
-    return {**summary, "modules": modules}
+    return {**summary, "modules": modules, "dependency_cycles": dependency_cycles}
 
 
 async def update_task_stats(

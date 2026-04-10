@@ -17,10 +17,11 @@ import { useSearch } from "@/components/search/SearchProvider"
 import { EntityLocationSelector } from "@/components/layout/EntityLocationSelector"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { Button } from "@/components/ui/button"
-import { listControlPlaneEntities } from "@/lib/api/control-plane"
+import { getControlPlaneContext } from "@/lib/api/control-plane"
+import { resolveControlPlaneModule } from "@/lib/control-plane"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
-import { useTenantStore } from "@/lib/store/tenant"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
+import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
 import { useDisplayScale } from "@/lib/store/displayScale"
 import { cn } from "@/lib/utils"
@@ -121,10 +122,10 @@ function ProfileMenu({
 }
 
 export function Topbar({
-  tenantSlug,
+  tenantSlug: _tenantSlug,
   userName,
   userEmail,
-  entityRoles,
+  entityRoles: _entityRoles,
 }: TopbarProps) {
   const pathname = usePathname() ?? ""
   const [profileOpen, setProfileOpen] = useState(false)
@@ -142,12 +143,19 @@ export function Topbar({
     (state) => state.billingWarningDismissed,
   )
   const dismissBillingWarning = useUIStore((state) => state.dismissBillingWarning)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
-  const entitiesQuery = useQuery({
-    queryKey: ["control-plane-entities"],
-    queryFn: listControlPlaneEntities,
+  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeWorkspace = resolveControlPlaneModule(pathname).key
+  const contextQuery = useQuery({
+    queryKey: ["control-plane-context", activeEntityId, activeWorkspace],
+    queryFn: () =>
+      getControlPlaneContext({
+        entity_id: activeEntityId ?? undefined,
+        workspace: activeWorkspace,
+        module: activeWorkspace,
+      }),
+    staleTime: 60_000,
   })
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
@@ -165,13 +173,14 @@ export function Topbar({
             : (TOPBAR_PAGE_TITLES[pathname as keyof typeof TOPBAR_PAGE_TITLES] ??
               "FinanceOps")
 
-  const activeEntity = useMemo(
-    () =>
-      entityRoles.find((role) => role.entity_id === activeEntityId) ??
-      entitiesQuery.data?.find((entity) => entity.id === activeEntityId) ??
-      null,
-    [activeEntityId, entitiesQuery.data, entityRoles],
-  )
+  const contextSummary = useMemo(() => {
+    if (contextQuery.isLoading) {
+      return "Loading backend context"
+    }
+    const organization = contextQuery.data?.tenant_slug ?? "Organization unavailable"
+    const period = contextQuery.data?.current_period.period_label ?? "Period unavailable"
+    return `${organization} · ${period}`
+  }, [contextQuery.data?.current_period.period_label, contextQuery.data?.tenant_slug, contextQuery.isLoading])
 
   useEffect(() => {
     if (!mobileActionsOpen) {
@@ -340,21 +349,22 @@ export function Topbar({
         ) : null}
       </div>
 
-      <div className="hidden h-16 items-center justify-between px-4 md:flex md:px-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold text-foreground">{title}</h1>
-        </div>
+      <div className="hidden min-h-16 items-center justify-between gap-6 px-4 py-3 md:flex md:px-6">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Control Plane
+            </p>
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-semibold text-foreground">{title}</h1>
+              <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+                {contextSummary}
+              </span>
+            </div>
+          </div>
 
         <div className="flex items-center gap-3">
           <EntityLocationSelector />
           <ScaleSelector value={scale} onChange={setScale} size="sm" />
-
-          <div className="hidden text-right md:block">
-            <p className="text-sm font-medium text-foreground">{tenantSlug}</p>
-            <p className="text-xs text-muted-foreground">
-              {activeEntity?.entity_name ?? "No active entity"}
-            </p>
-          </div>
 
           <button
             type="button"

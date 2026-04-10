@@ -556,6 +556,11 @@ class Phase4ControlPlaneService:
             return {
                 "subject_type": subject_type,
                 "subject_id": subject_id,
+                "semantics": {
+                    "authoritative": True,
+                    "source": "backend_control_plane",
+                    "mode": "run_graph",
+                },
                 "forward": forward,
                 "reverse": reverse,
             }
@@ -568,6 +573,11 @@ class Phase4ControlPlaneService:
         return {
             "subject_type": subject_type,
             "subject_id": subject_id,
+            "semantics": {
+                "authoritative": True,
+                "source": "backend_control_plane",
+                "mode": "snapshot_graph",
+            },
             "forward": {"nodes": [self._serialize_snapshot(row) for row in snapshots], "edges": []},
             "reverse": await self._reverse_lineage_from_snapshot_inputs(
                 tenant_id=tenant_id,
@@ -595,6 +605,11 @@ class Phase4ControlPlaneService:
         return {
             "subject_type": subject_type,
             "subject_id": subject_id,
+            "semantics": {
+                "authoritative": True,
+                "source": "backend_control_plane",
+                "mode": "dependency_impact",
+            },
             "impacted_count": len(impacted_nodes),
             "impacted_reports_count": len(impacted_reports),
             "warning": (

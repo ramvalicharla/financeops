@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,8 @@ from financeops.db.session import AsyncSessionLocal
 from financeops.modules.partner_program.models import PartnerCommission, PartnerProfile, ReferralTracking
 
 _CODE_SANITIZE_RE = re.compile(r"[^A-Z0-9]+")
+logger = logging.getLogger(__name__)
+MAX_PARTNER_CODE_ATTEMPTS = 100
 
 
 def _q2(value: Decimal) -> Decimal:
@@ -70,7 +73,7 @@ async def _unique_partner_code(session: AsyncSession, company_name: str) -> str:
     base_code = _generate_partner_code(company_name)
     candidate = base_code
     attempt = 1
-    while True:
+    while attempt <= MAX_PARTNER_CODE_ATTEMPTS:
         existing = (
             await session.execute(
                 select(PartnerProfile.id).where(PartnerProfile.partner_code == candidate)
@@ -80,6 +83,12 @@ async def _unique_partner_code(session: AsyncSession, company_name: str) -> str:
             return candidate
         candidate = f"{base_code[:15]}{attempt:04d}"[:20]
         attempt += 1
+    logger.error(
+        "partner_code_generation_exhausted company_name=%s max_attempts=%d",
+        company_name,
+        MAX_PARTNER_CODE_ATTEMPTS,
+    )
+    raise ValidationError("Unable to allocate a unique partner code after bounded attempts.")
 
 
 async def register_partner(

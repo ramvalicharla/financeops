@@ -201,6 +201,45 @@ async def test_verify_determinism_hash_compares_expected_hash(monkeypatch: pytes
     assert payload["snapshot_id"] == "snapshot-1"
 
 
+def test_serialize_job_exposes_capability_contract() -> None:
+    job = SimpleNamespace(
+        id=uuid.uuid4(),
+        job_type="RUN_REPORT",
+        status="FAILED",
+        runner_type="inline",
+        queue_name="governed",
+        requested_at=None,
+        started_at=None,
+        finished_at=None,
+        failed_at=None,
+        retry_count=0,
+        max_retries=0,
+        error_code=None,
+        error_message="boom",
+        error_details_json=None,
+    )
+
+    payload = control_plane_routes._serialize_job(job, entity_id=None, intent_id=uuid.uuid4())
+
+    assert payload["capabilities"]["retry"]["supported"] is False
+    assert payload["capabilities"]["retry"]["allowed"] is False
+    assert payload["capabilities"]["retry"]["reason"] == "Not supported in current backend contract"
+
+
+@pytest.mark.asyncio
+async def test_timeline_semantics_endpoint_returns_backend_metadata() -> None:
+    request = SimpleNamespace(state=SimpleNamespace(request_id="req-1"))
+    user = SimpleNamespace(role=SimpleNamespace(value="finance_leader"))
+
+    payload = await control_plane_routes.get_timeline_semantics_endpoint(
+        request=request,
+        user=user,
+    )
+
+    assert payload["data"]["title"] == "Timeline"
+    assert payload["data"]["semantics"]["authoritative"] is True
+
+
 @pytest.mark.asyncio
 async def test_resolve_report_definition_subject_returns_hashable_payload() -> None:
     tenant_id = uuid.uuid4()
@@ -233,3 +272,32 @@ async def test_resolve_report_definition_subject_returns_hashable_payload() -> N
     assert payload["subject_type"] == "report_definition"
     assert payload["subject_id"] == str(definition_id)
     assert payload["determinism_hash"]
+
+
+@pytest.mark.asyncio
+async def test_lineage_and_impact_include_semantics(monkeypatch: pytest.MonkeyPatch) -> None:
+    service = Phase4ControlPlaneService(SimpleNamespace(execute=AsyncMock()))
+    monkeypatch.setattr(
+        service,
+        "_forward_lineage_for_run",
+        AsyncMock(return_value={"nodes": [{"run_id": "run-1"}], "edges": []}),
+    )
+    monkeypatch.setattr(
+        service,
+        "_reverse_lineage_for_run",
+        AsyncMock(return_value={"nodes": [{"subject_type": "report_run"}], "edges": []}),
+    )
+
+    lineage = await service.build_lineage(
+        tenant_id=uuid.uuid4(),
+        subject_type="run",
+        subject_id=str(uuid.uuid4()),
+    )
+    impact = await service.build_impact(
+        tenant_id=uuid.uuid4(),
+        subject_type="run",
+        subject_id=str(uuid.uuid4()),
+    )
+
+    assert lineage["semantics"]["authoritative"] is True
+    assert impact["semantics"]["authoritative"] is True

@@ -66,6 +66,8 @@ const renderSnapshotValue = (value: unknown): string => {
 const isRunActive = (status: PackRunStatus | undefined): boolean =>
   status === PackRunStatusEnum.PENDING || status === PackRunStatusEnum.RUNNING
 
+const MAX_RUN_REFRESH_ATTEMPTS = 60
+
 export default function BoardPackRunViewerPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -145,7 +147,14 @@ export default function BoardPackRunViewerPage() {
     if (!isRunActive(run?.status)) {
       return
     }
+    let attempts = 0
     const intervalId = window.setInterval(() => {
+      if (attempts >= MAX_RUN_REFRESH_ATTEMPTS) {
+        setError((previous) => previous ?? "Auto-refresh stopped after reaching the control-plane polling limit. Refresh manually to continue.")
+        window.clearInterval(intervalId)
+        return
+      }
+      attempts += 1
       void loadRunBundle(true)
     }, 3000)
     return () => {

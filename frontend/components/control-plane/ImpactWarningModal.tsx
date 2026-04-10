@@ -17,9 +17,14 @@ export function ImpactWarningModal({
   subjectType,
   subjectId,
 }: ImpactWarningModalProps) {
-  const query = useQuery({
+  const impactQuery = useQuery({
     queryKey: ["control-plane-impact", subjectType, subjectId],
-    queryFn: async () => getImpact(subjectType ?? "", subjectId ?? ""),
+    queryFn: async () => {
+      if (!subjectType || !subjectId) {
+        return null
+      }
+      return getImpact(subjectType, subjectId)
+    },
     enabled: open && Boolean(subjectType && subjectId),
   })
 
@@ -27,27 +32,39 @@ export function ImpactWarningModal({
     <Dialog
       open={open}
       onClose={onClose}
-      title="Impact Warning"
-      description="Backend-calculated downstream report impact for the selected subject."
+      title="Impact Preview"
+      description="Backend-derived downstream effects for the selected subject."
       size="md"
     >
       {!subjectType || !subjectId ? (
-        <p className="text-sm text-muted-foreground">Select a subject to inspect impact.</p>
-      ) : query.isLoading ? (
+        <p className="text-sm text-muted-foreground">Select a subject to review backend-derived impact.</p>
+      ) : impactQuery.isLoading ? (
         <p className="text-sm text-muted-foreground">Loading impact analysis...</p>
-      ) : query.error || !query.data ? (
-        <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load impact analysis.</p>
+      ) : impactQuery.error ? (
+        <div className="rounded-xl border border-[hsl(var(--brand-danger)/0.35)] bg-[hsl(var(--brand-danger)/0.12)] p-4 text-sm">
+          <p className="font-medium text-foreground">Impact failed to load</p>
+          <p className="mt-1 text-muted-foreground">
+            {impactQuery.error instanceof Error ? impactQuery.error.message : "The backend did not return impact data."}
+          </p>
+        </div>
+      ) : !impactQuery.data ? (
+        <p className="text-sm text-muted-foreground">No backend impact data was returned for this subject.</p>
       ) : (
         <div className="space-y-4 text-sm">
           <div className="rounded-xl border border-border bg-background p-4">
-            <p className="font-medium text-foreground">{query.data.warning}</p>
+            <p className="font-medium text-foreground">{impactQuery.data.warning}</p>
             <p className="mt-2 text-muted-foreground">
-              {query.data.impacted_count} downstream objects, {query.data.impacted_reports_count} report-like outputs.
+              Downstream nodes: {impactQuery.data.impacted_count} · Reports: {impactQuery.data.impacted_reports_count}
             </p>
           </div>
-          <pre className="overflow-x-auto rounded-md bg-muted/40 p-3 text-xs text-foreground">
-            {JSON.stringify(query.data.impacted_nodes, null, 2)}
-          </pre>
+          <div className="rounded-xl border border-border bg-background p-4">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Semantics</p>
+            <p className="mt-2 text-sm text-foreground">
+              {impactQuery.data.semantics?.authoritative
+                ? "Authoritative backend impact"
+                : "Limited by current backend contract"}
+            </p>
+          </div>
         </div>
       )}
     </Dialog>

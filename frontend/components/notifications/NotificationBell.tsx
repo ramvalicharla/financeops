@@ -10,6 +10,8 @@ interface NotificationBellProps {
   onTrigger?: () => void
 }
 
+const MAX_NOTIFICATION_REFRESH_ATTEMPTS = 120
+
 export function NotificationBell({ onTrigger }: NotificationBellProps = {}) {
   const [open, setOpen] = useState(false)
   const [count, setCount] = useState(0)
@@ -28,7 +30,13 @@ export function NotificationBell({ onTrigger }: NotificationBellProps = {}) {
 
   useEffect(() => {
     void refreshCount()
+    let attempts = 0
     const timer = setInterval(() => {
+      if (attempts >= MAX_NOTIFICATION_REFRESH_ATTEMPTS) {
+        clearInterval(timer)
+        return
+      }
+      attempts += 1
       void refreshCount()
     }, 30_000)
     return () => clearInterval(timer)

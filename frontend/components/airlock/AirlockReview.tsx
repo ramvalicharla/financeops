@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { admitAirlockItem, getAirlockItem, rejectAirlockItem } from "@/lib/api/control-plane"
+import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
 import { Button } from "@/components/ui/button"
 
 interface AirlockReviewProps {
@@ -30,19 +31,63 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
     mutationFn: async () => rejectAirlockItem(itemId, rejectReason || "Rejected from UI review."),
     onSuccess: refresh,
   })
+  const flowSteps = useMemo<FlowStripStep[]>(() => {
+    const status = itemQuery.data?.status
+    return [
+      { label: "Upload", tone: status ? "success" : "default" },
+      { label: "Airlock", tone: status ? "active" : "default" },
+      { label: "Review", tone: status === "QUARANTINED" ? "warning" : "default" },
+      { label: "Admit / Reject", tone: status === "ADMITTED" || status === "REJECTED" ? "success" : "default" },
+      { label: "Process", tone: status === "ADMITTED" ? "active" : "default" },
+    ]
+  }, [itemQuery.data?.status])
 
   if (itemQuery.isLoading) {
-    return <p className="text-sm text-muted-foreground">Loading airlock review...</p>
+    return (
+      <div className="space-y-4">
+        <FlowStrip
+          title="Upload Flow"
+          subtitle="Review validation output, then use backend admission actions only."
+          steps={flowSteps}
+        />
+        <div className="space-y-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-20 animate-pulse rounded-2xl bg-muted/60" />
+          ))}
+        </div>
+      </div>
+    )
   }
 
   if (itemQuery.error || !itemQuery.data) {
-    return <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load airlock item.</p>
+    return (
+      <div className="space-y-4">
+        <FlowStrip
+          title="Upload Flow"
+          subtitle="Review validation output, then use backend admission actions only."
+          steps={flowSteps}
+        />
+        <div className="rounded-2xl border border-[hsl(var(--brand-danger)/0.35)] bg-[hsl(var(--brand-danger)/0.12)] p-4 text-sm">
+          <p className="font-medium text-foreground">Review data failed to load</p>
+          <p className="mt-1 text-muted-foreground">
+            {itemQuery.error instanceof Error ? itemQuery.error.message : "The backend did not return the requested airlock item."}
+          </p>
+          <p className="mt-2 text-muted-foreground">Return to the queue and reopen the item.</p>
+        </div>
+      </div>
+    )
   }
 
   const item = itemQuery.data
 
   return (
     <div className="space-y-4">
+      <FlowStrip
+        title="Upload Flow"
+        subtitle="Review validation output, then use backend admission actions only."
+        steps={flowSteps}
+      />
+
       <section className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
         <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Airlock Item</p>
@@ -57,9 +102,26 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
           <p className="mt-1 text-foreground">{item.source_type}</p>
         </div>
         <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Origin</p>
+          <p className="mt-1 text-foreground">
+            {item.metadata?.source === "onboarding"
+              ? `Onboarding${typeof item.metadata.onboarding_step === "string" ? ` (${item.metadata.onboarding_step})` : ""}`
+              : "Derived from backend state"}
+          </p>
+        </div>
+        <div>
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Received</p>
           <p className="mt-1 text-foreground">{item.submitted_at ?? "-"}</p>
         </div>
+      </section>
+
+      <section className="rounded-xl border border-border bg-card p-4">
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Availability</p>
+        <p className="mt-2 text-sm text-foreground">
+          {item.status === "ADMITTED"
+            ? "Confirmed by backend admission. Downstream processing may use this item."
+            : "Not admitted yet. Downstream processing should not treat this item as usable."}
+        </p>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-4">
@@ -70,10 +132,20 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
       </section>
 
       <section className="rounded-xl border border-border bg-card p-4">
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">Findings</p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs text-foreground">
-          {JSON.stringify(item.findings ?? [], null, 2)}
-        </pre>
+        <p className="text-xs uppercase tracking-wide text-muted-foreground">Validation issues</p>
+        {item.findings.length ? (
+          <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+            {item.findings.map((finding, index) => (
+              <li key={`${item.airlock_item_id}-${index}`} className="rounded-xl border border-border bg-muted/30 px-3 py-3">
+                {JSON.stringify(finding)}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-sm text-muted-foreground">
+            No validation issues were returned for this item. It is ready for review.
+          </p>
+        )}
       </section>
 
       <section className="space-y-3 rounded-xl border border-border bg-card p-4">
@@ -98,6 +170,9 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
             Refresh
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          These buttons call the backend admit and reject APIs directly. The UI keeps rendering the backend-returned item state after refresh.
+        </p>
         <label className="block space-y-2 text-sm">
           <span className="text-muted-foreground">Reject reason</span>
           <textarea

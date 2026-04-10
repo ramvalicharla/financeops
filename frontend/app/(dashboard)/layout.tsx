@@ -61,7 +61,7 @@ export default async function DashboardLayout({
   const tenantSlug = tenantSlugHeader || user.tenant_slug || "dev"
 
   return (
-    <div className="h-screen overflow-hidden bg-background text-foreground">
+    <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,hsl(var(--brand-primary)/0.08),transparent_28%),hsl(var(--background))] text-foreground">
       <Sidebar
         entityRoles={user.entity_roles}
         userRole={userRole}
@@ -83,12 +83,14 @@ export default async function DashboardLayout({
           />
           <ModuleTabs />
           <ContextBar tenantSlug={tenantSlug} />
-          <main id="main-content" className="flex-1 overflow-y-auto p-6">
+          <main id="main-content" className="flex-1 overflow-y-auto px-4 py-6 md:px-6">
             <DataActivationReminder
               initialCoaStatus={user.coa_status}
               initialOnboardingScore={user.onboarding_score}
             />
-            {children}
+            <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
+              {children}
+            </div>
           </main>
           <IntentPanel />
           <JobPanel />

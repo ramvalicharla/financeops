@@ -50,6 +50,30 @@ vi.mock("@/lib/api/control-plane", () => ({
   getControlPlaneContext: vi.fn(async () => ({
     tenant_id: "tenant-1",
     tenant_slug: "acme",
+    current_organisation: {
+      organisation_id: "org-1",
+      organisation_name: "Acme Group",
+      source: "org_group",
+    },
+    current_entity: {
+      entity_id: "entity-1",
+      entity_code: "ACME-001",
+      entity_name: "Acme India",
+      source: "requested_entity",
+    },
+    available_entities: [
+      {
+        entity_id: "entity-1",
+        entity_code: "ACME-001",
+        entity_name: "Acme India",
+      },
+    ],
+    current_module: {
+      module_key: "accounting",
+      module_name: "Accounting",
+      module_code: null,
+      source: "requested_workspace",
+    },
     enabled_modules: [
       {
         module_id: "mod-1",
@@ -93,9 +117,6 @@ describe("control plane shell", () => {
       entity_roles: [],
     })
     useControlPlaneStore.setState({
-      current_org: "acme",
-      current_module: "Accounting",
-      current_period: "2026-04",
       active_panel: null,
       selected_intent_id: null,
       selected_job_id: null,
@@ -103,7 +124,7 @@ describe("control plane shell", () => {
     })
   })
 
-  it("renders left nav, top bar, module tabs, and context bar with period", async () => {
+  it("renders shell context from backend-confirmed organization, entity, module, and period", async () => {
     renderWithQueryClient(
       <>
         <Sidebar
@@ -130,8 +151,34 @@ describe("control plane shell", () => {
     expect(screen.getAllByText("FinanceOps").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Jobs")[0]).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getByText("Accounting")).toBeInTheDocument()
-      expect(screen.getByText(/Period: Apr 2026/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/Acme India/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/^Accounting$/i).length).toBeGreaterThan(0)
+      expect(screen.getByText(/Apr 2026/i)).toBeInTheDocument()
     })
+  })
+
+  it("does not let stale control-plane store context override backend context", async () => {
+    ;(useControlPlaneStore.setState as unknown as (state: Record<string, unknown>) => void)({
+      current_org: "stale-org",
+      current_module: "Stale Module",
+      current_period: "1999-01",
+    })
+
+    renderWithQueryClient(
+      <>
+        <ModuleTabs />
+        <ContextBar tenantSlug="acme" />
+      </>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
+      expect(screen.getByText(/Acme India/i)).toBeInTheDocument()
+      expect(screen.getByText(/Apr 2026/i)).toBeInTheDocument()
+    })
+    expect(screen.queryByText("stale-org")).not.toBeInTheDocument()
+    expect(screen.queryByText("Stale Module")).not.toBeInTheDocument()
+    expect(screen.queryByText("1999-01")).not.toBeInTheDocument()
   })
 })

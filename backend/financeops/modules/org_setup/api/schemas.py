@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,6 +48,9 @@ ConsolidationMethodLiteral = Literal[
     "EXCLUDED",
 ]
 
+OrgSetupIntentStepLiteral = Literal["create_organization", "create_entity", "review_module_selection"]
+OrgSetupIntentStatusLiteral = Literal["draft", "submitted", "confirmed"]
+
 
 class OrgGroupResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -76,6 +79,31 @@ class Step1Request(BaseModel):
 
 
 class Step1Response(BaseModel):
+    group: OrgGroupResponse
+
+
+class ReviewRow(BaseModel):
+    label: str
+    value: str
+
+
+class Step1DraftResponse(BaseModel):
+    draft_id: str
+    step: OrgSetupIntentStepLiteral = "create_organization"
+    status: OrgSetupIntentStatusLiteral = "draft"
+    review_rows: list[ReviewRow]
+    payload: dict[str, Any]
+
+
+class Step1ConfirmRequest(BaseModel):
+    draft_id: str
+
+
+class Step1ConfirmResponse(BaseModel):
+    draft_id: str
+    step: OrgSetupIntentStepLiteral = "create_organization"
+    status: OrgSetupIntentStatusLiteral = "confirmed"
+    review_rows: list[ReviewRow]
     group: OrgGroupResponse
 
 
@@ -139,6 +167,39 @@ class OrgEntityResponse(BaseModel):
 
 class Step2Response(BaseModel):
     entities: list[OrgEntityResponse]
+
+
+class Step2DraftResponse(BaseModel):
+    draft_id: str
+    step: OrgSetupIntentStepLiteral = "create_entity"
+    status: OrgSetupIntentStatusLiteral = "draft"
+    review_rows: list[ReviewRow]
+    payload: dict[str, Any]
+
+
+class Step2ConfirmRequest(BaseModel):
+    draft_id: str
+
+
+class Step2ConfirmResponse(BaseModel):
+    draft_id: str
+    step: OrgSetupIntentStepLiteral = "create_entity"
+    status: OrgSetupIntentStatusLiteral = "confirmed"
+    review_rows: list[ReviewRow]
+    entities: list[OrgEntityResponse]
+
+
+class ModuleSelectionReviewRequest(BaseModel):
+    module_names: list[str] = Field(default_factory=list)
+
+
+class ModuleSelectionReviewResponse(BaseModel):
+    draft_id: str
+    step: OrgSetupIntentStepLiteral = "review_module_selection"
+    status: OrgSetupIntentStatusLiteral = "draft"
+    review_rows: list[ReviewRow]
+    payload: dict[str, Any]
+    review_only: bool = True
 
 
 class OwnershipRequest(BaseModel):

@@ -374,6 +374,95 @@ async def test_toggle_module_changes_flag(async_client, async_session: AsyncSess
 
 
 @pytest.mark.asyncio
+async def test_toggle_module_validation_requires_active_entity_for_enable(
+    async_client,
+    async_session: AsyncSession,
+) -> None:
+    await _ensure_registry_seeded(async_session)
+    owner = await _create_platform_user(
+        async_session,
+        email="services.validate.owner@example.com",
+        role=UserRole.platform_owner,
+    )
+
+    response = await async_client.post(
+        "/api/v1/platform/services/modules/mis_manager/toggle/validate",
+        headers=_auth_headers(owner),
+        json={"is_enabled": True, "entity_id": str(uuid.uuid4())},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["success"] is False
+    assert payload["failure"] is True
+    assert "active entity" in payload["reason"].lower()
+
+
+@pytest.mark.asyncio
+async def test_toggle_module_validation_succeeds_for_disable_without_entity(
+    async_client,
+    async_session: AsyncSession,
+) -> None:
+    await _ensure_registry_seeded(async_session)
+    owner = await _create_platform_user(
+        async_session,
+        email="services.validate.disable.owner@example.com",
+        role=UserRole.platform_owner,
+    )
+
+    response = await async_client.post(
+        "/api/v1/platform/services/modules/mis_manager/toggle/validate",
+        headers=_auth_headers(owner),
+        json={"is_enabled": False},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["success"] is True
+    assert payload["failure"] is False
+    assert payload["reason"] is None
+
+
+@pytest.mark.asyncio
+async def test_toggle_module_validation_blocks_dependency_cycles(
+    async_client,
+    async_session: AsyncSession,
+) -> None:
+    await _ensure_registry_seeded(async_session)
+    owner = await _create_platform_user(
+        async_session,
+        email="services.validate.cycle.owner@example.com",
+        role=UserRole.platform_owner,
+    )
+
+    mis_manager = (
+        await async_session.execute(
+            select(ModuleRegistry).where(ModuleRegistry.module_name == "mis_manager")
+        )
+    ).scalar_one()
+    reconciliation = (
+        await async_session.execute(
+            select(ModuleRegistry).where(ModuleRegistry.module_name == "reconciliation")
+        )
+    ).scalar_one()
+    mis_manager.depends_on = ["reconciliation"]
+    reconciliation.depends_on = ["mis_manager"]
+    await async_session.flush()
+
+    response = await async_client.post(
+        "/api/v1/platform/services/modules/mis_manager/toggle/validate",
+        headers=_auth_headers(owner),
+        json={"is_enabled": True},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["success"] is False
+    assert payload["failure"] is True
+    assert "cycle" in payload["reason"].lower()
+
+
+@pytest.mark.asyncio
 async def test_tasks_filter_by_scheduled(async_client, async_session: AsyncSession) -> None:
     await _ensure_registry_seeded(async_session)
     owner = await _create_platform_user(

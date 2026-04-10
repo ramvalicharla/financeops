@@ -62,6 +62,8 @@ const getRows = (result: ReportResultResponse | null): ReportResultRow[] => {
 const isRunActive = (status: ReportRunStatus | undefined): boolean =>
   status === ReportRunStatusEnum.PENDING || status === ReportRunStatusEnum.RUNNING
 
+const MAX_RUN_REFRESH_ATTEMPTS = 60
+
 export default function ReportRunViewerPage() {
   const router = useRouter()
   const params = useParams<{ id: string }>()
@@ -113,7 +115,14 @@ export default function ReportRunViewerPage() {
 
   useEffect(() => {
     if (!isRunActive(run?.status)) return
+    let attempts = 0
     const intervalId = window.setInterval(() => {
+      if (attempts >= MAX_RUN_REFRESH_ATTEMPTS) {
+        setError((previous) => previous ?? "Auto-refresh stopped after reaching the control-plane polling limit. Refresh manually to continue.")
+        window.clearInterval(intervalId)
+        return
+      }
+      attempts += 1
       void loadBundle(true)
     }, 3000)
     return () => window.clearInterval(intervalId)

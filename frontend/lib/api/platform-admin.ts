@@ -219,3 +219,26 @@ export const togglePlatformModule = async (
   )
   return response.data
 }
+
+export const validatePlatformModuleToggle = async (
+  moduleName: string,
+  payload: {
+    is_enabled: boolean
+    entity_id?: string | null
+  },
+): Promise<{
+  success: boolean
+  failure: boolean
+  reason: string | null
+  module_name: string
+  entity_id: string | null
+}> => {
+  const response = await apiClient.post<{
+    success: boolean
+    failure: boolean
+    reason: string | null
+    module_name: string
+    entity_id: string | null
+  }>(`/api/v1/platform/services/modules/${moduleName}/toggle/validate`, payload)
+  return response.data
+}

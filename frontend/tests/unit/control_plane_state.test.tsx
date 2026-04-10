@@ -9,42 +9,14 @@ import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const mockPathname = vi.fn(() => "/erp/sync")
+const getControlPlaneContext = vi.fn()
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
 }))
 
 vi.mock("@/lib/api/control-plane", () => ({
-  getControlPlaneContext: vi.fn(async () => ({
-    tenant_id: "tenant-1",
-    tenant_slug: "acme",
-    enabled_modules: [
-      {
-        module_id: "mod-erp",
-        module_code: "erp_sync",
-        module_name: "ERP Sync",
-        engine_context: "finance",
-        is_financial_impacting: true,
-        effective_from: "2026-04-01T00:00:00Z",
-      },
-    ],
-    current_period: {
-      period_label: "2026-04",
-      fiscal_year: 2026,
-      period_number: 4,
-      source: "accounting_period",
-      period_id: "period-1",
-      status: "OPEN",
-    },
-  })),
-  listControlPlaneEntities: vi.fn(async () => [
-    {
-      id: "entity-1",
-      entity_code: "ACME-001",
-      entity_name: "Acme India",
-      organisation_id: "org-1",
-    },
-  ]),
+  getControlPlaneContext: (...args: unknown[]) => getControlPlaneContext(...args),
 }))
 
 describe("control plane state", () => {
@@ -59,13 +31,58 @@ describe("control plane state", () => {
       entity_roles: [],
     })
     useControlPlaneStore.setState({
-      current_org: "acme",
-      current_module: null,
-      current_period: "2026-04",
       active_panel: null,
       selected_intent_id: null,
       selected_job_id: null,
+      selected_subject_type: null,
+      selected_subject_id: null,
       intent_payload: null,
+    })
+    getControlPlaneContext.mockResolvedValue({
+      tenant_id: "tenant-1",
+      tenant_slug: "acme",
+      current_organisation: {
+        organisation_id: "org-1",
+        organisation_name: "Acme Group",
+        source: "org_group",
+      },
+      current_entity: {
+        entity_id: "entity-1",
+        entity_code: "ENT_ACME",
+        entity_name: "Acme India",
+        source: "requested_entity",
+      },
+      available_entities: [
+        {
+          entity_id: "entity-1",
+          entity_code: "ENT_ACME",
+          entity_name: "Acme India",
+        },
+      ],
+      current_module: {
+        module_key: "erp",
+        module_name: "ERP",
+        module_code: null,
+        source: "requested_workspace",
+      },
+      enabled_modules: [
+        {
+          module_id: "mod-erp",
+          module_code: "erp_sync",
+          module_name: "ERP Sync",
+          engine_context: "finance",
+          is_financial_impacting: true,
+          effective_from: "2026-04-01T00:00:00Z",
+        },
+      ],
+      current_period: {
+        period_label: "2026-04",
+        fiscal_year: 2026,
+        period_number: 4,
+        source: "accounting_period",
+        period_id: "period-1",
+        status: "OPEN",
+      },
     })
   })
 
@@ -85,7 +102,7 @@ describe("control plane state", () => {
     expect(useTenantStore.getState().active_entity_id).toBe("entity-2")
   })
 
-  it("keeps module state synchronized with the active tab and period visible in store", async () => {
+  it("keeps module visibility dependent on backend context", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
@@ -96,22 +113,23 @@ describe("control plane state", () => {
       </QueryClientProvider>,
     )
 
+    expect(await screen.findByText(/waiting for backend module context/i)).toBeInTheDocument()
     await waitFor(() => {
-      expect(useControlPlaneStore.getState().current_module).toBe("ERP")
-    })
-    await waitFor(() => {
-      expect(useControlPlaneStore.getState().current_period).toBe("2026-04")
       expect(screen.getByText("ERP")).toBeInTheDocument()
+      expect(screen.queryByText("Accounting")).not.toBeInTheDocument()
     })
-    expect(screen.queryByText("Accounting")).not.toBeInTheDocument()
   })
 
-  it("hydrates current period from backend context instead of browser time", async () => {
+  it("renders org and period from backend context instead of local store values", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
 
-    useControlPlaneStore.setState({ current_period: null })
+    ;(useControlPlaneStore.setState as unknown as (state: Record<string, unknown>) => void)({
+      current_org: "stale-org",
+      current_module: "Stale Module",
+      current_period: "1999-01",
+    })
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -120,7 +138,13 @@ describe("control plane state", () => {
     )
 
     await waitFor(() => {
-      expect(useControlPlaneStore.getState().current_period).toBe("2026-04")
+      expect(screen.getByText(/Acme Group/i)).toBeInTheDocument()
+      expect(screen.getByText(/Acme India/i)).toBeInTheDocument()
+      expect(screen.getByText(/^ERP$/i)).toBeInTheDocument()
+      expect(screen.getByText(/Apr 2026/i)).toBeInTheDocument()
     })
+    expect(screen.queryByText("stale-org")).not.toBeInTheDocument()
+    expect(screen.queryByText("Stale Module")).not.toBeInTheDocument()
+    expect(screen.queryByText("1999-01")).not.toBeInTheDocument()
   })
 })

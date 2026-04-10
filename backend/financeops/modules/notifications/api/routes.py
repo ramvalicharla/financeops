@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import uuid
 from datetime import time
 from decimal import Decimal
@@ -24,6 +25,7 @@ from financeops.modules.notifications.service import (
 )
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
+MAX_NOTIFICATION_STREAM_SECONDS = 300.0
 
 
 class MarkReadRequest(BaseModel):
@@ -179,9 +181,13 @@ async def stream_notifications_endpoint(
     await pubsub.subscribe(channel)
 
     async def _event_stream():
+        started_at = time.monotonic()
         try:
             yield "event: ready\ndata: {}\n\n"
             while True:
+                if time.monotonic() - started_at >= MAX_NOTIFICATION_STREAM_SECONDS:
+                    yield "event: timeout\ndata: {}\n\n"
+                    break
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=5.0)
                 if message and message.get("type") == "message":
                     payload = message.get("data")
@@ -201,4 +207,3 @@ async def stream_notifications_endpoint(
 
 
 __all__ = ["router"]
-

@@ -15,18 +15,12 @@ export interface IntentPanelState {
 }
 
 interface ControlPlaneState {
-  current_org: string | null
-  current_module: string | null
-  current_period: string | null
   active_panel: ControlPlanePanel
   selected_intent_id: string | null
   selected_job_id: string | null
   selected_subject_type: string | null
   selected_subject_id: string | null
   intent_payload: IntentPanelState | null
-  setCurrentOrg: (org: string | null) => void
-  setCurrentModule: (module: string | null) => void
-  setCurrentPeriod: (period: string | null) => void
   openIntentPanel: (payload: IntentPanelState) => void
   openJobPanel: (jobId?: string | null) => void
   openTimelinePanel: (subjectType?: string | null, subjectId?: string | null) => void
@@ -37,18 +31,12 @@ interface ControlPlaneState {
 export const useControlPlaneStore = create<ControlPlaneState>()(
   persist(
     (set) => ({
-      current_org: null,
-      current_module: null,
-      current_period: null,
       active_panel: null,
       selected_intent_id: null,
       selected_job_id: null,
       selected_subject_type: null,
       selected_subject_id: null,
       intent_payload: null,
-      setCurrentOrg: (org) => set({ current_org: org }),
-      setCurrentModule: (module) => set({ current_module: module }),
-      setCurrentPeriod: (period) => set({ current_period: period }),
       openIntentPanel: (payload) =>
         set({
           active_panel: "intent",
@@ -84,9 +72,6 @@ export const useControlPlaneStore = create<ControlPlaneState>()(
       name: "financeops-control-plane-store",
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) => ({
-        current_org: state.current_org,
-        current_module: state.current_module,
-        current_period: state.current_period,
         active_panel: state.active_panel,
         selected_intent_id: state.selected_intent_id,
         selected_job_id: state.selected_job_id,

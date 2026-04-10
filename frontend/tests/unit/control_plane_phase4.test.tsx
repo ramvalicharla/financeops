@@ -6,28 +6,33 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { DeterminismPanel } from "@/components/panels/DeterminismPanel"
 import { TimelinePanel } from "@/components/panels/TimelinePanel"
 import { SnapshotNavigator } from "@/components/control-plane/SnapshotNavigator"
+import { LineageView } from "@/components/control-plane/LineageView"
 import { ImpactWarningModal } from "@/components/control-plane/ImpactWarningModal"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const listTimeline = vi.fn()
+const getTimelineSemantics = vi.fn()
 const exportTimeline = vi.fn()
 const getDeterminism = vi.fn()
+const getLineage = vi.fn()
+const getImpact = vi.fn()
 const listSnapshots = vi.fn()
 const getSnapshot = vi.fn()
 const compareSnapshots = vi.fn()
 const createManualSnapshot = vi.fn()
-const getImpact = vi.fn()
 
 vi.mock("@/lib/api/control-plane", () => ({
   listTimeline: (...args: unknown[]) => listTimeline(...args),
+  getTimelineSemantics: (...args: unknown[]) => getTimelineSemantics(...args),
   exportTimeline: (...args: unknown[]) => exportTimeline(...args),
   getDeterminism: (...args: unknown[]) => getDeterminism(...args),
+  getLineage: (...args: unknown[]) => getLineage(...args),
+  getImpact: (...args: unknown[]) => getImpact(...args),
   listSnapshots: (...args: unknown[]) => listSnapshots(...args),
   getSnapshot: (...args: unknown[]) => getSnapshot(...args),
   compareSnapshots: (...args: unknown[]) => compareSnapshots(...args),
   createManualSnapshot: (...args: unknown[]) => createManualSnapshot(...args),
-  getImpact: (...args: unknown[]) => getImpact(...args),
 }))
 
 const renderWithProviders = (ui: ReactNode) => {
@@ -49,9 +54,6 @@ describe("phase 4 control plane surfaces", () => {
       entity_roles: [],
     })
     useControlPlaneStore.setState({
-      current_org: "acme",
-      current_module: "Reports",
-      current_period: "2026-04",
       active_panel: null,
       selected_intent_id: null,
       selected_job_id: null,
@@ -69,6 +71,18 @@ describe("phase 4 control plane surfaces", () => {
         payload: {},
       },
     ])
+    getTimelineSemantics.mockResolvedValue({
+      title: "Timeline",
+      description: "Control-plane events returned by the backend timeline API.",
+      empty_state: "No control-plane events in the current scope.",
+      semantics: {
+        authoritative: true,
+        append_only_guarantee: false,
+        compliance_grade: false,
+        label_mode: "control_plane_events",
+      },
+      viewer_role: "finance_leader",
+    })
     exportTimeline.mockResolvedValue(new Blob(["{}"], { type: "application/json" }))
     getDeterminism.mockResolvedValue({
       snapshot_id: "snapshot-1",
@@ -161,13 +175,29 @@ describe("phase 4 control plane surfaces", () => {
       payload: {},
       comparison_payload: {},
     })
+    getLineage.mockResolvedValue({
+      subject_type: "report_run",
+      subject_id: "run-1",
+      semantics: {
+        authoritative: true,
+        source: "backend_control_plane",
+        mode: "run_graph",
+      },
+      forward: { nodes: [{ run_id: "run-1" }], edges: [] },
+      reverse: { nodes: [{ subject_type: "board_pack_run" }], edges: [] },
+    })
     getImpact.mockResolvedValue({
       subject_type: "report_run",
       subject_id: "run-1",
-      impacted_count: 3,
-      impacted_reports_count: 2,
-      warning: "This change affects 2 downstream reports.",
-      impacted_nodes: [{ subject_type: "board_pack_run", subject_id: "bp-1" }],
+      semantics: {
+        authoritative: true,
+        source: "backend_control_plane",
+        mode: "dependency_impact",
+      },
+      impacted_count: 2,
+      impacted_reports_count: 1,
+      warning: "This change affects 1 downstream reports.",
+      impacted_nodes: [{ subject_type: "board_pack_run" }],
     })
   })
 
@@ -178,6 +208,30 @@ describe("phase 4 control plane surfaces", () => {
 
     expect(await screen.findByText("JOB_EXECUTED")).toBeInTheDocument()
     expect(screen.getByText("reports")).toBeInTheDocument()
+    expect(screen.getByText(/control-plane events returned by the backend timeline api/i)).toBeInTheDocument()
+  })
+
+  it("changes timeline wording from backend semantics metadata", async () => {
+    getTimelineSemantics.mockResolvedValueOnce({
+      title: "Activity History",
+      description: "Backend-defined activity history for the selected scope.",
+      empty_state: "No activity history is available.",
+      semantics: {
+        authoritative: true,
+        append_only_guarantee: false,
+        compliance_grade: false,
+        label_mode: "activity_history",
+      },
+      viewer_role: "finance_leader",
+    })
+    listTimeline.mockResolvedValueOnce([])
+    useControlPlaneStore.getState().openTimelinePanel("report_run", "run-1")
+
+    renderWithProviders(<TimelinePanel />)
+
+    expect(await screen.findByText("Activity History")).toBeInTheDocument()
+    expect(screen.getByText(/backend-defined activity history/i)).toBeInTheDocument()
+    expect(screen.getByText(/no activity history is available/i)).toBeInTheDocument()
   })
 
   it("renders the determinism panel from backend evidence only", async () => {
@@ -197,18 +251,16 @@ describe("phase 4 control plane surfaces", () => {
     expect(await screen.findByText("Hashes differ.")).toBeInTheDocument()
   })
 
-  it("shows backend impact warning in modal", async () => {
+  it("renders backend-derived impact and lineage contracts", async () => {
     const user = userEvent.setup()
-    renderWithProviders(
-      <ImpactWarningModal
-        open
-        onClose={vi.fn()}
-        subjectType="report_run"
-        subjectId="run-1"
-      />,
-    )
+    renderWithProviders(<LineageView subjectType="report_run" subjectId="run-1" />)
+    expect(await screen.findByText(/authoritative backend lineage/i)).toBeInTheDocument()
 
-    expect(await screen.findByText("This change affects 2 downstream reports.")).toBeInTheDocument()
+    renderWithProviders(
+      <ImpactWarningModal open onClose={vi.fn()} subjectType="report_run" subjectId="run-1" />,
+    )
+    expect(await screen.findByText(/this change affects 1 downstream reports/i)).toBeInTheDocument()
+    expect(screen.getByText(/authoritative backend impact/i)).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /close dialog/i }))
   })
 })

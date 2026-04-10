@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import json
 import uuid
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, or_, select
@@ -13,6 +16,8 @@ from financeops.db.models.tenants import IamTenant
 from financeops.db.transaction import commit_session
 from financeops.modules.coa.models import ErpAccountMapping
 from financeops.modules.org_setup.api.schemas import (
+    ModuleSelectionReviewRequest,
+    ModuleSelectionReviewResponse,
     OrgEntityResponse,
     OrgOwnershipResponse,
     OrgSetupProgressResponse,
@@ -20,8 +25,15 @@ from financeops.modules.org_setup.api.schemas import (
     OrgGroupResponse,
     OrgEntityErpConfigResponse,
     OwnershipTreeResponse,
+    ReviewRow,
+    Step1ConfirmRequest,
+    Step1ConfirmResponse,
+    Step1DraftResponse,
     Step1Request,
     Step1Response,
+    Step2ConfirmRequest,
+    Step2ConfirmResponse,
+    Step2DraftResponse,
     Step2Request,
     Step2Response,
     Step3Request,
@@ -36,8 +48,70 @@ from financeops.modules.org_setup.api.schemas import (
     UpdateOrgEntityRequest,
 )
 from financeops.modules.org_setup.application.org_setup_service import OrgSetupService
+from financeops.modules.service_registry.models import ModuleRegistry
 
 router = APIRouter(prefix="/org-setup", tags=["org-setup"])
+
+
+def _encode_setup_draft(*, tenant_id: uuid.UUID, step: str, payload: dict[str, Any]) -> str:
+    serialized = json.dumps(
+        {
+            "tenant_id": str(tenant_id),
+            "step": step,
+            "payload": payload,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+        default=str,
+    )
+    return base64.urlsafe_b64encode(serialized.encode("utf-8")).decode("utf-8")
+
+
+def _decode_setup_draft(*, draft_id: str, tenant_id: uuid.UUID, step: str) -> dict[str, Any]:
+    padded = draft_id + "=" * (-len(draft_id) % 4)
+    payload = json.loads(base64.urlsafe_b64decode(padded.encode("utf-8")).decode("utf-8"))
+    if payload.get("tenant_id") != str(tenant_id):
+        raise ValidationError("draft_id does not belong to the current tenant")
+    if payload.get("step") != step:
+        raise ValidationError("draft_id does not match the expected setup step")
+    draft_payload = payload.get("payload")
+    if not isinstance(draft_payload, dict):
+        raise ValidationError("draft_id payload is invalid")
+    return draft_payload
+
+
+def _step1_review_rows(payload: Step1Request) -> list[ReviewRow]:
+    return [
+        ReviewRow(label="Organization", value=payload.group_name),
+        ReviewRow(label="Country", value=payload.country_of_incorp),
+        ReviewRow(label="Country code", value=payload.country_code),
+        ReviewRow(label="Base currency", value=payload.functional_currency),
+        ReviewRow(label="Reporting currency", value=payload.reporting_currency),
+        ReviewRow(label="Website", value=payload.website or "Not provided"),
+    ]
+
+
+def _step2_review_rows(payload: Step2Request) -> list[ReviewRow]:
+    entity = payload.entities[0]
+    return [
+        ReviewRow(label="Organization group", value=str(payload.group_id)),
+        ReviewRow(label="Legal name", value=entity.legal_name),
+        ReviewRow(label="Display name", value=entity.display_name or "Not provided"),
+        ReviewRow(label="Entity type", value=entity.entity_type),
+        ReviewRow(label="Country code", value=entity.country_code),
+        ReviewRow(label="Functional currency", value=entity.functional_currency),
+        ReviewRow(label="Reporting currency", value=entity.reporting_currency),
+        ReviewRow(label="Framework", value=entity.applicable_gaap),
+    ]
+
+
+def _module_review_rows(module_names: list[str]) -> list[ReviewRow]:
+    if not module_names:
+        return [ReviewRow(label="Selected modules", value="No modules enabled in backend state yet")]
+    return [
+        ReviewRow(label=f"Module {index + 1}", value=module_name)
+        for index, module_name in enumerate(module_names)
+    ]
 
 
 @router.get("/progress", response_model=OrgSetupProgressResponse)
@@ -80,6 +154,47 @@ async def submit_step1(
     return Step1Response(group=OrgGroupResponse.model_validate(group, from_attributes=True))
 
 
+@router.post("/step1/draft", response_model=Step1DraftResponse)
+async def draft_step1(
+    payload: Step1Request,
+    tenant: IamTenant = Depends(get_current_tenant),
+) -> Step1DraftResponse:
+    review_rows = _step1_review_rows(payload)
+    draft_payload = payload.model_dump(mode="json")
+    return Step1DraftResponse(
+        draft_id=_encode_setup_draft(
+            tenant_id=tenant.id,
+            step="create_organization",
+            payload=draft_payload,
+        ),
+        review_rows=review_rows,
+        payload=draft_payload,
+    )
+
+
+@router.post("/step1/confirm", response_model=Step1ConfirmResponse)
+async def confirm_step1(
+    body: Step1ConfirmRequest,
+    session: AsyncSession = Depends(get_async_session),
+    tenant: IamTenant = Depends(get_current_tenant),
+) -> Step1ConfirmResponse:
+    draft_payload = _decode_setup_draft(
+        draft_id=body.draft_id,
+        tenant_id=tenant.id,
+        step="create_organization",
+    )
+    payload = Step1Request.model_validate(draft_payload)
+    service = OrgSetupService(session)
+    group = await service.submit_step1(tenant.id, payload.model_dump())
+    await commit_session(session)
+    await session.refresh(group)
+    return Step1ConfirmResponse(
+        draft_id=body.draft_id,
+        review_rows=_step1_review_rows(payload),
+        group=OrgGroupResponse.model_validate(group, from_attributes=True),
+    )
+
+
 @router.post("/step2", response_model=Step2Response)
 async def submit_step2(
     payload: Step2Request,
@@ -97,6 +212,82 @@ async def submit_step2(
         await session.refresh(item)
     return Step2Response(
         entities=[OrgEntityResponse.model_validate(item, from_attributes=True) for item in rows]
+    )
+
+
+@router.post("/step2/draft", response_model=Step2DraftResponse)
+async def draft_step2(
+    payload: Step2Request,
+    tenant: IamTenant = Depends(get_current_tenant),
+) -> Step2DraftResponse:
+    review_rows = _step2_review_rows(payload)
+    draft_payload = payload.model_dump(mode="json")
+    return Step2DraftResponse(
+        draft_id=_encode_setup_draft(
+            tenant_id=tenant.id,
+            step="create_entity",
+            payload=draft_payload,
+        ),
+        review_rows=review_rows,
+        payload=draft_payload,
+    )
+
+
+@router.post("/step2/confirm", response_model=Step2ConfirmResponse)
+async def confirm_step2(
+    body: Step2ConfirmRequest,
+    session: AsyncSession = Depends(get_async_session),
+    tenant: IamTenant = Depends(get_current_tenant),
+) -> Step2ConfirmResponse:
+    draft_payload = _decode_setup_draft(
+        draft_id=body.draft_id,
+        tenant_id=tenant.id,
+        step="create_entity",
+    )
+    payload = Step2Request.model_validate(draft_payload)
+    service = OrgSetupService(session)
+    rows = await service.submit_step2(
+        tenant.id,
+        payload.group_id,
+        [item.model_dump() for item in payload.entities],
+    )
+    await commit_session(session)
+    for item in rows:
+        await session.refresh(item)
+    return Step2ConfirmResponse(
+        draft_id=body.draft_id,
+        review_rows=_step2_review_rows(payload),
+        entities=[OrgEntityResponse.model_validate(item, from_attributes=True) for item in rows],
+    )
+
+
+@router.post("/step3/modules/review", response_model=ModuleSelectionReviewResponse)
+async def review_step3_modules(
+    body: ModuleSelectionReviewRequest,
+    session: AsyncSession = Depends(get_async_session),
+    tenant: IamTenant = Depends(get_current_tenant),
+) -> ModuleSelectionReviewResponse:
+    requested_module_names = [item.strip() for item in body.module_names if item.strip()]
+    unique_module_names = list(dict.fromkeys(requested_module_names))
+    if unique_module_names:
+        rows = (
+            await session.execute(
+                select(ModuleRegistry.module_name).where(ModuleRegistry.module_name.in_(unique_module_names))
+            )
+        ).scalars().all()
+        missing = sorted(set(unique_module_names) - set(rows))
+        if missing:
+            raise ValidationError(f"Unknown modules in review request: {', '.join(missing)}")
+
+    payload = {"module_names": unique_module_names, "tenant_id": str(tenant.id)}
+    return ModuleSelectionReviewResponse(
+        draft_id=_encode_setup_draft(
+            tenant_id=tenant.id,
+            step="review_module_selection",
+            payload=payload,
+        ),
+        review_rows=_module_review_rows(unique_module_names),
+        payload=payload,
     )
 
 
