@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { getLineage } from "@/lib/api/control-plane"
+import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 
 interface LineageViewProps {
   subjectType: string | null
@@ -10,7 +11,7 @@ interface LineageViewProps {
 
 export function LineageView({ subjectType, subjectId }: LineageViewProps) {
   const lineageQuery = useQuery({
-    queryKey: ["control-plane-lineage", subjectType, subjectId],
+    queryKey: controlPlaneQueryKeys.lineage(subjectType, subjectId),
     queryFn: async () => {
       if (!subjectType || !subjectId) {
         return null
@@ -38,7 +39,9 @@ export function LineageView({ subjectType, subjectId }: LineageViewProps) {
         <div className="rounded-xl border border-[hsl(var(--brand-danger)/0.35)] bg-[hsl(var(--brand-danger)/0.12)] p-4 text-sm">
           <p className="font-medium text-foreground">Lineage failed to load</p>
           <p className="mt-1 text-muted-foreground">
-            {lineageQuery.error instanceof Error ? lineageQuery.error.message : "The backend did not return lineage data."}
+            {lineageQuery.error instanceof Error
+              ? lineageQuery.error.message
+              : "The backend did not return lineage data."}
           </p>
         </div>
       ) : !lineageQuery.data ? (
@@ -48,13 +51,13 @@ export function LineageView({ subjectType, subjectId }: LineageViewProps) {
           <article className="rounded-xl border border-border bg-background p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Forward lineage</p>
             <p className="mt-2 text-sm text-foreground">
-              Nodes: {lineageQuery.data.forward.nodes.length} · Edges: {lineageQuery.data.forward.edges.length}
+              Nodes: {lineageQuery.data.forward.nodes.length} / Edges: {lineageQuery.data.forward.edges.length}
             </p>
           </article>
           <article className="rounded-xl border border-border bg-background p-4">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Reverse lineage</p>
             <p className="mt-2 text-sm text-foreground">
-              Nodes: {lineageQuery.data.reverse.nodes.length} · Edges: {lineageQuery.data.reverse.edges.length}
+              Nodes: {lineageQuery.data.reverse.nodes.length} / Edges: {lineageQuery.data.reverse.edges.length}
             </p>
           </article>
           <div className="rounded-xl border border-border bg-background p-4 md:col-span-2">

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { getDeterminism } from "@/lib/api/control-plane"
+import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/Sheet"
@@ -13,7 +14,7 @@ export function DeterminismPanel() {
   const selectedSubjectId = useControlPlaneStore((state) => state.selected_subject_id)
 
   const query = useQuery({
-    queryKey: ["control-plane-determinism", selectedSubjectType, selectedSubjectId],
+    queryKey: controlPlaneQueryKeys.determinism(selectedSubjectType, selectedSubjectId),
     queryFn: async () => getDeterminism(selectedSubjectType ?? "", selectedSubjectId ?? ""),
     enabled: activePanel === "determinism" && Boolean(selectedSubjectType) && Boolean(selectedSubjectId),
   })

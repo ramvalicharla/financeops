@@ -10,22 +10,27 @@ import {
   type GovernanceSnapshot,
   type SnapshotComparison,
 } from "@/lib/api/control-plane"
+import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { Button } from "@/components/ui/button"
 
 interface SnapshotNavigatorProps {
   onSubjectSelected?: (snapshot: GovernanceSnapshot) => void
+  initialSnapshotId?: string | null
 }
 
-export function SnapshotNavigator({ onSubjectSelected }: SnapshotNavigatorProps) {
+export function SnapshotNavigator({
+  onSubjectSelected,
+  initialSnapshotId = null,
+}: SnapshotNavigatorProps) {
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const openDeterminismPanel = useControlPlaneStore((state) => state.openDeterminismPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
-  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(null)
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(initialSnapshotId)
 
   const snapshotsQuery = useQuery({
-    queryKey: ["control-plane-snapshots", activeEntityId],
+    queryKey: controlPlaneQueryKeys.snapshots({ entity_id: activeEntityId ?? undefined, limit: 50 }),
     queryFn: async () => listSnapshots({ entity_id: activeEntityId ?? undefined, limit: 50 }),
   })
   const snapshotRows = snapshotsQuery.data ?? []
@@ -36,13 +41,19 @@ export function SnapshotNavigator({ onSubjectSelected }: SnapshotNavigatorProps)
     }
   }, [selectedSnapshotId, snapshotRows])
 
+  useEffect(() => {
+    if (initialSnapshotId) {
+      setSelectedSnapshotId(initialSnapshotId)
+    }
+  }, [initialSnapshotId])
+
   const selectedSnapshot = useMemo(
     () => snapshotRows.find((row) => row.snapshot_id === selectedSnapshotId) ?? null,
     [selectedSnapshotId, snapshotRows],
   )
 
   const snapshotQuery = useQuery({
-    queryKey: ["control-plane-snapshot", selectedSnapshotId],
+    queryKey: controlPlaneQueryKeys.snapshot(selectedSnapshotId),
     queryFn: async () => (selectedSnapshotId ? getSnapshot(selectedSnapshotId) : null),
     enabled: Boolean(selectedSnapshotId),
   })
@@ -62,7 +73,7 @@ export function SnapshotNavigator({ onSubjectSelected }: SnapshotNavigatorProps)
   }, [selectedSnapshot, snapshotRows])
 
   const comparisonQuery = useQuery({
-    queryKey: ["control-plane-snapshot-compare", selectedSnapshotId, compareTarget?.snapshot_id],
+    queryKey: controlPlaneQueryKeys.snapshotCompare(selectedSnapshotId, compareTarget?.snapshot_id ?? null),
     queryFn: async (): Promise<SnapshotComparison | null> =>
       selectedSnapshotId && compareTarget
         ? compareSnapshots(selectedSnapshotId, compareTarget.snapshot_id)

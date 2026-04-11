@@ -20,11 +20,16 @@ interface ControlPlaneState {
   selected_job_id: string | null
   selected_subject_type: string | null
   selected_subject_id: string | null
+  evidence_drawer_open: boolean
+  evidence_subject_type: string | null
+  evidence_subject_id: string | null
   intent_payload: IntentPanelState | null
   openIntentPanel: (payload: IntentPanelState) => void
   openJobPanel: (jobId?: string | null) => void
   openTimelinePanel: (subjectType?: string | null, subjectId?: string | null) => void
   openDeterminismPanel: (subjectType: string, subjectId: string) => void
+  openEvidenceDrawer: (subjectType: string, subjectId: string) => void
+  closeEvidenceDrawer: () => void
   closePanel: () => void
 }
 
@@ -36,6 +41,9 @@ export const useControlPlaneStore = create<ControlPlaneState>()(
       selected_job_id: null,
       selected_subject_type: null,
       selected_subject_id: null,
+      evidence_drawer_open: false,
+      evidence_subject_type: null,
+      evidence_subject_id: null,
       intent_payload: null,
       openIntentPanel: (payload) =>
         set({
@@ -63,6 +71,16 @@ export const useControlPlaneStore = create<ControlPlaneState>()(
           selected_subject_type: subjectType,
           selected_subject_id: subjectId,
         }),
+      openEvidenceDrawer: (subjectType, subjectId) =>
+        set({
+          evidence_drawer_open: true,
+          evidence_subject_type: subjectType,
+          evidence_subject_id: subjectId,
+        }),
+      closeEvidenceDrawer: () =>
+        set({
+          evidence_drawer_open: false,
+        }),
       closePanel: () =>
         set({
           active_panel: null,
@@ -77,6 +95,9 @@ export const useControlPlaneStore = create<ControlPlaneState>()(
         selected_job_id: state.selected_job_id,
         selected_subject_type: state.selected_subject_type,
         selected_subject_id: state.selected_subject_id,
+        evidence_drawer_open: state.evidence_drawer_open,
+        evidence_subject_type: state.evidence_subject_type,
+        evidence_subject_id: state.evidence_subject_id,
         intent_payload: state.intent_payload,
       }),
     },

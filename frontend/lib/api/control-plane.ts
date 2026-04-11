@@ -5,6 +5,18 @@ export interface ControlPlaneEntity {
   entity_code: string
   entity_name: string
   organisation_id: string
+  pan?: string | null
+  tan?: string | null
+  cin?: string | null
+  gstin?: string | null
+  lei?: string | null
+  fiscal_year_start?: string | null
+  applicable_gaap?: string | null
+  tax_rate?: string | null
+  state_code?: string | null
+  registered_address?: string | null
+  city?: string | null
+  pincode?: string | null
 }
 
 export interface ControlPlaneIntent {
@@ -251,6 +263,11 @@ export interface ControlPlaneContext {
 
 export const listControlPlaneEntities = async (): Promise<ControlPlaneEntity[]> => {
   const response = await apiClient.get<ControlPlaneEntity[]>("/api/v1/platform/entities")
+  return response.data
+}
+
+export const getControlPlaneEntity = async (entityId: string): Promise<ControlPlaneEntity> => {
+  const response = await apiClient.get<ControlPlaneEntity>(`/api/v1/platform/entities/${entityId}`)
   return response.data
 }
 

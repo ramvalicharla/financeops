@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { admitAirlockItem, getAirlockItem, rejectAirlockItem } from "@/lib/api/control-plane"
+import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
 import { Button } from "@/components/ui/button"
 
@@ -14,13 +15,13 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
   const queryClient = useQueryClient()
   const [rejectReason, setRejectReason] = useState("")
   const itemQuery = useQuery({
-    queryKey: ["control-plane-airlock-item", itemId],
+    queryKey: controlPlaneQueryKeys.airlockItem(itemId),
     queryFn: async () => getAirlockItem(itemId),
   })
 
   const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["control-plane-airlock"] })
-    await queryClient.invalidateQueries({ queryKey: ["control-plane-airlock-item", itemId] })
+    await queryClient.invalidateQueries({ queryKey: controlPlaneQueryKeys.airlockRoot() })
+    await queryClient.invalidateQueries({ queryKey: controlPlaneQueryKeys.airlockItem(itemId) })
   }
 
   const admitMutation = useMutation({

@@ -5,12 +5,17 @@ import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
 import { listAirlockItems } from "@/lib/api/control-plane"
+import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 
-export function AirlockQueue() {
+interface AirlockQueueProps {
+  detailHrefPrefix?: string
+}
+
+export function AirlockQueue({ detailHrefPrefix = "/settings/airlock" }: AirlockQueueProps) {
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const airlockQuery = useQuery({
-    queryKey: ["control-plane-airlock", activeEntityId],
+    queryKey: controlPlaneQueryKeys.airlock({ entity_id: activeEntityId ?? undefined, limit: 50 }),
     queryFn: async () => listAirlockItems({ entity_id: activeEntityId ?? undefined, limit: 50 }),
   })
   const queueSteps = useMemo<FlowStripStep[]>(() => {
@@ -133,7 +138,7 @@ export function AirlockQueue() {
                 )}
               </div>
               <div className="flex items-end">
-                <Link className="text-sm font-medium text-foreground underline underline-offset-4" href={`/settings/airlock/${item.airlock_item_id}`}>
+                <Link className="text-sm font-medium text-foreground underline underline-offset-4" href={`${detailHrefPrefix}/${item.airlock_item_id}`}>
                   Open review
                 </Link>
               </div>
