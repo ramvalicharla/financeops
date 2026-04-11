@@ -357,15 +357,15 @@ async def test_t_146_download_csv_returns_file_response(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_147_delete_definition_soft_deletes_and_returns_204(
+async def test_t_147_deactivate_definition_soft_deletes_and_returns_204(
     async_client: AsyncClient,
     async_session: AsyncSession,
     test_access_token: str,
     test_user,
 ) -> None:
     definition = await _create_definition(async_client, test_access_token)
-    response = await async_client.delete(
-        f"/api/v1/reports/definitions/{definition['id']}",
+    response = await async_client.post(
+        f"/api/v1/reports/definitions/{definition['id']}/deactivate",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert response.status_code == 204

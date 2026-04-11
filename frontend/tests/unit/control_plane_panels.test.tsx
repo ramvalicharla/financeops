@@ -125,6 +125,15 @@ describe("control plane panels", () => {
         module_code: null,
         source: "requested_workspace",
       },
+      workspace_tabs: [
+        {
+          workspace_key: "accounting",
+          workspace_name: "Accounting",
+          href: "/accounting/journals",
+          match_prefixes: ["/accounting", "/fx"],
+          module_codes: ["accounting_layer"],
+        },
+      ],
       enabled_modules: [],
       current_period: {
         period_label: "2026-04",

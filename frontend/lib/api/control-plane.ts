@@ -202,6 +202,13 @@ export interface ImpactSummary {
 export interface ControlPlaneContext {
   tenant_id: string
   tenant_slug: string | null
+  workspace_tabs: Array<{
+    workspace_key: string
+    workspace_name: string
+    href: string
+    match_prefixes: string[]
+    module_codes: string[]
+  }>
   current_organisation: {
     organisation_id: string | null
     organisation_name: string | null

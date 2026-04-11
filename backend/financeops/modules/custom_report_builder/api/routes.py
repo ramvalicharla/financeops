@@ -339,8 +339,8 @@ async def update_definition(
     )
 
 
-@router.delete("/definitions/{id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_definition(
+@router.post("/definitions/{id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
+async def deactivate_definition(
     request: Request,
     id: uuid.UUID,
     db: AsyncSession = Depends(get_async_session),

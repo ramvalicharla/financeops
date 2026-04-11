@@ -65,6 +65,15 @@ describe("control plane state", () => {
         module_code: null,
         source: "requested_workspace",
       },
+      workspace_tabs: [
+        {
+          workspace_key: "erp",
+          workspace_name: "ERP",
+          href: "/erp/sync",
+          match_prefixes: ["/erp", "/sync", "/erp-sync"],
+          module_codes: ["erp_sync"],
+        },
+      ],
       enabled_modules: [
         {
           module_id: "mod-erp",
@@ -141,7 +150,7 @@ describe("control plane state", () => {
       expect(screen.getByText(/Acme Group/i)).toBeInTheDocument()
       expect(screen.getByText(/Acme India/i)).toBeInTheDocument()
       expect(screen.getByText(/^ERP$/i)).toBeInTheDocument()
-      expect(screen.getByText(/Apr 2026/i)).toBeInTheDocument()
+      expect(screen.getByText("2026-04")).toBeInTheDocument()
     })
     expect(screen.queryByText("stale-org")).not.toBeInTheDocument()
     expect(screen.queryByText("Stale Module")).not.toBeInTheDocument()

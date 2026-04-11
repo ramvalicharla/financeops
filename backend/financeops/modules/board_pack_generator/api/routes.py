@@ -333,7 +333,7 @@ async def update_definition(
     )
 
 
-@router.delete("/definitions/{definition_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/definitions/{definition_id}/deactivate", status_code=status.HTTP_204_NO_CONTENT)
 async def deactivate_definition(
     request: Request,
     definition_id: uuid.UUID,

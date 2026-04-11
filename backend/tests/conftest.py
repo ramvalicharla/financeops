@@ -1,17 +1,36 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import subprocess
 import sys
+import urllib.parse
 import uuid
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import asyncpg
+from filelock import FileLock
 import pytest
 import pytest_asyncio
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+_DEFAULT_LOCAL_TEST_DATABASE_URL = (
+    "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test"
+)
+
+
+def _initial_worker_database_url() -> str:
+    raw_url = os.getenv("TEST_DATABASE_URL", _DEFAULT_LOCAL_TEST_DATABASE_URL)
+    worker_id = os.getenv("PYTEST_XDIST_WORKER", "master").lower().replace("-", "_")
+    worker_id = re.sub(r"[^a-z0-9_]", "_", worker_id)
+    database_name = f"finos_test_{worker_id}"[:63]
+    parts = urllib.parse.urlsplit(raw_url)
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, f"/{database_name}", parts.query, parts.fragment)
+    )
 
 
 # On Windows, asyncpg's persistent IOCP socket readers cause GetQueuedCompletionStatus
@@ -25,11 +44,11 @@ import os
 # These defaults are only applied when not explicitly provided by the environment.
 os.environ.setdefault(
     "DATABASE_URL",
-    "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
+    _initial_worker_database_url(),
 )
 os.environ.setdefault(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
+    _initial_worker_database_url(),
 )
 os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
 os.environ.setdefault("TEST_REDIS_URL", "redis://localhost:6380/0")
@@ -57,8 +76,6 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
-from sqlalchemy.pool import NullPool
-
 from financeops.core.security import create_access_token, decode_token, hash_password
 from financeops.db.base import Base
 from financeops.db.models.audit import AuditTrail  # noqa: F401
@@ -535,6 +552,11 @@ TEST_DATABASE_URL = os.getenv(
     "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
 )
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
+TEST_DATABASE_ADMIN_DB = os.getenv("TEST_DATABASE_ADMIN_DB", "postgres")
+_VALID_TEST_DB_NAME = re.compile(r"[a-z0-9_]+")
+_CACHED_TEST_PASSWORD_HASH = hash_password("TestPass123!")
+_TEMPLATE_DATABASE_NAME = "finos_test_template"
+_TEMPLATE_DATABASE_LOCK = Path(__file__).resolve().parents[1] / ".pytest-template-db.lock"
 
 _INTEGRATION_PLUGIN_MODULES = (
     "tests.integration.mis_phase1f1_helpers",
@@ -572,8 +594,108 @@ def pytest_configure(config: pytest.Config) -> None:
             config.pluginmanager.import_plugin(plugin_name)
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    del config
+    for item in items:
+        nodeid = item.nodeid.replace("\\", "/")
+        keywords = item.keywords
+        if "tests/integration/" in nodeid and "integration" not in keywords:
+            item.add_marker(pytest.mark.integration)
+        elif "tests/integration/" not in nodeid and "integration" not in keywords and "unit" not in keywords:
+            item.add_marker(pytest.mark.unit)
+        if (
+            "_append_only_" in nodeid
+            or "test_append_only_enforcement.py" in nodeid
+            or "test_consolidation_append_only.py" in nodeid
+            or "test_fixed_assets_append_only.py" in nodeid
+            or "test_lease_append_only.py" in nodeid
+            or "test_prepaid_append_only.py" in nodeid
+            or "test_revenue_append_only.py" in nodeid
+        ) and "db_heavy" not in keywords:
+            item.add_marker(pytest.mark.db_heavy)
+        if "_migration_" in nodeid and "migration_heavy" not in keywords:
+            item.add_marker(pytest.mark.migration_heavy)
+        if "_migration_" in nodeid and "serial_only" not in keywords:
+            item.add_marker(pytest.mark.serial_only)
+        if (
+            "test_schema_tower.py" in nodeid
+            or "_append_only_" in nodeid
+            or "_migration_" in nodeid
+        ) and "slow" not in keywords:
+            item.add_marker(pytest.mark.slow)
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    del config
+    cpu_count = os.cpu_count() or 1
+    if sys.platform == "win32":
+        # Template-cloned worker databases remove the previous DDL lock storm;
+        # nine workers is the best verified throughput point in this environment.
+        return max(2, min(9, cpu_count))
+    return max(2, min(8, cpu_count))
+
+
 def _backend_dir() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def _worker_id() -> str:
+    worker_id = os.getenv("PYTEST_XDIST_WORKER", "master").lower().replace("-", "_")
+    worker_id = re.sub(r"[^a-z0-9_]", "_", worker_id)
+    if not _VALID_TEST_DB_NAME.fullmatch(worker_id):
+        raise RuntimeError(f"Invalid pytest worker id for database isolation: {worker_id}")
+    return worker_id
+
+
+def _with_database(raw_url: str, database: str) -> str:
+    parts = urllib.parse.urlsplit(raw_url)
+    return urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, f"/{database}", parts.query, parts.fragment)
+    )
+
+
+def _to_asyncpg_dsn(raw_url: str) -> str:
+    return raw_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+
+def _worker_test_database_name() -> str:
+    return f"finos_test_{_worker_id()}"[:63]
+
+
+async def _database_exists(conn: asyncpg.Connection, database_name: str) -> bool:
+    existing = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", database_name)
+    return existing == 1
+
+
+async def _terminate_database_connections(
+    conn: asyncpg.Connection,
+    database_name: str,
+) -> None:
+    await conn.execute(
+        """
+        SELECT pg_terminate_backend(pid)
+        FROM pg_stat_activity
+        WHERE datname = $1
+          AND pid <> pg_backend_pid()
+        """,
+        database_name,
+    )
+
+
+async def _create_database(
+    conn: asyncpg.Connection,
+    database_name: str,
+    *,
+    template_name: str | None = None,
+) -> None:
+    if not _VALID_TEST_DB_NAME.fullmatch(database_name):
+        raise RuntimeError(f"Invalid pytest database name: {database_name}")
+    if template_name is None:
+        await conn.execute(f'CREATE DATABASE "{database_name}"')
+        return
+    if not _VALID_TEST_DB_NAME.fullmatch(template_name):
+        raise RuntimeError(f"Invalid pytest template database name: {template_name}")
+    await conn.execute(f'CREATE DATABASE "{database_name}" TEMPLATE "{template_name}"')
 
 
 def _current_alembic_head() -> str:
@@ -665,6 +787,45 @@ async def _ensure_shared_schema_bootstrapped(conn) -> None:
     )
 
 
+async def _ensure_template_database(admin_url: str) -> None:
+    template_url = _with_database(TEST_DATABASE_URL, _TEMPLATE_DATABASE_NAME)
+    with FileLock(str(_TEMPLATE_DATABASE_LOCK)):
+        conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
+        try:
+            template_exists = await _database_exists(conn, _TEMPLATE_DATABASE_NAME)
+            if template_exists:
+                template_version = None
+                verify_engine = create_async_engine(template_url, echo=False)
+                try:
+                    async with verify_engine.connect() as verify_conn:
+                        template_version = await verify_conn.scalar(
+                            text("SELECT version_num FROM alembic_version LIMIT 1")
+                        )
+                except Exception:
+                    template_version = None
+                finally:
+                    await verify_engine.dispose()
+
+                if template_version == _current_alembic_head():
+                    return
+                await _terminate_database_connections(conn, _TEMPLATE_DATABASE_NAME)
+                await conn.execute(f'DROP DATABASE IF EXISTS "{_TEMPLATE_DATABASE_NAME}"')
+
+            await _create_database(conn, _TEMPLATE_DATABASE_NAME)
+        finally:
+            await conn.close()
+
+        bootstrap_engine = create_async_engine(template_url, echo=False)
+        try:
+            async with bootstrap_engine.begin() as bootstrap_conn:
+                await _ensure_pgvector_available(bootstrap_conn)
+                await _reset_public_schema(bootstrap_conn)
+                await bootstrap_conn.run_sync(Base.metadata.create_all)
+                await _ensure_shared_schema_bootstrapped(bootstrap_conn)
+        finally:
+            await bootstrap_engine.dispose()
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
     """Close module-level Redis pools before the event loop is torn down."""
@@ -681,24 +842,48 @@ async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
 
 
 @pytest_asyncio.fixture(scope="session")
-async def engine():
+async def test_database_url() -> AsyncGenerator[str, None]:
+    """
+    Create a worker-isolated database so pytest-xdist can run without schema races.
+    Each worker clones a prebuilt template database once for the session.
+    """
+    database_name = _worker_test_database_name()
+    database_url = _with_database(TEST_DATABASE_URL, database_name)
+    admin_url = _with_database(TEST_DATABASE_URL, TEST_DATABASE_ADMIN_DB)
+
+    await _ensure_template_database(admin_url)
+
+    conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
+    try:
+        if await _database_exists(conn, database_name):
+            await _terminate_database_connections(conn, database_name)
+            await conn.execute(f'DROP DATABASE IF EXISTS "{database_name}"')
+        await _create_database(conn, database_name, template_name=_TEMPLATE_DATABASE_NAME)
+    finally:
+        await conn.close()
+
+    try:
+        yield database_url
+    finally:
+        cleanup_conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
+        try:
+            await _terminate_database_connections(cleanup_conn, database_name)
+            await cleanup_conn.execute(f'DROP DATABASE IF EXISTS "{database_name}"')
+        finally:
+            await cleanup_conn.close()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def engine(test_database_url: str):
     """
     Create a shared test engine once per session.
-    Schema bootstrap uses metadata creation on the shared test database.
-    Migration-path validation is covered separately by dedicated temp-db tests.
+    The worker database is pre-bootstrapped once and cloned from a template.
     """
-    test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
-    async with test_engine.begin() as conn:
-        await _ensure_pgvector_available(conn)
-        await _reset_public_schema(conn)
-        await _ensure_pgvector_available(conn)
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await _ensure_shared_schema_bootstrapped(conn)
+    test_engine = create_async_engine(test_database_url, echo=False)
     yield test_engine
-    async with test_engine.begin() as conn:
-        await _reset_public_schema(conn)
     await test_engine.dispose()
+
+
 
 
 @pytest_asyncio.fixture
@@ -708,7 +893,6 @@ async def async_session(engine) -> AsyncGenerator[AsyncSession, None]:
     Any test-level commit remains contained and is discarded at teardown.
     """
     async with engine.connect() as connection:
-        await _ensure_shared_schema_bootstrapped(connection)
         if connection.in_transaction():
             await connection.rollback()
         outer_tx = await connection.begin()
@@ -760,7 +944,7 @@ async def test_user(async_session: AsyncSession, test_tenant: IamTenant) -> IamU
     user = IamUser(
         tenant_id=test_tenant.id,
         email="testuser@example.com",
-        hashed_password=hash_password("TestPass123!"),
+        hashed_password=_CACHED_TEST_PASSWORD_HASH,
         full_name="Test User",
         role=UserRole.finance_leader,
         is_active=True,

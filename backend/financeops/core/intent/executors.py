@@ -54,11 +54,19 @@ class CreateJournalExecutor(BaseIntentExecutor):
                 else None
             ),
         )
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="journal",
+            subject_id=str(journal.id),
+            trigger_event="journal_created",
+        )
         return ExecutorResult(
             record_refs={
                 "journal_id": str(journal.id),
                 "journal_number": journal.journal_number,
                 "status": journal.status,
+                **snapshot_refs,
             }
         )
 
@@ -74,7 +82,14 @@ class SubmitJournalExecutor(BaseIntentExecutor):
             acted_by=intent.requested_by_user_id,
             actor_role=intent.requested_by_role,
         )
-        return ExecutorResult(record_refs={"journal_id": str(result.id), "status": result.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="journal",
+            subject_id=str(result.id),
+            trigger_event="journal_submitted",
+        )
+        return ExecutorResult(record_refs={"journal_id": str(result.id), "status": result.status, **snapshot_refs})
 
 
 class ReviewJournalExecutor(BaseIntentExecutor):
@@ -88,7 +103,14 @@ class ReviewJournalExecutor(BaseIntentExecutor):
             acted_by=intent.requested_by_user_id,
             actor_role=intent.requested_by_role,
         )
-        return ExecutorResult(record_refs={"journal_id": str(result.id), "status": result.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="journal",
+            subject_id=str(result.id),
+            trigger_event="journal_reviewed",
+        )
+        return ExecutorResult(record_refs={"journal_id": str(result.id), "status": result.status, **snapshot_refs})
 
 
 class ApproveJournalExecutor(BaseIntentExecutor):
@@ -102,7 +124,14 @@ class ApproveJournalExecutor(BaseIntentExecutor):
             acted_by=intent.requested_by_user_id,
             actor_role=intent.requested_by_role,
         )
-        return ExecutorResult(record_refs={"journal_id": str(result.id), "status": result.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="journal",
+            subject_id=str(result.id),
+            trigger_event="journal_approved",
+        )
+        return ExecutorResult(record_refs={"journal_id": str(result.id), "status": result.status, **snapshot_refs})
 
 
 class PostJournalExecutor(BaseIntentExecutor):
@@ -116,11 +145,19 @@ class PostJournalExecutor(BaseIntentExecutor):
             acted_by=intent.requested_by_user_id,
             actor_role=intent.requested_by_role,
         )
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="journal",
+            subject_id=str(result.id),
+            trigger_event="journal_posted",
+        )
         return ExecutorResult(
             record_refs={
                 "journal_id": str(result.id),
                 "status": result.status,
                 "posted_at": result.posted_at.isoformat() if result.posted_at else None,
+                **snapshot_refs,
             }
         )
 
@@ -136,12 +173,20 @@ class ReverseJournalExecutor(BaseIntentExecutor):
             acted_by=intent.requested_by_user_id,
             actor_role=intent.requested_by_role,
         )
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="journal",
+            subject_id=str(journal.id),
+            trigger_event="journal_reversed",
+        )
         return ExecutorResult(
             record_refs={
                 "journal_id": str(journal.id),
                 "journal_number": journal.journal_number,
                 "status": journal.status,
                 "reversed_target_id": str(intent.target_id),
+                **snapshot_refs,
             }
         )
 
@@ -172,6 +217,36 @@ def _optional_date_value(payload: dict[str, Any], key: str) -> date | None:
     if raw in {None, ""}:
         return None
     return date.fromisoformat(str(raw))
+
+
+async def _snapshot_refs(
+    db: AsyncSession,
+    *,
+    intent: CanonicalIntent,
+    subject_type: str,
+    subject_id: str,
+    trigger_event: str,
+) -> dict[str, str | None]:
+    from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+    try:
+        snapshot = await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=intent.tenant_id,
+            actor_user_id=intent.requested_by_user_id,
+            actor_role=intent.requested_by_role,
+            subject_type=subject_type,
+            subject_id=subject_id,
+            trigger_event=trigger_event,
+        )
+    except ValueError:
+        return {
+            "snapshot_id": None,
+            "determinism_hash": None,
+        }
+    return {
+        "snapshot_id": str(snapshot.id),
+        "determinism_hash": snapshot.determinism_hash,
+    }
 
 
 class CreateErpSyncRunExecutor(BaseIntentExecutor):
@@ -205,6 +280,18 @@ class CreateErpSyncRunExecutor(BaseIntentExecutor):
             source_type=str(payload.get("source_type") or "erp_sync_request"),
             source_external_ref=str(payload.get("source_external_ref") or payload.get("connection_id") or ""),
         )
+        sync_run_id = str(result.get("sync_run_id") or "")
+        if sync_run_id:
+            result = {
+                **result,
+                **await _snapshot_refs(
+                    db,
+                    intent=intent,
+                    subject_type="erp_sync_run",
+                    subject_id=sync_run_id,
+                    trigger_event="erp_sync_run_created",
+                ),
+            }
         return ExecutorResult(record_refs=result)
 
 
@@ -403,11 +490,19 @@ class PrepareGstReturnExecutor(BaseIntentExecutor):
             cost_centre_id=_optional_uuid_value(payload, "cost_centre_id"),
             created_by=intent.requested_by_user_id,
         )
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="gst_return",
+            subject_id=str(row.id),
+            trigger_event="gst_return_prepared",
+        )
         return ExecutorResult(
             record_refs={
                 "return_id": str(row.id),
                 "status": row.status,
                 "return_type": row.return_type,
+                **snapshot_refs,
             }
         )
 
@@ -426,7 +521,14 @@ class SubmitGstReturnExecutor(BaseIntentExecutor):
             filed_by=intent.requested_by_user_id,
             filing_date=_optional_date_value(payload, "filing_date"),
         )
-        return ExecutorResult(record_refs={"return_id": str(row.id), "status": row.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="gst_return",
+            subject_id=str(row.id),
+            trigger_event="gst_return_submitted",
+        )
+        return ExecutorResult(record_refs={"return_id": str(row.id), "status": row.status, **snapshot_refs})
 
 
 class RunGstReconciliationExecutor(BaseIntentExecutor):
@@ -517,7 +619,14 @@ class CreateFixedAssetExecutor(BaseIntentExecutor):
             entity_id=_uuid_value(payload, "entity_id"),
             data=data,
         )
-        return ExecutorResult(record_refs={"asset_id": str(row.id), "status": row.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="fixed_asset",
+            subject_id=str(row.id),
+            trigger_event="fixed_asset_created",
+        )
+        return ExecutorResult(record_refs={"asset_id": str(row.id), "status": row.status, **snapshot_refs})
 
 
 class UpdateFixedAssetExecutor(BaseIntentExecutor):
@@ -537,7 +646,14 @@ class UpdateFixedAssetExecutor(BaseIntentExecutor):
             asset_id=intent.target_id,
             data=payload,
         )
-        return ExecutorResult(record_refs={"asset_id": str(row.id), "status": row.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="fixed_asset",
+            subject_id=str(row.id),
+            trigger_event="fixed_asset_updated",
+        )
+        return ExecutorResult(record_refs={"asset_id": str(row.id), "status": row.status, **snapshot_refs})
 
 
 class RunFixedAssetDepreciationExecutor(BaseIntentExecutor):
@@ -569,7 +685,6 @@ class RunFixedAssetWorkflowExecutor(BaseIntentExecutor):
     async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
         from financeops.config import settings
         from financeops.services.fixed_assets.service_facade import create_run
-        from financeops.temporal.client import get_temporal_client
         from financeops.temporal.fixed_assets_workflows import (
             FixedAssetsWorkflow,
             FixedAssetsWorkflowInput,
@@ -586,8 +701,9 @@ class RunFixedAssetWorkflowExecutor(BaseIntentExecutor):
             correlation_id=correlation_id,
         )
         if run["created_new"]:
-            temporal_client = await get_temporal_client()
-            await temporal_client.start_workflow(
+            from financeops.core.intent.dispatcher import JobDispatcher
+
+            await JobDispatcher().start_temporal_workflow(
                 FixedAssetsWorkflow.run,
                 FixedAssetsWorkflowInput(
                     run_id=str(run["run_id"]),
@@ -596,7 +712,7 @@ class RunFixedAssetWorkflowExecutor(BaseIntentExecutor):
                     requested_by=str(intent.requested_by_user_id),
                     config_hash=str(run["request_signature"]),
                 ),
-                id=str(run["workflow_id"]),
+                workflow_id=str(run["workflow_id"]),
                 task_queue=settings.TEMPORAL_TASK_QUEUE,
                 execution_timeout=timedelta(minutes=20),
             )
@@ -684,7 +800,14 @@ class CreatePrepaidScheduleExecutor(BaseIntentExecutor):
             entity_id=_uuid_value(payload, "entity_id"),
             data=data,
         )
-        return ExecutorResult(record_refs={"schedule_id": str(row.id), "status": row.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="prepaid_schedule",
+            subject_id=str(row.id),
+            trigger_event="prepaid_schedule_created",
+        )
+        return ExecutorResult(record_refs={"schedule_id": str(row.id), "status": row.status, **snapshot_refs})
 
 
 class UpdatePrepaidScheduleExecutor(BaseIntentExecutor):
@@ -710,7 +833,14 @@ class UpdatePrepaidScheduleExecutor(BaseIntentExecutor):
             schedule_id=intent.target_id,
             data=data,
         )
-        return ExecutorResult(record_refs={"schedule_id": str(row.id), "status": row.status})
+        snapshot_refs = await _snapshot_refs(
+            db,
+            intent=intent,
+            subject_type="prepaid_schedule",
+            subject_id=str(row.id),
+            trigger_event="prepaid_schedule_updated",
+        )
+        return ExecutorResult(record_refs={"schedule_id": str(row.id), "status": row.status, **snapshot_refs})
 
 
 class PostPrepaidAmortizationExecutor(BaseIntentExecutor):
@@ -731,7 +861,6 @@ class RunPrepaidWorkflowExecutor(BaseIntentExecutor):
     async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
         from financeops.config import settings
         from financeops.services.prepaid.service_facade import create_run
-        from financeops.temporal.client import get_temporal_client
         from financeops.temporal.prepaid_workflows import (
             PrepaidAmortizationWorkflow,
             PrepaidAmortizationWorkflowInput,
@@ -748,8 +877,9 @@ class RunPrepaidWorkflowExecutor(BaseIntentExecutor):
             correlation_id=correlation_id,
         )
         if run["created_new"]:
-            temporal_client = await get_temporal_client()
-            await temporal_client.start_workflow(
+            from financeops.core.intent.dispatcher import JobDispatcher
+
+            await JobDispatcher().start_temporal_workflow(
                 PrepaidAmortizationWorkflow.run,
                 PrepaidAmortizationWorkflowInput(
                     run_id=str(run["run_id"]),
@@ -758,7 +888,7 @@ class RunPrepaidWorkflowExecutor(BaseIntentExecutor):
                     requested_by=str(intent.requested_by_user_id),
                     config_hash=str(run["request_signature"]),
                 ),
-                id=str(run["workflow_id"]),
+                workflow_id=str(run["workflow_id"]),
                 task_queue=settings.TEMPORAL_TASK_QUEUE,
                 execution_timeout=timedelta(minutes=15),
             )
@@ -777,7 +907,6 @@ class StartLegacyConsolidationRunExecutor(BaseIntentExecutor):
     async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
         from financeops.config import settings
         from financeops.services.consolidation import EntitySnapshotMapping, create_or_get_run
-        from financeops.temporal.client import get_temporal_client
         from financeops.temporal.consolidation_workflows import (
             ConsolidationWorkflow,
             ConsolidationWorkflowInput,
@@ -817,8 +946,9 @@ class StartLegacyConsolidationRunExecutor(BaseIntentExecutor):
             correlation_id=correlation_id,
         )
         if run.created_new:
-            temporal_client = await get_temporal_client()
-            await temporal_client.start_workflow(
+            from financeops.core.intent.dispatcher import JobDispatcher
+
+            await JobDispatcher().start_temporal_workflow(
                 ConsolidationWorkflow.run,
                 ConsolidationWorkflowInput(
                     run_id=str(run.run_id),
@@ -827,7 +957,7 @@ class StartLegacyConsolidationRunExecutor(BaseIntentExecutor):
                     requested_by=str(intent.requested_by_user_id),
                     config_hash=str(run.request_signature),
                 ),
-                id=str(run.workflow_id),
+                workflow_id=str(run.workflow_id),
                 task_queue=settings.TEMPORAL_TASK_QUEUE,
                 execution_timeout=timedelta(minutes=15),
             )
@@ -1070,7 +1200,9 @@ class GenerateReportExecutor(BaseIntentExecutor):
                 raise
             create_run_kwargs.pop("run_metadata", None)
             run = await repo.create_run(**create_run_kwargs)
-        run_custom_report_task.delay(str(run.id), str(intent.tenant_id))
+        from financeops.core.intent.dispatcher import JobDispatcher
+
+        JobDispatcher().enqueue_task(run_custom_report_task, str(run.id), str(intent.tenant_id))
         return ExecutorResult(
             record_refs={"run_id": str(run.id), "definition_id": str(definition.id), "status": run.status}
         )
@@ -1537,7 +1669,9 @@ class GenerateBoardPackExecutor(BaseIntentExecutor):
                 raise
             create_run_kwargs.pop("run_metadata", None)
             run = await repo.create_run(**create_run_kwargs)
-        generate_board_pack_task.delay(str(run.id), str(intent.tenant_id))
+        from financeops.core.intent.dispatcher import JobDispatcher
+
+        JobDispatcher().enqueue_task(generate_board_pack_task, str(run.id), str(intent.tenant_id))
         return ExecutorResult(
             record_refs={"run_id": str(run.id), "definition_id": str(definition.id), "status": run.status}
         )

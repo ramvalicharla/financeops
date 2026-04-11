@@ -1,40 +1,31 @@
 "use client"
 
 import { usePathname } from "next/navigation"
+import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
-import { resolveControlPlaneModule } from "@/lib/control-plane"
+import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { useTenantStore } from "@/lib/store/tenant"
 
 interface ContextBarProps {
   tenantSlug: string
 }
 
-const periodLabel = (value: string) => {
-  const [year, month] = value.split("-")
-  if (!year || !month) {
-    return value
-  }
-  return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString(undefined, {
-    month: "short",
-    year: "numeric",
-  })
-}
-
 export function ContextBar({ tenantSlug: _tenantSlug }: ContextBarProps) {
   const pathname = usePathname() ?? ""
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
-  const workspace = resolveControlPlaneModule(pathname).key
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId, workspace],
+    queryKey: ["control-plane-context", activeEntityId],
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,
-        workspace,
-        module: workspace,
       }),
     staleTime: 60_000,
   })
+  const matchedWorkspace = useMemo(
+    () => resolveWorkspaceFromTabs(pathname, contextQuery.data?.workspace_tabs ?? []),
+    [contextQuery.data?.workspace_tabs, pathname],
+  )
   const organizationLabel = contextQuery.isLoading
     ? "Loading..."
     : contextQuery.data?.current_organisation.organisation_name ??
@@ -43,7 +34,7 @@ export function ContextBar({ tenantSlug: _tenantSlug }: ContextBarProps) {
   const periodValue = contextQuery.data?.current_period.period_label
   const moduleLabel = contextQuery.isLoading
     ? "Loading..."
-    : contextQuery.data?.current_module.module_name ?? "Unavailable"
+    : matchedWorkspace?.workspace_name ?? contextQuery.data?.current_module.module_name ?? "Unavailable"
   const entityLabel = contextQuery.isLoading
     ? "Loading..."
     : contextQuery.data?.current_entity.entity_name ?? "Unavailable"
@@ -68,7 +59,7 @@ export function ContextBar({ tenantSlug: _tenantSlug }: ContextBarProps) {
           </span>
           <span className="text-muted-foreground">&rarr;</span>
           <span className="rounded-full border border-[hsl(var(--brand-primary)/0.28)] bg-[hsl(var(--brand-primary)/0.08)] px-3 py-1 text-sm text-foreground">
-            Period <span className="ml-1 font-semibold">{periodLabel(periodValue ?? "Unavailable")}</span>
+            Period <span className="ml-1 font-semibold">{periodValue ?? "Unavailable"}</span>
           </span>
         </div>
       </div>

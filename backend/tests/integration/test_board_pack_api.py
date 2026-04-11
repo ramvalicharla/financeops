@@ -606,7 +606,7 @@ async def test_t_044_download_pdf_artifact_returns_file(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_045_delete_definition_then_active_only_list_returns_404(
+async def test_t_045_deactivate_definition_then_active_only_list_returns_404(
     async_client: AsyncClient,
     async_session: AsyncSession,
     test_access_token: str,
@@ -615,8 +615,8 @@ async def test_t_045_delete_definition_then_active_only_list_returns_404(
     await _relax_board_pack_schema(async_session)
     definition = await _create_definition(async_client, test_access_token, test_user.tenant_id)
 
-    delete_response = await async_client.delete(
-        f"/api/v1/board-packs/definitions/{definition['id']}",
+    delete_response = await async_client.post(
+        f"/api/v1/board-packs/definitions/{definition['id']}/deactivate",
         headers={"Authorization": f"Bearer {test_access_token}"},
     )
     assert delete_response.status_code == 204

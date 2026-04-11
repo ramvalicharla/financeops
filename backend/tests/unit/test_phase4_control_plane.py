@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.platform.api.v1 import control_plane as control_plane_routes
+from financeops.core.governance.events import GovernanceActor, emit_governance_event
+from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
+from financeops.db.models.governance_control import CanonicalGovernanceEvent
 from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+from financeops.services.audit_writer import AuditWriter
 
 
 def _scalar_result(value):
@@ -301,3 +309,245 @@ async def test_lineage_and_impact_include_semantics(monkeypatch: pytest.MonkeyPa
 
     assert lineage["semantics"]["authoritative"] is True
     assert impact["semantics"]["authoritative"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("resolver_name", "row", "expected_subject_type", "expected_module_key"),
+    [
+        (
+            "_resolve_journal_subject",
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                entity_id=uuid.uuid4(),
+                jv_number="JV-001",
+                status="APPROVED",
+                version=2,
+                period_date=__import__("datetime").date(2026, 4, 1),
+                fiscal_year=2026,
+                fiscal_period=4,
+                description="April journal",
+                reference="REF-1",
+                source="manual",
+                external_reference_id=None,
+                total_debit="100.00",
+                total_credit="100.00",
+                currency="INR",
+                created_by_intent_id=None,
+                recorded_by_job_id=None,
+                submitted_at=None,
+                first_reviewed_at=None,
+                decided_at=None,
+                voided_at=None,
+            ),
+            "journal",
+            "accounting_layer",
+        ),
+        (
+            "_resolve_fixed_asset_subject",
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                entity_id=uuid.uuid4(),
+                asset_class_id=uuid.uuid4(),
+                asset_code="FA-001",
+                asset_name="Laptop Fleet",
+                description="Devices",
+                status="ACTIVE",
+                purchase_date=__import__("datetime").date(2026, 1, 1),
+                capitalisation_date=__import__("datetime").date(2026, 1, 2),
+                original_cost="1500.00",
+                residual_value="100.00",
+                useful_life_years="3",
+                depreciation_method="SLM",
+                disposal_date=None,
+                disposal_proceeds=None,
+                is_active=True,
+            ),
+            "fixed_asset",
+            "fixed_assets",
+        ),
+        (
+            "_resolve_prepaid_schedule_subject",
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                entity_id=uuid.uuid4(),
+                reference_number="PP-001",
+                description="Insurance",
+                prepaid_type="insurance",
+                vendor_name="Carrier",
+                invoice_number="INV-1",
+                total_amount="1200.00",
+                amortised_amount="100.00",
+                remaining_amount="1100.00",
+                coverage_start=__import__("datetime").date(2026, 1, 1),
+                coverage_end=__import__("datetime").date(2026, 12, 31),
+                amortisation_method="straight_line",
+                status="ACTIVE",
+            ),
+            "prepaid_schedule",
+            "prepaid",
+        ),
+        (
+            "_resolve_gst_return_subject",
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                entity_id=uuid.uuid4(),
+                period_year=2026,
+                period_month=4,
+                gstin="29ABCDE1234F1Z5",
+                return_type="GSTR3B",
+                taxable_value="5000.00",
+                igst_amount="0.00",
+                cgst_amount="450.00",
+                sgst_amount="450.00",
+                cess_amount="0.00",
+                total_tax="900.00",
+                status="FILED",
+                filing_date=__import__("datetime").date(2026, 5, 20),
+                notes="Submitted",
+            ),
+            "gst_return",
+            "gst",
+        ),
+        (
+            "_resolve_erp_sync_run_subject",
+            SimpleNamespace(
+                id=uuid.uuid4(),
+                tenant_id=uuid.uuid4(),
+                organisation_id=uuid.uuid4(),
+                entity_id=uuid.uuid4(),
+                connection_id=uuid.uuid4(),
+                sync_definition_id=uuid.uuid4(),
+                sync_definition_version_id=uuid.uuid4(),
+                dataset_type="gl_entries",
+                reporting_period_label="2026-04",
+                run_token="sync-1",
+                run_status="PUBLISHED",
+                source_airlock_item_id=None,
+                source_type="erp",
+                source_external_ref="ext-1",
+                raw_snapshot_payload_hash="h" * 64,
+                mapping_version_token="map-v1",
+                normalization_version="norm-v1",
+                validation_summary_json={"ok": True},
+                extraction_total_records=20,
+                extraction_fetched_records=20,
+                published_at=datetime(2026, 4, 10, tzinfo=UTC),
+            ),
+            "erp_sync_run",
+            "erp_sync",
+        ),
+    ],
+)
+async def test_new_financial_subject_resolvers_return_hashable_payload(
+    resolver_name: str,
+    row: SimpleNamespace,
+    expected_subject_type: str,
+    expected_module_key: str,
+) -> None:
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=_scalar_result(row))
+    service = Phase4ControlPlaneService(session)
+
+    payload = await getattr(service, resolver_name)(
+        tenant_id=row.tenant_id,
+        subject_id=str(row.id),
+    )
+
+    assert payload is not None
+    assert payload["subject_type"] == expected_subject_type
+    assert payload["module_key"] == expected_module_key
+    assert payload["subject_id"] == str(row.id)
+    assert payload["determinism_hash"]
+    assert payload["replay_supported"] is False
+
+
+@pytest.mark.asyncio
+async def test_timeline_for_governance_events_is_append_only_and_ordered(
+    async_session: AsyncSession,
+    test_user,
+) -> None:
+    await async_session.execute(text(append_only_function_sql()))
+    await async_session.execute(text(drop_trigger_sql("canonical_governance_events")))
+    await async_session.execute(text(create_trigger_sql("canonical_governance_events")))
+    await async_session.flush()
+
+    occurred_at = datetime(2026, 4, 10, 10, 0, tzinfo=UTC)
+    first = await AuditWriter.insert_financial_record(
+        async_session,
+        model_class=CanonicalGovernanceEvent,
+        tenant_id=test_user.tenant_id,
+        record_data={
+            "module_key": "accounting_layer",
+            "subject_type": "journal",
+            "subject_id": "journal-1",
+            "event_type": "JOURNAL_SUBMITTED",
+        },
+        values={
+            "entity_id": None,
+            "module_key": "accounting_layer",
+            "subject_type": "journal",
+            "subject_id": "journal-1",
+            "event_type": "JOURNAL_SUBMITTED",
+            "actor_user_id": test_user.id,
+            "actor_role": "finance_leader",
+            "payload_json": {"step": 1},
+            "created_at": occurred_at,
+        },
+    )
+    second = await AuditWriter.insert_financial_record(
+        async_session,
+        model_class=CanonicalGovernanceEvent,
+        tenant_id=test_user.tenant_id,
+        record_data={
+            "module_key": "accounting_layer",
+            "subject_type": "journal",
+            "subject_id": "journal-1",
+            "event_type": "JOURNAL_APPROVED",
+        },
+        values={
+            "entity_id": None,
+            "module_key": "accounting_layer",
+            "subject_type": "journal",
+            "subject_id": "journal-1",
+            "event_type": "JOURNAL_APPROVED",
+            "actor_user_id": test_user.id,
+            "actor_role": "finance_leader",
+            "payload_json": {"step": 2},
+            "created_at": occurred_at + timedelta(minutes=1),
+        },
+    )
+    await async_session.flush()
+
+    timeline = await Phase4ControlPlaneService(async_session).build_timeline(
+        tenant_id=test_user.tenant_id,
+        subject_type="journal",
+        subject_id="journal-1",
+        limit=10,
+    )
+
+    governance_events = [event for event in timeline if event["module_key"] == "accounting_layer"]
+    assert [event["timeline_type"] for event in governance_events] == [
+        "JOURNAL_SUBMITTED",
+        "JOURNAL_APPROVED",
+    ]
+
+    update_attempt = await async_session.begin_nested()
+    with pytest.raises(DBAPIError):
+        await async_session.execute(
+            text("UPDATE canonical_governance_events SET event_type='MUTATED' WHERE id = CAST(:id AS uuid)"),
+            {"id": str(first.id)},
+        )
+    await update_attempt.rollback()
+
+    delete_attempt = await async_session.begin_nested()
+    with pytest.raises(DBAPIError):
+        await async_session.execute(
+            text("DELETE FROM canonical_governance_events WHERE id = CAST(:id AS uuid)"),
+            {"id": str(second.id)},
+        )
+    await delete_attempt.rollback()

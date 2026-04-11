@@ -18,7 +18,6 @@ import { EntityLocationSelector } from "@/components/layout/EntityLocationSelect
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { Button } from "@/components/ui/button"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
-import { resolveControlPlaneModule } from "@/lib/control-plane"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
@@ -146,14 +145,11 @@ export function Topbar({
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
-  const activeWorkspace = resolveControlPlaneModule(pathname).key
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId, activeWorkspace],
+    queryKey: ["control-plane-context", activeEntityId],
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,
-        workspace: activeWorkspace,
-        module: activeWorkspace,
       }),
     staleTime: 60_000,
   })

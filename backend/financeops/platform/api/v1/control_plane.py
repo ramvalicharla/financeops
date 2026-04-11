@@ -41,6 +41,63 @@ _WORKSPACE_LABELS: dict[str, str] = {
     "settings": "Settings",
 }
 
+_WORKSPACE_DEFINITIONS: tuple[dict[str, Any], ...] = (
+    {
+        "workspace_key": "dashboard",
+        "workspace_name": "Dashboard",
+        "href": "/dashboard",
+        "match_prefixes": ["/dashboard", "/ai"],
+        "module_codes": [],
+    },
+    {
+        "workspace_key": "erp",
+        "workspace_name": "ERP",
+        "href": "/erp/sync",
+        "match_prefixes": ["/erp", "/sync", "/erp-sync"],
+        "module_codes": ["erp_sync"],
+    },
+    {
+        "workspace_key": "accounting",
+        "workspace_name": "Accounting",
+        "href": "/accounting/journals",
+        "match_prefixes": ["/accounting", "/fx", "/fixed-assets", "/prepaid", "/gst"],
+        "module_codes": ["accounting_layer", "fixed_assets", "prepaid", "gst"],
+    },
+    {
+        "workspace_key": "reconciliation",
+        "workspace_name": "Reconciliation",
+        "href": "/reconciliation/gl-tb",
+        "match_prefixes": ["/reconciliation", "/bank-recon", "/normalization", "/payroll-gl-reconciliation"],
+        "module_codes": ["reconciliation_bridge", "payroll_gl_normalization", "bank_reconciliation"],
+    },
+    {
+        "workspace_key": "close",
+        "workspace_name": "Close",
+        "href": "/close/checklist",
+        "match_prefixes": ["/close", "/monthend"],
+        "module_codes": ["monthend", "multi_entity_consolidation", "closing_checklist"],
+    },
+    {
+        "workspace_key": "reports",
+        "workspace_name": "Reports",
+        "href": "/reports",
+        "match_prefixes": ["/reports", "/board-pack", "/mis"],
+        "module_codes": [
+            "custom_report_builder",
+            "board_pack_generator",
+            "board_pack_narrative_engine",
+            "mis_manager",
+        ],
+    },
+    {
+        "workspace_key": "settings",
+        "workspace_name": "Settings",
+        "href": "/settings",
+        "match_prefixes": ["/settings", "/billing", "/modules", "/admin"],
+        "module_codes": [],
+    },
+)
+
 
 def _serialize_intent(intent: CanonicalIntent) -> dict[str, Any]:
     return {
@@ -170,26 +227,46 @@ async def _enabled_modules(session: AsyncSession, *, tenant_id: uuid.UUID) -> li
     return list(enabled.values())
 
 
+def _workspace_tabs(*, enabled_modules: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    enabled_codes = {str(row["module_code"]) for row in enabled_modules}
+    tabs: list[dict[str, Any]] = []
+    for definition in _WORKSPACE_DEFINITIONS:
+        required_codes = list(definition["module_codes"])
+        if required_codes and not any(code in enabled_codes for code in required_codes):
+            continue
+        tabs.append(
+            {
+                "workspace_key": definition["workspace_key"],
+                "workspace_name": definition["workspace_name"],
+                "href": definition["href"],
+                "match_prefixes": list(definition["match_prefixes"]),
+                "module_codes": required_codes,
+            }
+        )
+    return tabs
+
+
 async def _current_period(session: AsyncSession, *, tenant_id: uuid.UUID) -> dict[str, Any]:
-    now = datetime.now(UTC)
     period = (
         await session.execute(
             select(AccountingPeriod)
             .where(
                 AccountingPeriod.tenant_id == tenant_id,
-                AccountingPeriod.fiscal_year == now.year,
-                AccountingPeriod.period_number == now.month,
                 AccountingPeriod.org_entity_id.is_(None),
             )
-            .order_by(AccountingPeriod.created_at.desc())
+            .order_by(
+                AccountingPeriod.fiscal_year.desc(),
+                AccountingPeriod.period_number.desc(),
+                AccountingPeriod.created_at.desc(),
+            )
         )
     ).scalar_one_or_none()
     if period is None:
         return {
-            "period_label": f"{now.year:04d}-{now.month:02d}",
-            "fiscal_year": now.year,
-            "period_number": now.month,
-            "source": "server_clock",
+            "period_label": "Unavailable",
+            "fiscal_year": 0,
+            "period_number": 0,
+            "source": "unavailable",
             "period_id": None,
             "status": None,
         }
@@ -281,33 +358,44 @@ async def _current_entity(
 def _current_workspace(
     *,
     enabled_modules: list[dict[str, Any]],
+    workspace_tabs: list[dict[str, Any]],
     requested_workspace: str | None,
     requested_module: str | None,
 ) -> dict[str, Any]:
     candidate = (requested_module or requested_workspace or "").strip()
-    if candidate and candidate in _WORKSPACE_LABELS:
+    tab_by_key = {str(tab["workspace_key"]): tab for tab in workspace_tabs}
+    if candidate and candidate in tab_by_key:
+        tab = tab_by_key[candidate]
         return {
-            "module_key": candidate,
-            "module_name": _WORKSPACE_LABELS[candidate],
+            "module_key": str(tab["workspace_key"]),
+            "module_name": str(tab["workspace_name"]),
             "module_code": None,
             "source": "requested_workspace",
         }
     if candidate:
         for enabled in enabled_modules:
             if candidate in {str(enabled["module_code"]), str(enabled["module_name"])}:
+                for tab in workspace_tabs:
+                    if str(enabled["module_code"]) in list(tab.get("module_codes") or []):
+                        return {
+                            "module_key": str(tab["workspace_key"]),
+                            "module_name": str(tab["workspace_name"]),
+                            "module_code": str(enabled["module_code"]),
+                            "source": "requested_module",
+                        }
                 return {
                     "module_key": str(enabled["module_code"]),
                     "module_name": str(enabled["module_name"]),
                     "module_code": str(enabled["module_code"]),
                     "source": "requested_module",
                 }
-    if enabled_modules:
-        first = enabled_modules[0]
+    if workspace_tabs:
+        first = workspace_tabs[0]
         return {
-            "module_key": str(first["module_code"]),
-            "module_name": str(first["module_name"]),
-            "module_code": str(first["module_code"]),
-            "source": "enabled_module_default",
+            "module_key": str(first["workspace_key"]),
+            "module_name": str(first["workspace_name"]),
+            "module_code": None,
+            "source": "enabled_workspace_default",
         }
     return {
         "module_key": None,
@@ -341,6 +429,7 @@ async def get_control_plane_context_endpoint(
     module: str | None = Query(default=None),
 ) -> dict[str, Any]:
     enabled_modules = await _enabled_modules(session, tenant_id=user.tenant_id)
+    workspace_tabs = _workspace_tabs(enabled_modules=enabled_modules)
     current_entity, available_entities = await _current_entity(
         session,
         tenant_id=user.tenant_id,
@@ -352,11 +441,13 @@ async def get_control_plane_context_endpoint(
         "tenant_id": str(user.tenant_id),
         "tenant_slug": getattr(user, "tenant_slug", None),
         "enabled_modules": enabled_modules,
+        "workspace_tabs": workspace_tabs,
         "current_organisation": await _current_organisation(session, tenant_id=user.tenant_id),
         "current_entity": current_entity,
         "available_entities": available_entities,
         "current_module": _current_workspace(
             enabled_modules=enabled_modules,
+            workspace_tabs=workspace_tabs,
             requested_workspace=workspace,
             requested_module=module,
         ),

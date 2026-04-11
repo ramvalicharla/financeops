@@ -4,6 +4,7 @@ import logging
 from uuid import UUID
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError, PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import TenantContextError
@@ -22,9 +23,14 @@ async def set_tenant_context(session: AsyncSession, tenant_id: UUID | str) -> No
 
 async def clear_tenant_context(session: AsyncSession) -> None:
     """Clear the RLS context variable."""
-    await session.execute(
-        text("SELECT set_config('app.current_tenant_id', '', true)")
-    )
+    try:
+        await session.execute(text("SELECT set_config('app.current_tenant_id', '', true)"))
+    except (PendingRollbackError, DBAPIError):
+        # The tenant setting is local to the active transaction. If the
+        # transaction is already aborted, rolling back safely clears the
+        # transaction-scoped setting without masking the original failure.
+        if session.in_transaction():
+            await session.rollback()
 
 
 async def get_current_tenant_from_db(session: AsyncSession) -> str:

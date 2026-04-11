@@ -74,6 +74,15 @@ vi.mock("@/lib/api/control-plane", () => ({
       module_code: null,
       source: "requested_workspace",
     },
+    workspace_tabs: [
+      {
+        workspace_key: "accounting",
+        workspace_name: "Accounting",
+        href: "/accounting/journals",
+        match_prefixes: ["/accounting", "/fx"],
+        module_codes: ["accounting_layer"],
+      },
+    ],
     enabled_modules: [
       {
         module_id: "mod-1",
@@ -154,7 +163,7 @@ describe("control plane shell", () => {
       expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
       expect(screen.getAllByText(/Acme India/i).length).toBeGreaterThan(0)
       expect(screen.getAllByText(/^Accounting$/i).length).toBeGreaterThan(0)
-      expect(screen.getByText(/Apr 2026/i)).toBeInTheDocument()
+      expect(screen.getByText("2026-04")).toBeInTheDocument()
     })
   })
 
@@ -175,7 +184,7 @@ describe("control plane shell", () => {
     await waitFor(() => {
       expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/Acme India/i)).toBeInTheDocument()
-      expect(screen.getByText(/Apr 2026/i)).toBeInTheDocument()
+      expect(screen.getByText("2026-04")).toBeInTheDocument()
     })
     expect(screen.queryByText("stale-org")).not.toBeInTheDocument()
     expect(screen.queryByText("Stale Module")).not.toBeInTheDocument()

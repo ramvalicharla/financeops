@@ -44,7 +44,7 @@ export const updateReportDefinition = async (
 }
 
 export const deleteReportDefinition = async (id: string): Promise<void> => {
-  await apiClient.delete(`/api/v1/reports/definitions/${id}`)
+  await apiClient.post(`/api/v1/reports/definitions/${id}/deactivate`)
 }
 
 export const runReport = async (definitionId: string): Promise<ReportRunResponse> => {

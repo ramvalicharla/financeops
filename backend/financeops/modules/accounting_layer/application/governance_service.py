@@ -117,6 +117,22 @@ async def _append_audit_event(
             "payload_json": payload,
         },
     )
+    await emit_governance_event(
+        db,
+        tenant_id=tenant_id,
+        module_key=module,
+        subject_type="governed_mutation",
+        subject_id=target_id,
+        event_type=str(action or "").strip().upper(),
+        actor=GovernanceActor(user_id=actor_user_id, role=None),
+        entity_id=entity_id,
+        payload={
+            **payload,
+            "legacy_module": module,
+            "legacy_action": action,
+            "legacy_target_id": target_id,
+        },
+    )
 
 
 async def record_governance_event(
@@ -139,22 +155,6 @@ async def record_governance_event(
         action=action,
         target_id=target_id,
         payload=payload,
-    )
-    await emit_governance_event(
-        db,
-        tenant_id=tenant_id,
-        module_key=module,
-        subject_type="governed_mutation",
-        subject_id=target_id,
-        event_type=str(action or "").strip().upper(),
-        actor=GovernanceActor(user_id=actor_user_id, role=None),
-        entity_id=entity_id,
-        payload={
-            **payload,
-            "legacy_module": module,
-            "legacy_action": action,
-            "legacy_target_id": target_id,
-        },
     )
 
 

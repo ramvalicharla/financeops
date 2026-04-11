@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
-import { resolveControlPlaneModule } from "@/lib/control-plane"
 import {
   ADMIN_NAV_ITEMS,
   ADVISORY_NAV_ITEMS,
@@ -57,18 +56,15 @@ export function Sidebar({
   const setTenant = useTenantStore((state) => state.setTenant)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
-  const activeWorkspace = resolveControlPlaneModule(pathname).key
   const entitiesQuery = useQuery({
     queryKey: ["control-plane-entities"],
     queryFn: listControlPlaneEntities,
   })
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId, activeWorkspace],
+    queryKey: ["control-plane-context", activeEntityId],
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,
-        workspace: activeWorkspace,
-        module: activeWorkspace,
       }),
     staleTime: 60_000,
   })

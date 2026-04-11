@@ -52,7 +52,7 @@ export const updateDefinition = async (
 }
 
 export const deleteDefinition = async (id: string): Promise<void> => {
-  await apiClient.delete(`/api/v1/board-packs/definitions/${id}`)
+  await apiClient.post(`/api/v1/board-packs/definitions/${id}/deactivate`)
 }
 
 export const generatePack = async (body: GenerateRequest): Promise<RunResponse> => {

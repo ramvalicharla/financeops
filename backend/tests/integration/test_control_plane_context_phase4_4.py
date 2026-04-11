@@ -64,6 +64,7 @@ async def test_control_plane_context_endpoint_returns_backend_modules_and_period
     assert response.status_code == 200
     payload = response.json()["data"]
     assert any(row["module_code"] == "erp_sync" for row in payload["enabled_modules"])
+    assert any(tab["workspace_key"] == "erp" for tab in payload["workspace_tabs"])
     assert payload["current_period"]["source"] == "accounting_period"
     assert payload["current_period"]["period_label"] == f"{now.year:04d}-{now.month:02d}"
 
@@ -75,7 +76,25 @@ async def test_control_plane_context_endpoint_returns_current_entity_and_workspa
     async_session: AsyncSession,
     test_user,
     test_access_token: str,
-) -> None:
+    ) -> None:
+    module = CpModuleRegistry(
+        module_code="custom_report_builder",
+        module_name="Custom Reports",
+        engine_context="finance",
+        is_financial_impacting=True,
+        is_active=True,
+    )
+    async_session.add(module)
+    await async_session.flush()
+    await set_module_enablement(
+        async_session,
+        tenant_id=test_user.tenant_id,
+        module_id=module.id,
+        enabled=True,
+        enablement_source="test",
+        actor_user_id=test_user.id,
+        correlation_id="ctx-reports-workspace",
+    )
     service = OrgSetupService(async_session)
     group = await service.submit_step1(
         test_user.tenant_id,
@@ -118,6 +137,23 @@ async def test_control_plane_context_endpoint_returns_current_entity_and_workspa
     assert payload["current_organisation"]["organisation_name"] == "Acme Group"
     assert payload["current_entity"]["entity_name"] == "Acme India Pvt Ltd"
     assert payload["current_module"]["module_key"] == "reports"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_control_plane_context_endpoint_marks_period_unavailable_without_accounting_period(
+    async_client: AsyncClient,
+    test_access_token: str,
+) -> None:
+    response = await async_client.get(
+        "/api/v1/platform/control-plane/context",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["current_period"]["source"] == "unavailable"
+    assert payload["current_period"]["period_label"] == "Unavailable"
 
 
 @pytest.mark.asyncio

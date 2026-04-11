@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.governance.events import GovernanceActor, emit_governance_event
 from financeops.db.models.audit import AuditTrail
 from financeops.db.models.accounting_governance import AccountingPeriod
+from financeops.db.models.accounting_jv import AccountingJVAggregate
 from financeops.db.models.board_pack_generator import (
     BoardPackGeneratorArtifact,
     BoardPackGeneratorDefinition,
@@ -34,14 +35,18 @@ from financeops.db.models.control_plane_phase4 import (
 )
 from financeops.db.models.custom_report_builder import ReportDefinition, ReportResult, ReportRun
 from financeops.db.models.consolidation import ConsolidationRun as LegacyConsolidationRun
+from financeops.db.models.erp_sync import ExternalSyncRun
+from financeops.db.models.gst import GstReturn
 from financeops.db.models.governance_control import AirlockEvent, AirlockItem, CanonicalGovernanceEvent
 from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalIntentEvent, CanonicalJob
 from financeops.db.models.multi_entity_consolidation import MultiEntityConsolidationRun
 from financeops.db.models.users import IamUser
 from financeops.modules.board_pack_generator.domain.pack_definition import AssembledPack
+from financeops.modules.fixed_assets.models import FaAsset
 from financeops.modules.observability_engine.application.graph_service import GraphService
 from financeops.modules.observability_engine.application.replay_service import ReplayService
 from financeops.modules.observability_engine.infrastructure.repository import ObservabilityRepository
+from financeops.modules.prepaid_expenses.models import PrepaidSchedule
 from financeops.services.audit_writer import AuditWriter
 from financeops.utils.determinism import canonical_json_dumps, sha256_hex_text
 
@@ -632,6 +637,11 @@ class Phase4ControlPlaneService:
             "job": self._resolve_job_subject,
             "airlock_item": self._resolve_airlock_subject,
             "accounting_period": self._resolve_accounting_period_subject,
+            "journal": self._resolve_journal_subject,
+            "fixed_asset": self._resolve_fixed_asset_subject,
+            "prepaid_schedule": self._resolve_prepaid_schedule_subject,
+            "gst_return": self._resolve_gst_return_subject,
+            "erp_sync_run": self._resolve_erp_sync_run_subject,
             "report_definition": self._resolve_report_definition_subject,
             "report_run": self._resolve_report_run_subject,
             "board_pack_definition": self._resolve_board_pack_definition_subject,
@@ -840,6 +850,312 @@ class Phase4ControlPlaneService:
                 }
             ],
             "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_journal_subject(self, *, tenant_id: uuid.UUID, subject_id: str) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(AccountingJVAggregate).where(
+                    AccountingJVAggregate.tenant_id == tenant_id,
+                    AccountingJVAggregate.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "journal_id": str(row.id),
+            "entity_id": str(row.entity_id),
+            "jv_number": row.jv_number,
+            "status": row.status,
+            "version": row.version,
+            "period_date": row.period_date.isoformat(),
+            "fiscal_year": row.fiscal_year,
+            "fiscal_period": row.fiscal_period,
+            "description": row.description,
+            "reference": row.reference,
+            "source": row.source,
+            "external_reference_id": row.external_reference_id,
+            "total_debit": str(row.total_debit),
+            "total_credit": str(row.total_credit),
+            "currency": row.currency,
+            "created_by_intent_id": str(row.created_by_intent_id) if row.created_by_intent_id else None,
+            "recorded_by_job_id": str(row.recorded_by_job_id) if row.recorded_by_job_id else None,
+            "submitted_at": row.submitted_at.isoformat() if row.submitted_at else None,
+            "first_reviewed_at": row.first_reviewed_at.isoformat() if row.first_reviewed_at else None,
+            "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+            "voided_at": row.voided_at.isoformat() if row.voided_at else None,
+        }
+        return {
+            "module_key": "accounting_layer",
+            "snapshot_kind": "journal_state",
+            "subject_type": "journal",
+            "subject_id": subject_id,
+            "entity_id": row.entity_id,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "status": row.status,
+                "version": row.version,
+                "jv_number": row.jv_number,
+                "total_debit": str(row.total_debit),
+                "total_credit": str(row.total_credit),
+            },
+            "inputs": [
+                {
+                    "input_type": "journal_scope",
+                    "input_ref": f"{row.entity_id}:{row.fiscal_year}:{row.fiscal_period}",
+                    "input_hash": None,
+                    "input_payload": {"currency": row.currency, "source": row.source},
+                }
+            ],
+            "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_fixed_asset_subject(self, *, tenant_id: uuid.UUID, subject_id: str) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(FaAsset).where(
+                    FaAsset.tenant_id == tenant_id,
+                    FaAsset.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "asset_id": str(row.id),
+            "entity_id": str(row.entity_id),
+            "asset_class_id": str(row.asset_class_id),
+            "asset_code": row.asset_code,
+            "asset_name": row.asset_name,
+            "description": row.description,
+            "status": row.status,
+            "purchase_date": row.purchase_date.isoformat(),
+            "capitalisation_date": row.capitalisation_date.isoformat(),
+            "original_cost": str(row.original_cost),
+            "residual_value": str(row.residual_value),
+            "useful_life_years": str(row.useful_life_years),
+            "depreciation_method": row.depreciation_method,
+            "disposal_date": row.disposal_date.isoformat() if row.disposal_date else None,
+            "disposal_proceeds": str(row.disposal_proceeds) if row.disposal_proceeds is not None else None,
+            "is_active": bool(row.is_active),
+        }
+        return {
+            "module_key": "fixed_assets",
+            "snapshot_kind": "fixed_asset_state",
+            "subject_type": "fixed_asset",
+            "subject_id": subject_id,
+            "entity_id": row.entity_id,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "asset_code": row.asset_code,
+                "status": row.status,
+                "is_active": bool(row.is_active),
+                "original_cost": str(row.original_cost),
+            },
+            "inputs": [
+                {
+                    "input_type": "asset_class",
+                    "input_ref": str(row.asset_class_id),
+                    "input_hash": None,
+                    "input_payload": {"entity_id": str(row.entity_id)},
+                }
+            ],
+            "metadata": {"status": row.status, "is_active": bool(row.is_active)},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_prepaid_schedule_subject(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        subject_id: str,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(PrepaidSchedule).where(
+                    PrepaidSchedule.tenant_id == tenant_id,
+                    PrepaidSchedule.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "schedule_id": str(row.id),
+            "entity_id": str(row.entity_id),
+            "reference_number": row.reference_number,
+            "description": row.description,
+            "prepaid_type": row.prepaid_type,
+            "vendor_name": row.vendor_name,
+            "invoice_number": row.invoice_number,
+            "total_amount": str(row.total_amount),
+            "amortised_amount": str(row.amortised_amount),
+            "remaining_amount": str(row.remaining_amount),
+            "coverage_start": row.coverage_start.isoformat(),
+            "coverage_end": row.coverage_end.isoformat(),
+            "amortisation_method": row.amortisation_method,
+            "status": row.status,
+        }
+        return {
+            "module_key": "prepaid",
+            "snapshot_kind": "prepaid_schedule_state",
+            "subject_type": "prepaid_schedule",
+            "subject_id": subject_id,
+            "entity_id": row.entity_id,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "reference_number": row.reference_number,
+                "status": row.status,
+                "remaining_amount": str(row.remaining_amount),
+            },
+            "inputs": [
+                {
+                    "input_type": "prepaid_scope",
+                    "input_ref": str(row.reference_number),
+                    "input_hash": None,
+                    "input_payload": {"entity_id": str(row.entity_id), "prepaid_type": row.prepaid_type},
+                }
+            ],
+            "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_gst_return_subject(self, *, tenant_id: uuid.UUID, subject_id: str) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(GstReturn).where(
+                    GstReturn.tenant_id == tenant_id,
+                    GstReturn.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "return_id": str(row.id),
+            "entity_id": str(row.entity_id),
+            "period_year": row.period_year,
+            "period_month": row.period_month,
+            "gstin": row.gstin,
+            "return_type": row.return_type,
+            "taxable_value": str(row.taxable_value),
+            "igst_amount": str(row.igst_amount),
+            "cgst_amount": str(row.cgst_amount),
+            "sgst_amount": str(row.sgst_amount),
+            "cess_amount": str(row.cess_amount),
+            "total_tax": str(row.total_tax),
+            "status": row.status,
+            "filing_date": row.filing_date.isoformat() if row.filing_date else None,
+            "notes": row.notes,
+        }
+        return {
+            "module_key": "gst",
+            "snapshot_kind": "gst_return_state",
+            "subject_type": "gst_return",
+            "subject_id": subject_id,
+            "entity_id": row.entity_id,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "return_type": row.return_type,
+                "status": row.status,
+                "total_tax": str(row.total_tax),
+                "period_label": f"{row.period_year:04d}-{row.period_month:02d}",
+            },
+            "inputs": [
+                {
+                    "input_type": "gst_period",
+                    "input_ref": f"{row.entity_id}:{row.period_year}:{row.period_month}:{row.return_type}",
+                    "input_hash": None,
+                    "input_payload": {"gstin": row.gstin},
+                }
+            ],
+            "metadata": {"status": row.status},
+            "replay_result": {"supported": False, "matches": None},
+        }
+
+    async def _resolve_erp_sync_run_subject(self, *, tenant_id: uuid.UUID, subject_id: str) -> dict[str, Any] | None:
+        row = (
+            await self._session.execute(
+                select(ExternalSyncRun).where(
+                    ExternalSyncRun.tenant_id == tenant_id,
+                    ExternalSyncRun.id == uuid.UUID(subject_id),
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        payload = {
+            "sync_run_id": str(row.id),
+            "organisation_id": str(row.organisation_id),
+            "entity_id": str(row.entity_id) if row.entity_id else None,
+            "connection_id": str(row.connection_id),
+            "sync_definition_id": str(row.sync_definition_id),
+            "sync_definition_version_id": str(row.sync_definition_version_id),
+            "dataset_type": row.dataset_type,
+            "reporting_period_label": row.reporting_period_label,
+            "run_token": row.run_token,
+            "run_status": row.run_status,
+            "source_airlock_item_id": str(row.source_airlock_item_id) if row.source_airlock_item_id else None,
+            "source_type": row.source_type,
+            "source_external_ref": row.source_external_ref,
+            "raw_snapshot_payload_hash": row.raw_snapshot_payload_hash,
+            "mapping_version_token": row.mapping_version_token,
+            "normalization_version": row.normalization_version,
+            "validation_summary_json": row.validation_summary_json,
+            "extraction_total_records": row.extraction_total_records,
+            "extraction_fetched_records": row.extraction_fetched_records,
+            "published_at": row.published_at.isoformat() if row.published_at else None,
+        }
+        return {
+            "module_key": "erp_sync",
+            "snapshot_kind": "erp_sync_run_state",
+            "subject_type": "erp_sync_run",
+            "subject_id": subject_id,
+            "entity_id": row.entity_id,
+            "determinism_hash": sha256_hex_text(canonical_json_dumps(payload)),
+            "replay_supported": False,
+            "payload": payload,
+            "comparison_payload": {
+                "dataset_type": row.dataset_type,
+                "run_status": row.run_status,
+                "reporting_period_label": row.reporting_period_label,
+                "extraction_fetched_records": row.extraction_fetched_records,
+            },
+            "inputs": [
+                {
+                    "input_type": "erp_sync_definition",
+                    "input_ref": str(row.sync_definition_id),
+                    "input_hash": row.raw_snapshot_payload_hash,
+                    "input_payload": {
+                        "dataset_type": row.dataset_type,
+                        "connection_id": str(row.connection_id),
+                    },
+                },
+                *(
+                    [
+                        {
+                            "input_type": "airlock_item",
+                            "input_ref": str(row.source_airlock_item_id),
+                            "input_hash": None,
+                            "input_payload": {"source_type": row.source_type},
+                        }
+                    ]
+                    if row.source_airlock_item_id is not None
+                    else []
+                ),
+            ],
+            "metadata": {"run_status": row.run_status},
             "replay_result": {"supported": False, "matches": None},
         }
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -64,6 +66,11 @@ def test_dependency_matrix_script_exists() -> None:
     assert (ROOT / "scripts" / "generate_dependency_matrix.py").exists()
 
 
+@pytest.fixture(autouse=True)
+def _disable_dependency_matrix_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEPENDENCY_MATRIX_SKIP_NETWORK", "true")
+
+
 def test_dependency_matrix_generates_output() -> None:
     module = _load_module(ROOT / "scripts" / "generate_dependency_matrix.py", "generate_dependency_matrix")
     output = module.generate_matrix()
@@ -87,4 +94,3 @@ def test_dependency_matrix_mentions_system_dependencies() -> None:
     module = _load_module(ROOT / "scripts" / "generate_dependency_matrix.py", "generate_dependency_matrix_system")
     output = module.generate_matrix()
     assert "System Dependencies" in output
-
