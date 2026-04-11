@@ -25,6 +25,7 @@ from financeops.core.security import (
 from financeops.db.models.users import IamSession, IamUser
 from financeops.db.models.auth_tokens import MfaRecoveryCode
 from financeops.db.models.payment import BillingPlan, TenantSubscription
+from financeops.observability.beta_monitoring import record_auth_event
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
 log = logging.getLogger(__name__)
@@ -54,12 +55,36 @@ async def login(
     """
     if user.mfa_enabled:
         if not totp_code:
+            record_auth_event(
+                event="auth_login_failed",
+                outcome="failure",
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                failure_type="missing_totp_code",
+            )
             raise AuthorizationError("TOTP code required for MFA-enabled accounts")
         encrypted_secret = user.totp_secret_encrypted
         if not encrypted_secret:
+            record_auth_event(
+                event="auth_login_failed",
+                outcome="failure",
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                failure_type="mfa_secret_missing",
+            )
             raise AuthenticationError("MFA is enabled but no secret configured")
         secret = decrypt_field(encrypted_secret)
         if not verify_totp(secret, totp_code):
+            record_auth_event(
+                event="auth_login_failed",
+                outcome="failure",
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                failure_type="invalid_totp_code",
+            )
             raise AuthenticationError("Invalid TOTP code")
 
     return await _issue_session_tokens(
@@ -122,6 +147,13 @@ async def _issue_session_tokens(
     )
     log.info(
         "Login success: user=%s tenant=%s", str(user.id)[:8], str(user.tenant_id)[:8]
+    )
+    record_auth_event(
+        event="auth_login_succeeded",
+        outcome="success",
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        email=user.email,
     )
     return {
         "access_token": access_token,
@@ -189,6 +221,11 @@ async def verify_mfa_challenge(
     raw_payload = await redis_client.get(key)
     if not raw_payload:
         log.info("MFA verify rejected: expired_challenge")
+        record_auth_event(
+            event="auth_mfa_verify_failed",
+            outcome="failure",
+            failure_type="expired_challenge",
+        )
         raise AuthenticationError("MFA challenge expired")
 
     try:
@@ -197,6 +234,11 @@ async def verify_mfa_challenge(
         tenant_id = challenge_payload["tenant_id"]
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         log.warning("MFA verify rejected: invalid_challenge_payload")
+        record_auth_event(
+            event="auth_mfa_verify_failed",
+            outcome="failure",
+            failure_type="invalid_challenge_payload",
+        )
         raise AuthenticationError("Invalid MFA challenge payload") from exc
 
     user_result = await session.execute(
@@ -209,9 +251,22 @@ async def verify_mfa_challenge(
     user = user_result.scalar_one_or_none()
     if user is None:
         log.info("MFA verify rejected: user_not_found_for_challenge")
+        record_auth_event(
+            event="auth_mfa_verify_failed",
+            outcome="failure",
+            failure_type="user_not_found_for_challenge",
+        )
         raise AuthenticationError("User not found")
     if not user.mfa_enabled or not user.totp_secret_encrypted:
         log.info("MFA verify rejected: mfa_not_configured")
+        record_auth_event(
+            event="auth_mfa_verify_failed",
+            outcome="failure",
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            email=user.email,
+            failure_type="mfa_not_configured",
+        )
         raise AuthenticationError("MFA is not configured for this account")
 
     secret = decrypt_field(user.totp_secret_encrypted)
@@ -233,14 +288,38 @@ async def verify_mfa_challenge(
         ).scalar_one_or_none()
         if recovery_row is None:
             log.info("MFA verify rejected: invalid_recovery_code user=%s", str(user.id))
+            record_auth_event(
+                event="auth_mfa_verify_failed",
+                outcome="failure",
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                failure_type="invalid_recovery_code",
+            )
             raise AuthenticationError("Invalid recovery code")
         recovery_row.used_at = datetime.now(UTC)
     else:
         if not totp_code:
             log.info("MFA verify rejected: missing_totp_code user=%s", str(user.id))
+            record_auth_event(
+                event="auth_mfa_verify_failed",
+                outcome="failure",
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                failure_type="missing_totp_code",
+            )
             raise AuthenticationError("TOTP code required")
         if not verify_totp(secret, totp_code):
             log.info("MFA verify rejected: invalid_totp_code user=%s", str(user.id))
+            record_auth_event(
+                event="auth_mfa_verify_failed",
+                outcome="failure",
+                user_id=user.id,
+                tenant_id=user.tenant_id,
+                email=user.email,
+                failure_type="invalid_totp_code",
+            )
             raise AuthenticationError("Invalid TOTP code")
 
     await redis_client.delete(key)
@@ -249,6 +328,13 @@ async def verify_mfa_challenge(
         user=user,
         ip_address=ip_address,
         device_info=device_info,
+    )
+    record_auth_event(
+        event="auth_mfa_verify_succeeded",
+        outcome="success",
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        email=user.email,
     )
     return user, tokens
 
@@ -270,8 +356,20 @@ async def refresh_tokens(
     )
     db_session = result.scalar_one_or_none()
     if db_session is None:
+        record_auth_event(
+            event="auth_token_refresh_failed",
+            outcome="failure",
+            failure_type="invalid_or_revoked_refresh_token",
+        )
         raise AuthenticationError("Invalid or revoked refresh token")
     if db_session.expires_at < datetime.now(UTC):
+        record_auth_event(
+            event="auth_token_refresh_failed",
+            outcome="failure",
+            user_id=db_session.user_id,
+            tenant_id=db_session.tenant_id,
+            failure_type="refresh_token_expired",
+        )
         raise AuthenticationError("Refresh token has expired")
 
     # Revoke old session
@@ -296,6 +394,13 @@ async def refresh_tokens(
     )
     user = user_result.scalar_one_or_none()
     if user is None or not user.is_active:
+        record_auth_event(
+            event="auth_token_refresh_failed",
+            outcome="failure",
+            user_id=db_session.user_id,
+            tenant_id=db_session.tenant_id,
+            failure_type="refresh_user_missing_or_inactive",
+        )
         raise AuthenticationError("User not found or deactivated")
 
     token_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
@@ -327,6 +432,13 @@ async def refresh_tokens(
             resource_name=user.email,
             new_value={"previous_session_id": str(db_session.id)},
         ),
+    )
+    record_auth_event(
+        event="auth_token_refreshed",
+        outcome="success",
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        email=user.email,
     )
     return {
         "access_token": new_access,

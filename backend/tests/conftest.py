@@ -368,6 +368,10 @@ from financeops.db.models.erp_sync import (  # noqa: F401
     ExternalSyncRun,
     ExternalSyncSLAConfig,
 )
+from financeops.db.models.erp_integration import (  # noqa: F401
+    ErpConnector,
+    ErpSyncJob,
+)
 from financeops.db.models.payment import (  # noqa: F401
     BillingInvoice,
     BillingPlan,
@@ -884,6 +888,55 @@ async def engine(test_database_url: str):
     await test_engine.dispose()
 
 
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def _bind_worker_database_to_runtime_session_factories(engine) -> AsyncGenerator[None, None]:
+    """
+    Rebind modules that manage their own sessions so xdist workers do not fall
+    back to the process-startup ``finos_test_master`` database.
+    """
+    from financeops.api.v1 import health as health_module
+    from financeops.db import session as db_session_module
+    from financeops.modules.auto_trigger import pipeline as auto_trigger_pipeline
+    from financeops.modules.white_label.api import routes as white_label_routes
+    from financeops.seed import platform_owner as platform_owner_seed
+
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    originals = {
+        "db_engine": db_session_module.engine,
+        "db_session_factory": db_session_module.AsyncSessionLocal,
+        "health_engine": health_module.engine,
+        "health_session_factory": health_module.AsyncSessionLocal,
+        "auto_trigger_session_factory": auto_trigger_pipeline.AsyncSessionLocal,
+        "white_label_session_factory": white_label_routes.AsyncSessionLocal,
+        "platform_owner_session_factory": platform_owner_seed.AsyncSessionLocal,
+    }
+
+    db_session_module.engine = engine
+    db_session_module.AsyncSessionLocal = session_factory
+    health_module.engine = engine
+    health_module.AsyncSessionLocal = session_factory
+    auto_trigger_pipeline.AsyncSessionLocal = session_factory
+    white_label_routes.AsyncSessionLocal = session_factory
+    platform_owner_seed.AsyncSessionLocal = session_factory
+    try:
+        yield
+    finally:
+        db_session_module.engine = originals["db_engine"]
+        db_session_module.AsyncSessionLocal = originals["db_session_factory"]
+        health_module.engine = originals["health_engine"]
+        health_module.AsyncSessionLocal = originals["health_session_factory"]
+        auto_trigger_pipeline.AsyncSessionLocal = originals["auto_trigger_session_factory"]
+        white_label_routes.AsyncSessionLocal = originals["white_label_session_factory"]
+        platform_owner_seed.AsyncSessionLocal = originals["platform_owner_session_factory"]
+
+
 
 
 @pytest_asyncio.fixture
@@ -1127,6 +1180,15 @@ async def async_client(
     # session.rollback() in async_session can undo everything after the test.
     original_commit = async_session.commit
     async_session.commit = async_session.flush  # type: ignore[method-assign]
+    original_startup_errors = getattr(app.state, "startup_errors", [])
+    original_migration_state = getattr(app.state, "migration_state", None)
+    app.state.startup_errors = []
+    app.state.migration_state = {
+        "status": "ok",
+        "current_revision": "test",
+        "head_revision": "test",
+        "detail": None,
+    }
 
     async def override_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
         tenant_id = str(getattr(request.state, "tenant_id", "") or "")
@@ -1161,6 +1223,8 @@ async def async_client(
     ) as client:
         yield client
     app.dependency_overrides.clear()
+    app.state.startup_errors = original_startup_errors
+    app.state.migration_state = original_migration_state
     async_session.commit = original_commit  # restore original method
 
 

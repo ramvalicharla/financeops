@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from io import BytesIO
+import re
 from typing import Any, Iterable
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
@@ -13,6 +14,7 @@ from financeops.utils.determinism import sha256_hex_bytes
 
 _FIXED_ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
 _FIXED_WORKBOOK_TIMESTAMP = datetime(1980, 1, 1)
+_FIXED_CORE_TIMESTAMP = b"1980-01-01T00:00:00Z"
 
 _SHEET_CONSOLIDATED = "Consolidated_PnL"
 _SHEET_ENTITY = "Entity_Breakdown"
@@ -27,7 +29,7 @@ def _normalize_xlsx_zip(raw_bytes: bytes) -> bytes:
     source = BytesIO(raw_bytes)
     target = BytesIO()
     with ZipFile(source, "r") as src_zip:
-        entries = [(name, src_zip.read(name)) for name in src_zip.namelist()]
+        entries = [(name, _normalize_xlsx_payload(name, src_zip.read(name))) for name in src_zip.namelist()]
     # Store entries uncompressed to keep byte output stable across zlib/runtime variations.
     with ZipFile(target, "w", compression=ZIP_STORED) as dst_zip:
         for name, payload in sorted(entries, key=lambda item: item[0]):
@@ -36,6 +38,22 @@ def _normalize_xlsx_zip(raw_bytes: bytes) -> bytes:
             info.external_attr = 0o600 << 16
             dst_zip.writestr(info, payload)
     return target.getvalue()
+
+
+def _normalize_xlsx_payload(name: str, payload: bytes) -> bytes:
+    if name != "docProps/core.xml":
+        return payload
+    normalized = re.sub(
+        rb"(<dcterms:created[^>]*>)(.*?)(</dcterms:created>)",
+        lambda match: match.group(1) + _FIXED_CORE_TIMESTAMP + match.group(3),
+        payload,
+    )
+    normalized = re.sub(
+        rb"(<dcterms:modified[^>]*>)(.*?)(</dcterms:modified>)",
+        lambda match: match.group(1) + _FIXED_CORE_TIMESTAMP + match.group(3),
+        normalized,
+    )
+    return normalized
 
 
 def _sheet_header(sheet, headers: list[str]) -> None:  # type: ignore[no-untyped-def]

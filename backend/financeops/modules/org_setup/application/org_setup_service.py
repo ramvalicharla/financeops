@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
@@ -152,51 +153,58 @@ class OrgSetupService:
         if mapping_count > 0:
             return True
 
-        synced_connector_count = int(
-            (
-                await self._session.execute(
-                    select(func.count())
-                    .select_from(ErpConnector)
-                    .where(
-                        ErpConnector.tenant_id == tenant_id,
-                        ErpConnector.status == ErpConnectorStatus.ACTIVE,
-                        ErpConnector.last_sync_at.is_not(None),
+        try:
+            synced_connector_count = int(
+                (
+                    await self._session.execute(
+                        select(func.count())
+                        .select_from(ErpConnector)
+                        .where(
+                            ErpConnector.tenant_id == tenant_id,
+                            ErpConnector.status == ErpConnectorStatus.ACTIVE,
+                            ErpConnector.last_sync_at.is_not(None),
+                        )
                     )
-                )
-            ).scalar_one()
-        )
-        if synced_connector_count > 0:
-            return True
+                ).scalar_one()
+            )
+            if synced_connector_count > 0:
+                return True
 
-        successful_coa_sync_count = int(
-            (
-                await self._session.execute(
-                    select(func.count())
-                    .select_from(ErpSyncJob)
-                    .where(
-                        ErpSyncJob.tenant_id == tenant_id,
-                        ErpSyncJob.module == ErpSyncModule.COA,
-                        ErpSyncJob.status == ErpSyncStatus.SUCCESS,
+            successful_coa_sync_count = int(
+                (
+                    await self._session.execute(
+                        select(func.count())
+                        .select_from(ErpSyncJob)
+                        .where(
+                            ErpSyncJob.tenant_id == tenant_id,
+                            ErpSyncJob.module == ErpSyncModule.COA,
+                            ErpSyncJob.status == ErpSyncStatus.SUCCESS,
+                        )
                     )
-                )
-            ).scalar_one()
-        )
-        if successful_coa_sync_count > 0:
-            return True
+                ).scalar_one()
+            )
+            if successful_coa_sync_count > 0:
+                return True
 
-        completed_external_sync_count = int(
-            (
-                await self._session.execute(
-                    select(func.count())
-                    .select_from(ExternalSyncRun)
-                    .where(
-                        ExternalSyncRun.tenant_id == tenant_id,
-                        ExternalSyncRun.run_status.in_(("completed", "published")),
-                        ExternalSyncRun.extraction_fetched_records > 0,
+            completed_external_sync_count = int(
+                (
+                    await self._session.execute(
+                        select(func.count())
+                        .select_from(ExternalSyncRun)
+                        .where(
+                            ExternalSyncRun.tenant_id == tenant_id,
+                            ExternalSyncRun.run_status.in_(("completed", "published")),
+                            ExternalSyncRun.extraction_fetched_records > 0,
+                        )
                     )
-                )
-            ).scalar_one()
-        )
+                ).scalar_one()
+            )
+        except ProgrammingError:
+            log.info(
+                "ERP evidence tables unavailable while deriving CoA status for tenant_id=%s; defaulting to pending",
+                tenant_id,
+            )
+            return False
         return completed_external_sync_count > 0
 
     async def get_coa_status(self, tenant_id: uuid.UUID) -> str:

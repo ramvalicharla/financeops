@@ -16,6 +16,7 @@ def log_event(
     event: str,
     *,
     level: int = logging.INFO,
+    exc_info: Any | None = None,
     **fields: Any,
 ) -> None:
     """
@@ -30,5 +31,4 @@ def log_event(
         "org_entity_id": get_org_entity_id(),
     }
     payload.update(fields)
-    logger.log(level, event, extra=payload)
-
+    logger.log(level, event, extra=payload, exc_info=exc_info)

@@ -13,6 +13,7 @@ from financeops.core.exceptions import ValidationError
 from financeops.core.governance.events import GovernanceActor, emit_governance_event
 from financeops.core.governance.guards import ExternalInputGuardContext, GuardEngine
 from financeops.db.models.governance_control import AirlockEvent, AirlockItem
+from financeops.observability.beta_monitoring import record_airlock_status
 from financeops.services.audit_writer import AuditWriter
 from financeops.storage.airlock import scan_and_seal
 
@@ -112,6 +113,13 @@ class AirlockAdmissionService:
                 "file_name": file_name,
             },
         )
+        record_airlock_status(
+            file_id=item.id,
+            entity_id=item.entity_id,
+            status="uploaded",
+            validation_results=[],
+            source_type=source_type,
+        )
 
         evaluation = await self._guards.evaluate_external_input(
             db,
@@ -154,6 +162,14 @@ class AirlockAdmissionService:
                 to_status=item.status,
                 payload={"reason": item.rejection_reason},
             )
+            record_airlock_status(
+                file_id=item.id,
+                entity_id=item.entity_id,
+                status="rejected",
+                validation_results=item.findings_json,
+                reason=item.rejection_reason,
+                source_type=source_type,
+            )
             raise ValidationError(item.rejection_reason or "External input rejected by airlock.")
 
         if content is not None:
@@ -181,6 +197,13 @@ class AirlockAdmissionService:
                     "quarantine_ref": getattr(scan_result, "quarantine_ref", None),
                     "scan_result": getattr(scan_result, "scan_result", None),
                 },
+            )
+            record_airlock_status(
+                file_id=item.id,
+                entity_id=item.entity_id,
+                status="scanned",
+                validation_results=item.findings_json,
+                source_type=source_type,
             )
 
         item.status = "QUARANTINED"
@@ -235,6 +258,13 @@ class AirlockAdmissionService:
             to_status=item.status,
             payload={"admitted_at": item.admitted_at.isoformat() if item.admitted_at else None},
         )
+        record_airlock_status(
+            file_id=item.id,
+            entity_id=item.entity_id,
+            status="admitted",
+            validation_results=item.findings_json if isinstance(item.findings_json, list) else [],
+            source_type=item.source_type,
+        )
         return AirlockSubmissionResult(
             item_id=item.id,
             status=item.status,
@@ -268,6 +298,14 @@ class AirlockAdmissionService:
             from_status="QUARANTINED",
             to_status=item.status,
             payload={"reason": reason},
+        )
+        record_airlock_status(
+            file_id=item.id,
+            entity_id=item.entity_id,
+            status="rejected",
+            validation_results=item.findings_json if isinstance(item.findings_json, list) else [],
+            reason=reason,
+            source_type=item.source_type,
         )
         return AirlockSubmissionResult(
             item_id=item.id,

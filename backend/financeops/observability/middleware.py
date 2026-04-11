@@ -9,10 +9,10 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.responses import Response
 
 from financeops.observability.business_metrics import (
-    api_error_counter,
     api_request_counter,
     api_request_latency_ms,
 )
+from financeops.observability.beta_monitoring import record_api_error
 from financeops.observability.context import clear_request_context, set_request_context
 
 log = logging.getLogger(__name__)
@@ -78,15 +78,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         try:
             response = await call_next(request)
-        except Exception:
+        except Exception as exc:
             elapsed_ms = (time.perf_counter() - started_at) * 1000
             route_path = _route_template(request)
             api_request_counter.labels(
-                method=request.method,
-                path=route_path,
-                status_code="500",
-            ).inc()
-            api_error_counter.labels(
                 method=request.method,
                 path=route_path,
                 status_code="500",
@@ -95,18 +90,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 method=request.method,
                 path=route_path,
             ).observe(elapsed_ms)
-            log.exception(
-                "request_error",
-                extra={
-                    "event": "request_error",
-                    "method": request.method,
-                    "path": request.url.path,
-                    "duration_ms": round(elapsed_ms, 2),
-                    "request_id": request_id,
-                    "correlation_id": correlation_id,
-                    "tenant_id": tenant_id,
-                    "org_entity_id": org_entity_id,
-                },
+            record_api_error(
+                method=request.method,
+                path=route_path,
+                status_code=500,
+                error_type=type(exc).__name__,
+                duration_ms=elapsed_ms,
+                exc_info=exc,
             )
             clear_request_context()
             raise
@@ -120,11 +110,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             status_code=status_code,
         ).inc()
         if response.status_code >= 400:
-            api_error_counter.labels(
+            record_api_error(
                 method=request.method,
                 path=route_path,
-                status_code=status_code,
-            ).inc()
+                status_code=response.status_code,
+                error_type="http_error",
+                duration_ms=elapsed_ms,
+            )
         api_request_latency_ms.labels(
             method=request.method,
             path=route_path,

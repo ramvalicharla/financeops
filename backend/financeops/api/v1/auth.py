@@ -32,6 +32,7 @@ from financeops.db.rls import set_tenant_context
 from financeops.db.transaction import commit_session
 from financeops.modules.notifications.channels.email_channel import send_direct
 from financeops.modules.notifications.templates.emails import welcome_email
+from financeops.observability.beta_monitoring import record_auth_event
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
     _issue_session_tokens,
@@ -422,15 +423,37 @@ async def user_login(
     user = await get_user_by_email(session, body.email)
     if user is None:
         log.info(f"Login rejected: user_missing email={normalized_email}")
+        record_auth_event(
+            event="auth_login_failed",
+            outcome="failure",
+            email=normalized_email,
+            failure_type="user_missing",
+        )
         raise AuthenticationError("Invalid email or password")
     if not user.is_active:
         log.info(
             f"Login rejected: inactive_user email={normalized_email} user={user.id}"
         )
+        record_auth_event(
+            event="auth_login_failed",
+            outcome="failure",
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            email=normalized_email,
+            failure_type="inactive_user",
+        )
         raise AuthenticationError("Invalid email or password")
     if not verify_password(body.password, user.hashed_password):
         log.info(
             f"Login rejected: password_mismatch email={normalized_email} user={user.id}"
+        )
+        record_auth_event(
+            event="auth_login_failed",
+            outcome="failure",
+            user_id=user.id,
+            tenant_id=user.tenant_id,
+            email=normalized_email,
+            failure_type="password_mismatch",
         )
         raise AuthenticationError("Invalid email or password")
     await set_tenant_context(session, user.tenant_id)

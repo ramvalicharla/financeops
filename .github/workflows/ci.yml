@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
+        # postgres:16-compatible image with pgvector preinstalled for the backend suite
         image: pgvector/pgvector:pg15
         env:
           POSTGRES_DB: financeops_test
@@ -106,7 +107,7 @@ jobs:
           unset DATABASE_URL TEST_DATABASE_URL MIGRATION_DATABASE_URL
           python -m pytest -n 9 --dist loadfile -q
 
-  frontend:
+  frontend-build:
     name: Frontend Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10

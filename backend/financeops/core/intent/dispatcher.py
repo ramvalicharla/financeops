@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import Any
 
 from sqlalchemy import select
@@ -12,6 +13,10 @@ from financeops.core.intent.context import MutationContext, governed_mutation_co
 from financeops.core.intent.enums import JobRunnerType, JobStatus
 from financeops.core.intent.executors import MutationExecutorRegistry
 from financeops.db.models.intent_pipeline import CanonicalIntent, CanonicalJob
+from financeops.observability.beta_monitoring import (
+    record_job_finished,
+    record_job_started,
+)
 
 
 def _utcnow() -> datetime:
@@ -119,6 +124,13 @@ class JobDispatcher:
         persisted_job.status = JobStatus.RUNNING.value
         persisted_job.started_at = _utcnow()
         await db.flush()
+        started = perf_counter()
+        record_job_started(
+            job_id=persisted_job.id,
+            intent_id=intent.id,
+            entity_id=intent.entity_id,
+            runner_type=persisted_job.runner_type,
+        )
 
         try:
             with governed_mutation_context(
@@ -132,6 +144,7 @@ class JobDispatcher:
             ):
                 result = await executor.execute(db, intent=intent)
         except Exception as exc:
+            duration_ms = (perf_counter() - started) * 1000
             persisted_job.status = JobStatus.FAILED.value
             persisted_job.failed_at = _utcnow()
             persisted_job.error_message = str(exc)[:2000]
@@ -140,9 +153,28 @@ class JobDispatcher:
                 persisted_job.max_retries,
             )
             await db.flush()
+            record_job_finished(
+                job_id=persisted_job.id,
+                intent_id=intent.id,
+                entity_id=intent.entity_id,
+                status="failed",
+                duration_ms=duration_ms,
+                error=str(exc)[:2000],
+                retry_count=persisted_job.retry_count,
+                max_retries=persisted_job.max_retries,
+            )
             raise
 
         persisted_job.status = JobStatus.SUCCEEDED.value
         persisted_job.finished_at = _utcnow()
         await db.flush()
+        record_job_finished(
+            job_id=persisted_job.id,
+            intent_id=intent.id,
+            entity_id=intent.entity_id,
+            status="success",
+            duration_ms=(perf_counter() - started) * 1000,
+            retry_count=persisted_job.retry_count,
+            max_retries=persisted_job.max_retries,
+        )
         return result

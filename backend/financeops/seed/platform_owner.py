@@ -100,7 +100,7 @@ async def _ensure_platform_tenant(session: AsyncSession) -> None:
 async def seed_platform_users(
     accounts: list[SeedAccount],
     *,
-    session_factory: async_sessionmaker[AsyncSession] = AsyncSessionLocal,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> dict[str, Any]:
     if not accounts:
         return {
@@ -111,7 +111,9 @@ async def seed_platform_users(
             "upserted": 0,
         }
 
-    async with session_factory() as session:
+    resolved_session_factory = session_factory or AsyncSessionLocal
+
+    async with resolved_session_factory() as session:
         await _ensure_platform_tenant(session)
 
         account_emails = [item.email for item in accounts]
@@ -169,7 +171,7 @@ async def seed_platform_users(
 
 async def seed_platform_users_from_env(
     *,
-    session_factory: async_sessionmaker[AsyncSession] = AsyncSessionLocal,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
 ) -> dict[str, Any]:
     return await seed_platform_users(
         collect_seed_accounts_from_env(),

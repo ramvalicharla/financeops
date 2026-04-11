@@ -191,3 +191,24 @@ upload_validation_failure_counter = Counter(
     "Upload validation failures",
     ["module"],
 )
+
+job_success_count = Counter(
+    "financeops_job_success_count",
+    "Successful governed job executions",
+)
+
+job_failure_count = Counter(
+    "financeops_job_failure_count",
+    "Failed governed job executions",
+)
+
+airlock_failure_count = Counter(
+    "financeops_airlock_failure_count",
+    "Airlock validation or admission failures",
+)
+
+job_duration_ms = Histogram(
+    "financeops_job_duration_ms",
+    "Governed job execution duration in milliseconds",
+    buckets=[10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000],
+)
