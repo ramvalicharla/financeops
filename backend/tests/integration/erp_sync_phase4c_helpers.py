@@ -14,6 +14,7 @@ import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from tests.integration.temp_db_helpers import create_migrated_temp_database, drop_temp_database
 
 from financeops.db.append_only import append_only_function_sql, create_trigger_sql, drop_trigger_sql
 from financeops.db.base import Base
@@ -62,63 +63,15 @@ def _to_asyncpg_dsn(raw_url: str) -> str:
 
 @pytest_asyncio.fixture(scope="session")
 async def erp_sync_phase4c_db_url() -> AsyncGenerator[str, None]:
-    base_url = os.getenv("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
-    admin_db = os.getenv("TEST_DATABASE_ADMIN_DB", "postgres")
-    suffix = uuid.uuid4().hex[:10]
-    temp_db = f"financeops_erp_sync_{suffix}"
-    if not re.fullmatch(r"[a-z0-9_]+", temp_db):
-        raise RuntimeError(f"Invalid temp database name: {temp_db}")
-
-    admin_url = _with_database(base_url, admin_db)
-    target_url = _with_database(base_url, temp_db)
-
-    conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
-    try:
-        await conn.execute(f'CREATE DATABASE "{temp_db}"')
-    finally:
-        await conn.close()
-
-    env = os.environ.copy()
-    env["DATABASE_URL"] = target_url
-    env["MIGRATION_DATABASE_URL"] = target_url
-    env.setdefault("DEBUG", "false")
-    env.setdefault("SECRET_KEY", "test-secret-key")
-    env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
-    env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
-    env.setdefault("REDIS_URL", "redis://localhost:6380/0")
-
-    migration = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
-        cwd=str(_backend_dir()),
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
+    target_url, temp_db, admin_url = await create_migrated_temp_database(
+        prefix="financeops_erp_sync",
+        error_context="erp_sync temp database",
     )
-    if migration.returncode != 0:
-        raise RuntimeError(
-            "alembic upgrade head failed for erp_sync temp database\n"
-            f"stdout:\n{migration.stdout}\n"
-            f"stderr:\n{migration.stderr}"
-        )
 
     try:
         yield target_url
     finally:
-        cleanup_conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
-        try:
-            await cleanup_conn.execute(
-                """
-                SELECT pg_terminate_backend(pid)
-                FROM pg_stat_activity
-                WHERE datname = $1
-                  AND pid <> pg_backend_pid()
-                """,
-                temp_db,
-            )
-            await cleanup_conn.execute(f'DROP DATABASE IF EXISTS "{temp_db}"')
-        finally:
-            await cleanup_conn.close()
+        await drop_temp_database(admin_url=admin_url, database_name=temp_db)
 
 
 @pytest_asyncio.fixture(scope="session")

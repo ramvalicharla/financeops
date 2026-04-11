@@ -28,6 +28,7 @@ from financeops.platform.services.rbac.role_service import assign_user_role, cre
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 from tests.integration.entitlement_helpers import grant_boolean_entitlement
+from tests.integration.temp_db_helpers import create_migrated_temp_database, drop_temp_database
 
 DEFAULT_TEST_DATABASE_URL = (
     "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test"
@@ -58,60 +59,15 @@ def _to_asyncpg_dsn(raw_url: str) -> str:
 
 @pytest_asyncio.fixture(scope="session")
 async def cash_flow_phase2_6_db_url() -> AsyncGenerator[str, None]:
-    base_url = os.getenv("TEST_DATABASE_URL", DEFAULT_TEST_DATABASE_URL)
-    admin_db = os.getenv("TEST_DATABASE_ADMIN_DB", "postgres")
-    suffix = uuid.uuid4().hex[:10]
-    temp_db = f"financeops_cash_flow_{suffix}"
-    if not re.fullmatch(r"[a-z0-9_]+", temp_db):
-        raise RuntimeError(f"Invalid temp database name: {temp_db}")
-
-    admin_url = _with_database(base_url, admin_db)
-    target_url = _with_database(base_url, temp_db)
-    conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
-    try:
-        await conn.execute(f'CREATE DATABASE "{temp_db}"')
-    finally:
-        await conn.close()
-
-    env = os.environ.copy()
-    env["DATABASE_URL"] = target_url
-    env["MIGRATION_DATABASE_URL"] = target_url
-    env.setdefault("SECRET_KEY", "test-secret-key")
-    env.setdefault("JWT_SECRET", "test-jwt-secret-32-characters-long-000")
-    env.setdefault("FIELD_ENCRYPTION_KEY", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=")
-    env.setdefault("REDIS_URL", "redis://localhost:6380/0")
-    migration = subprocess.run(
-        [sys.executable, "-m", "alembic", "-c", "alembic.ini", "upgrade", "head"],
-        cwd=str(_backend_dir()),
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
+    target_url, temp_db, admin_url = await create_migrated_temp_database(
+        prefix="financeops_cash_flow",
+        error_context="cash flow phase2.6 temp database",
     )
-    if migration.returncode != 0:
-        raise RuntimeError(
-            "alembic upgrade head failed for cash flow phase2.6 temp database\n"
-            f"stdout:\n{migration.stdout}\n"
-            f"stderr:\n{migration.stderr}"
-        )
 
     try:
         yield target_url
     finally:
-        cleanup_conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
-        try:
-            await cleanup_conn.execute(
-                """
-                SELECT pg_terminate_backend(pid)
-                FROM pg_stat_activity
-                WHERE datname = $1
-                  AND pid <> pg_backend_pid()
-                """,
-                temp_db,
-            )
-            await cleanup_conn.execute(f'DROP DATABASE IF EXISTS "{temp_db}"')
-        finally:
-            await cleanup_conn.close()
+        await drop_temp_database(admin_url=admin_url, database_name=temp_db)
 
 
 async def seed_control_plane_for_cash_flow(

@@ -1,13 +1,12 @@
-name: CI
+name: Nightly Backend Verification
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: nightly-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 defaults:
@@ -15,10 +14,20 @@ defaults:
     shell: bash
 
 jobs:
-  backend:
-    name: Backend Tests
+  nightly-backend:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Full Backend Suite
+            command: python -m pytest -n 9 --dist loadfile -q
+          - name: Slow Backend Slice
+            command: python -m pytest -m "slow" -n 9 --dist loadfile -q
+          - name: DB Heavy Backend Slice
+            command: python -m pytest -m "db_heavy" -n 9 --dist loadfile -q
     services:
       postgres:
         image: pgvector/pgvector:pg15
@@ -92,52 +101,8 @@ jobs:
           raise SystemExit(f"Timed out waiting for services: {pending}")
           PY
 
-      - name: Run backend fast suite
-        if: github.event_name == 'pull_request'
+      - name: Run nightly backend command
         working-directory: backend
         run: |
           unset DATABASE_URL TEST_DATABASE_URL MIGRATION_DATABASE_URL
-          python -m pytest -m "not slow" -n 6 --dist loadfile -q
-
-      - name: Run backend full suite
-        if: github.event_name == 'push'
-        working-directory: backend
-        run: |
-          unset DATABASE_URL TEST_DATABASE_URL MIGRATION_DATABASE_URL
-          python -m pytest -n 9 --dist loadfile -q
-
-  frontend:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Cache node_modules
-        id: node-cache
-        uses: actions/cache@v4
-        with:
-          path: frontend/node_modules
-          key: ${{ runner.os }}-node20-${{ hashFiles('frontend/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node20-
-
-      - name: Install frontend dependencies
-        if: steps.node-cache.outputs.cache-hit != 'true'
-        working-directory: frontend
-        run: npm ci
-
-      - name: Run frontend tests
-        working-directory: frontend
-        run: npm test -- --run
-
-      - name: Run typecheck
-        working-directory: frontend
-        run: npx tsc --noEmit
+          ${{ matrix.command }}
