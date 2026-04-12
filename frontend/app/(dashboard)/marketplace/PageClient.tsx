@@ -72,7 +72,7 @@ export default function MarketplacePage() {
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Marketplace</h1>
           <p className="text-sm text-muted-foreground">
-            Discover templates from the FinanceOps contributor ecosystem.
+            Discover templates from the Finqor contributor ecosystem.
           </p>
         </div>
         <Link

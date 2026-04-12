@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Download, Loader2 } from "lucide-react"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 import {
   downloadReportResult,
@@ -45,7 +46,7 @@ const formatDateTime = (value: string | null): string => {
 
 const valueToString = (value: unknown): string => {
   if (value === null || value === undefined) return "-"
-  if (typeof value === "object") return JSON.stringify(value)
+  if (typeof value === "boolean") return value ? "Yes" : "No"
   return String(value)
 }
 
@@ -274,7 +275,15 @@ export default function ReportRunViewerPage() {
                           <tr key={`${pageIndex}-${rowIndex}`} className="border-t border-border">
                             {columns.map((column) => (
                               <td key={`${rowIndex}-${column}`} className="px-3 py-2 text-muted-foreground">
-                                {valueToString(row[column])}
+                                {typeof row[column] === "object" && row[column] !== null ? (
+                                  <StructuredDataView
+                                    data={row[column]}
+                                    emptyMessage="No structured cell data is available."
+                                    compact
+                                  />
+                                ) : (
+                                  valueToString(row[column])
+                                )}
                               </td>
                             ))}
                           </tr>

@@ -30,7 +30,7 @@ const FEATURES = [
 ]
 
 export const metadata = createMetadata(
-  "FinanceOps ? Enterprise Financial Operations Platform",
+  "Finqor — Enterprise Financial Operations Platform",
   "The financial operations platform built for 1B+ USD entities",
 )
 
@@ -39,7 +39,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background text-foreground">
       <nav className="border-b border-border px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <span className="text-xl font-semibold text-foreground">FinanceOps</span>
+          <span className="text-xl font-semibold text-foreground">Finqor</span>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               href="/login"

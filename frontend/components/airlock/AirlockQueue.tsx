@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
+import { StructuredDataView } from "@/components/ui"
 import { listAirlockItems } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
@@ -130,7 +131,13 @@ export function AirlockQueue({ detailHrefPrefix = "/settings/airlock" }: Airlock
                 {item.findings.length ? (
                   <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
                     {item.findings.map((finding, index) => (
-                      <li key={`${item.airlock_item_id}-${index}`}>{JSON.stringify(finding)}</li>
+                      <li key={`${item.airlock_item_id}-${index}`}>
+                        <StructuredDataView
+                          data={finding}
+                          emptyMessage="No structured finding details were returned."
+                          compact
+                        />
+                      </li>
                     ))}
                   </ul>
                 ) : (

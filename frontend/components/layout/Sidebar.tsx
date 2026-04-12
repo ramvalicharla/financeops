@@ -209,7 +209,7 @@ export function Sidebar({
       >
         <div className="border-b border-border px-4 py-4">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            FinanceOps
+            Finqor
           </p>
           <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">

@@ -11,11 +11,11 @@ export default function TermsPage() {
       <div className="space-y-8 text-foreground">
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">1. Acceptance of Terms</h2>
-          <p>By using FinanceOps you agree to these terms. If acting for an organisation, you confirm authority to bind it.</p>
+          <p>By using Finqor you agree to these terms. If acting for an organisation, you confirm authority to bind it.</p>
         </section>
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">2. Description of Service</h2>
-          <p>FinanceOps provides finance operations SaaS including MIS, reconciliation, consolidation, compliance and reporting workflows.</p>
+          <p>Finqor provides finance operations SaaS including MIS, reconciliation, consolidation, compliance and reporting workflows.</p>
         </section>
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">3. User Accounts &amp; Security</h2>

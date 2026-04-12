@@ -1,6 +1,6 @@
 import type { Metadata } from "next"
 
-const BASE_TITLE = "FinanceOps"
+const BASE_TITLE = "Finqor"
 const BASE_DESCRIPTION =
   "Enterprise financial operations platform for 1B+ entities"
 

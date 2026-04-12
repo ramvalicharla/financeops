@@ -64,6 +64,37 @@ export interface CloseChecklistResponse {
   readiness: ChecklistReadiness
 }
 
+export interface MonthendChecklistSummary {
+  checklist_id: string
+  period_year: number
+  period_month: number
+  entity_name: string
+  status: string
+  created_at: string
+}
+
+export interface MonthendChecklistTask {
+  task_id: string
+  task_name: string
+  task_category: string
+  priority: string
+  status: string
+  assigned_to: string | null
+  sort_order: number
+  is_required: boolean
+  completed_at: string | null
+}
+
+export interface MonthendChecklistDetail extends MonthendChecklistSummary {
+  closed_at: string | null
+  tasks: MonthendChecklistTask[]
+}
+
+export interface MonthendChecklistListResponse {
+  checklists: MonthendChecklistSummary[]
+  count: number
+}
+
 export const getPeriodStatus = async (params: {
   fiscal_year: number
   period_number: number
@@ -138,6 +169,57 @@ export const completeChecklistItem = async (body: {
   const response = await apiClient.post<Record<string, unknown>>(
     "/api/v1/close/checklist/complete",
     body,
+  )
+  return response.data
+}
+
+export const getMonthendChecklists = async (params: {
+  entity_name?: string
+  checklist_status?: string
+  limit?: number
+  offset?: number
+}): Promise<MonthendChecklistListResponse> => {
+  const search = new URLSearchParams()
+  if (params.entity_name) search.set("entity_name", params.entity_name)
+  if (params.checklist_status) search.set("checklist_status", params.checklist_status)
+  if (typeof params.limit === "number") search.set("limit", String(params.limit))
+  if (typeof params.offset === "number") search.set("offset", String(params.offset))
+  const response = await apiClient.get<MonthendChecklistListResponse>(
+    `/api/v1/monthend/?${search.toString()}`,
+  )
+  return response.data
+}
+
+export const getMonthendChecklist = async (checklistId: string): Promise<MonthendChecklistDetail> => {
+  const response = await apiClient.get<MonthendChecklistDetail>(`/api/v1/monthend/${checklistId}`)
+  return response.data
+}
+
+export const updateMonthendChecklistTaskStatus = async (params: {
+  checklistId: string
+  taskId: string
+  status: string
+  notes?: string | null
+}): Promise<Record<string, unknown>> => {
+  const response = await apiClient.patch<Record<string, unknown>>(
+    `/api/v1/monthend/${params.checklistId}/tasks/${params.taskId}`,
+    {
+      status: params.status,
+      notes: params.notes ?? null,
+    },
+  )
+  return response.data
+}
+
+export const closeMonthendChecklist = async (params: {
+  checklistId: string
+  notes?: string | null
+}): Promise<Record<string, unknown>> => {
+  const response = await apiClient.post<Record<string, unknown>>(
+    `/api/v1/monthend/${params.checklistId}/close`,
+    {
+      notes: params.notes ?? null,
+    },
   )
   return response.data
 }

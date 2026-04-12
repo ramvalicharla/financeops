@@ -8,7 +8,7 @@ export default function LegalIndexPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-16 sm:px-6 lg:px-8">
       <h1 className="mb-4 text-3xl font-semibold text-foreground">Legal</h1>
-      <p className="mb-6 text-muted-foreground">Policies and agreements applicable to FinanceOps use.</p>
+      <p className="mb-6 text-muted-foreground">Policies and agreements applicable to Finqor use.</p>
       <ul className="space-y-3">
         <li>
           <Link href="/legal/terms" className="text-foreground underline-offset-4 transition hover:underline">

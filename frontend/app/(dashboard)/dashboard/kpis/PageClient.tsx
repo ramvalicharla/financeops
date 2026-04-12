@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDrilldown, getKpis } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
 export default function KpisPage() {
@@ -78,12 +79,12 @@ export default function KpisPage() {
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Drilldown: {selectedMetric}
           </h2>
-          <pre className="overflow-x-auto rounded-md bg-background p-3 text-xs">
-            {JSON.stringify(drilldownQuery.data ?? {}, null, 2)}
-          </pre>
+          <StructuredDataView
+            data={drilldownQuery.data ?? null}
+            emptyMessage="No drilldown data is available for the selected KPI."
+          />
         </section>
       ) : null}
     </div>
   )
 }
-

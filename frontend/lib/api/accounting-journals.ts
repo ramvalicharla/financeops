@@ -61,16 +61,6 @@ export interface GovernedMutationResponse {
   record_refs: Record<string, unknown> | null
 }
 
-export const createJournal = async (
-  payload: CreateJournalPayload,
-): Promise<GovernedMutationResponse> => {
-  const response = await apiClient.post<GovernedMutationResponse>(
-    "/api/v1/accounting/journals/",
-    payload,
-  )
-  return response.data
-}
-
 export const listJournals = async (params?: {
   org_entity_id?: string
   status?: "DRAFT" | "SUBMITTED" | "REVIEWED" | "APPROVED" | "POSTED" | "REVERSED"
@@ -96,52 +86,46 @@ export const getJournal = async (journalId: string): Promise<JournalRecord> => {
   return response.data
 }
 
-export const approveJournal = async (
-  journalId: string,
-): Promise<GovernedMutationResponse> => {
-  const response = await apiClient.post<GovernedMutationResponse>(
-    `/api/v1/accounting/journals/${journalId}/approve`,
-    {},
+function forbiddenDirectMutation(operation: string): never {
+  throw new Error(
+    `[Governance Violation] Direct mutation "${operation}" is forbidden.\n` +
+      `Use createGovernedIntent() instead.`,
   )
-  return response.data
 }
 
-export const submitJournal = async (
-  journalId: string,
-): Promise<GovernedMutationResponse> => {
-  const response = await apiClient.post<GovernedMutationResponse>(
-    `/api/v1/accounting/journals/${journalId}/submit`,
-    {},
-  )
-  return response.data
-}
+const deprecatedCreateJournalMutation = async (
+  _payload: CreateJournalPayload,
+): Promise<GovernedMutationResponse> => forbiddenDirectMutation("createJournal")
 
-export const reviewJournal = async (
-  journalId: string,
-): Promise<GovernedMutationResponse> => {
-  const response = await apiClient.post<GovernedMutationResponse>(
-    `/api/v1/accounting/journals/${journalId}/review`,
-    {},
-  )
-  return response.data
-}
+const deprecatedApproveJournalMutation = async (
+  _journalId: string,
+): Promise<GovernedMutationResponse> => forbiddenDirectMutation("approveJournal")
 
-export const postJournal = async (
-  journalId: string,
-): Promise<GovernedMutationResponse> => {
-  const response = await apiClient.post<GovernedMutationResponse>(
-    `/api/v1/accounting/journals/${journalId}/post`,
-    {},
-  )
-  return response.data
-}
+const deprecatedSubmitJournalMutation = async (
+  _journalId: string,
+): Promise<GovernedMutationResponse> => forbiddenDirectMutation("submitJournal")
 
-export const reverseJournal = async (
-  journalId: string,
-): Promise<GovernedMutationResponse> => {
-  const response = await apiClient.post<GovernedMutationResponse>(
-    `/api/v1/accounting/journals/${journalId}/reverse`,
-    {},
-  )
-  return response.data
+const deprecatedReviewJournalMutation = async (
+  _journalId: string,
+): Promise<GovernedMutationResponse> => forbiddenDirectMutation("reviewJournal")
+
+const deprecatedPostJournalMutation = async (
+  _journalId: string,
+): Promise<GovernedMutationResponse> => forbiddenDirectMutation("postJournal")
+
+const deprecatedReverseJournalMutation = async (
+  _journalId: string,
+): Promise<GovernedMutationResponse> => forbiddenDirectMutation("reverseJournal")
+
+/**
+ * @deprecated DO NOT USE - use createGovernedIntent() from @/lib/api/intents.
+ * Kept as a backward-compatible export and blocked at runtime.
+ */
+export {
+  deprecatedApproveJournalMutation as approveJournal,
+  deprecatedCreateJournalMutation as createJournal,
+  deprecatedPostJournalMutation as postJournal,
+  deprecatedReviewJournalMutation as reviewJournal,
+  deprecatedReverseJournalMutation as reverseJournal,
+  deprecatedSubmitJournalMutation as submitJournal,
 }

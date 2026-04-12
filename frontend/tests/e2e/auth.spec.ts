@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test"
 test.describe("Registration flow", () => {
   test("registration page loads", async ({ page }) => {
     await page.goto("/register")
-    await expect(page.getByText("Create your FinanceOps account")).toBeVisible()
+    await expect(page.getByText("Create your Finqor account")).toBeVisible()
   })
 
   test("registration form validates required fields", async ({ page }) => {

@@ -19,6 +19,7 @@ import {
   getAccessErrorMessage,
   getPermissionDeniedMessage,
 } from "@/lib/ui-access"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
 const ERP_TYPES = ["TALLY", "ZOHO", "QUICKBOOKS", "SAP", "ORACLE", "MANUAL"] as const
@@ -264,9 +265,10 @@ export default function ErpConnectorsPage() {
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Latest Test Result
           </h3>
-          <pre className="overflow-x-auto rounded-md bg-background p-3 text-xs">
-            {JSON.stringify(testResult, null, 2)}
-          </pre>
+          <StructuredDataView
+            data={testResult}
+            emptyMessage="No structured test result is available."
+          />
         </section>
       ) : null}
     </div>

@@ -213,7 +213,7 @@ export function BrandingEditor({ initialConfig, readOnly = false }: BrandingEdit
             onChange={(event) => updateField("hide_powered_by", event.target.checked)}
             disabled={readOnly}
           />
-          <label htmlFor="brand-hide-powered-by">Hide Powered by FinanceOps footer</label>
+          <label htmlFor="brand-hide-powered-by">Hide Powered by Finqor footer</label>
         </div>
       </section>
 

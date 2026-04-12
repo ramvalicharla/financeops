@@ -1,6 +1,7 @@
 "use client"
 
 import { QoEChart } from "@/components/advisory/fdd/QoEChart"
+import { StructuredDataView } from "@/components/ui"
 
 interface FDDReportViewerProps {
   sectionName: string
@@ -33,9 +34,11 @@ export function FDDReportViewer({ sectionName, resultData, aiNarrative }: FDDRep
         />
       ) : (
         <div className="rounded-md border border-border/60 bg-background p-3">
-          <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">
-            {JSON.stringify(safeResult, null, 2)}
-          </pre>
+          <StructuredDataView
+            data={safeResult}
+            emptyMessage="No structured section data is available yet."
+            compact
+          />
         </div>
       )}
 

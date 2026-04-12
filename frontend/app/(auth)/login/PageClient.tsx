@@ -164,7 +164,7 @@ function LoginPageContent() {
     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
       <div className="mb-6 space-y-1">
         <h2 className="text-xl font-semibold text-foreground">
-          Sign in to FinanceOps
+          Sign in to Finqor
         </h2>
         <p className="text-sm text-muted-foreground">
           Use your admin-provisioned account credentials.

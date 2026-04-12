@@ -7,7 +7,7 @@ export default function OrgSetupLayout({ children }: { children: ReactNode }) {
       <div className="mx-auto flex min-h-screen w-full max-w-5xl flex-col px-6 py-8">
         <header className="mb-6">
           <Link href="/" className="text-sm uppercase tracking-[0.22em] text-muted-foreground">
-            FinanceOps
+            Finqor
           </Link>
         </header>
         <main id="main-content" className="mx-auto w-full max-w-4xl">{children}</main>

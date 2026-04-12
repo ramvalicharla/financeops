@@ -7,7 +7,7 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
     <div className="min-h-screen bg-background text-foreground">
       <nav aria-label="Marketing navigation" className="border-b border-border px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <span className="text-xl font-semibold text-foreground">FinanceOps</span>
+          <span className="text-xl font-semibold text-foreground">Finqor</span>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               href="/login"
@@ -24,7 +24,7 @@ export default function MarketingLayout({ children }: { children: ReactNode }) {
       <main id="main-content">{children}</main>
       <footer className="border-t border-border px-4 py-6 sm:px-6 lg:px-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-          <span>(c) 2026 FinanceOps. All rights reserved.</span>
+          <span>(c) 2026 Finqor. All rights reserved.</span>
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:gap-6 md:justify-end">
             <Link href="/legal/terms" className="transition hover:text-foreground">
               Terms

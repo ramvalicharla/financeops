@@ -1,5 +1,7 @@
 "use client"
 
+import { StructuredDataView } from "@/components/ui"
+
 interface TemplatePreviewProps {
   templateType: string
   templateData: Record<string, unknown>
@@ -31,9 +33,11 @@ const renderPreview = (templateType: string, templateData: Record<string, unknow
   }
 
   return (
-    <pre className="overflow-x-auto rounded-md bg-background p-3 text-xs text-muted-foreground">
-      {JSON.stringify(templateData, null, 2)}
-    </pre>
+    <StructuredDataView
+      data={templateData}
+      emptyMessage="No preview data is available for this template yet."
+      compact
+    />
   )
 }
 

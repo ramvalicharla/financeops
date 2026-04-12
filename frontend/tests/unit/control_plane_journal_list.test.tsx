@@ -6,11 +6,7 @@ import { JournalList } from "@/components/journals/JournalList"
 import { useTenantStore } from "@/lib/store/tenant"
 
 const listJournals = vi.fn()
-const approveJournal = vi.fn()
-const submitJournal = vi.fn()
-const reviewJournal = vi.fn()
-const postJournal = vi.fn()
-const reverseJournal = vi.fn()
+const createGovernedIntent = vi.fn()
 
 vi.mock("next-auth/react", () => ({
   useSession: () => ({
@@ -24,11 +20,10 @@ vi.mock("next-auth/react", () => ({
 
 vi.mock("@/lib/api/accounting-journals", () => ({
   listJournals: (...args: unknown[]) => listJournals(...args),
-  approveJournal: (...args: unknown[]) => approveJournal(...args),
-  submitJournal: (...args: unknown[]) => submitJournal(...args),
-  reviewJournal: (...args: unknown[]) => reviewJournal(...args),
-  postJournal: (...args: unknown[]) => postJournal(...args),
-  reverseJournal: (...args: unknown[]) => reverseJournal(...args),
+}))
+
+vi.mock("@/lib/api/intents", () => ({
+  createGovernedIntent: (...args: unknown[]) => createGovernedIntent(...args),
 }))
 
 const renderWithProviders = (ui: ReactNode) => {

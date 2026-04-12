@@ -53,10 +53,6 @@ export default function MISPage() {
     "MIS",
   )
 
-  if (accessErrorMessage) {
-    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
-  }
-
   const columns = useMemo<ColumnDef<MISLineItem>[]>(
     () => [
       {
@@ -142,6 +138,10 @@ export default function MISPage() {
     key: sorting[0]?.id ?? "",
     direction: sorting[0]?.desc === undefined ? null : sorting[0].desc ? "desc" : "asc",
   } as const
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   return (
     <div className="space-y-6">

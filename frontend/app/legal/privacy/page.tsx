@@ -13,7 +13,7 @@ export default function PrivacyPage() {
       <div className="space-y-8 text-foreground">
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">1. Data Controller</h2>
-          <p>FinanceOps acts as Data Fiduciary under the DPDP Act, 2023 for customer account and platform operations data.</p>
+          <p>Finqor acts as Data Fiduciary under the DPDP Act, 2023 for customer account and platform operations data.</p>
         </section>
         <section>
           <h2 className="mb-3 text-xl font-semibold text-foreground">2. Data We Collect</h2>

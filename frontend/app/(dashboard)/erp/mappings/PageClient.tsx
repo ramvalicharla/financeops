@@ -12,6 +12,7 @@ import {
   syncErpVendors,
 } from "@/lib/api/erp"
 import { getTenantCoaAccounts } from "@/lib/api/coa"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
 export default function ErpMappingsPage() {
@@ -188,9 +189,10 @@ export default function ErpMappingsPage() {
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
             Latest Operation Result
           </h3>
-          <pre className="overflow-x-auto rounded-md bg-background p-3 text-xs">
-            {JSON.stringify(resultPayload, null, 2)}
-          </pre>
+          <StructuredDataView
+            data={resultPayload}
+            emptyMessage="No structured operation result is available."
+          />
         </section>
       ) : null}
     </div>

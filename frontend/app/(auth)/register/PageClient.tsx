@@ -85,7 +85,7 @@ export default function RegisterPage() {
   return (
     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
       <div className="mb-4 space-y-1 text-center">
-        <h2 className="text-xl font-semibold text-foreground">Create your FinanceOps account</h2>
+        <h2 className="text-xl font-semibold text-foreground">Create your Finqor account</h2>
         <p className="text-sm text-muted-foreground">Enterprise finance platform for CA firms and corporates</p>
       </div>
       <div className="space-y-4">

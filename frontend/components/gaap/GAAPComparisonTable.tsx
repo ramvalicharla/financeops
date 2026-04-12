@@ -2,6 +2,7 @@
 
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { type GAAPComparison } from "@/lib/types/sprint11"
+import { StructuredDataView } from "@/components/ui"
 
 export type GAAPComparisonTableProps = {
   comparison: GAAPComparison
@@ -82,9 +83,11 @@ export function GAAPComparisonTable({ comparison, frameworks }: GAAPComparisonTa
             <tr key={`${framework}-adjustments`} className="border-b border-border/60 last:border-0">
               <td className="px-3 py-2 text-muted-foreground">{framework}</td>
               <td className="px-3 py-2 text-foreground" colSpan={frameworks.length + 1}>
-                <pre className="overflow-auto whitespace-pre-wrap text-xs text-muted-foreground">
-                  {JSON.stringify(frameworkMap.get(framework.toUpperCase())?.adjustments ?? [], null, 2)}
-                </pre>
+                <StructuredDataView
+                  data={frameworkMap.get(framework.toUpperCase())?.adjustments ?? []}
+                  emptyMessage="No adjustments were returned for this framework."
+                  compact
+                />
               </td>
             </tr>
           ))}

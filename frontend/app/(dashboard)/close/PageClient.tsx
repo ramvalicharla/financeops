@@ -6,18 +6,24 @@ import { useSearchParams } from "next/navigation"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import {
+  closeMonthendChecklist,
+  getMonthendChecklist,
+  getMonthendChecklists,
   getPeriodStatus,
   lockPeriod,
   runReadiness,
   unlockPeriod,
+  type MonthendChecklistTask,
 } from "@/lib/api/close-governance"
 import { useTenantStore } from "@/lib/store/tenant"
 import {
   canPerformAction,
-  getPermissionDeniedMessage,
 } from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
+import { PeriodLockOverlay } from "./_components/PeriodLockOverlay"
 import { LockReasonDialog } from "./_components/LockReasonDialog"
+import { ChecklistCloseDialog } from "./_components/ChecklistCloseDialog"
+import { ApprovalGraph } from "./_components/ApprovalGraph"
 
 const toPeriodParts = (value: string): { fiscalYear: number; periodNumber: number } => {
   const [year, month] = value.split("-")
@@ -34,6 +40,8 @@ type PendingDialogAction =
   | { action: "unlock" }
   | null
 
+const normalize = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, "_")
+
 export default function ClosePage() {
   const searchParams = useSearchParams()
   const { data: session } = useSession()
@@ -42,10 +50,16 @@ export default function ClosePage() {
   const canUnlock = canPerformAction("close.unlock", userRole)
   const queryClient = useQueryClient()
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityRoles = useTenantStore((state) => state.entity_roles)
   const initialPeriod = searchParams?.get("period") ?? new Date().toISOString().slice(0, 7)
   const [period, setPeriod] = useState(initialPeriod)
   const [pendingDialogAction, setPendingDialogAction] = useState<PendingDialogAction>(null)
+  const [showCloseChecklistDialog, setShowCloseChecklistDialog] = useState(false)
   const { fiscalYear, periodNumber } = useMemo(() => toPeriodParts(period), [period])
+  const activeEntity = useMemo(
+    () => entityRoles.find((role) => role.entity_id === activeEntityId) ?? null,
+    [activeEntityId, entityRoles],
+  )
 
   const periodQuery = useQuery({
     queryKey: ["period-status", activeEntityId, fiscalYear, periodNumber],
@@ -69,9 +83,39 @@ export default function ClosePage() {
     enabled: Boolean(activeEntityId),
   })
 
+  const monthendListQuery = useQuery({
+    queryKey: ["monthend-checklists", activeEntity?.entity_name ?? null],
+    queryFn: async () =>
+      getMonthendChecklists({
+        entity_name: activeEntity?.entity_name ?? undefined,
+        limit: 24,
+      }),
+    enabled: Boolean(activeEntity?.entity_name),
+  })
+
+  const currentMonthendChecklist = useMemo(
+    () =>
+      monthendListQuery.data?.checklists.find(
+        (checklist) =>
+          checklist.period_year === fiscalYear && checklist.period_month === periodNumber,
+      ) ?? null,
+    [fiscalYear, monthendListQuery.data?.checklists, periodNumber],
+  )
+
+  const monthendDetailQuery = useQuery({
+    queryKey: ["monthend-checklist", currentMonthendChecklist?.checklist_id ?? null],
+    queryFn: async () =>
+      currentMonthendChecklist
+        ? getMonthendChecklist(currentMonthendChecklist.checklist_id)
+        : null,
+    enabled: Boolean(currentMonthendChecklist?.checklist_id),
+  })
+
   const refresh = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ["period-status"] })
     await queryClient.invalidateQueries({ queryKey: ["close-readiness"] })
+    await queryClient.invalidateQueries({ queryKey: ["monthend-checklists"] })
+    await queryClient.invalidateQueries({ queryKey: ["monthend-checklist"] })
   }
 
   const lockMutation = useMutation({
@@ -105,7 +149,18 @@ export default function ClosePage() {
     onSuccess: refresh,
   })
 
-  const effectiveStatus = periodQuery.data?.status ?? "OPEN"
+  const closeChecklistMutation = useMutation({
+    mutationFn: ({ notes }: { notes: string }) => {
+      if (!currentMonthendChecklist) {
+        throw new Error("No month-end checklist is loaded for the current period.")
+      }
+      return closeMonthendChecklist({
+        checklistId: currentMonthendChecklist.checklist_id,
+        notes,
+      })
+    },
+    onSuccess: refresh,
+  })
 
   const handleDialogConfirm = (reason: string) => {
     if (!pendingDialogAction) {
@@ -123,13 +178,52 @@ export default function ClosePage() {
     unlockMutation.mutate({ reason })
   }
 
+  const checklistTasks: MonthendChecklistTask[] = monthendDetailQuery.data?.tasks ?? []
+  const completedTasks = checklistTasks.filter((task) => normalize(task.status) === "completed").length
+  const checklistProgress = checklistTasks.length
+    ? Math.round((completedTasks / checklistTasks.length) * 100)
+    : 0
+  const monthendStatus = monthendDetailQuery.data?.status ?? currentMonthendChecklist?.status ?? "Unavailable"
+  const monthendClosedAt = monthendDetailQuery.data?.closed_at ?? null
+
+  const approvalStages = [
+    {
+      id: "readiness",
+      label: "Readiness review",
+      status: readinessQuery.data?.pass ? "completed" : "pending",
+      detail: readinessQuery.data?.pass
+        ? "Backend readiness checks passed."
+        : "Backend readiness checks returned blockers.",
+    },
+    {
+      id: "period-lock",
+      label: "Period lock state",
+      status: periodQuery.data?.status ?? "open",
+      detail: periodQuery.data?.reason ?? "Current period state returned by the backend.",
+      completedAt: periodQuery.data?.locked_at ?? null,
+    },
+    {
+      id: "monthend",
+      label: "Month-end checklist",
+      status: monthendStatus,
+      detail: currentMonthendChecklist
+        ? `${completedTasks} of ${checklistTasks.length} month-end tasks complete.`
+        : "No checklist loaded for the selected period.",
+      completedAt: monthendClosedAt,
+    },
+  ]
+
+  const readinessPass = readinessQuery.data?.pass ?? false
+  const readinessBlockers = readinessQuery.data?.blockers ?? []
+  const readinessWarnings = readinessQuery.data?.warnings ?? []
+
   return (
     <div className="space-y-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Period Close Control</h1>
           <p className="text-sm text-muted-foreground">
-            Lock or unlock periods, review readiness, and manage close controls.
+            Lock or unlock periods, review readiness, and inspect month-end checklist governance.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -139,82 +233,188 @@ export default function ClosePage() {
             value={period}
             onChange={(event) => setPeriod(event.target.value)}
           />
-          <Link href={`/close/checklist?period=${period}`}>
-            <Button variant="outline">Open Checklist</Button>
-          </Link>
+          <Button variant="outline" asChild>
+            <Link href={`/close/checklist?period=${period}`}>Open Checklist</Link>
+          </Button>
         </div>
       </header>
 
-      <section className="rounded-xl border border-border bg-card p-5">
-        {!activeEntityId ? (
+      {!activeEntityId ? (
+        <section className="rounded-xl border border-border bg-card p-5">
           <p className="text-sm text-muted-foreground">Select an active entity to manage period close.</p>
-        ) : periodQuery.isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading period status...</p>
-        ) : periodQuery.error ? (
+        </section>
+      ) : periodQuery.isLoading || readinessQuery.isLoading ? (
+        <section className="rounded-xl border border-border bg-card p-5">
+          <p className="text-sm text-muted-foreground">Loading period close governance...</p>
+        </section>
+      ) : periodQuery.error ? (
+        <section className="rounded-xl border border-border bg-card p-5">
           <p className="text-sm text-[hsl(var(--brand-danger))]">Failed to load period status.</p>
-        ) : (
-          <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-md border border-border p-3">
-                <p className="text-xs uppercase text-muted-foreground">Effective Status</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">{effectiveStatus}</p>
+        </section>
+      ) : (
+        <>
+          <PeriodLockOverlay
+            periodLabel={`${fiscalYear}-${String(periodNumber).padStart(2, "0")}`}
+            checklistHref={`/close/checklist?period=${period}`}
+            status={periodQuery.data?.status ?? "OPEN"}
+            lockedAt={periodQuery.data?.locked_at}
+            lockedBy={periodQuery.data?.locked_by}
+            reason={periodQuery.data?.reason}
+            readinessPass={readinessPass}
+            blockers={readinessBlockers}
+            warnings={readinessWarnings}
+            checklistProgress={
+              currentMonthendChecklist
+                ? {
+                    completed: completedTasks,
+                    total: checklistTasks.length,
+                    status: monthendStatus,
+                    closedAt: monthendClosedAt,
+                    closedByKnown: false,
+                  }
+                : undefined
+            }
+            canLock={canLock}
+            canUnlock={canUnlock}
+            isLocking={lockMutation.isPending}
+            isUnlocking={unlockMutation.isPending}
+            onSoftClose={() =>
+              setPendingDialogAction({
+                action: "lock",
+                lockType: "SOFT_CLOSED",
+              })
+            }
+            onHardClose={() =>
+              setPendingDialogAction({
+                action: "lock",
+                lockType: "HARD_CLOSED",
+              })
+            }
+            onUnlock={() => setPendingDialogAction({ action: "unlock" })}
+          />
+
+          <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Month-end record</p>
+                  <h2 className="mt-1 text-lg font-semibold text-foreground">
+                    {activeEntity?.entity_name ?? "Active entity"} checklist
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Data source is `/api/v1/monthend/*` when available. Close actions remain on the legacy
+                    period lock API because that is still the truthful backend contract.
+                  </p>
+                </div>
+                {currentMonthendChecklist ? (
+                  <span className="rounded-full border border-border px-3 py-1 text-xs text-foreground">
+                    {currentMonthendChecklist.status}
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground">
+                    No checklist found
+                  </span>
+                )}
               </div>
-              <div className="rounded-md border border-border p-3">
-                <p className="text-xs uppercase text-muted-foreground">Locked At</p>
-                <p className="mt-1 text-sm text-foreground">
-                  {periodQuery.data?.locked_at ?? "-"}
+
+              {monthendDetailQuery.isLoading ? (
+                <p className="mt-4 text-sm text-muted-foreground">Loading month-end checklist...</p>
+              ) : monthendDetailQuery.error ? (
+                <p className="mt-4 text-sm text-[hsl(var(--brand-danger))]">
+                  Month-end detail could not be loaded. The list record is still visible.
                 </p>
-              </div>
-              <div className="rounded-md border border-border p-3">
-                <p className="text-xs uppercase text-muted-foreground">Reason</p>
-                <p className="mt-1 text-sm text-foreground">
-                  {periodQuery.data?.reason ?? "-"}
+              ) : currentMonthendChecklist ? (
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">Task progress</span>
+                      <span className="font-medium text-foreground">
+                        {completedTasks} / {checklistTasks.length} completed
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-[hsl(var(--brand-primary))]"
+                        style={{ width: `${checklistProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-xl border border-border bg-background p-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Created at</p>
+                      <p className="mt-1 text-sm text-foreground">{currentMonthendChecklist.created_at}</p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background p-3">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Closed at</p>
+                      <p className="mt-1 text-sm text-foreground">{monthendClosedAt ?? "Not closed yet"}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-border bg-background p-3">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Closed by</p>
+                    <p className="mt-1 text-sm text-foreground">
+                      Not exposed by the current month-end API
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      closeChecklistMutation.isPending ||
+                      monthendStatus.toLowerCase() === "closed" ||
+                      !currentMonthendChecklist
+                    }
+                    onClick={() => setShowCloseChecklistDialog(true)}
+                  >
+                    Close Checklist
+                  </Button>
+                    <Button type="button" variant="ghost" asChild>
+                      <Link href={`/close/checklist?period=${period}`}>Open Checklist Detail</Link>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  No month-end checklist exists for this entity and period yet.
                 </p>
-              </div>
+              )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {canLock ? (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      setPendingDialogAction({
-                        action: "lock",
-                        lockType: "SOFT_CLOSED",
-                      })
-                    }
-                    disabled={lockMutation.isPending || !activeEntityId}
-                  >
-                    Soft Close
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      setPendingDialogAction({
-                        action: "lock",
-                        lockType: "HARD_CLOSED",
-                      })
-                    }
-                    disabled={lockMutation.isPending || !activeEntityId}
-                  >
-                    Hard Close
-                  </Button>
-                </>
-              ) : null}
-              {canUnlock ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setPendingDialogAction({ action: "unlock" })}
-                  disabled={unlockMutation.isPending || !activeEntityId}
-                >
-                  Unlock
-                </Button>
-              ) : null}
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <h3 className="text-base font-semibold text-foreground">Governance status</h3>
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="rounded-xl border border-border bg-background p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Checklist state</p>
+                  <p className="mt-1 text-foreground">{monthendStatus}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-background p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Checklist progress</p>
+                  <p className="mt-1 text-foreground">
+                    {currentMonthendChecklist
+                      ? `${completedTasks} of ${checklistTasks.length} tasks complete`
+                      : "No month-end checklist loaded"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-border bg-background p-3">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Backend note</p>
+                  <p className="mt-1 text-foreground">
+                    {periodQuery.data?.locked_by
+                      ? "Locked-by attribution is available on the legacy period endpoint."
+                      : "Attribution remains partial where the backend does not expose it."}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
-      </section>
+          </section>
+
+          <ApprovalGraph
+            title="Close governance path"
+            description="A structured view of readiness, lock state, and month-end checklist completion."
+            stages={approvalStages}
+            footerNote="Month-end checklist close emits closed_at, but closed_by is not exposed by the current API."
+          />
+        </>
+      )}
 
       <LockReasonDialog
         open={Boolean(pendingDialogAction)}
@@ -223,49 +423,23 @@ export default function ClosePage() {
         onCancel={() => setPendingDialogAction(null)}
       />
 
-      <section className="rounded-xl border border-border bg-card p-5">
-        <h2 className="text-base font-semibold text-foreground">Readiness</h2>
-        {!activeEntityId ? (
-          <p className="mt-2 text-sm text-muted-foreground">Select an entity to run readiness checks.</p>
-        ) : readinessQuery.isLoading ? (
-          <p className="mt-2 text-sm text-muted-foreground">Running readiness checks...</p>
-        ) : readinessQuery.error ? (
-          <p className="mt-2 text-sm text-[hsl(var(--brand-danger))]">Readiness check failed.</p>
-        ) : (
-          <div className="mt-3 space-y-3">
-            <p className="text-sm text-foreground">
-              Status:{" "}
-              <span className={readinessQuery.data?.pass ? "text-emerald-400" : "text-amber-400"}>
-                {readinessQuery.data?.pass ? "PASS" : "FAIL"}
-              </span>
-            </p>
-            <div>
-              <p className="text-sm font-medium text-foreground">Blockers</p>
-              {readinessQuery.data?.blockers.length ? (
-                <ul className="ml-5 list-disc text-sm text-[hsl(var(--brand-danger))]">
-                  {readinessQuery.data.blockers.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No blockers.</p>
-              )}
-            </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">Warnings</p>
-              {readinessQuery.data?.warnings.length ? (
-                <ul className="ml-5 list-disc text-sm text-amber-300">
-                  {readinessQuery.data.warnings.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-muted-foreground">No warnings.</p>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
+      <ChecklistCloseDialog
+        open={showCloseChecklistDialog}
+        checklistLabel={currentMonthendChecklist ? `${currentMonthendChecklist.entity_name} ${period}` : "month-end checklist"}
+        onConfirm={(notes) => {
+          if (!currentMonthendChecklist) {
+            setShowCloseChecklistDialog(false)
+            return
+          }
+          closeChecklistMutation.mutate(
+            { notes },
+            {
+              onSettled: () => setShowCloseChecklistDialog(false),
+            },
+          )
+        }}
+        onCancel={() => setShowCloseChecklistDialog(false)}
+      />
     </div>
   )
 }

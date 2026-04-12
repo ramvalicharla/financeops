@@ -45,7 +45,7 @@ export function AdminSidebar() {
   return (
     <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-border bg-card md:flex md:flex-col">
       <div className="border-b border-border px-4 py-4">
-        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">FinanceOps</p>
+        <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">Finqor</p>
         <span className="mt-2 inline-flex rounded-full border border-[hsl(var(--brand-danger)/0.5)] bg-[hsl(var(--brand-danger)/0.15)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--brand-danger))]">
           ADMIN
         </span>

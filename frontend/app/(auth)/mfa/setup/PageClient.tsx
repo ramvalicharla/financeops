@@ -193,7 +193,7 @@ export default function MFASetupPage() {
     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
       <div className="mb-4 text-center">
         <h2 className="text-xl font-semibold text-foreground">Set Up Two-Factor Authentication</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Required to access FinanceOps.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Required to access Finqor.</p>
       </div>
       {step === "generate" ? (
         <button onClick={generateSecret} disabled={loading} className="w-full rounded-md bg-blue-600 py-2 text-white hover:bg-blue-700 disabled:opacity-50">

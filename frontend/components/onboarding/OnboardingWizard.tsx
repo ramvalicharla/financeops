@@ -10,6 +10,7 @@ import { ValidationPanel } from "@/components/settings/ValidationPanel"
 import { FormField } from "@/components/ui/FormField"
 import { StepIndicator } from "@/components/ui/StepIndicator"
 import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -1152,7 +1153,13 @@ export function OnboardingWizard() {
                               </p>
                               <ul className="mt-2 space-y-2 text-sm text-muted-foreground">
                                 {item.findings.map((finding, index) => (
-                                  <li key={`${item.airlock_item_id}-${index}`}>{JSON.stringify(finding)}</li>
+                                  <li key={`${item.airlock_item_id}-${index}`}>
+                                    <StructuredDataView
+                                      data={finding}
+                                      emptyMessage="No structured finding details were returned."
+                                      compact
+                                    />
+                                  </li>
                                 ))}
                               </ul>
                             </div>

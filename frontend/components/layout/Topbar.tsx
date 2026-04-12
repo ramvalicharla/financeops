@@ -167,7 +167,7 @@ export function Topbar({
           : pathname.startsWith("/anomalies/")
             ? "Anomaly Alert"
             : (TOPBAR_PAGE_TITLES[pathname as keyof typeof TOPBAR_PAGE_TITLES] ??
-              "FinanceOps")
+              "Finqor")
 
   const contextSummary = useMemo(() => {
     if (contextQuery.isLoading) {
@@ -238,7 +238,7 @@ export function Topbar({
         <div className="flex min-h-16 items-center gap-2 px-4 py-2">
           <div className="flex items-center gap-3">
             <div className="hidden rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground lg:block">
-              FinanceOps Control Plane
+              Finqor Control Plane
             </div>
             <button
               aria-label="Open navigation menu"

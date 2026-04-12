@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { admitAirlockItem, getAirlockItem, rejectAirlockItem } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
 interface AirlockReviewProps {
@@ -127,9 +128,13 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <p className="text-xs uppercase tracking-wide text-muted-foreground">Metadata</p>
-        <pre className="mt-2 overflow-x-auto rounded-md bg-muted/40 p-3 text-xs text-foreground">
-          {JSON.stringify(item.metadata ?? {}, null, 2)}
-        </pre>
+        <div className="mt-2">
+          <StructuredDataView
+            data={item.metadata ?? null}
+            emptyMessage="No metadata was returned for this airlock item."
+            compact
+          />
+        </div>
       </section>
 
       <section className="rounded-xl border border-border bg-card p-4">
@@ -138,7 +143,11 @@ export function AirlockReview({ itemId }: AirlockReviewProps) {
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             {item.findings.map((finding, index) => (
               <li key={`${item.airlock_item_id}-${index}`} className="rounded-xl border border-border bg-muted/30 px-3 py-3">
-                {JSON.stringify(finding)}
+                <StructuredDataView
+                  data={finding}
+                  emptyMessage="No structured finding details were returned."
+                  compact
+                />
               </li>
             ))}
           </ul>

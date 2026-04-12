@@ -60,7 +60,7 @@ export function SetupComplete({ summary, onEnter }: SetupCompleteProps) {
         </div>
       </div>
       <div className="flex justify-end">
-        <Button onClick={onEnter}>Enter FinanceOps -&gt;</Button>
+        <Button onClick={onEnter}>Enter Finqor -&gt;</Button>
       </div>
     </section>
   )

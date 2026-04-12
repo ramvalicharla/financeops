@@ -4,14 +4,19 @@ import Link from "next/link"
 import { useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useMutation, useQuery } from "@tanstack/react-query"
-import { createJournal } from "@/lib/api/accounting-journals"
+import { useSession } from "next-auth/react"
 import { getTenantCoaAccounts } from "@/lib/api/coa"
+import type { CreateJournalPayload } from "@/lib/api/accounting-journals"
+import { createGovernedIntent, type JournalIntentPayload } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
+import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
+import { StateBadge } from "@/components/ui/StateBadge"
 import { Button } from "@/components/ui/button"
 
 type DraftLine = {
   tenant_coa_account_id: string
+  tenant_coa_account_search: string
   debit: string
   credit: string
   memo: string
@@ -28,14 +33,33 @@ const asNumber = (value: string): number => {
 
 export default function NewJournalPage() {
   const router = useRouter()
+  const { data: session } = useSession()
+  const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
+  const canCreateJournal = canPerformAction("journal.create", userRole)
   const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const [journalDate, setJournalDate] = useState(today)
   const [reference, setReference] = useState("")
   const [narration, setNarration] = useState("")
   const [lines, setLines] = useState<DraftLine[]>([
-    { tenant_coa_account_id: "", debit: "", credit: "", memo: "", transaction_currency: "", fx_rate: "" },
-    { tenant_coa_account_id: "", debit: "", credit: "", memo: "", transaction_currency: "", fx_rate: "" },
+    {
+      tenant_coa_account_id: "",
+      tenant_coa_account_search: "",
+      debit: "",
+      credit: "",
+      memo: "",
+      transaction_currency: "",
+      fx_rate: "",
+    },
+    {
+      tenant_coa_account_id: "",
+      tenant_coa_account_search: "",
+      debit: "",
+      credit: "",
+      memo: "",
+      transaction_currency: "",
+      fx_rate: "",
+    },
   ])
   const [error, setError] = useState<string | null>(null)
 
@@ -43,12 +67,28 @@ export default function NewJournalPage() {
     queryKey: ["tenant-coa-accounts"],
     queryFn: getTenantCoaAccounts,
   })
-  const accountMap = useMemo(
+  const accountChoices = useMemo(
     () =>
-      new Map((accountsQuery.data ?? []).map((account) => [account.id, account])),
+      (accountsQuery.data ?? []).map((account) => ({
+        id: account.id,
+        label: `${account.account_code} - ${account.display_name}`,
+        code: account.account_code,
+      })),
     [accountsQuery.data],
   )
-  const hasAccounts = (accountsQuery.data?.length ?? 0) > 0
+  const accountById = useMemo(
+    () => new Map(accountChoices.map((account) => [account.id, account])),
+    [accountChoices],
+  )
+  const accountByLabel = useMemo(
+    () => new Map(accountChoices.map((account) => [account.label, account.id])),
+    [accountChoices],
+  )
+  const accountByCode = useMemo(
+    () => new Map(accountChoices.map((account) => [account.code, account.id])),
+    [accountChoices],
+  )
+  const hasAccounts = accountChoices.length > 0
 
   const totalDebit = useMemo(
     () => lines.reduce((acc, line) => acc + asNumber(line.debit), 0),
@@ -61,7 +101,7 @@ export default function NewJournalPage() {
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.0001
 
   const createMutation = useMutation({
-    mutationFn: createJournal,
+    mutationFn: createGovernedIntent,
     onSuccess: (result) => {
       openIntentPanel(result)
       router.push("/accounting/journals")
@@ -74,7 +114,15 @@ export default function NewJournalPage() {
   const addLine = (): void => {
     setLines((current) => [
       ...current,
-      { tenant_coa_account_id: "", debit: "", credit: "", memo: "", transaction_currency: "", fx_rate: "" },
+      {
+        tenant_coa_account_id: "",
+        tenant_coa_account_search: "",
+        debit: "",
+        credit: "",
+        memo: "",
+        transaction_currency: "",
+        fx_rate: "",
+      },
     ])
   }
 
@@ -90,10 +138,28 @@ export default function NewJournalPage() {
     )
   }
 
-  const submit = async (): Promise<void> => {
+  const resolveAccountId = (line: DraftLine): string | null => {
+    const exactSearch = line.tenant_coa_account_search.trim()
+    if (line.tenant_coa_account_id) {
+      return line.tenant_coa_account_id
+    }
+    if (accountByLabel.has(exactSearch)) {
+      return accountByLabel.get(exactSearch) ?? null
+    }
+    if (accountByCode.has(exactSearch)) {
+      return accountByCode.get(exactSearch) ?? null
+    }
+    return null
+  }
+
+  const submit = (): void => {
     setError(null)
     if (!activeEntityId) {
       setError("Select an active entity before posting a journal.")
+      return
+    }
+    if (!canCreateJournal) {
+      setError(getPermissionDeniedMessage("journal.create"))
       return
     }
     if (lines.length < 2) {
@@ -105,11 +171,21 @@ export default function NewJournalPage() {
       return
     }
 
-    const hasInvalidLine = lines.some((line) => {
+    const resolvedLines = lines.map((line) => {
+      const accountId = resolveAccountId(line)
+      const account = accountId ? accountById.get(accountId) : null
+      return {
+        line,
+        accountId,
+        account,
+      }
+    })
+    const hasInvalidLine = resolvedLines.some(({ line, accountId, account }) => {
       const debit = asNumber(line.debit)
       const credit = asNumber(line.credit)
       return (
-        !line.tenant_coa_account_id ||
+        !accountId ||
+        !account ||
         (debit > 0 && credit > 0) ||
         (debit <= 0 && credit <= 0) ||
         debit < 0 ||
@@ -117,20 +193,20 @@ export default function NewJournalPage() {
       )
     })
     if (hasInvalidLine) {
-      setError("Each line must have one account and exactly one of debit or credit.")
+      setError("Choose a valid COA suggestion and enter exactly one debit or credit on each line.")
       return
     }
 
-    await createMutation.mutateAsync({
-      org_entity_id: activeEntityId,
-      journal_date: journalDate,
-      reference: reference || undefined,
-      narration: narration || undefined,
-      lines: lines.map((line) => {
-        const account = accountMap.get(line.tenant_coa_account_id)
-        return {
-          tenant_coa_account_id: line.tenant_coa_account_id,
-          account_code: account?.account_code,
+    const payload: JournalIntentPayload = {
+      type: "CREATE_JOURNAL",
+      data: {
+        org_entity_id: activeEntityId,
+        journal_date: journalDate,
+        reference: reference || undefined,
+        narration: narration || undefined,
+        lines: resolvedLines.map(({ line, accountId, account }) => ({
+          tenant_coa_account_id: accountId ?? undefined,
+          account_code: account?.code,
           debit: String(asNumber(line.debit)),
           credit: String(asNumber(line.credit)),
           memo: line.memo || undefined,
@@ -138,9 +214,11 @@ export default function NewJournalPage() {
             ? line.transaction_currency.toUpperCase()
             : undefined,
           fx_rate: line.fx_rate ? String(asNumber(line.fx_rate)) : undefined,
-        }
-      }),
-    })
+        })),
+      } as CreateJournalPayload,
+    }
+
+    createMutation.mutate(payload)
   }
 
   return (
@@ -189,6 +267,15 @@ export default function NewJournalPage() {
         </label>
       </section>
 
+      {accountsQuery.isError ? (
+        <div className="rounded-xl border border-[hsl(var(--brand-danger)/0.35)] bg-[hsl(var(--brand-danger)/0.12)] p-4 text-sm text-foreground">
+          <p className="font-medium">COA accounts failed to load</p>
+          <p className="mt-1 text-muted-foreground">
+            {accountsQuery.error instanceof Error ? accountsQuery.error.message : "Unable to load chart of accounts."}
+          </p>
+        </div>
+      ) : null}
+
       <section className="overflow-hidden rounded-xl border border-border bg-card">
         {!accountsQuery.isLoading && !accountsQuery.isError && !hasAccounts ? (
           <div className="p-6 text-sm text-muted-foreground">
@@ -213,22 +300,31 @@ export default function NewJournalPage() {
                   {lines.map((line, index) => (
                     <tr key={`line-${index}`}>
                       <td className="px-4 py-2">
-                        <select
-                          value={line.tenant_coa_account_id}
-                          onChange={(event) =>
-                            updateLine(index, {
-                              tenant_coa_account_id: event.target.value,
-                            })
-                          }
-                          className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
-                        >
-                          <option value="">Select account</option>
-                          {(accountsQuery.data ?? []).map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {account.account_code} - {account.display_name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="space-y-2">
+                          <input
+                            list={`journal-account-options-${index}`}
+                            value={line.tenant_coa_account_search}
+                            onChange={(event) => {
+                              const search = event.target.value
+                              const exactMatch = accountByLabel.get(search) ?? accountByCode.get(search) ?? ""
+                              updateLine(index, {
+                                tenant_coa_account_search: search,
+                                tenant_coa_account_id: exactMatch,
+                              })
+                            }}
+                            className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
+                            placeholder="Search account code or name"
+                            autoComplete="off"
+                          />
+                          <datalist id={`journal-account-options-${index}`}>
+                            {accountChoices.map((account) => (
+                              <option key={account.id} value={account.label} />
+                            ))}
+                          </datalist>
+                          <p className="text-xs text-muted-foreground">
+                            Choose a COA suggestion to resolve the account automatically.
+                          </p>
+                        </div>
                       </td>
                       <td className="px-4 py-2">
                         <input
@@ -308,12 +404,16 @@ export default function NewJournalPage() {
               <Button type="button" variant="outline" onClick={addLine}>
                 Add Line
               </Button>
-              <div className="text-sm text-muted-foreground">
-                <span className="mr-4">Debit: {totalDebit.toFixed(2)}</span>
-                <span className="mr-4">Credit: {totalCredit.toFixed(2)}</span>
-                <span className={isBalanced ? "text-emerald-300" : "text-rose-300"}>
-                  {isBalanced ? "Balanced" : "Not Balanced"}
-                </span>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <span className="mr-2">Debit: {totalDebit.toFixed(2)}</span>
+                <span className="mr-2">Credit: {totalCredit.toFixed(2)}</span>
+                <StateBadge
+                  status={isBalanced ? "success" : "failed"}
+                  label={isBalanced ? "Balanced" : "Not balanced"}
+                />
+                {!canCreateJournal ? (
+                  <StateBadge status="failed" label={getPermissionDeniedMessage("journal.create")} />
+                ) : null}
               </div>
             </div>
           </>
@@ -329,8 +429,9 @@ export default function NewJournalPage() {
       <div className="flex justify-end">
         <Button
           type="button"
-          onClick={() => void submit()}
-          disabled={createMutation.isPending || accountsQuery.isLoading || !hasAccounts}
+          onClick={submit}
+          disabled={createMutation.isPending || accountsQuery.isLoading || !hasAccounts || !canCreateJournal}
+          title={!canCreateJournal ? getPermissionDeniedMessage("journal.create") : undefined}
         >
           {createMutation.isPending ? "Creating..." : "Create Draft"}
         </Button>

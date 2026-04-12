@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/Dialog"
 import { Input } from "@/components/ui/input"
+import { StructuredDataView } from "@/components/ui"
 import {
   fetchAnomalyThresholds,
   updateAnomalyThreshold,
@@ -155,9 +156,12 @@ export default function AnomalyThresholdsPage() {
                     <td className="px-3 py-2 font-medium text-foreground">{row.rule_code}</td>
                     <td className="px-3 py-2 text-muted-foreground">{row.current_threshold}</td>
                     <td className="px-3 py-2">
-                      <pre className="max-h-20 overflow-auto rounded border border-border bg-background px-2 py-1 text-xs text-muted-foreground">
-                        {JSON.stringify(row.config ?? {}, null, 2)}
-                      </pre>
+                      <StructuredDataView
+                        data={row.config ?? null}
+                        emptyMessage="No configuration fields."
+                        className="max-h-32 overflow-auto"
+                        compact
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <Button

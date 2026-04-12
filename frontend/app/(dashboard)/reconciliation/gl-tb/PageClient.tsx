@@ -66,10 +66,6 @@ export default function GLTBReconciliationPage() {
     "Reconciliation",
   )
 
-  if (accessErrorMessage) {
-    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
-  }
-
   const filteredAccounts = useMemo(() => {
     const accounts = resultQuery.data?.accounts ?? []
     if (statusFilter === "ALL") {
@@ -80,6 +76,10 @@ export default function GLTBReconciliationPage() {
 
   const filtersReady = Boolean(selectedEntityId && selectedPeriod && selectedRunId)
   const summary = resultQuery.data
+
+  if (accessErrorMessage) {
+    return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
+  }
 
   return (
     <div className="space-y-6">

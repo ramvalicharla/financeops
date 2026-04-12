@@ -34,6 +34,19 @@ const isStaticAsset = (pathname: string): boolean =>
   pathname === "/favicon.ico" ||
   pathname.startsWith("/static")
 
+const normalizeCspConnectSource = (value: string): string => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return ""
+  }
+
+  try {
+    return new URL(trimmed).origin
+  } catch {
+    return trimmed
+  }
+}
+
 const applySecurityHeaders = (
   response: NextResponse,
   apiUrl: string | undefined,
@@ -41,10 +54,14 @@ const applySecurityHeaders = (
   const isProduction = process.env.NODE_ENV === "production"
   const connectSrc = ["'self'"]
   if (apiUrl) {
-    connectSrc.push(apiUrl)
+    const normalizedApiUrl = normalizeCspConnectSource(apiUrl)
+    if (normalizedApiUrl) {
+      connectSrc.push(normalizedApiUrl)
+    }
   }
   if (!isProduction) {
-    connectSrc.push("ws:", "wss:")
+    // Local development often targets changing backends during live testing.
+    connectSrc.push("http:", "https:", "ws:", "wss:")
   }
   const scriptSrc = ["'self'", "'unsafe-inline'"]
   if (!isProduction) {
@@ -75,6 +92,7 @@ const applySecurityHeaders = (
       "base-uri 'self'",
       "form-action 'self'",
     ]
+      .filter(Boolean)
       .join("; ")
       .trim(),
   )

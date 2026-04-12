@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { Download, Loader2 } from "lucide-react"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
+import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 import {
   downloadArtifact,
@@ -58,7 +59,7 @@ const renderSnapshotValue = (value: unknown): string => {
     return "â€”"
   }
   if (typeof value === "object") {
-    return JSON.stringify(value, null, 2)
+    return "Structured object"
   }
   return String(value)
 }
@@ -347,9 +348,11 @@ export default function BoardPackRunViewerPage() {
                                   <td className="px-3 py-2 text-muted-foreground">{key}</td>
                                   <td className="px-3 py-2 text-muted-foreground">
                                     {typeof value === "object" && value !== null ? (
-                                      <pre className="whitespace-pre-wrap break-all rounded bg-muted/20 p-2 text-xs text-foreground">
-                                        {renderSnapshotValue(value)}
-                                      </pre>
+                                      <StructuredDataView
+                                        data={value}
+                                        emptyMessage="No structured snapshot detail is available."
+                                        compact
+                                      />
                                     ) : (
                                       renderSnapshotValue(value)
                                     )}

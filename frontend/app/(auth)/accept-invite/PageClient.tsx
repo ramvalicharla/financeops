@@ -69,7 +69,7 @@ function AcceptInvitePageContent() {
       <div className="mb-6 space-y-1">
         <h2 className="text-xl font-semibold text-foreground">Accept Invitation</h2>
         <p className="text-sm text-muted-foreground">
-          Set your password to activate your FinanceOps account.
+          Set your password to activate your Finqor account.
         </p>
       </div>
 

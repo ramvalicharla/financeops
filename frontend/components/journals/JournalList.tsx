@@ -4,21 +4,17 @@ import Link from "next/link"
 import { useMemo } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
-import {
-  approveJournal,
-  listJournals,
-  postJournal,
-  reviewJournal,
-  reverseJournal,
-  submitJournal,
-} from "@/lib/api/accounting-journals"
+import { listJournals, type JournalRecord } from "@/lib/api/accounting-journals"
+import { createGovernedIntent } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { FlowStrip } from "@/components/ui/FlowStrip"
+import { StateBadge } from "@/components/ui/StateBadge"
 import { Button } from "@/components/ui/button"
+import { DataTable, type DataTableColumn } from "@/components/common/DataTable"
 
-const fmt = (value: string): string =>
+const formatAmount = (value: string): string =>
   Number(value).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -30,6 +26,7 @@ export function JournalList() {
   const queryClient = useQueryClient()
   const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
+  const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const query = useQuery({
     queryKey: ["accounting-journals", activeEntityId],
@@ -37,11 +34,11 @@ export function JournalList() {
       listJournals(activeEntityId ? { org_entity_id: activeEntityId, limit: 100 } : { limit: 100 }),
   })
 
-  const refresh = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ["accounting-journals"] })
+  const refresh = (): void => {
+    void queryClient.invalidateQueries({ queryKey: ["accounting-journals"] })
   }
 
-  const onGovernedSuccess = async (result: {
+  const onGovernedSuccess = (result: {
     intent_id: string
     status: string
     job_id: string | null
@@ -49,35 +46,195 @@ export function JournalList() {
     record_refs: Record<string, unknown> | null
   }) => {
     openIntentPanel(result)
-    await refresh()
+    refresh()
   }
 
-  const approveMutation = useMutation({
-    mutationFn: (journalId: string) => approveJournal(journalId),
-    onSuccess: onGovernedSuccess,
-  })
-  const submitMutation = useMutation({
-    mutationFn: (journalId: string) => submitJournal(journalId),
-    onSuccess: onGovernedSuccess,
-  })
-  const reviewMutation = useMutation({
-    mutationFn: (journalId: string) => reviewJournal(journalId),
-    onSuccess: onGovernedSuccess,
-  })
-  const postMutation = useMutation({
-    mutationFn: (journalId: string) => postJournal(journalId),
-    onSuccess: onGovernedSuccess,
-  })
-  const reverseMutation = useMutation({
-    mutationFn: (journalId: string) => reverseJournal(journalId),
+  const governedMutation = useMutation({
+    mutationFn: createGovernedIntent,
     onSuccess: onGovernedSuccess,
   })
 
   const journals = useMemo(() => query.data ?? [], [query.data])
 
+  const columns = useMemo<DataTableColumn<JournalRecord>[]>(
+    () => [
+      {
+        key: "journal-number",
+        header: "Journal #",
+        render: (journal) => (
+          <Link href={`/accounting/journals/${journal.id}`} className="font-medium text-foreground underline-offset-4 hover:underline">
+            {journal.journal_number}
+          </Link>
+        ),
+      },
+      {
+        key: "date",
+        header: "Date",
+        render: (journal) => <span className="text-muted-foreground">{journal.journal_date}</span>,
+      },
+      {
+        key: "description",
+        header: "Description",
+        render: (journal) => <span className="text-muted-foreground">{journal.narration ?? journal.reference ?? "-"}</span>,
+      },
+      {
+        key: "status",
+        header: "Status",
+        render: (journal) => <StateBadge status={journal.status} />,
+      },
+      {
+        key: "created-by",
+        header: "Created By",
+        render: (journal) => <span className="font-mono text-xs text-muted-foreground">{journal.created_by ?? "-"}</span>,
+      },
+      {
+        key: "intent",
+        header: "Intent ID",
+        render: (journal) =>
+          journal.intent_id ? (
+            <button
+              type="button"
+              className="rounded-full border border-[hsl(var(--brand-primary)/0.25)] bg-[hsl(var(--brand-primary)/0.08)] px-3 py-1 font-mono text-xs text-foreground"
+              onClick={() =>
+                openIntentPanel({
+                  intent_id: journal.intent_id!,
+                  status: journal.status,
+                  job_id: journal.job_id,
+                  next_action: journal.approval_status ?? null,
+                  record_refs: { journal_id: journal.id },
+                })
+              }
+            >
+              {journal.intent_id}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">-</span>
+          ),
+      },
+      {
+        key: "job",
+        header: "Job ID",
+        render: (journal) =>
+          journal.job_id ? (
+            <button
+              type="button"
+              className="rounded-full border border-border bg-background px-3 py-1 font-mono text-xs text-foreground"
+              onClick={() => openJobPanel(journal.job_id)}
+            >
+              {journal.job_id}
+            </button>
+          ) : (
+            <span className="text-xs text-muted-foreground">-</span>
+          ),
+      },
+      {
+        key: "approval",
+        header: "Approval",
+        render: (journal) => (
+          <StateBadge
+            status={journal.approval_status ?? journal.status}
+            label={journal.approval_status ?? journal.status}
+          />
+        ),
+      },
+      {
+        key: "actions",
+        header: "Actions",
+        render: (journal) => (
+          <div className="flex flex-wrap gap-2">
+            {journal.status === "DRAFT" && canPerformAction("journal.submit", userRole) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  governedMutation.mutate({
+                    type: "SUBMIT_JOURNAL",
+                    data: { journal_id: journal.id },
+                  })
+                }
+                disabled={governedMutation.isPending}
+              >
+                Submit
+              </Button>
+            ) : null}
+            {journal.status === "SUBMITTED" && canPerformAction("journal.review", userRole) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  governedMutation.mutate({
+                    type: "REVIEW_JOURNAL",
+                    data: { journal_id: journal.id },
+                  })
+                }
+                disabled={governedMutation.isPending}
+              >
+                Review
+              </Button>
+            ) : null}
+            {journal.status === "REVIEWED" && canPerformAction("journal.approve", userRole) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  governedMutation.mutate({
+                    type: "APPROVE_JOURNAL",
+                    data: { journal_id: journal.id },
+                  })
+                }
+                disabled={governedMutation.isPending}
+              >
+                Approve
+              </Button>
+            ) : null}
+            {journal.status === "APPROVED" && canPerformAction("journal.post", userRole) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  governedMutation.mutate({
+                    type: "POST_JOURNAL",
+                    data: { journal_id: journal.id },
+                  })
+                }
+                disabled={governedMutation.isPending}
+              >
+                Post
+              </Button>
+            ) : null}
+            {journal.status === "POSTED" && canPerformAction("journal.reverse", userRole) ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  governedMutation.mutate({
+                    type: "REVERSE_JOURNAL",
+                    data: { journal_id: journal.id },
+                  })
+                }
+                disabled={governedMutation.isPending}
+              >
+                Reverse
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" size="sm" onClick={() => openTimelinePanel("journal", journal.id)}>
+              Timeline
+            </Button>
+            <Link href={`/accounting/journals/${journal.id}`}>
+              <Button variant="outline" size="sm">
+                Open
+              </Button>
+            </Link>
+          </div>
+        ),
+      },
+    ],
+    [governedMutation, openIntentPanel, openJobPanel, openTimelinePanel, userRole],
+  )
+
   if (query.isLoading) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-3">
         <FlowStrip
           title="Journal Flow"
           subtitle="Create, validate, approve, execute, and record through the governed accounting path."
@@ -139,7 +296,7 @@ export function JournalList() {
           ]}
         />
         <div className="rounded-2xl border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-          No data yet. Start by creating a journal so its intent, approval state, and execution trace appear here.
+          No data yet. Start by creating a journal so its intent, approval state, execution trace, and timeline appear here.
         </div>
       </div>
     )
@@ -159,111 +316,12 @@ export function JournalList() {
           { label: "Record" },
         ]}
       />
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <table className="min-w-full divide-y divide-border text-sm">
-        <thead className="bg-muted/30">
-          <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-            <th className="px-4 py-2">Journal #</th>
-            <th className="px-4 py-2">Date</th>
-            <th className="px-4 py-2">Description</th>
-            <th className="px-4 py-2">Status</th>
-            <th className="px-4 py-2">Created By</th>
-            <th className="px-4 py-2">Intent ID</th>
-            <th className="px-4 py-2">Job ID</th>
-            <th className="px-4 py-2">Approval</th>
-            <th className="px-4 py-2">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {journals.map((journal) => (
-            <tr key={journal.id}>
-              <td className="px-4 py-2 font-medium text-foreground">{journal.journal_number}</td>
-              <td className="px-4 py-2 text-muted-foreground">{journal.journal_date}</td>
-              <td className="px-4 py-2 text-muted-foreground">{journal.narration ?? journal.reference ?? "-"}</td>
-              <td className="px-4 py-2 text-foreground">{journal.status}</td>
-              <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{journal.created_by ?? "-"}</td>
-              <td className="px-4 py-2">
-                {journal.intent_id ? (
-                  <button
-                    type="button"
-                    className="rounded-full border border-[hsl(var(--brand-primary)/0.25)] bg-[hsl(var(--brand-primary)/0.08)] px-3 py-1 font-mono text-xs text-foreground"
-                    onClick={() =>
-                      openIntentPanel({
-                        intent_id: journal.intent_id!,
-                        status: journal.status,
-                        job_id: journal.job_id,
-                        next_action: journal.approval_status ?? null,
-                        record_refs: { journal_id: journal.id },
-                      })
-                    }
-                  >
-                    {journal.intent_id}
-                  </button>
-                ) : (
-                  <span className="text-xs text-muted-foreground">-</span>
-                )}
-              </td>
-              <td className="px-4 py-2">
-                {journal.job_id ? (
-                  <button
-                    type="button"
-                    className="rounded-full border border-border bg-background px-3 py-1 font-mono text-xs text-foreground"
-                    onClick={() => openJobPanel(journal.job_id)}
-                  >
-                    {journal.job_id}
-                  </button>
-                ) : (
-                  <span className="text-xs text-muted-foreground">-</span>
-                )}
-              </td>
-              <td className="px-4 py-2">
-                <span className="rounded-full bg-[hsl(var(--brand-success)/0.12)] px-3 py-1 text-xs font-medium text-foreground">
-                  {journal.approval_status ?? "-"}
-                </span>
-              </td>
-              <td className="px-4 py-2">
-                <div className="flex flex-wrap gap-2">
-                  {journal.status === "DRAFT" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => submitMutation.mutate(journal.id)}
-                      disabled={submitMutation.isPending || !canPerformAction("journal.submit", userRole)}
-                      title={!canPerformAction("journal.submit", userRole) ? getPermissionDeniedMessage("journal.submit") : undefined}
-                    >
-                      Submit
-                    </Button>
-                  ) : null}
-                  {journal.status === "SUBMITTED" && canPerformAction("journal.review", userRole) ? (
-                    <Button variant="outline" size="sm" onClick={() => reviewMutation.mutate(journal.id)} disabled={reviewMutation.isPending}>
-                      Review
-                    </Button>
-                  ) : null}
-                  {journal.status === "REVIEWED" && canPerformAction("journal.approve", userRole) ? (
-                    <Button variant="outline" size="sm" onClick={() => approveMutation.mutate(journal.id)} disabled={approveMutation.isPending}>
-                      Approve
-                    </Button>
-                  ) : null}
-                  {journal.status === "APPROVED" && canPerformAction("journal.post", userRole) ? (
-                    <Button variant="outline" size="sm" onClick={() => postMutation.mutate(journal.id)} disabled={postMutation.isPending}>
-                      Post
-                    </Button>
-                  ) : null}
-                  {journal.status === "POSTED" && canPerformAction("journal.reverse", userRole) ? (
-                    <Button variant="outline" size="sm" onClick={() => reverseMutation.mutate(journal.id)} disabled={reverseMutation.isPending}>
-                      Reverse
-                    </Button>
-                  ) : null}
-                  <Link href={`/accounting/journals/${journal.id}`}>
-                    <Button variant="outline" size="sm">Open</Button>
-                  </Link>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={journals}
+        emptyMessage="No journals returned for the current scope."
+        label="Journals"
+      />
     </div>
   )
 }

@@ -157,7 +157,7 @@ describe("control plane shell", () => {
       </>,
     )
 
-    expect(screen.getAllByText("FinanceOps").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Finqor").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Jobs")[0]).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
