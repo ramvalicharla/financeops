@@ -1,5 +1,7 @@
 "use client"
 
+import { useEffect } from "react"
+
 interface ScheduledDeliveryErrorProps {
   error: Error & { digest?: string }
   reset: () => void
@@ -9,6 +11,9 @@ export default function ScheduledDeliveryError({
   error,
   reset,
 }: ScheduledDeliveryErrorProps) {
+  useEffect(() => {
+    console.error("Scheduled delivery error:", error)
+  }, [error])
   return (
     <div className="flex min-h-[50vh] items-center justify-center">
       <div className="w-full max-w-lg rounded-xl border border-border bg-card p-8 shadow-sm">

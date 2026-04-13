@@ -1,31 +1,36 @@
 "use client"
 
-interface DashboardErrorProps {
+import { useEffect } from "react"
+import { Button } from "@/components/ui/button"
+
+export default function DashboardError({
+  error,
+  reset,
+}: {
   error: Error & { digest?: string }
   reset: () => void
-}
+}) {
+  useEffect(() => {
+    console.error("Dashboard error:", error)
+  }, [error])
 
-export default function DashboardError({ error, reset }: DashboardErrorProps) {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
-      <div className="w-full max-w-lg rounded-xl border border-border bg-card p-8 shadow-sm">
-        <h2 className="text-2xl font-semibold text-foreground">Unable to load the dashboard</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The dashboard could not be loaded right now. Please try again.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <button
-            className="rounded-md bg-[hsl(var(--brand-primary))] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-            onClick={reset}
-            type="button"
-          >
-            Try again
-          </button>
-        </div>
-        <p className="mt-6 text-xs text-muted-foreground">
-          Reference: {error.digest ?? "Unavailable"}
-        </p>
+    <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-destructive/30 bg-destructive/5 p-10 text-center mx-4 my-8">
+      <div className="w-10 h-10 rounded-full bg-destructive/10 flex items-center justify-center">
+        <span className="text-destructive text-lg">!</span>
       </div>
+      <div className="space-y-1">
+        <p className="font-medium text-sm">Something went wrong</p>
+        <p className="text-muted-foreground text-xs max-w-xs">
+          {error.message ?? "An unexpected error occurred in this module."}
+        </p>
+        {error.digest ? (
+          <p className="text-muted-foreground text-xs font-mono">Ref: {error.digest}</p>
+        ) : null}
+      </div>
+      <Button variant="outline" size="sm" onClick={reset}>
+        Try again
+      </Button>
     </div>
   )
 }

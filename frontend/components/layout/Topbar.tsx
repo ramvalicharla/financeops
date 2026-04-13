@@ -15,6 +15,7 @@ import type { EntityRole } from "@/types/api"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { useSearch } from "@/components/search/SearchProvider"
 import { EntityLocationSelector } from "@/components/layout/EntityLocationSelector"
+import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { Button } from "@/components/ui/button"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
@@ -124,7 +125,7 @@ export function Topbar({
   tenantSlug: _tenantSlug,
   userName,
   userEmail,
-  entityRoles: _entityRoles,
+  entityRoles,
 }: TopbarProps) {
   const pathname = usePathname() ?? ""
   const [profileOpen, setProfileOpen] = useState(false)
@@ -169,14 +170,28 @@ export function Topbar({
             : (TOPBAR_PAGE_TITLES[pathname as keyof typeof TOPBAR_PAGE_TITLES] ??
               "Finqor")
 
+  const orgName =
+    contextQuery.data?.current_organisation?.organisation_name ??
+    contextQuery.data?.tenant_slug ??
+    _tenantSlug ??
+    "Finqor"
+
   const contextSummary = useMemo(() => {
     if (contextQuery.isLoading) {
       return "Loading backend context"
     }
-    const organization = contextQuery.data?.tenant_slug ?? "Organization unavailable"
+    const organization =
+      contextQuery.data?.current_organisation?.organisation_name ??
+      contextQuery.data?.tenant_slug ??
+      "Organization unavailable"
     const period = contextQuery.data?.current_period.period_label ?? "Period unavailable"
     return `${organization} · ${period}`
-  }, [contextQuery.data?.current_period.period_label, contextQuery.data?.tenant_slug, contextQuery.isLoading])
+  }, [
+    contextQuery.data?.current_organisation?.organisation_name,
+    contextQuery.data?.current_period.period_label,
+    contextQuery.data?.tenant_slug,
+    contextQuery.isLoading,
+  ])
 
   useEffect(() => {
     if (!mobileActionsOpen) {
@@ -238,7 +253,11 @@ export function Topbar({
         <div className="flex min-h-16 items-center gap-2 px-4 py-2">
           <div className="flex items-center gap-3">
             <div className="hidden rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground lg:block">
-              Finqor Control Plane
+              {contextQuery.isLoading ? (
+                <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+              ) : (
+                orgName
+              )}
             </div>
             <button
               aria-label="Open navigation menu"
@@ -279,7 +298,14 @@ export function Topbar({
             userName={userName}
             onToggle={() => {
               setMobileActionsOpen(false)
+              const opening = !profileOpen
               setProfileOpen((open) => !open)
+              if (opening) {
+                setTimeout(() => {
+                  const firstItem = mobileProfileMenuRef.current?.querySelector('[role="menuitem"]')
+                  ;(firstItem as HTMLElement | null)?.focus()
+                }, 10)
+              }
             }}
           />
         </div>
@@ -290,6 +316,15 @@ export function Topbar({
             className="absolute inset-x-4 top-full z-40 rounded-md border border-border bg-card p-3 shadow-lg"
           >
             <div className="space-y-3">
+              {entityRoles.length > 1 ? (
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                    Entity
+                  </p>
+                  <EntitySwitcher entityRoles={entityRoles} />
+                </div>
+              ) : null}
+
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                   Scale
@@ -347,9 +382,21 @@ export function Topbar({
 
       <div className="hidden min-h-16 items-center justify-between gap-6 px-4 py-3 md:flex md:px-6">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Control Plane
-            </p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                {contextQuery.isLoading ? (
+                  <span className="inline-block h-4 w-32 animate-pulse rounded bg-muted align-middle" />
+                ) : (
+                  orgName
+                )}
+              </p>
+              {!contextQuery.isLoading && entityRoles.length > 0 ? (
+                <>
+                  <span className="text-xs text-muted-foreground">/</span>
+                  <EntitySwitcher entityRoles={entityRoles} />
+                </>
+              ) : null}
+            </div>
             <div className="flex items-center gap-3">
               <h1 className="text-lg font-semibold text-foreground">{title}</h1>
               <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
@@ -400,7 +447,16 @@ export function Topbar({
             triggerRef={desktopProfileTriggerRef}
             userEmail={userEmail}
             userName={userName}
-            onToggle={() => setProfileOpen((open) => !open)}
+            onToggle={() => {
+              const opening = !profileOpen
+              setProfileOpen((open) => !open)
+              if (opening) {
+                setTimeout(() => {
+                  const firstItem = desktopProfileMenuRef.current?.querySelector('[role="menuitem"]')
+                  ;(firstItem as HTMLElement | null)?.focus()
+                }, 10)
+              }
+            }}
           />
         </div>
       </div>

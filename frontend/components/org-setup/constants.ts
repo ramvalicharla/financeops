@@ -1,10 +1,11 @@
 import type { EntityType, ErpType } from "@/lib/api/orgSetup"
 
 export const ORG_SETUP_STEP_NAMES = [
-  "Group identity",
-  "Legal entities",
-  "Ownership structure",
-  "Accounting tools",
+  "Org details",
+  "Entity structure",
+  "Chart of accounts",
+  "Connect ERP",
+  "Invite team",
 ] as const
 
 export const CURRENCY_OPTIONS = ["INR", "USD", "SGD", "GBP", "EUR", "AED"] as const

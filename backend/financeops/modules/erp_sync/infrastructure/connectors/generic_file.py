@@ -25,6 +25,25 @@ class GenericFileConnector(AbstractConnector):
     }
     supports_resumable_extraction = True
 
+    async def test_connection(self, credentials: dict[str, Any]) -> dict[str, Any]:
+        try:
+            filename = str(
+                credentials.get("filename")
+                or credentials.get("file_name")
+                or credentials.get("sample_filename")
+                or "connection-check.csv"
+            )
+            lower = filename.lower()
+            if not lower.endswith((".csv", ".json", ".xlsx", ".xls")):
+                raise ExtractionError(f"Unsupported file format: {filename}")
+            return {
+                "ok": True,
+                "latency_ms": 0,
+                "connector_type": self.connector_type.value,
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     def _parse_records(self, *, content: bytes, filename: str) -> list[dict[str, Any]]:
         lower = filename.lower()
         if lower.endswith(".json"):

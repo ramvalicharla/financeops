@@ -12,11 +12,13 @@ import {
   GAAP_OPTIONS,
 } from "@/components/org-setup/constants"
 import type { Step2EntityPayload } from "@/lib/api/orgSetup"
+import { EntityTreePreview } from "@/components/org-setup/EntityTreePreview"
 
 interface Step2EntitiesProps {
   submitting: boolean
   initial: Step2EntityPayload[]
   onSubmit: (entities: Step2EntityPayload[]) => Promise<void>
+  orgName?: string
 }
 
 const defaultEntity = (): Step2EntityPayload => ({
@@ -37,7 +39,7 @@ const defaultEntity = (): Step2EntityPayload => ({
   lei: "",
 })
 
-export function Step2Entities({ submitting, initial, onSubmit }: Step2EntitiesProps) {
+export function Step2Entities({ submitting, initial, onSubmit, orgName = "Your organisation" }: Step2EntitiesProps) {
   const [rows, setRows] = useState<Step2EntityPayload[]>(
     initial.length > 0 ? initial : [defaultEntity()],
   )
@@ -77,10 +79,17 @@ export function Step2Entities({ submitting, initial, onSubmit }: Step2EntitiesPr
     await onSubmit(payload)
   }
 
+  const watchedEntities = rows.map((row, index) => ({
+    id: String(index),
+    name: row.legal_name,
+    type: row.entity_type,
+  }))
+
   return (
+    <div className="grid items-start gap-6 lg:grid-cols-[1fr_260px]">
     <form className="space-y-4 rounded-xl border border-border bg-card p-5" onSubmit={handleSubmit}>
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Legal entities</h2>
+        <h2 className="text-lg font-semibold text-foreground">Entity structure</h2>
         <Button
           type="button"
           variant="outline"
@@ -272,5 +281,17 @@ export function Step2Entities({ submitting, initial, onSubmit }: Step2EntitiesPr
         </Button>
       </div>
     </form>
+    <div className="hidden lg:block sticky top-6">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+        Structure preview
+      </p>
+      <div className="rounded-lg border border-border bg-muted/30 p-4">
+        <EntityTreePreview
+          entities={watchedEntities}
+          orgName={orgName}
+        />
+      </div>
+    </div>
+    </div>
   )
 }

@@ -110,10 +110,12 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
   const actionsDisabled = governedMutation.isPending
 
   const canSubmit = status === "DRAFT" && canPerformAction("journal.submit", userRole)
-  const canReview = status === "SUBMITTED" && canPerformAction("journal.review", userRole)
-  const canApprove = status === "REVIEWED" && canPerformAction("journal.approve", userRole)
+  const canReview =
+    ["SUBMITTED", "PENDING_REVIEW", "RESUBMITTED"].includes(status) &&
+    canPerformAction("journal.review", userRole)
+  const canApprove = status === "UNDER_REVIEW" && canPerformAction("journal.approve", userRole)
   const canPost = status === "APPROVED" && canPerformAction("journal.post", userRole)
-  const canReverse = status === "POSTED" && canPerformAction("journal.reverse", userRole)
+  const canReverse = status === "PUSHED" && canPerformAction("journal.reverse", userRole)
 
   const lineColumns = useMemo<DataTableColumn<JournalLine>[]>(
     () => [

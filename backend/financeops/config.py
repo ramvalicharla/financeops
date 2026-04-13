@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     ERP_CONSENT_ENABLED: bool = False
     ERP_CONNECTOR_VERSIONING_ENABLED: bool = False
     ERP_CONNECTION_SERVICE_ENABLED: bool = False
+    ENABLE_CHUNKED_TASKS: bool = False
 
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
@@ -237,6 +238,8 @@ class Settings(BaseSettings):
             "DATABASE_URL": str(self.DATABASE_URL),
             "REDIS_URL": str(self.REDIS_URL),
             "FIELD_ENCRYPTION_KEY": str(self.FIELD_ENCRYPTION_KEY),
+            "STRIPE_SECRET_KEY": str(self.STRIPE_SECRET_KEY),
+            "RAZORPAY_WEBHOOK_SECRET": str(self.RAZORPAY_WEBHOOK_SECRET),
         }
 
         missing = [name for name, value in required_values.items() if not value.strip()]

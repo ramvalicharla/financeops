@@ -4,6 +4,7 @@ import {
   type NavigationGroupItem,
   type NavigationLeafItem,
 } from "@/lib/config/navigation"
+import { useUIStore } from "@/lib/store/ui"
 import { cn } from "@/lib/utils"
 import { ChevronDown } from "lucide-react"
 import { SidebarNavItem } from "./SidebarNavItem"
@@ -33,6 +34,25 @@ export function SidebarDisclosureGroup({
 }: SidebarDisclosureGroupProps) {
   const Icon = item.icon
   const groupId = `nav-group-${item.label.toLowerCase().replace(/\s+/g, "-")}`
+  const collapsed = useUIStore((state) => state.sidebarCollapsed)
+
+  if (collapsed) {
+    // Show all children as icon-only items — group concept collapses away.
+    return (
+      <div className="space-y-1">
+        {item.children.map((child) => (
+          <SidebarNavItem
+            key={child.href}
+            item={child}
+            active={pathname === child.href}
+            compact={false}
+            onClick={closeSidebar}
+            withIcon={true}
+          />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-1">
@@ -79,6 +99,28 @@ export function SidebarNavGroup({
   pathname,
   type = "boxed",
 }: SidebarNavGroupProps) {
+  const collapsed = useUIStore((state) => state.sidebarCollapsed)
+
+  if (collapsed) {
+    // Strip all wrappers and labels — just a flat list of icon-only items.
+    return (
+      <div className="space-y-1">
+        {items.map((item) => (
+          <SidebarNavItem
+            key={item.href}
+            item={item}
+            active={
+              pathname === item.href || pathname.startsWith(`${item.href}/`)
+            }
+            compact={false}
+            onClick={closeSidebar}
+            withIcon={true}
+          />
+        ))}
+      </div>
+    )
+  }
+
   const wrapperClass =
     type === "boxed"
       ? "mt-3 rounded-md border border-border/60 p-2"

@@ -14,6 +14,9 @@ test.describe("Registration flow", () => {
 
   test("login page has forgot password link", async ({ page }) => {
     await page.goto("/login")
+    // The forgot-password link lives on step 2 (password entry), reached after submitting email
+    await page.fill("input[type=email]", "test@example.com")
+    await page.getByRole("button", { name: "Continue", exact: true }).click()
     await expect(page.getByText("Forgot password?")).toBeVisible()
   })
 

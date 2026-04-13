@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import ABC
+from abc import ABC, abstractmethod
 from datetime import date
 from typing import Any
 
@@ -30,8 +30,15 @@ class AbstractConnector(ABC):
     def _unsupported(self, dataset_type: DatasetType) -> None:
         raise ConnectorCapabilityNotSupported(self.connector_type, dataset_type)
 
+    @abstractmethod
     async def test_connection(self, credentials: dict[str, Any]) -> dict[str, Any]:
-        return {"ok": True, "connector_type": self.connector_type.value}
+        """
+        Test connectivity to the ERP system.
+        Returns {"ok": True, "latency_ms": int} on success.
+        Returns {"ok": False, "error": str} on failure.
+        Raises ConnectorAuthError if credentials are invalid.
+        """
+        ...
 
     async def extract(self, dataset_type: DatasetType, **kwargs: Any) -> dict[str, Any]:
         method_name = f"extract_{dataset_type.value}"

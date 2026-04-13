@@ -761,6 +761,14 @@ def test_t_038_generate_board_pack_task_returns_complete_payload(monkeypatch: py
     from financeops.modules.board_pack_generator.domain.pack_definition import AssembledPack, RenderedSection
     from financeops.modules.board_pack_generator.tasks import generate_board_pack_task
 
+    run_row = MagicMock()
+    run_row.id = uuid.uuid4()
+    run_row.tenant_id = uuid.uuid4()
+    run_row.definition_id = uuid.uuid4()
+    run_row.triggered_by = uuid.uuid4()
+    run_row.run_metadata = {}
+    run_row.period_end = date(2026, 1, 31)
+
     class _FakeService:
         async def generate(self, *, db, run_id, tenant_id):  # noqa: ANN001
             return AssembledPack(
@@ -780,12 +788,22 @@ def test_t_038_generate_board_pack_task_returns_complete_payload(monkeypatch: py
                 chain_hash="b" * 64,
             )
 
+    class _FakeResult:
+        def scalar_one_or_none(self):
+            return run_row
+
+        def scalars(self):
+            return MagicMock(first=lambda: None)
+
     class _FakeSession:
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, exc_type, exc, tb):  # noqa: ANN001
             return False
+
+        async def execute(self, statement):  # noqa: ANN001
+            return _FakeResult()
 
     class _FakeSessionFactory:
         def __call__(self):
@@ -804,6 +822,8 @@ def test_t_038_generate_board_pack_task_returns_complete_payload(monkeypatch: py
     )
     monkeypatch.setattr("financeops.modules.board_pack_generator.tasks.set_tenant_context", _noop)
     monkeypatch.setattr("financeops.modules.board_pack_generator.tasks.clear_tenant_context", _noop)
+    monkeypatch.setattr("financeops.modules.board_pack_generator.tasks.run_auto_complete_for_event", _noop)
+    monkeypatch.setattr("financeops.modules.board_pack_generator.tasks.send_notification", _noop)
 
     retry_spy = MagicMock()
     monkeypatch.setattr(generate_board_pack_task, "retry", retry_spy)

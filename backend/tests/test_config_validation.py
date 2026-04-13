@@ -16,6 +16,8 @@ def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("REDIS_URL", "redis://localhost:6380/0")
     monkeypatch.setenv("SECRET_KEY", "s" * 32)
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_" + "x" * 32)
+    monkeypatch.setenv("RAZORPAY_WEBHOOK_SECRET", "rz_whsec_" + "x" * 32)
 
 
 def _valid_encryption_key() -> str:

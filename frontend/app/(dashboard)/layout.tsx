@@ -14,6 +14,8 @@ import { JobPanel } from "@/components/panels/JobPanel"
 import { TimelinePanel } from "@/components/panels/TimelinePanel"
 import { DeterminismPanel } from "@/components/panels/DeterminismPanel"
 import { SearchProvider } from "@/components/search/SearchProvider"
+import { Breadcrumb } from "@/components/ui/Breadcrumb"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 export default async function DashboardLayout({
   children,
@@ -72,7 +74,7 @@ export default async function DashboardLayout({
         userEmail={user.email ?? ""}
         userName={user.name ?? "Finance User"}
       />
-      <div className="flex h-full flex-col md:pl-60">
+      <DashboardShell>
         <SearchProvider>
           <DisplayPreferenceBootstrap />
           <Topbar
@@ -88,6 +90,9 @@ export default async function DashboardLayout({
               initialCoaStatus={user.coa_status}
               initialOnboardingScore={user.onboarding_score}
             />
+            <div className="px-4 pt-3 pb-0 md:px-6">
+              <Breadcrumb />
+            </div>
             <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
               {children}
             </div>
@@ -97,7 +102,7 @@ export default async function DashboardLayout({
           <TimelinePanel />
           <DeterminismPanel />
         </SearchProvider>
-      </div>
+      </DashboardShell>
     </div>
   )
 }

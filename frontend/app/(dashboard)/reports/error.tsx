@@ -1,11 +1,16 @@
 "use client"
 
+import { useEffect } from "react"
+
 interface ReportsErrorProps {
   error: Error & { digest?: string }
   reset: () => void
 }
 
 export default function ReportsError({ error, reset }: ReportsErrorProps) {
+  useEffect(() => {
+    console.error("Reports error:", error)
+  }, [error])
   return (
     <div className="flex min-h-[50vh] items-center justify-center">
       <div className="w-full max-w-lg rounded-xl border border-border bg-card p-8 shadow-sm">

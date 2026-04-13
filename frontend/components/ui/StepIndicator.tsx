@@ -23,22 +23,67 @@ export function StepIndicator(props: StepIndicatorProps) {
   if (typeof props.step === "number") {
     const totalSteps = ORG_SETUP_STEP_NAMES.length
     const current = Math.min(Math.max(props.step, 1), totalSteps)
-    const progress = (current / totalSteps) * 100
 
     return (
-      <div className="space-y-3 rounded-xl border border-border bg-card/70 p-4">
-        <p className="text-sm text-muted-foreground">
-          Step {current} of {totalSteps} -{" "}
-          <span className="text-foreground">
-            {ORG_SETUP_STEP_NAMES[current - 1]}
-          </span>
-        </p>
-        <div className="h-2 overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-[hsl(var(--brand-primary))] transition-all"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+      <div className="rounded-xl border border-border bg-card/70 p-4">
+        <ol className="flex items-center gap-1 overflow-x-auto" aria-label="Setup progress">
+          {ORG_SETUP_STEP_NAMES.map((name, index) => {
+            const stepNum = index + 1
+            const isCompleted = stepNum < current
+            const isActive = stepNum === current
+
+            return (
+              <li key={name} className="flex min-w-0 items-center">
+                {index > 0 ? (
+                  <div
+                    className={[
+                      "mx-1 h-px w-4 shrink-0",
+                      isCompleted ? "bg-[hsl(var(--brand-success))]" : "bg-border",
+                    ].join(" ")}
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <div
+                  className={[
+                    "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors",
+                    isActive
+                      ? "bg-[hsl(var(--brand-primary)/0.15)] text-[hsl(var(--brand-primary))] ring-1 ring-[hsl(var(--brand-primary)/0.4)]"
+                      : isCompleted
+                        ? "bg-[hsl(var(--brand-success)/0.12)] text-[hsl(var(--brand-success))]"
+                        : "text-muted-foreground",
+                  ].join(" ")}
+                >
+                  {isCompleted ? (
+                    <svg
+                      aria-hidden="true"
+                      className="h-3 w-3 shrink-0"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="2,6 5,9 10,3" />
+                    </svg>
+                  ) : (
+                    <span
+                      className={[
+                        "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px]",
+                        isActive
+                          ? "bg-[hsl(var(--brand-primary))] text-white"
+                          : "bg-muted text-muted-foreground",
+                      ].join(" ")}
+                    >
+                      {stepNum}
+                    </span>
+                  )}
+                  <span className="hidden sm:inline">{name}</span>
+                </div>
+              </li>
+            )
+          })}
+        </ol>
       </div>
     )
   }

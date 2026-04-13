@@ -1,5 +1,6 @@
 import localFont from "next/font/local";
 import "./globals.css";
+import { Toaster } from "sonner";
 import { defaultMetadata } from "@/lib/metadata";
 import { AppProviders } from "@/app/providers";
 import { CookieConsent } from "@/components/legal/CookieConsent";
@@ -33,6 +34,7 @@ export default function RootLayout({
         </a>
         <AppProviders>{children}</AppProviders>
         <CookieConsent />
+        <Toaster position="bottom-right" richColors duration={4000} />
       </body>
     </html>
   );

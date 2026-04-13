@@ -22,6 +22,10 @@ const PUBLIC_PATH_PREFIXES = [
 const PUBLIC_PATH_EXACT = new Set(["/"])
 const ORG_SETUP_PATH = "/org-setup"
 const ORG_SETUP_COA_PATH = "/setup/coa"
+// The org launcher is accessible to authenticated users regardless of setup
+// status — it will redirect first-time users to /org-setup itself after
+// fetching their tenant list.
+const ORGS_PATH = "/orgs"
 
 const isPublicPath = (pathname: string): boolean =>
   PUBLIC_PATH_EXACT.has(pathname) ||
@@ -170,7 +174,8 @@ export default auth(async function middleware(request: AuthenticatedRequest) {
       pathname === ORG_SETUP_PATH ||
       pathname.startsWith(`${ORG_SETUP_PATH}/`) ||
       pathname === ORG_SETUP_COA_PATH ||
-      pathname.startsWith(`${ORG_SETUP_COA_PATH}/`)
+      pathname.startsWith(`${ORG_SETUP_COA_PATH}/`) ||
+      pathname === ORGS_PATH
     if (!isOrgSetupPath) {
       const setupUrl = new URL(ORG_SETUP_PATH, request.url)
       setupUrl.searchParams.set(

@@ -37,7 +37,7 @@ export const isLoginTokenPayload = (
 
 export const getSafeCallbackUrl = (
   rawCallbackUrl: string | null | undefined,
-  fallback = "/dashboard",
+  fallback = "/orgs",
 ): string => {
   if (!rawCallbackUrl) {
     return fallback

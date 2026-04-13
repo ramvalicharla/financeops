@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 from typing import Any
 
+from financeops.config import settings
 from financeops.modules.multi_entity_consolidation.application.adjustment_service import (
     AdjustmentService,
 )
@@ -34,6 +35,8 @@ from financeops.modules.multi_entity_consolidation.infrastructure.token_builder 
 
 
 class RunService:
+    _RESULT_CHUNK_SIZE = 250
+
     def __init__(
         self,
         *,
@@ -253,13 +256,13 @@ class RunService:
             }
             for index, row in enumerate(consolidated_variances, start=1)
         ]
-        created_metrics = await self._repository.create_metric_results(
+        created_metrics = await self._create_metric_results(
             tenant_id=tenant_id,
             run_id=run_id,
             rows=metric_db_rows,
             created_by=created_by,
         )
-        created_variances = await self._repository.create_variance_results(
+        created_variances = await self._create_variance_results(
             tenant_id=tenant_id,
             run_id=run_id,
             rows=variance_db_rows,
@@ -309,7 +312,7 @@ class RunService:
                 "evidence_payload_json": adjustment_summary,
             }
         )
-        created_evidence = await self._repository.create_evidence_links(
+        created_evidence = await self._create_evidence_links(
             tenant_id=tenant_id,
             run_id=run_id,
             rows=evidence_rows,
@@ -430,3 +433,93 @@ class RunService:
             for row in sorted(rows, key=lambda value: (str(getattr(value, code_field)), str(value.id)))
         ]
         return build_definition_version_token(DefinitionVersionTokenInput(rows=payload_rows))
+
+    async def _create_metric_results(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        rows: list[dict[str, Any]],
+        created_by: uuid.UUID,
+    ) -> list[object]:
+        if not settings.ENABLE_CHUNKED_TASKS or len(rows) <= self._RESULT_CHUNK_SIZE:
+            return await self._repository.create_metric_results(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                rows=rows,
+                created_by=created_by,
+            )
+
+        created: list[object] = []
+        for chunk in self._chunk_rows(rows):
+            created.extend(
+                await self._repository.create_metric_results(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    rows=chunk,
+                    created_by=created_by,
+                )
+            )
+        return created
+
+    async def _create_variance_results(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        rows: list[dict[str, Any]],
+        created_by: uuid.UUID,
+    ) -> list[object]:
+        if not settings.ENABLE_CHUNKED_TASKS or len(rows) <= self._RESULT_CHUNK_SIZE:
+            return await self._repository.create_variance_results(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                rows=rows,
+                created_by=created_by,
+            )
+
+        created: list[object] = []
+        for chunk in self._chunk_rows(rows):
+            created.extend(
+                await self._repository.create_variance_results(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    rows=chunk,
+                    created_by=created_by,
+                )
+            )
+        return created
+
+    async def _create_evidence_links(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        rows: list[dict[str, Any]],
+        created_by: uuid.UUID,
+    ) -> list[object]:
+        if not settings.ENABLE_CHUNKED_TASKS or len(rows) <= self._RESULT_CHUNK_SIZE:
+            return await self._repository.create_evidence_links(
+                tenant_id=tenant_id,
+                run_id=run_id,
+                rows=rows,
+                created_by=created_by,
+            )
+
+        created: list[object] = []
+        for chunk in self._chunk_rows(rows):
+            created.extend(
+                await self._repository.create_evidence_links(
+                    tenant_id=tenant_id,
+                    run_id=run_id,
+                    rows=chunk,
+                    created_by=created_by,
+                )
+            )
+        return created
+
+    def _chunk_rows(self, rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+        return [
+            rows[index : index + self._RESULT_CHUNK_SIZE]
+            for index in range(0, len(rows), self._RESULT_CHUNK_SIZE)
+        ]

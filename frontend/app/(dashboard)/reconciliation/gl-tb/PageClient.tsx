@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
+import { EmptyState } from "@/components/ui/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/Sheet"
 import { GLTBTable } from "@/components/reconciliation/GLTBTable"
@@ -14,18 +15,17 @@ import {
   useGLTBResult,
 } from "@/hooks/useReconciliation"
 import { getAccessErrorMessage } from "@/lib/ui-access"
+import { useUIStore } from "@/lib/store/ui"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { GLTBAccount } from "@/types/reconciliation"
 
 type StatusFilter = "ALL" | "MATCHED" | "VARIANCE" | "MISSING_GL" | "MISSING_TB"
 
-const currentMonth = new Date().toISOString().slice(0, 7)
-
 export default function GLTBReconciliationPage() {
   const { data: session } = useSession()
   const entityRoles = session?.user?.entity_roles ?? []
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
-  const [selectedPeriod, setSelectedPeriod] = useState(currentMonth)
+  const { activePeriod, setActivePeriod } = useUIStore()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
@@ -52,11 +52,11 @@ export default function GLTBReconciliationPage() {
     }
   }, [selectedRunId, syncRunsQuery.data])
 
-  const resultQuery = useGLTBResult(selectedEntityId, selectedPeriod, selectedRunId)
+  const resultQuery = useGLTBResult(selectedEntityId, activePeriod, selectedRunId)
   const entriesQuery = useGLTBAccountEntries(
     selectedEntityId,
     selectedAccount?.account_code ?? null,
-    selectedPeriod,
+    activePeriod,
   )
   const exportMutation = useExportGLTB()
   const selectionErrorMessage =
@@ -74,7 +74,7 @@ export default function GLTBReconciliationPage() {
     return accounts.filter((account) => account.status === statusFilter)
   }, [resultQuery.data?.accounts, statusFilter])
 
-  const filtersReady = Boolean(selectedEntityId && selectedPeriod && selectedRunId)
+  const filtersReady = Boolean(selectedEntityId && activePeriod && selectedRunId)
   const summary = resultQuery.data
 
   if (accessErrorMessage) {
@@ -111,8 +111,8 @@ export default function GLTBReconciliationPage() {
               id="gltb-period"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               type="month"
-              value={selectedPeriod}
-              onChange={(event) => setSelectedPeriod(event.target.value)}
+              value={activePeriod}
+              onChange={(event) => setActivePeriod(event.target.value)}
             />
           </div>
           <div className="space-y-1">
@@ -144,7 +144,7 @@ export default function GLTBReconciliationPage() {
                 }
                 void exportMutation.mutateAsync({
                   entityId: selectedEntityId,
-                  period: selectedPeriod,
+                  period: activePeriod,
                   runId: selectedRunId,
                 })
               }}
@@ -155,16 +155,17 @@ export default function GLTBReconciliationPage() {
         </div>
       </section>
 
-      {!filtersReady ? (
-        <p
-          className={`rounded-md px-4 py-6 text-sm ${
-            selectionErrorMessage
-              ? "border border-destructive/30 bg-destructive/10 text-destructive"
-              : "border border-border bg-card text-muted-foreground"
-          }`}
-        >
-          {selectionErrorMessage ?? "Select entity, period and sync run to view results."}
+      {!filtersReady && selectionErrorMessage ? (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-6 text-sm text-destructive">
+          {selectionErrorMessage}
         </p>
+      ) : null}
+
+      {!filtersReady && !selectionErrorMessage ? (
+        <EmptyState
+          title="No entries to show"
+          description="Select a period and account range to load GL/TB data"
+        />
       ) : null}
 
       {filtersReady ? (
@@ -243,10 +244,17 @@ export default function GLTBReconciliationPage() {
                 </select>
               </div>
             </div>
-            <GLTBTable
-              accounts={filteredAccounts}
-              onRowClick={(account) => setSelectedAccount(account)}
-            />
+            <div
+              role="region"
+              aria-label="GL/TB reconciliation data"
+              aria-busy={resultQuery.isLoading}
+              aria-live="polite"
+            >
+              <GLTBTable
+                accounts={filteredAccounts}
+                onRowClick={(account) => setSelectedAccount(account)}
+              />
+            </div>
           </section>
         </>
       ) : null}
@@ -261,7 +269,7 @@ export default function GLTBReconciliationPage() {
           <div className="mb-3">
             <VarianceBadge status={selectedAccount.status} />
           </div>
-          <div className="overflow-x-auto rounded-md border border-border">
+          <div className="overflow-x-auto w-full rounded-md border border-border">
               <table className="w-full min-w-[780px] text-sm">
                 <thead>
                   <tr className="bg-muted/30">

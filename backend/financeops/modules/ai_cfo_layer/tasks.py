@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from datetime import date
@@ -8,8 +7,9 @@ from typing import Any
 
 from financeops.modules.ai_cfo_layer.application.narrative_service import generate_narrative
 from financeops.observability.business_metrics import ai_narrative_duration_ms
-from financeops.tasks.celery_app import celery_app
 from financeops.db.session import AsyncSessionLocal
+from financeops.tasks.async_runner import run_async
+from financeops.tasks.celery_app import celery_app
 
 
 @celery_app.task(name="ai_cfo.generate_narrative_async")
@@ -49,5 +49,4 @@ def generate_narrative_async_task(
                 )
                 raise
 
-    return asyncio.run(_run())
-
+    return run_async(_run())

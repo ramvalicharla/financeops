@@ -141,7 +141,7 @@ async def test_journal_endpoints_run_through_intent_pipeline(
         headers=headers,
     )
     assert review_response.status_code == 200
-    assert review_response.json()["data"]["record_refs"]["status"] == "REVIEWED"
+    assert review_response.json()["data"]["record_refs"]["status"] == "UNDER_REVIEW"
 
     approve_response = await async_client.post(
         f"/api/v1/accounting/journals/{created_journal_id}/approve",
@@ -157,7 +157,7 @@ async def test_journal_endpoints_run_through_intent_pipeline(
     assert post_response.status_code == 200
     post_data = post_response.json()["data"]
     assert post_data["status"] == "RECORDED"
-    assert post_data["record_refs"]["status"] == "POSTED"
+    assert post_data["record_refs"]["status"] == "PUSHED"
 
     list_response = await async_client.get(
         "/api/v1/accounting/journals/",
@@ -174,7 +174,7 @@ async def test_journal_endpoints_run_through_intent_pipeline(
     assert get_response.status_code == 200
     fetched = get_response.json()["data"]
     assert fetched["id"] == str(created_journal_id)
-    assert fetched["status"] == "POSTED"
+    assert fetched["status"] == "PUSHED"
     assert fetched["journal_number"]
 
     gl_rows = (
@@ -232,7 +232,7 @@ async def test_journal_endpoints_run_through_intent_pipeline(
     )
     assert reversed_get_response.status_code == 200
     reversed_journal = reversed_get_response.json()["data"]
-    assert reversed_journal["status"] == "POSTED"
+    assert reversed_journal["status"] == "PUSHED"
     assert reversed_journal["reference"] == f"REVERSAL_OF:{fetched['journal_number']}"
 
     reversal_gl_rows = (

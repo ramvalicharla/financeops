@@ -1,0 +1,359 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - paragraph [ref=e6]: Finqor
+        - generic [ref=e7]:
+          - generic [ref=e8]:
+            - generic [ref=e9]:
+              - paragraph [ref=e10]: Organization
+              - paragraph [ref=e11]: Unavailable
+            - generic [ref=e12]: Backend
+          - generic [ref=e13]:
+            - paragraph [ref=e14]: "Entity: Unavailable"
+            - paragraph [ref=e15]: "Workspace: Unavailable"
+      - navigation "Main navigation" [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: Financials
+          - generic [ref=e19]:
+            - link "Dashboard" [ref=e20] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e21]
+              - text: Dashboard
+            - link "Journals" [ref=e22] [cursor=pointer]:
+              - /url: /accounting/journals
+              - img [ref=e23]
+              - text: Journals
+            - link "Accounting TB" [ref=e26] [cursor=pointer]:
+              - /url: /accounting/trial-balance
+              - img [ref=e27]
+              - text: Accounting TB
+            - link "Accounting P&L" [ref=e30] [cursor=pointer]:
+              - /url: /accounting/pnl
+              - img [ref=e31]
+              - text: Accounting P&L
+            - link "Accounting BS" [ref=e34] [cursor=pointer]:
+              - /url: /accounting/balance-sheet
+              - img [ref=e35]
+              - text: Accounting BS
+            - link "Accounting CF" [ref=e38] [cursor=pointer]:
+              - /url: /accounting/cash-flow
+              - img [ref=e39]
+              - text: Accounting CF
+            - link "Accounting Revaluation" [ref=e42] [cursor=pointer]:
+              - /url: /accounting/revaluation
+              - img [ref=e43]
+              - text: Accounting Revaluation
+            - link "Period Close" [ref=e46] [cursor=pointer]:
+              - /url: /close
+              - img [ref=e47]
+              - text: Period Close
+            - link "Close Checklist" [ref=e50] [cursor=pointer]:
+              - /url: /close/checklist
+              - img [ref=e51]
+              - text: Close Checklist
+            - link "FX Rates" [ref=e55] [cursor=pointer]:
+              - /url: /fx/rates
+              - img [ref=e56]
+              - text: FX Rates
+            - link "Trial Balance" [ref=e59] [cursor=pointer]:
+              - /url: /trial-balance
+              - img [ref=e60]
+              - text: Trial Balance
+        - generic [ref=e63]:
+          - generic [ref=e64]: Tax & Compliance
+          - generic [ref=e65]:
+            - link "Invoice Classifier" [ref=e66] [cursor=pointer]:
+              - /url: /invoice-classify
+              - img [ref=e67]
+              - text: Invoice Classifier
+            - link "Transfer Pricing" [ref=e69] [cursor=pointer]:
+              - /url: /transfer-pricing
+              - img [ref=e70]
+              - text: Transfer Pricing
+            - link "Signoff" [ref=e73] [cursor=pointer]:
+              - /url: /signoff
+              - img [ref=e74]
+              - text: Signoff
+            - link "Statutory" [ref=e77] [cursor=pointer]:
+              - /url: /statutory
+              - img [ref=e78]
+              - text: Statutory
+        - generic [ref=e82]:
+          - generic [ref=e83]: Reporting
+          - generic [ref=e84]:
+            - link "Reports" [ref=e85] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e86]
+              - text: Reports
+            - link "Scheduled Delivery" [ref=e89] [cursor=pointer]:
+              - /url: /scheduled-delivery
+              - img [ref=e90]
+              - text: Scheduled Delivery
+        - generic [ref=e94]:
+          - generic [ref=e95]: Admin
+          - generic [ref=e96]:
+            - link "Billing" [ref=e97] [cursor=pointer]:
+              - /url: /billing
+              - img [ref=e98]
+              - text: Billing
+            - link "Marketplace" [ref=e100] [cursor=pointer]:
+              - /url: /marketplace
+              - img [ref=e101]
+              - text: Marketplace
+            - link "Partner Program" [ref=e105] [cursor=pointer]:
+              - /url: /partner
+              - img [ref=e106]
+              - text: Partner Program
+            - link "Audit Portal" [ref=e111] [cursor=pointer]:
+              - /url: /audit
+              - img [ref=e112]
+              - text: Audit Portal
+        - generic [ref=e116]:
+          - paragraph [ref=e117]: Trust
+          - link "Trust & Compliance" [ref=e118] [cursor=pointer]:
+            - /url: /trust
+            - img [ref=e119]
+            - text: Trust & Compliance
+          - link "SOC2" [ref=e122] [cursor=pointer]:
+            - /url: /trust/soc2
+          - link "GDPR" [ref=e123] [cursor=pointer]:
+            - /url: /trust/gdpr
+        - generic [ref=e124]:
+          - paragraph [ref=e125]: Advisory
+          - link "Advisory Services" [ref=e126] [cursor=pointer]:
+            - /url: /advisory
+            - img [ref=e127]
+            - text: Advisory Services
+          - link "FDD" [ref=e131] [cursor=pointer]:
+            - /url: /advisory/fdd
+          - link "PPA" [ref=e132] [cursor=pointer]:
+            - /url: /advisory/ppa
+          - link "M&A" [ref=e133] [cursor=pointer]:
+            - /url: /advisory/ma
+        - generic [ref=e134]:
+          - paragraph [ref=e135]: Settings
+          - link "Display & Formatting" [ref=e136] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e137]
+            - text: Display & Formatting
+          - link "Chart of Accounts" [ref=e140] [cursor=pointer]:
+            - /url: /settings/chart-of-accounts
+          - link "CoA Uploads" [ref=e141] [cursor=pointer]:
+            - /url: /settings/coa
+          - link "ERP Mapping" [ref=e142] [cursor=pointer]:
+            - /url: /settings/erp-mapping
+          - link "Airlock" [ref=e143] [cursor=pointer]:
+            - /url: /settings/airlock
+          - link "Control Plane" [ref=e144] [cursor=pointer]:
+            - /url: /settings/control-plane
+          - link "Groups & Entities" [ref=e145] [cursor=pointer]:
+            - /url: /settings/groups
+          - link "Users & Roles" [ref=e146] [cursor=pointer]:
+            - /url: /settings/users
+          - link "Privacy Settings" [ref=e147] [cursor=pointer]:
+            - /url: /settings/privacy
+          - link "White Label" [ref=e148] [cursor=pointer]:
+            - /url: /settings/white-label
+      - generic [ref=e149]:
+        - generic [ref=e150]:
+          - generic [ref=e151]:
+            - generic [ref=e152]: TU
+            - generic [ref=e153]:
+              - paragraph [ref=e154]: Test User
+              - paragraph [ref=e155]: test@acme.com
+              - paragraph [ref=e156]: "Role: finance leader"
+          - button "Sign out" [ref=e157] [cursor=pointer]
+        - button "Collapse sidebar" [ref=e158] [cursor=pointer]:
+          - img [ref=e159]
+          - generic [ref=e162]: Collapse
+    - generic [ref=e163]:
+      - banner [ref=e164]:
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - paragraph [ref=e168]: acme
+              - generic [ref=e169]: /
+              - button "Switch active entity" [ref=e170] [cursor=pointer]:
+                - generic [ref=e171]: Acme Ltd
+                - generic [ref=e172]: Admin
+                - img
+            - generic [ref=e173]:
+              - heading "MIS Dashboard" [level=1] [ref=e174]
+              - generic [ref=e175]: Organization unavailable · Period unavailable
+          - generic [ref=e176]:
+            - generic [ref=e177]:
+              - combobox "Select active entity" [ref=e178]:
+                - option "Select entity"
+                - option "Acme Ltd" [selected]
+                - option "Acme Holdings"
+              - combobox "Select active location" [ref=e179]:
+                - option "All locations" [selected]
+            - generic [ref=e180]:
+              - generic [ref=e181]: View in
+              - generic [ref=e182]:
+                - button "INR" [ref=e183] [cursor=pointer]
+                - button "L" [ref=e184] [cursor=pointer]
+                - button "Cr" [ref=e185] [cursor=pointer]
+                - button "K" [ref=e186] [cursor=pointer]
+                - button "M" [ref=e187] [cursor=pointer]
+                - button "B" [ref=e188] [cursor=pointer]
+            - button "Timeline" [ref=e189] [cursor=pointer]
+            - button "Jobs" [ref=e190] [cursor=pointer]
+            - button "Search Ctrl+K" [ref=e191] [cursor=pointer]:
+              - img [ref=e192]
+              - generic [ref=e195]: Search
+              - generic [ref=e196]: Ctrl+K
+            - button "Notifications" [ref=e198] [cursor=pointer]:
+              - img [ref=e199]
+            - button "Account menu" [ref=e203] [cursor=pointer]: T
+      - generic [ref=e204]:
+        - generic [ref=e205]:
+          - generic [ref=e206]:
+            - paragraph [ref=e207]: Workspace Modules
+            - paragraph [ref=e208]: "Tabs are rendered from backend workspace context. Backend workspace: Unavailable."
+          - generic [ref=e209]:
+            - generic [ref=e210]: 0 visible
+            - generic [ref=e211]: "Viewing: Unavailable"
+        - navigation "Module tabs" [ref=e212]
+      - generic [ref=e214]:
+        - generic [ref=e215]: Active Context
+        - generic [ref=e216]:
+          - generic [ref=e217]: Org Unavailable
+          - generic [ref=e218]: →
+          - generic [ref=e219]: Entity Unavailable
+          - generic [ref=e220]: →
+          - generic [ref=e221]: Modules Unavailable
+          - generic [ref=e222]: →
+          - generic [ref=e223]: Period Unavailable
+      - main [ref=e224]:
+        - generic [ref=e227]:
+          - generic [ref=e228]:
+            - generic [ref=e230]:
+              - generic [ref=e231]: View in
+              - generic [ref=e232]:
+                - button "INR" [ref=e233] [cursor=pointer]
+                - button "L" [ref=e234] [cursor=pointer]
+                - button "Cr" [ref=e235] [cursor=pointer]
+                - button "K" [ref=e236] [cursor=pointer]
+                - button "M" [ref=e237] [cursor=pointer]
+                - button "B" [ref=e238] [cursor=pointer]
+            - generic [ref=e239]:
+              - generic [ref=e240]:
+                - text: Entity
+                - combobox "Entity" [ref=e241]:
+                  - option "Select entity"
+                  - option "Acme Ltd" [selected]
+                  - option "Acme Holdings"
+              - generic [ref=e242]:
+                - text: Period
+                - combobox "Period" [ref=e243]:
+                  - option "March 2026" [selected]
+                  - option "February 2026"
+          - generic [ref=e244]:
+            - article [ref=e245]:
+              - paragraph [ref=e246]: Topline
+              - paragraph [ref=e247]: in ₹
+              - paragraph [ref=e248]: ₹10,00,000.00
+              - generic [ref=e249]:
+                - img [ref=e250]
+                - generic [ref=e253]: 5.20%
+            - article [ref=e254]:
+              - paragraph [ref=e255]: Gross Profit
+              - paragraph [ref=e256]: in ₹
+              - paragraph [ref=e257]: ₹4,50,000.00
+              - generic [ref=e258]:
+                - img [ref=e259]
+                - generic [ref=e262]: 4.10%
+            - article [ref=e263]:
+              - paragraph [ref=e264]: EBITDA
+              - paragraph [ref=e265]: in ₹
+              - paragraph [ref=e266]: ₹3,00,000.00
+              - generic [ref=e267]:
+                - img [ref=e268]
+                - generic [ref=e271]: 3.80%
+            - article [ref=e272]:
+              - paragraph [ref=e273]: Net Profit
+              - paragraph [ref=e274]: in ₹
+              - paragraph [ref=e275]: ₹2,10,000.00
+              - generic [ref=e276]:
+                - img [ref=e277]
+                - generic [ref=e280]: 2.20%
+          - generic [ref=e281]:
+            - heading "Trend (12 Months)" [level=3] [ref=e282]
+            - paragraph [ref=e283]: in ₹
+            - application [ref=e287]:
+              - generic [ref=e309]:
+                - generic [ref=e310]:
+                  - generic [ref=e312]: Jan 26
+                  - generic [ref=e314]: Feb 26
+                  - generic [ref=e316]: Mar 26
+                - generic [ref=e317]:
+                  - generic [ref=e319]: "0.00"
+                  - generic [ref=e321]: 2,50,000.00
+                  - generic [ref=e323]: 5,00,000.00
+                  - generic [ref=e325]: 7,50,000.00
+                  - generic [ref=e327]: 10,00,000.00
+          - generic [ref=e328]:
+            - heading "MIS Detail" [level=3] [ref=e329]
+            - paragraph [ref=e330]: in ₹
+            - region "MIS report data" [ref=e331]:
+              - table "Management information" [ref=e332]:
+                - rowgroup [ref=e333]:
+                  - row "Line Item Current Period Previous Period Variance Variance %" [ref=e334]:
+                    - columnheader "Line Item" [ref=e335]:
+                      - button "Line Item" [ref=e336] [cursor=pointer]:
+                        - text: Line Item
+                        - generic [ref=e337]: ↕
+                    - columnheader "Current Period" [ref=e338]:
+                      - button "Current Period" [ref=e339] [cursor=pointer]:
+                        - text: Current Period
+                        - generic [ref=e340]: ↕
+                    - columnheader "Previous Period" [ref=e341]:
+                      - button "Previous Period" [ref=e342] [cursor=pointer]:
+                        - text: Previous Period
+                        - generic [ref=e343]: ↕
+                    - columnheader "Variance" [ref=e344]:
+                      - button "Variance" [ref=e345] [cursor=pointer]:
+                        - text: Variance
+                        - generic [ref=e346]: ↕
+                    - columnheader "Variance %" [ref=e347]:
+                      - button "Variance %" [ref=e348] [cursor=pointer]:
+                        - text: Variance %
+                        - generic [ref=e349]: ↕
+                - rowgroup [ref=e350]:
+                  - row "Operating Revenue 10,00,000.00 9,50,000.00 - -" [ref=e351]:
+                    - cell "Operating Revenue" [ref=e352]:
+                      - generic [ref=e353]: Operating Revenue
+                    - cell "10,00,000.00" [ref=e354]:
+                      - generic [ref=e355]: 10,00,000.00
+                    - cell "9,50,000.00" [ref=e356]:
+                      - generic [ref=e357]: 9,50,000.00
+                    - cell "-" [ref=e358]
+                    - cell "-" [ref=e359]
+                  - row "Domestic Sales 7,00,000.00 6,80,000.00 20,000.00 2.94%" [ref=e360]:
+                    - cell "Domestic Sales" [ref=e361]:
+                      - generic [ref=e362]: Domestic Sales
+                    - cell "7,00,000.00" [ref=e363]:
+                      - generic [ref=e364]: 7,00,000.00
+                    - cell "6,80,000.00" [ref=e365]:
+                      - generic [ref=e366]: 6,80,000.00
+                    - cell "20,000.00" [ref=e367]:
+                      - generic [ref=e368]: 20,000.00
+                    - cell "2.94%" [ref=e369]:
+                      - generic [ref=e370]: 2.94%
+  - generic [ref=e372]:
+    - paragraph [ref=e373]:
+      - text: We use essential cookies only for authentication and security. No tracking or advertising cookies.
+      - link "Learn more" [ref=e374] [cursor=pointer]:
+        - /url: /legal/cookies
+    - button "Accept Cookies" [ref=e375] [cursor=pointer]
+  - region "Notifications alt+T"
+  - alert [ref=e376]
+  - generic [ref=e377]: "0.00"
+```

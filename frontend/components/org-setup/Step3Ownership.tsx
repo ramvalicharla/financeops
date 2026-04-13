@@ -39,7 +39,7 @@ export function Step3Ownership({ entities, submitting, onSubmit }: Step3Ownershi
   if (entities.length <= 1) {
     return (
       <section className="space-y-4 rounded-xl border border-border bg-card p-5">
-        <h2 className="text-lg font-semibold text-foreground">Ownership structure</h2>
+        <h2 className="text-lg font-semibold text-foreground">Chart of accounts</h2>
         <p className="text-sm text-muted-foreground">
           Single entity - no ownership structure required.
         </p>
@@ -81,7 +81,7 @@ export function Step3Ownership({ entities, submitting, onSubmit }: Step3Ownershi
   return (
     <form className="space-y-4 rounded-xl border border-border bg-card p-5" onSubmit={handleSubmit}>
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-foreground">Ownership structure</h2>
+        <h2 className="text-lg font-semibold text-foreground">Chart of accounts</h2>
         <Button type="button" variant="outline" onClick={() => setRows((previous) => [...previous, defaultDraft()])}>
           Add relationship
         </Button>

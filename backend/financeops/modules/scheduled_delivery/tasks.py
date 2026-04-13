@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any
 
@@ -17,6 +16,7 @@ from financeops.modules.scheduled_delivery.application.delivery_service import (
 from financeops.modules.scheduled_delivery.infrastructure.repository import (
     DeliveryRepository,
 )
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.celery_app import celery_app
 
 
@@ -54,7 +54,7 @@ def deliver_schedule_task(
                 await clear_tenant_context(session)
 
     try:
-        return asyncio.run(_run())
+        return run_async(_run())
     except (DeliveryConfigurationError, ValueError):
         raise
     except (OperationalError, InterfaceError, DBAPIError, ConnectionError, TimeoutError, OSError) as exc:
@@ -91,7 +91,7 @@ def poll_due_schedules_task() -> dict[str, int]:
                     await clear_tenant_context(session)
         return {"scheduled": enqueued}
 
-    return asyncio.run(_run())
+    return run_async(_run())
 
 
 __all__ = ["deliver_schedule_task", "poll_due_schedules_task"]

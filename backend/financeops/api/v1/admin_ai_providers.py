@@ -6,20 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from financeops.api.deps import get_current_user
-from financeops.db.models.users import IamUser, UserRole
+from financeops.db.models.users import IamUser
 from financeops.llm.provider_registry import ProviderSlot, ProviderStatus, provider_registry
 from financeops.llm.fallback import FALLBACK_CHAINS
+from financeops.services.platform_identity import require_platform_owner
 
 router = APIRouter(prefix="/admin/ai/providers", tags=["admin_ai_providers"])
 
-_platform_owner_roles = {UserRole.super_admin, UserRole.platform_owner}
 _seeded = False
-
-
-def _require_platform_owner(user: IamUser) -> IamUser:
-    if user.role not in _platform_owner_roles:
-        raise HTTPException(status_code=403, detail="platform_owner role required")
-    return user
 
 
 def _seed_registry() -> None:
@@ -72,7 +66,7 @@ class UpdateProviderRequest(BaseModel):
 async def list_provider_slots(
     current_user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     _seed_registry()
     return {"providers": [_serialize_slot(slot) for slot in provider_registry.list_all()]}
 
@@ -82,7 +76,7 @@ async def disable_provider_slot(
     slot_name: str,
     current_user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     _seed_registry()
     if not provider_registry.disable(slot_name):
         raise HTTPException(status_code=404, detail="provider slot not found")
@@ -97,7 +91,7 @@ async def enable_provider_slot(
     slot_name: str,
     current_user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     _seed_registry()
     if not provider_registry.enable(slot_name):
         raise HTTPException(status_code=404, detail="provider slot not found")
@@ -113,7 +107,7 @@ async def update_provider_slot(
     body: UpdateProviderRequest,
     current_user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     _seed_registry()
     slot = provider_registry.update(
         slot_name,

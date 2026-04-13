@@ -170,6 +170,8 @@ APPEND_ONLY_TABLES: tuple[str, ...] = (
     "governance_snapshots",
     "governance_snapshot_inputs",
     "governance_snapshot_metadata",
+    # accounting_jv_aggregates intentionally EXCLUDED - mutable state projection.
+    # See accounting_jv.py model docstring for rationale.
     "accounting_jv_approvals",
     "accounting_attachments",
     "erp_attachment_links",

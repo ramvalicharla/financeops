@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -333,6 +334,24 @@ async def test_flexible_upload_returns_activation_summary_and_review_flags(
     assert upload["requires_review"] is True
     assert upload["activation_summary"]["auto_create"] == 1
     assert upload["activation_summary"]["needs_review"] == 1
+
+
+@pytest.mark.asyncio
+async def test_flexible_upload_activation_plan_uses_decimal_amounts(
+    async_session: AsyncSession,
+) -> None:
+    service = CoaUploadService(async_session)
+    result = service._build_flexible_plan_item(
+        row_number=1,
+        row={"account": "Precision Check", "debit": "1234567.89", "credit": "0"},
+        status="review",
+        account_code="PRECISION_CHECK",
+    )
+
+    assert isinstance(result["debit"], Decimal)
+    assert result["debit"] == Decimal("1234567.8900")
+    assert isinstance(result["credit"], Decimal)
+    assert result["credit"] == Decimal("0.0000")
 
 
 @pytest.mark.asyncio

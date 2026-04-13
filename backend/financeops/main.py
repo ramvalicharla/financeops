@@ -42,7 +42,8 @@ from financeops.shared_kernel.response import (
 )
 from financeops.shared_kernel.idempotency import IdempotencyMiddleware
 from financeops.core.migration_checker import enforce_migration_state
-from financeops.db.session import engine
+from financeops.db.rls import verify_rls_active
+from financeops.db.session import AsyncSessionLocal, engine
 from financeops.migrations.run import run_migrations_to_head
 from financeops.seed.coa import seed_coa_industry_templates
 from financeops.seed.platform_owner import seed_platform_users_from_env
@@ -63,6 +64,16 @@ DB_CONNECTIVITY_HINT = (
     "- network/firewall\n"
     "- docker vs local mismatch"
 )
+
+CRITICAL_RLS_TABLES = [
+    "accounting_jv_state_events",
+    "gl_entries",
+    "bank_transactions",
+    "credit_ledger",
+    "auditor_grants",
+    "payroll_normalized_lines",
+    "consolidation_results",
+]
 
 
 def _masked_database_url(raw_url: str) -> str:
@@ -170,6 +181,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         raise RuntimeError(message) from exc
     else:
         log.info("Database connectivity check passed.")
+        async with AsyncSessionLocal() as rls_check_session:
+            for table_name in CRITICAL_RLS_TABLES:
+                rls_active = await verify_rls_active(rls_check_session, table_name)
+                if rls_active:
+                    continue
+                if is_production:
+                    startup_errors.append(f"CRITICAL: RLS not active on table {table_name}")
+                    log.critical("RLS not active on %s - data isolation at risk", table_name)
+                else:
+                    log.warning("RLS not active on %s - startup continues outside production", table_name)
         if settings.AUTO_MIGRATE:
             if is_production:
                 log.warning("AUTO_MIGRATE=true ignored because APP_ENV=production")
@@ -299,13 +320,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Application factory."""
     log.info("Creating FastAPI application shell")
+    _is_prod = settings.APP_ENV.lower() == "production"
     app = FastAPI(
         title=settings.APP_NAME,
         version=APP_VERSION,
         description="FinanceOps — Production-grade multi-tenant financial SaaS",
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=None if _is_prod else "/docs",
+        redoc_url=None if _is_prod else "/redoc",
+        openapi_url=None if _is_prod else "/openapi.json",
         lifespan=lifespan,
     )
 

@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { toast } from "sonner"
 import { fetchDefinitions } from "@/lib/api/board-pack"
 import { fetchReportDefinitions } from "@/lib/api/report-builder"
 import {
@@ -88,7 +89,6 @@ export function useDeliveries() {
   const [runningId, setRunningId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [sheetError, setSheetError] = useState<string | null>(null)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [sheetMode, setSheetMode] = useState<"create" | "edit" | null>(null)
   const [editingScheduleId, setEditingScheduleId] = useState<string | null>(null)
   const [formState, setFormState] = useState<ScheduleFormState>(createDefaultForm())
@@ -149,12 +149,6 @@ export function useDeliveries() {
     void loadSources(formState.scheduleType)
   }, [formState.scheduleType, loadSources, sheetMode])
 
-  useEffect(() => {
-    if (!toastMessage) return
-    const timeoutId = window.setTimeout(() => setToastMessage(null), 3000)
-    return () => window.clearTimeout(timeoutId)
-  }, [toastMessage])
-
   const saveScheduleAction = useAsyncAction(
     async (payload: {
       name: string
@@ -179,7 +173,7 @@ export function useDeliveries() {
 
   const triggerNowAction = useAsyncAction(async (scheduleId: string) => {
     await triggerDeliverySchedule(scheduleId)
-    setToastMessage("Schedule triggered successfully.")
+    toast.success("Schedule triggered successfully.")
     await loadSchedules()
   })
 
@@ -338,7 +332,6 @@ export function useDeliveries() {
     sheetError,
     sheetMode,
     sourceOptions,
-    toastMessage,
     triggerNow,
   }
 }

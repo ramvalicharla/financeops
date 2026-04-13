@@ -13,6 +13,14 @@ from financeops.modules.erp_sync.infrastructure.connectors.marg import MargConne
 
 
 @pytest.mark.asyncio
+async def test_marg_test_connection_reports_ok() -> None:
+    connector = MargConnector()
+    result = await connector.test_connection({"marg_version": "10.0"})
+    assert result["ok"] is True
+    assert result["latency_ms"] == 0
+
+
+@pytest.mark.asyncio
 async def test_marg_v9_trial_balance_column_mapping() -> None:
     connector = MargConnector()
     csv_data = (

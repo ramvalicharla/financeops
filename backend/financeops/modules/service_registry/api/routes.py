@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.db.models.users import IamUser, UserRole
 from financeops.platform.db.models.entities import CpEntity
+from financeops.services.platform_identity import require_platform_owner
 from financeops.modules.service_registry.models import ModuleRegistry, TaskRegistry
 from financeops.modules.service_registry.service import (
     detect_dependency_cycles,
@@ -50,11 +51,6 @@ def _require_platform_admin(user: IamUser) -> IamUser:
         raise HTTPException(status_code=403, detail="platform_admin role required")
     return user
 
-
-def _require_platform_owner(user: IamUser) -> IamUser:
-    if user.role not in {UserRole.super_admin, UserRole.platform_owner}:
-        raise HTTPException(status_code=403, detail="platform_owner role required")
-    return user
 
 
 def _serialize_module(row: ModuleRegistry) -> dict:
@@ -174,7 +170,7 @@ async def toggle_module_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_owner(user)
+    require_platform_owner(user)
     await ensure_registry_seeded(session)
     row = (
         await session.execute(
@@ -207,7 +203,7 @@ async def validate_toggle_module_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> ModuleToggleValidationResponse:
-    _require_platform_owner(user)
+    require_platform_owner(user)
     await ensure_registry_seeded(session)
     row = (
         await session.execute(

@@ -34,6 +34,26 @@ const toneIconMap: Record<StateBadgeTone, ReactNode> = {
 const inferTone = (state: string): StateBadgeTone => {
   const normalized = state.trim().toLowerCase().replace(/\s+/g, "_")
 
+  if (normalized === "push_failed" || normalized === "rejected" || normalized === "escalated") {
+    return "danger"
+  }
+
+  if (normalized === "push_in_progress") {
+    return "info"
+  }
+
+  if (normalized === "pushed") {
+    return "success"
+  }
+
+  if (normalized === "voided") {
+    return "neutral"
+  }
+
+  if (normalized === "resubmitted" || normalized === "under_review" || normalized === "pending_review") {
+    return "warning"
+  }
+
   if (normalized.includes("error") || normalized.includes("fail")) {
     return "danger"
   }

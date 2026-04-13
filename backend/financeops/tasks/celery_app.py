@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from celery import Celery
-import asyncio
+import logging
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
 from financeops.config import settings
+from financeops.observability.celery_monitor import get_celery_monitor
 from financeops.observability.celery_propagation import connect_celery_correlation_signals
 from financeops.observability.celery_monitor import connect_task_failure_signal
 from financeops.db.models.users import IamSession
@@ -14,6 +16,9 @@ from financeops.observability.business_metrics import (
     active_tenants_gauge,
     task_queue_depth_gauge,
 )
+from financeops.tasks.async_runner import run_async
+
+log = logging.getLogger(__name__)
 
 celery_app = Celery("financeops")
 
@@ -45,6 +50,7 @@ celery_app.conf.update(
         "high_q": {"exchange": "high_q", "routing_key": "high"},
         "normal_q": {"exchange": "normal_q", "routing_key": "normal"},
         "low_q": {"exchange": "low_q", "routing_key": "low"},
+        "dead_letter": {"exchange": "dead_letter", "routing_key": "dead_letter"},
     },
     task_default_queue="normal_q",
     task_default_exchange="normal_q",
@@ -55,6 +61,7 @@ celery_app.conf.update(
         "financeops.modules.search.tasks.*": {"queue": "low_q"},
         "financeops.modules.*.tasks.*": {"queue": "normal_q"},
         "metrics.*": {"queue": "low_q"},
+        "ops.check_dead_letter_queue": {"queue": "dead_letter"},
     },
     imports=(
         "financeops.tasks.payment_tasks",
@@ -96,6 +103,10 @@ celery_app.conf.update(
             "task": "metrics.update_active_tenants",
             "schedule": 300.0,
         },
+        "ops-check-dead-letter-queue-hourly": {
+            "task": "ops.check_dead_letter_queue",
+            "schedule": 3600.0,
+        },
         "accounting-approval-reminders": {
             "task": "accounting_layer.approval_reminder",
             "schedule": 3600.0,
@@ -127,6 +138,7 @@ def update_queue_depths() -> None:
         "high_q",
         "normal_q",
         "low_q",
+        "dead_letter",
     ]
     depth_total = sum(len(tasks) for tasks in reserved.values() if isinstance(tasks, list))
     for queue_name in queue_names:
@@ -145,4 +157,34 @@ def update_active_tenants() -> None:
             count = int(result.scalar_one() or 0)
             active_tenants_gauge.set(count)
 
-    asyncio.run(_run())
+    run_async(_run())
+
+
+@celery_app.task(name="ops.check_dead_letter_queue")
+def check_dead_letter_queue() -> dict[str, int]:
+    stale_count = 0
+    total = 0
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    for item in get_celery_monitor().list_dead_letter_items():
+        total += 1
+        failed_at_raw = item.get("failed_at")
+        if not isinstance(failed_at_raw, str):
+            continue
+        try:
+            failed_at = datetime.fromisoformat(failed_at_raw)
+        except ValueError:
+            continue
+        if failed_at.tzinfo is None:
+            failed_at = failed_at.replace(tzinfo=UTC)
+        if failed_at <= cutoff:
+            stale_count += 1
+            log.error(
+                "dead_letter_item_stale",
+                extra={
+                    "task_name": item.get("task_name"),
+                    "task_id": item.get("task_id"),
+                    "error": item.get("error"),
+                    "failed_at": failed_at.isoformat(),
+                },
+            )
+    return {"dead_letter_items": total, "stale_items": stale_count}

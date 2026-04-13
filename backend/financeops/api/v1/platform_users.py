@@ -17,6 +17,12 @@ from financeops.config import settings
 from financeops.core.security import hash_password
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.audit_service import log_action
+from financeops.services.platform_identity import (
+    PLATFORM_TENANT_ID,
+    is_platform_user,
+    require_platform_owner,
+    require_platform_user,
+)
 from financeops.services.user_service import normalize_email
 from financeops.shared_kernel.pagination import Paginated
 from financeops.platform.services.rbac.permission_engine import require_permission
@@ -25,14 +31,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/platform/users", tags=["platform-users"])
 
-PLATFORM_TENANT_ID = uuid.UUID(int=0)
-_PLATFORM_OWNER_ROLES = {UserRole.platform_owner, UserRole.super_admin}
-_PLATFORM_ROLES = {
-    UserRole.platform_owner,
-    UserRole.platform_admin,
-    UserRole.platform_support,
-    UserRole.super_admin,
-}
 platform_user_create_guard = require_permission("platform.users.create")
 platform_user_update_guard = require_permission("platform.users.update")
 platform_user_delete_guard = require_permission("platform.users.delete")
@@ -52,28 +50,6 @@ class CreatePlatformUserRequest(BaseModel):
 
 class UpdatePlatformRoleRequest(BaseModel):
     role: UserRole
-
-
-def _is_platform_user(user: IamUser) -> bool:
-    return (
-        user.tenant_id == PLATFORM_TENANT_ID
-        and _role_value(user.role) in {item.value for item in _PLATFORM_ROLES}
-    )
-
-
-def _require_platform_owner(user: IamUser) -> IamUser:
-    if (
-        user.tenant_id != PLATFORM_TENANT_ID
-        or _role_value(user.role) not in {item.value for item in _PLATFORM_OWNER_ROLES}
-    ):
-        raise HTTPException(status_code=403, detail="platform_owner role required")
-    return user
-
-
-def _require_platform_user(user: IamUser) -> IamUser:
-    if not _is_platform_user(user):
-        raise HTTPException(status_code=403, detail="platform role required")
-    return user
 
 
 def _smtp_configured() -> bool:
@@ -170,7 +146,7 @@ async def create_platform_user(
     current_user: IamUser = Depends(get_current_user),
     _: IamUser = Depends(platform_user_create_guard),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     normalized_email = normalize_email(body.email)
     if _role_value(body.role) not in {
         UserRole.platform_admin.value,
@@ -239,7 +215,7 @@ async def list_platform_users(
     current_user: IamUser = Depends(get_current_user),
     _: IamUser = Depends(platform_user_view_guard),
 ) -> Paginated[dict]:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     base_stmt = select(IamUser).where(IamUser.tenant_id == PLATFORM_TENANT_ID)
     total = int(
         (
@@ -265,7 +241,7 @@ async def list_platform_users(
 async def get_platform_me(
     current_user: IamUser = Depends(get_current_user),
 ) -> dict:
-    _require_platform_user(current_user)
+    require_platform_user(current_user)
     return _serialize_user(current_user)
 
 
@@ -278,7 +254,7 @@ async def update_platform_role(
     current_user: IamUser = Depends(get_current_user),
     _: IamUser = Depends(platform_user_update_guard),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     if user_id == current_user.id:
         raise HTTPException(status_code=422, detail="cannot change own role")
 
@@ -318,7 +294,7 @@ async def deactivate_platform_user(
     current_user: IamUser = Depends(get_current_user),
     _: IamUser = Depends(platform_user_delete_guard),
 ) -> dict:
-    _require_platform_owner(current_user)
+    require_platform_owner(current_user)
     if user_id == current_user.id:
         raise HTTPException(status_code=422, detail="cannot deactivate yourself")
 

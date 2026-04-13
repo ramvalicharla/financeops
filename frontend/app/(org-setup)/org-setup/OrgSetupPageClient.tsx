@@ -9,6 +9,7 @@ import { Step1GroupIdentity } from "@/components/org-setup/Step1GroupIdentity"
 import { Step2Entities } from "@/components/org-setup/Step2Entities"
 import { Step3Ownership } from "@/components/org-setup/Step3Ownership"
 import { Step4AccountingTools } from "@/components/org-setup/Step4AccountingTools"
+import { Step5InviteTeam } from "@/components/org-setup/Step5InviteTeam"
 import { SetupComplete } from "@/components/org-setup/SetupComplete"
 import {
   getOrgSetupSummary,
@@ -29,15 +30,21 @@ export default function OrgSetupPageClient() {
   const tenantState = useTenantStore((state) => state)
 
   const [step2Draft, setStep2Draft] = useState<Step2EntityPayload[]>([])
+  // localStep tracks UI-only step 5 (Invite team) which has no backend mutation
+  const [localStep, setLocalStep] = useState<5 | null>(null)
+
   const summaryQuery = useQuery({
     queryKey: ["org-setup-summary"],
     queryFn: getOrgSetupSummary,
   })
 
-  const currentStep = useMemo(() => {
+  const backendStep = useMemo(() => {
     const nextStep = summaryQuery.data?.current_step ?? 1
     return Math.min(Math.max(nextStep, 1), 4)
   }, [summaryQuery.data?.current_step])
+
+  // Effective step: localStep overrides backendStep for the UI-only step 5
+  const currentStep: number = localStep ?? backendStep
 
   const setupComplete = Boolean(summaryQuery.data?.completed_at)
   const groupId = summaryQuery.data?.group?.id ?? null
@@ -91,22 +98,27 @@ export default function OrgSetupPageClient() {
     mutationFn: submitOrgSetupStep4,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
-      const refreshedSession = await refreshSessionAfterSetup()
-      const user = refreshedSession?.user
-      if (tenantState.tenant_id && tenantState.tenant_slug) {
-        setTenant({
-          tenant_id: tenantState.tenant_id,
-          tenant_slug: tenantState.tenant_slug,
-          org_setup_complete: user?.org_setup_complete ?? true,
-          org_setup_step: user?.org_setup_step ?? 7,
-          entity_roles: user?.entity_roles ?? tenantState.entity_roles,
-          active_entity_id:
-            user?.entity_roles.at(0)?.entity_id ?? tenantState.active_entity_id,
-        })
-      }
-      navigateAfterAuth(nextPath)
+      // Advance to local step 5 (Invite team) before navigating
+      setLocalStep(5)
     },
   })
+
+  const finishSetup = async () => {
+    const refreshedSession = await refreshSessionAfterSetup()
+    const user = refreshedSession?.user
+    if (tenantState.tenant_id && tenantState.tenant_slug) {
+      setTenant({
+        tenant_id: tenantState.tenant_id,
+        tenant_slug: tenantState.tenant_slug,
+        org_setup_complete: user?.org_setup_complete ?? true,
+        org_setup_step: user?.org_setup_step ?? 7,
+        entity_roles: user?.entity_roles ?? tenantState.entity_roles,
+        active_entity_id:
+          user?.entity_roles.at(0)?.entity_id ?? tenantState.active_entity_id,
+      })
+    }
+    navigateAfterAuth(nextPath)
+  }
 
   const nextPath = useMemo(() => {
     const next = searchParams?.get("next")
@@ -162,6 +174,7 @@ export default function OrgSetupPageClient() {
         <Step2Entities
           initial={step2Draft}
           submitting={step2Mutation.isPending}
+          orgName={summaryQuery.data?.group?.group_name ?? "Your organisation"}
           onSubmit={async (payload) => {
             setStep2Draft(payload)
             await step2Mutation.mutateAsync(payload)
@@ -180,12 +193,30 @@ export default function OrgSetupPageClient() {
       ) : null}
 
       {currentStep === 4 ? (
-        <Step4AccountingTools
-          entities={entities}
-          submitting={step4Mutation.isPending}
-          onSubmit={async (configs) => {
-            await step4Mutation.mutateAsync({ configs })
-          }}
+        <>
+          <Step4AccountingTools
+            entities={entities}
+            submitting={step4Mutation.isPending}
+            onSubmit={async (configs) => {
+              await step4Mutation.mutateAsync({ configs })
+            }}
+          />
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => setLocalStep(5)}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Skip for now
+            </button>
+          </div>
+        </>
+      ) : null}
+
+      {currentStep === 5 ? (
+        <Step5InviteTeam
+          onSkip={finishSetup}
+          onSubmit={finishSetup}
         />
       ) : null}
     </div>

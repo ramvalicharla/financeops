@@ -92,10 +92,11 @@ async def has_permission(
     return True
 
 
+# SECURITY FIX: legacy pass-through removed — all permission checks are now hard denies
 def require_permission(
     permission: str,
     *,
-    strict: bool = False,
+    strict: bool = True,
 ) -> Callable[[Request, AsyncSession, IamUser], Awaitable[IamUser]]:
     async def _dependency(
         request: Request,
@@ -112,14 +113,7 @@ def require_permission(
         )
         if allowed:
             return user
-        if strict:
-            raise AuthorizationError(f"{permission} permission required")
-        log.debug(
-            "permission_validation_only permission=%s decision=allow_legacy path=%s user_id=%s",
-            permission,
-            request.url.path,
-            user.id,
-        )
-        return user
+        # SECURITY FIX: legacy pass-through removed — all permission checks are now hard denies
+        raise AuthorizationError(f"{permission} permission required")
 
     return _dependency

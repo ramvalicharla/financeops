@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDrilldown, getKpis } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
-import { StructuredDataView } from "@/components/ui"
+import { StructuredDataView, TableSkeleton } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
 export default function KpisPage() {
@@ -48,7 +48,13 @@ export default function KpisPage() {
       </section>
 
       <section className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="overflow-x-auto">
+        <div
+          className="overflow-x-auto"
+          role="region"
+          aria-label="KPI data"
+          aria-busy={kpisQuery.isLoading}
+          aria-live="polite"
+        >
           <table className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-muted/30">
               <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -57,19 +63,23 @@ export default function KpisPage() {
                 <th className="px-4 py-2">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
-              {(kpisQuery.data?.rows ?? []).map((row) => (
-                <tr key={row.metric_name}>
-                  <td className="px-4 py-2">{row.metric_name}</td>
-                  <td className="px-4 py-2">{Number(row.metric_value).toLocaleString()}</td>
-                  <td className="px-4 py-2">
-                    <Button type="button" size="sm" variant="outline" onClick={() => setSelectedMetric(row.metric_name)}>
-                      Drilldown
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+            {kpisQuery.isLoading ? (
+              <TableSkeleton rows={6} cols={3} />
+            ) : (
+              <tbody className="divide-y divide-border">
+                {(kpisQuery.data?.rows ?? []).map((row) => (
+                  <tr key={row.metric_name}>
+                    <td className="px-4 py-2">{row.metric_name}</td>
+                    <td className="px-4 py-2">{Number(row.metric_value).toLocaleString()}</td>
+                    <td className="px-4 py-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => setSelectedMetric(row.metric_name)}>
+                        Drilldown
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            )}
           </table>
         </div>
       </section>

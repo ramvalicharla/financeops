@@ -14,6 +14,14 @@ from financeops.modules.erp_sync.infrastructure.connectors.munim import MunimCon
 
 
 @pytest.mark.asyncio
+async def test_munim_test_connection_reports_ok() -> None:
+    connector = MunimConnector()
+    result = await connector.test_connection({"app_variant": "MUNIM"})
+    assert result["ok"] is True
+    assert result["latency_ms"] == 0
+
+
+@pytest.mark.asyncio
 async def test_munim_variant_csv_mapping() -> None:
     connector = MunimConnector()
     csv_data = (

@@ -9,6 +9,7 @@ import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, datetime
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import pandas as pd
@@ -148,6 +149,38 @@ class CoaUploadService:
             return value
         text = str(value or "").strip().lower()
         return text in {"1", "true", "yes", "y"}
+
+    @staticmethod
+    def _normalise_trial_balance_amount(value: Any) -> Decimal:
+        return Decimal(str(value or "0")).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
+    @staticmethod
+    def _build_flexible_plan_item(
+        *,
+        row_number: int,
+        row: dict[str, Any],
+        status: str,
+        **extra: Any,
+    ) -> dict[str, Any]:
+        item = {
+            "row_number": row_number,
+            "account": str(row.get("account") or "").strip(),
+            "debit": CoaUploadService._normalise_trial_balance_amount(row.get("debit")),
+            "credit": CoaUploadService._normalise_trial_balance_amount(row.get("credit")),
+            "status": status,
+        }
+        item.update(extra)
+        return item
+
+    @staticmethod
+    def _json_safe_value(value: Any) -> Any:
+        if isinstance(value, Decimal):
+            return format(value, "f")
+        if isinstance(value, dict):
+            return {str(key): CoaUploadService._json_safe_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [CoaUploadService._json_safe_value(item) for item in value]
+        return value
 
     @staticmethod
     def _normalise_row(raw: dict[str, Any], row_number: int) -> dict[str, Any]:
@@ -380,15 +413,13 @@ class CoaUploadService:
             if existing is not None:
                 mapped_count += 1
                 plan.append(
-                    {
-                        "row_number": row_number,
-                        "account": account,
-                        "debit": float(row.get("debit") or 0),
-                        "credit": float(row.get("credit") or 0),
-                        "status": "mapped_existing",
-                        "tenant_coa_account_id": str(existing.id),
-                        "account_code": existing.account_code,
-                    }
+                    self._build_flexible_plan_item(
+                        row_number=row_number,
+                        row=row,
+                        status="mapped_existing",
+                        tenant_coa_account_id=str(existing.id),
+                        account_code=existing.account_code,
+                    )
                 )
                 continue
 
@@ -397,17 +428,15 @@ class CoaUploadService:
                 auto_create_count += 1
                 used_codes.add(ledger.code)
                 plan.append(
-                    {
-                        "row_number": row_number,
-                        "account": account,
-                        "debit": float(row.get("debit") or 0),
-                        "credit": float(row.get("credit") or 0),
-                        "status": "auto_create",
-                        "ledger_account_id": str(ledger.id),
-                        "parent_subgroup_id": str(ledger.account_subgroup_id),
-                        "account_code": ledger.code,
-                        "display_name": ledger.name,
-                    }
+                    self._build_flexible_plan_item(
+                        row_number=row_number,
+                        row=row,
+                        status="auto_create",
+                        ledger_account_id=str(ledger.id),
+                        parent_subgroup_id=str(ledger.account_subgroup_id),
+                        account_code=ledger.code,
+                        display_name=ledger.name,
+                    )
                 )
                 continue
 
@@ -415,14 +444,12 @@ class CoaUploadService:
             generated_code = self._derive_account_code(account, used_codes=used_codes)
             used_codes.add(generated_code)
             plan.append(
-                {
-                    "row_number": row_number,
-                    "account": account,
-                    "debit": float(row.get("debit") or 0),
-                    "credit": float(row.get("credit") or 0),
-                    "status": "review",
-                    "account_code": generated_code,
-                }
+                self._build_flexible_plan_item(
+                    row_number=row_number,
+                    row=row,
+                    status="review",
+                    account_code=generated_code,
+                )
             )
 
         return {
@@ -601,7 +628,7 @@ class CoaUploadService:
                 normalized_rows=flexible_rows,
             )
             batch.upload_status = CoaUploadStatus.SUCCESS
-            batch.error_log = metadata
+            batch.error_log = self._json_safe_value(metadata)
             batch.processed_at = datetime.now(UTC)
             await self._session.flush()
             return {

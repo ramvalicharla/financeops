@@ -40,7 +40,7 @@ export default function AccountingPnLPage() {
     queryFn: async () =>
       listJournals({
         org_entity_id: activeEntityId as string,
-        status: "POSTED",
+        status: "PUSHED",
         limit: 200,
       }),
   })

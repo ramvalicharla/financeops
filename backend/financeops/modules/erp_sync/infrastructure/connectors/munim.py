@@ -163,6 +163,17 @@ class MunimConnector(AbstractConnector):
     def __init__(self) -> None:
         self._delegate = GenericFileConnector()
 
+    async def test_connection(self, credentials: dict[str, Any]) -> dict[str, Any]:
+        try:
+            self._resolve_variant(credentials.get("app_variant"))
+            return {
+                "ok": True,
+                "latency_ms": 0,
+                "connector_type": self.connector_type.value,
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
     async def extract(self, dataset_type: DatasetType, **kwargs: Any) -> dict[str, Any]:
         if dataset_type not in self.supported_datasets:
             raise ConnectorCapabilityNotSupported(self.connector_type, dataset_type)

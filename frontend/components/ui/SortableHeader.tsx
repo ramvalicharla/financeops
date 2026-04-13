@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { CSSProperties, ReactNode } from "react"
 
 export interface SortableHeaderProps {
   children: ReactNode
@@ -9,6 +9,7 @@ export interface SortableHeaderProps {
   }
   onSort: (key: string) => void
   className?: string
+  style?: CSSProperties
 }
 
 export function SortableHeader({
@@ -17,6 +18,7 @@ export function SortableHeader({
   currentSort,
   onSort,
   className,
+  style,
 }: SortableHeaderProps) {
   const isActive = currentSort.key === sortKey
   const ariaSortValue =
@@ -27,7 +29,7 @@ export function SortableHeader({
         : "none"
 
   return (
-    <th scope="col" aria-sort={ariaSortValue} className={className}>
+    <th scope="col" aria-sort={ariaSortValue} className={className} style={style}>
       <button
         type="button"
         onClick={() => onSort(sortKey)}

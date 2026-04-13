@@ -1,17 +1,33 @@
 from __future__ import annotations
 
-import asyncio
+import logging
 import uuid
 from datetime import UTC, date, datetime
+from typing import Any
 
 from sqlalchemy import and_, func, select
 
-from financeops.db.models.payment import CreditLedger, GracePeriodLog, PaymentMethod, SubscriptionEvent, TenantSubscription
+from financeops.db.models.payment import (
+    BillingInvoice,
+    CreditLedger,
+    GracePeriodLog,
+    PaymentMethod,
+    SubscriptionEvent,
+    TenantSubscription,
+)
 from financeops.db.session import AsyncSessionLocal
-from financeops.modules.payment.domain.enums import CreditTransactionType, SubscriptionStatus
+from financeops.modules.payment.application.invoice_service import InvoiceService
+from financeops.modules.payment.domain.enums import CreditTransactionType, InvoiceStatus, PaymentProvider, SubscriptionStatus
+from financeops.modules.payment.domain.schemas import PaymentProviderResult
+from financeops.modules.payment.infrastructure.providers.registry import get_provider
 from financeops.services.audit_writer import AuditWriter
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.base_task import FinanceOpsTask
 from financeops.tasks.celery_app import celery_app
+
+log = logging.getLogger(__name__)
+
+MAX_SUBSCRIPTION_PAYMENT_RETRIES = 3
 
 
 async def _emit_subscription_event(
@@ -50,7 +66,14 @@ async def _append_subscription_revision(
     session,
     source: TenantSubscription,
     status: str,
+    metadata: dict[str, Any] | None = None,
+    cancel_at_period_end: bool | None = None,
+    cancelled_at: datetime | None = None,
 ) -> TenantSubscription:
+    next_metadata = dict(source.metadata_json or {}) if metadata is None else metadata
+    next_cancel_at_period_end = source.cancel_at_period_end if cancel_at_period_end is None else cancel_at_period_end
+    next_cancelled_at = cancelled_at if cancelled_at is not None else source.cancelled_at
+    next_auto_renew = False if status == SubscriptionStatus.CANCELLED.value else not next_cancel_at_period_end
     return await AuditWriter.insert_financial_record(
         session,
         model_class=TenantSubscription,
@@ -72,14 +95,293 @@ async def _append_subscription_revision(
             "current_period_end": source.current_period_end,
             "trial_start": source.trial_start,
             "trial_end": source.trial_end,
-            "cancelled_at": source.cancelled_at,
-            "cancel_at_period_end": source.cancel_at_period_end,
+            "start_date": source.start_date or source.current_period_start,
+            "end_date": source.end_date or source.current_period_end,
+            "trial_end_date": source.trial_end_date or source.trial_end,
+            "auto_renew": next_auto_renew,
+            "cancelled_at": next_cancelled_at,
+            "cancel_at_period_end": next_cancel_at_period_end,
             "onboarding_mode": source.onboarding_mode,
             "billing_country": source.billing_country,
             "billing_currency": source.billing_currency,
-            "metadata_json": dict(source.metadata_json or {}),
+            "metadata_json": next_metadata,
         },
     )
+
+
+def _payment_failure_result(
+    *,
+    error_code: str,
+    error_message: str,
+    raw_response: dict[str, Any] | None = None,
+) -> PaymentProviderResult:
+    return PaymentProviderResult(
+        success=False,
+        provider_id=None,
+        raw_response=raw_response or {"error": error_message},
+        error_code=error_code,
+        error_message=error_message,
+    )
+
+
+async def _list_current_subscriptions(session) -> list[TenantSubscription]:
+    rows = list(
+        (
+            await session.execute(
+                select(TenantSubscription).order_by(TenantSubscription.created_at.desc(), TenantSubscription.id.desc())
+            )
+        ).scalars()
+    )
+    latest_by_subscription: dict[tuple[uuid.UUID, str], TenantSubscription] = {}
+    for row in rows:
+        key = (row.tenant_id, row.provider_subscription_id)
+        if key not in latest_by_subscription:
+            latest_by_subscription[key] = row
+    return list(latest_by_subscription.values())
+
+
+async def _get_retryable_invoice(
+    *,
+    session,
+    source: TenantSubscription,
+) -> BillingInvoice | None:
+    return (
+        await session.execute(
+            select(BillingInvoice)
+            .join(
+                TenantSubscription,
+                and_(
+                    TenantSubscription.id == BillingInvoice.subscription_id,
+                    TenantSubscription.tenant_id == BillingInvoice.tenant_id,
+                ),
+            )
+            .where(
+                BillingInvoice.tenant_id == source.tenant_id,
+                TenantSubscription.provider_subscription_id == source.provider_subscription_id,
+                BillingInvoice.status.in_([InvoiceStatus.OPEN.value, InvoiceStatus.UNCOLLECTIBLE.value]),
+            )
+            .order_by(BillingInvoice.created_at.desc(), BillingInvoice.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _get_default_payment_method(
+    *,
+    session,
+    source: TenantSubscription,
+) -> PaymentMethod | None:
+    return (
+        await session.execute(
+            select(PaymentMethod)
+            .where(
+                PaymentMethod.tenant_id == source.tenant_id,
+                PaymentMethod.provider == source.provider,
+                PaymentMethod.is_default.is_(True),
+            )
+            .order_by(PaymentMethod.created_at.desc(), PaymentMethod.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+def _next_retry_count(source: TenantSubscription) -> int:
+    raw_value = (source.metadata_json or {}).get("payment_retry_count", 0)
+    try:
+        return int(raw_value) + 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _build_retry_metadata(
+    *,
+    source: TenantSubscription,
+    payment_result: PaymentProviderResult,
+    retry_count: int,
+    invoice: BillingInvoice | None,
+    payment_method: PaymentMethod | None,
+) -> dict[str, Any]:
+    metadata = dict(source.metadata_json or {})
+    metadata["payment_retry_count"] = retry_count
+    metadata["payment_retry_last_attempt_at"] = datetime.now(UTC).isoformat()
+    metadata["payment_retry_last_result"] = "success" if payment_result.success else "failed"
+    if invoice is not None:
+        metadata["payment_retry_last_invoice_id"] = invoice.provider_invoice_id
+    if payment_method is not None:
+        metadata["payment_retry_last_payment_method_id"] = payment_method.provider_payment_method_id
+    if payment_result.provider_id:
+        metadata["payment_retry_last_provider_id"] = payment_result.provider_id
+    else:
+        metadata.pop("payment_retry_last_provider_id", None)
+    if payment_result.success:
+        metadata["payment_retry_last_error"] = None
+    else:
+        metadata["payment_retry_last_error"] = payment_result.error_message or payment_result.error_code or "unknown_error"
+    return metadata
+
+
+async def _attempt_subscription_charge(
+    *,
+    session,
+    source: TenantSubscription,
+) -> tuple[PaymentProviderResult, BillingInvoice | None, PaymentMethod | None]:
+    invoice = await _get_retryable_invoice(session=session, source=source)
+    if invoice is None:
+        return (
+            _payment_failure_result(
+                error_code="no_retryable_invoice",
+                error_message="No open or uncollectible invoice found for subscription retry",
+                raw_response={"provider_subscription_id": source.provider_subscription_id},
+            ),
+            None,
+            None,
+        )
+
+    payment_method = await _get_default_payment_method(session=session, source=source)
+    if payment_method is None:
+        return (
+            _payment_failure_result(
+                error_code="no_default_payment_method",
+                error_message="No default payment method found for payment retry",
+                raw_response={"provider": source.provider},
+            ),
+            invoice,
+            None,
+        )
+
+    try:
+        provider = get_provider(PaymentProvider(source.provider))
+    except ValueError:
+        return (
+            _payment_failure_result(
+                error_code="unsupported_provider",
+                error_message=f"Unsupported payment provider: {source.provider}",
+                raw_response={"provider": source.provider},
+            ),
+            invoice,
+            payment_method,
+        )
+
+    try:
+        result = await provider.pay_invoice(
+            invoice_id=invoice.provider_invoice_id,
+            payment_method_id=payment_method.provider_payment_method_id,
+        )
+    except Exception as exc:  # pragma: no cover - defensive safety for provider SDK failures
+        return (
+            _payment_failure_result(
+                error_code="provider_retry_exception",
+                error_message=str(exc),
+                raw_response={
+                    "provider": source.provider,
+                    "provider_invoice_id": invoice.provider_invoice_id,
+                },
+            ),
+            invoice,
+            payment_method,
+        )
+    return result, invoice, payment_method
+
+
+async def _retry_failed_payments_async(session) -> dict[str, int]:
+    reactivated = 0
+    failed = 0
+    cancelled = 0
+    skipped = 0
+    invoice_service = InvoiceService(session)
+
+    current_rows = await _list_current_subscriptions(session)
+    retry_candidates = [row for row in current_rows if row.status == SubscriptionStatus.PAST_DUE.value]
+
+    for sub in retry_candidates:
+        try:
+            async with session.begin_nested():
+                payment_result, invoice, payment_method = await _attempt_subscription_charge(session=session, source=sub)
+                retry_count = 0 if payment_result.success else _next_retry_count(sub)
+                metadata = _build_retry_metadata(
+                    source=sub,
+                    payment_result=payment_result,
+                    retry_count=retry_count,
+                    invoice=invoice,
+                    payment_method=payment_method,
+                )
+                if payment_result.success:
+                    if invoice is not None:
+                        await invoice_service.mark_paid(
+                            tenant_id=sub.tenant_id,
+                            invoice_id=invoice.id,
+                            payment_result=payment_result,
+                        )
+                    revised = await _append_subscription_revision(
+                        session=session,
+                        source=sub,
+                        status=SubscriptionStatus.ACTIVE.value,
+                        metadata=metadata,
+                    )
+                    await _emit_subscription_event(
+                        session=session,
+                        tenant_id=revised.tenant_id,
+                        subscription_id=revised.id,
+                        event_type="REACTIVATED",
+                        from_status=sub.status,
+                        to_status=revised.status,
+                    )
+                    log.info(
+                        "Payment retry succeeded for tenant=%s subscription=%s provider=%s invoice=%s",
+                        revised.tenant_id,
+                        revised.provider_subscription_id,
+                        revised.provider,
+                        invoice.provider_invoice_id if invoice is not None else None,
+                    )
+                    reactivated += 1
+                    continue
+
+                should_cancel = retry_count >= MAX_SUBSCRIPTION_PAYMENT_RETRIES
+                next_status = SubscriptionStatus.CANCELLED.value if should_cancel else SubscriptionStatus.PAST_DUE.value
+                revised = await _append_subscription_revision(
+                    session=session,
+                    source=sub,
+                    status=next_status,
+                    metadata=metadata,
+                    cancel_at_period_end=False if should_cancel else None,
+                    cancelled_at=datetime.now(UTC) if should_cancel else None,
+                )
+                await _emit_subscription_event(
+                    session=session,
+                    tenant_id=revised.tenant_id,
+                    subscription_id=revised.id,
+                    event_type="CANCELLED" if should_cancel else "PAYMENT_RETRY_FAILED",
+                    from_status=sub.status,
+                    to_status=revised.status,
+                )
+                log.warning(
+                    "Payment retry failed for tenant=%s subscription=%s provider=%s retry_count=%s error=%s",
+                    revised.tenant_id,
+                    revised.provider_subscription_id,
+                    revised.provider,
+                    retry_count,
+                    payment_result.error_message or payment_result.error_code,
+                )
+                if should_cancel:
+                    cancelled += 1
+                else:
+                    failed += 1
+        except Exception:
+            log.exception(
+                "Unexpected payment retry failure for tenant=%s subscription=%s",
+                sub.tenant_id,
+                sub.provider_subscription_id,
+            )
+            failed += 1
+            skipped += 1
+
+    await session.commit()
+    return {
+        "reactivated": reactivated,
+        "failed": failed,
+        "cancelled": cancelled,
+        "skipped": skipped,
+    }
 
 
 @celery_app.task(name="payment.check_trial_conversions", base=FinanceOpsTask)
@@ -139,7 +441,7 @@ def check_trial_conversions() -> dict[str, int]:
             await session.commit()
         return {"converted": converted, "incomplete": incomplete}
 
-    return asyncio.run(_run())
+    return run_async(_run())
 
 
 @celery_app.task(name="payment.check_grace_periods", base=FinanceOpsTask)
@@ -208,42 +510,16 @@ def check_grace_periods() -> dict[str, int]:
             await session.commit()
         return {"suspended": suspended}
 
-    return asyncio.run(_run())
+    return run_async(_run())
 
 
 @celery_app.task(name="payment.retry_failed_payments", base=FinanceOpsTask)
 def retry_failed_payments() -> dict[str, int]:
     async def _run() -> dict[str, int]:
-        reactivated = 0
         async with AsyncSessionLocal() as session:
-            rows = list(
-                (
-                    await session.execute(
-                        select(TenantSubscription).where(
-                            TenantSubscription.status == SubscriptionStatus.PAST_DUE.value
-                        )
-                    )
-                ).scalars()
-            )
-            for sub in rows:
-                revised = await _append_subscription_revision(
-                    session=session,
-                    source=sub,
-                    status=SubscriptionStatus.ACTIVE.value,
-                )
-                await _emit_subscription_event(
-                    session=session,
-                    tenant_id=revised.tenant_id,
-                    subscription_id=revised.id,
-                    event_type="REACTIVATED",
-                    from_status=sub.status,
-                    to_status=revised.status,
-                )
-                reactivated += 1
-            await session.commit()
-        return {"reactivated": reactivated}
+            return await _retry_failed_payments_async(session)
 
-    return asyncio.run(_run())
+    return run_async(_run())
 
 
 @celery_app.task(name="payment.expire_credits", base=FinanceOpsTask)
@@ -329,4 +605,4 @@ def expire_credits() -> dict[str, int]:
             await session.commit()
         return {"expired_entries": expired_entries}
 
-    return asyncio.run(_run())
+    return run_async(_run())

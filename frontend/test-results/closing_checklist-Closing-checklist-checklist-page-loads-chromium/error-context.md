@@ -1,0 +1,334 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e3]:
+    - complementary [ref=e4]:
+      - generic [ref=e5]:
+        - paragraph [ref=e6]: Finqor
+        - generic [ref=e7]:
+          - generic [ref=e8]:
+            - generic [ref=e9]:
+              - paragraph [ref=e10]: Organization
+              - paragraph [ref=e11]: Unavailable
+            - generic [ref=e12]: Backend
+          - generic [ref=e13]:
+            - paragraph [ref=e14]: "Entity: Unavailable"
+            - paragraph [ref=e15]: "Workspace: Unavailable"
+      - navigation "Main navigation" [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: Financials
+          - generic [ref=e19]:
+            - link "Dashboard" [ref=e20] [cursor=pointer]:
+              - /url: /dashboard
+              - img [ref=e21]
+              - text: Dashboard
+            - link "Journals" [ref=e22] [cursor=pointer]:
+              - /url: /accounting/journals
+              - img [ref=e23]
+              - text: Journals
+            - link "Accounting TB" [ref=e26] [cursor=pointer]:
+              - /url: /accounting/trial-balance
+              - img [ref=e27]
+              - text: Accounting TB
+            - link "Accounting P&L" [ref=e30] [cursor=pointer]:
+              - /url: /accounting/pnl
+              - img [ref=e31]
+              - text: Accounting P&L
+            - link "Accounting BS" [ref=e34] [cursor=pointer]:
+              - /url: /accounting/balance-sheet
+              - img [ref=e35]
+              - text: Accounting BS
+            - link "Accounting CF" [ref=e38] [cursor=pointer]:
+              - /url: /accounting/cash-flow
+              - img [ref=e39]
+              - text: Accounting CF
+            - link "Accounting Revaluation" [ref=e42] [cursor=pointer]:
+              - /url: /accounting/revaluation
+              - img [ref=e43]
+              - text: Accounting Revaluation
+            - link "Period Close" [ref=e46] [cursor=pointer]:
+              - /url: /close
+              - img [ref=e47]
+              - text: Period Close
+            - link "Close Checklist" [ref=e50] [cursor=pointer]:
+              - /url: /close/checklist
+              - img [ref=e51]
+              - text: Close Checklist
+            - link "FX Rates" [ref=e55] [cursor=pointer]:
+              - /url: /fx/rates
+              - img [ref=e56]
+              - text: FX Rates
+            - link "Trial Balance" [ref=e59] [cursor=pointer]:
+              - /url: /trial-balance
+              - img [ref=e60]
+              - text: Trial Balance
+        - generic [ref=e63]:
+          - generic [ref=e64]: Tax & Compliance
+          - generic [ref=e65]:
+            - link "Invoice Classifier" [ref=e66] [cursor=pointer]:
+              - /url: /invoice-classify
+              - img [ref=e67]
+              - text: Invoice Classifier
+            - link "Transfer Pricing" [ref=e69] [cursor=pointer]:
+              - /url: /transfer-pricing
+              - img [ref=e70]
+              - text: Transfer Pricing
+            - link "Signoff" [ref=e73] [cursor=pointer]:
+              - /url: /signoff
+              - img [ref=e74]
+              - text: Signoff
+            - link "Statutory" [ref=e77] [cursor=pointer]:
+              - /url: /statutory
+              - img [ref=e78]
+              - text: Statutory
+        - generic [ref=e82]:
+          - generic [ref=e83]: Reporting
+          - generic [ref=e84]:
+            - link "Reports" [ref=e85] [cursor=pointer]:
+              - /url: /reports
+              - img [ref=e86]
+              - text: Reports
+            - link "Scheduled Delivery" [ref=e89] [cursor=pointer]:
+              - /url: /scheduled-delivery
+              - img [ref=e90]
+              - text: Scheduled Delivery
+        - generic [ref=e94]:
+          - generic [ref=e95]: Admin
+          - generic [ref=e96]:
+            - link "Billing" [ref=e97] [cursor=pointer]:
+              - /url: /billing
+              - img [ref=e98]
+              - text: Billing
+            - link "Marketplace" [ref=e100] [cursor=pointer]:
+              - /url: /marketplace
+              - img [ref=e101]
+              - text: Marketplace
+            - link "Partner Program" [ref=e105] [cursor=pointer]:
+              - /url: /partner
+              - img [ref=e106]
+              - text: Partner Program
+            - link "Audit Portal" [ref=e111] [cursor=pointer]:
+              - /url: /audit
+              - img [ref=e112]
+              - text: Audit Portal
+        - generic [ref=e116]:
+          - paragraph [ref=e117]: Trust
+          - link "Trust & Compliance" [ref=e118] [cursor=pointer]:
+            - /url: /trust
+            - img [ref=e119]
+            - text: Trust & Compliance
+          - link "SOC2" [ref=e122] [cursor=pointer]:
+            - /url: /trust/soc2
+          - link "GDPR" [ref=e123] [cursor=pointer]:
+            - /url: /trust/gdpr
+        - generic [ref=e124]:
+          - paragraph [ref=e125]: Advisory
+          - link "Advisory Services" [ref=e126] [cursor=pointer]:
+            - /url: /advisory
+            - img [ref=e127]
+            - text: Advisory Services
+          - link "FDD" [ref=e131] [cursor=pointer]:
+            - /url: /advisory/fdd
+          - link "PPA" [ref=e132] [cursor=pointer]:
+            - /url: /advisory/ppa
+          - link "M&A" [ref=e133] [cursor=pointer]:
+            - /url: /advisory/ma
+        - generic [ref=e134]:
+          - paragraph [ref=e135]: Settings
+          - link "Display & Formatting" [ref=e136] [cursor=pointer]:
+            - /url: /settings
+            - img [ref=e137]
+            - text: Display & Formatting
+          - link "Chart of Accounts" [ref=e140] [cursor=pointer]:
+            - /url: /settings/chart-of-accounts
+          - link "CoA Uploads" [ref=e141] [cursor=pointer]:
+            - /url: /settings/coa
+          - link "ERP Mapping" [ref=e142] [cursor=pointer]:
+            - /url: /settings/erp-mapping
+          - link "Airlock" [ref=e143] [cursor=pointer]:
+            - /url: /settings/airlock
+          - link "Control Plane" [ref=e144] [cursor=pointer]:
+            - /url: /settings/control-plane
+          - link "Groups & Entities" [ref=e145] [cursor=pointer]:
+            - /url: /settings/groups
+          - link "Users & Roles" [ref=e146] [cursor=pointer]:
+            - /url: /settings/users
+          - link "Privacy Settings" [ref=e147] [cursor=pointer]:
+            - /url: /settings/privacy
+          - link "White Label" [ref=e148] [cursor=pointer]:
+            - /url: /settings/white-label
+      - generic [ref=e149]:
+        - generic [ref=e150]:
+          - generic [ref=e151]:
+            - generic [ref=e152]: TU
+            - generic [ref=e153]:
+              - paragraph [ref=e154]: Test User
+              - paragraph [ref=e155]: test@acme.com
+              - paragraph [ref=e156]: "Role: finance leader"
+          - button "Sign out" [ref=e157] [cursor=pointer]
+        - button "Collapse sidebar" [ref=e158] [cursor=pointer]:
+          - img [ref=e159]
+          - generic [ref=e162]: Collapse
+    - generic [ref=e163]:
+      - banner [ref=e164]:
+        - generic [ref=e165]:
+          - generic [ref=e166]:
+            - generic [ref=e167]:
+              - paragraph [ref=e168]: acme
+              - generic [ref=e169]: /
+              - button "Switch active entity" [ref=e170] [cursor=pointer]:
+                - generic [ref=e171]: Acme Ltd
+                - generic [ref=e172]: Admin
+                - img
+            - generic [ref=e173]:
+              - heading "Finqor" [level=1] [ref=e174]
+              - generic [ref=e175]: Organization unavailable · Period unavailable
+          - generic [ref=e176]:
+            - generic [ref=e177]:
+              - combobox "Select active entity" [ref=e178]:
+                - option "Select entity"
+                - option "Acme Ltd" [selected]
+                - option "Acme Holdings"
+              - combobox "Select active location" [ref=e179]:
+                - option "All locations" [selected]
+            - generic [ref=e180]:
+              - generic [ref=e181]: View in
+              - generic [ref=e182]:
+                - button "INR" [ref=e183] [cursor=pointer]
+                - button "L" [ref=e184] [cursor=pointer]
+                - button "Cr" [ref=e185] [cursor=pointer]
+                - button "K" [ref=e186] [cursor=pointer]
+                - button "M" [ref=e187] [cursor=pointer]
+                - button "B" [ref=e188] [cursor=pointer]
+            - button "Timeline" [ref=e189] [cursor=pointer]
+            - button "Jobs" [ref=e190] [cursor=pointer]
+            - button "Search Ctrl+K" [ref=e191] [cursor=pointer]:
+              - img [ref=e192]
+              - generic [ref=e195]: Search
+              - generic [ref=e196]: Ctrl+K
+            - button "Notifications" [ref=e198] [cursor=pointer]:
+              - img [ref=e199]
+            - button "Account menu" [ref=e203] [cursor=pointer]: T
+      - generic [ref=e204]:
+        - generic [ref=e205]:
+          - generic [ref=e206]:
+            - paragraph [ref=e207]: Workspace Modules
+            - paragraph [ref=e208]: "Tabs are rendered from backend workspace context. Backend workspace: Unavailable."
+          - generic [ref=e209]:
+            - generic [ref=e210]: 0 visible
+            - generic [ref=e211]: "Viewing: Unavailable"
+        - navigation "Module tabs" [ref=e212]
+      - generic [ref=e214]:
+        - generic [ref=e215]: Active Context
+        - generic [ref=e216]:
+          - generic [ref=e217]: Org Unavailable
+          - generic [ref=e218]: →
+          - generic [ref=e219]: Entity Unavailable
+          - generic [ref=e220]: →
+          - generic [ref=e221]: Modules Unavailable
+          - generic [ref=e222]: →
+          - generic [ref=e223]: Period Unavailable
+      - main [ref=e224]:
+        - generic [ref=e227]:
+          - generic [ref=e228]:
+            - generic [ref=e229]:
+              - heading "Period Close Control" [level=1] [ref=e230]
+              - paragraph [ref=e231]: Lock or unlock periods, review readiness, and inspect month-end checklist governance.
+            - generic [ref=e232]:
+              - textbox [ref=e233]: 2026-04
+              - link "Open Checklist" [ref=e234] [cursor=pointer]:
+                - /url: /close/checklist?period=2026-04
+          - generic [ref=e235]:
+            - generic [ref=e236]:
+              - generic [ref=e237]:
+                - paragraph [ref=e238]: Period Lock Overlay
+                - heading "2026-04" [level=2] [ref=e239]
+                - paragraph [ref=e240]: Lock state is governed by the legacy close endpoint. Month-end checklist state is shown below.
+              - generic "OPEN" [ref=e241]:
+                - img [ref=e242]
+                - generic [ref=e251]: OPEN
+            - generic [ref=e252]:
+              - generic [ref=e253]:
+                - paragraph [ref=e254]: Lock metadata
+                - generic [ref=e255]:
+                  - paragraph [ref=e256]: "Locked at: Unavailable"
+                  - paragraph [ref=e257]: "Locked by: Not exposed by backend"
+                  - paragraph [ref=e258]: "Reason: No reason recorded"
+              - generic [ref=e259]:
+                - paragraph [ref=e260]: Readiness
+                - paragraph [ref=e261]: FAIL
+                - paragraph [ref=e262]: 0 blocker(s) and 0 warning(s) returned by the backend.
+              - generic [ref=e263]:
+                - paragraph [ref=e264]: Month-end checklist
+                - paragraph [ref=e265]: No month-end checklist record is loaded.
+            - generic [ref=e266]:
+              - button "Soft Close" [disabled]
+              - button "Hard Close" [disabled]
+              - button "Unlock" [disabled]
+              - link "Open Checklist" [ref=e267] [cursor=pointer]:
+                - /url: /close/checklist?period=2026-04
+          - generic [ref=e268]:
+            - generic [ref=e269]:
+              - generic [ref=e270]:
+                - generic [ref=e271]:
+                  - paragraph [ref=e272]: Month-end record
+                  - heading "Acme Ltd checklist" [level=2] [ref=e273]
+                  - paragraph [ref=e274]: "Data source is `/api/v1/monthend/*` when available. Close actions remain on the legacy period lock API because that is still the truthful backend contract."
+                - generic [ref=e275]: No checklist found
+              - paragraph [ref=e276]: No month-end checklist exists for this entity and period yet.
+            - generic [ref=e277]:
+              - heading "Governance status" [level=3] [ref=e278]
+              - generic [ref=e279]:
+                - generic [ref=e280]:
+                  - paragraph [ref=e281]: Checklist state
+                  - paragraph [ref=e282]: Unavailable
+                - generic [ref=e283]:
+                  - paragraph [ref=e284]: Checklist progress
+                  - paragraph [ref=e285]: No month-end checklist loaded
+                - generic [ref=e286]:
+                  - paragraph [ref=e287]: Backend note
+                  - paragraph [ref=e288]: Attribution remains partial where the backend does not expose it.
+          - generic [ref=e289]:
+            - generic [ref=e290]:
+              - generic [ref=e291]:
+                - paragraph [ref=e292]: Approval Graph
+                - heading "Close governance path" [level=2] [ref=e293]
+                - paragraph [ref=e294]: A structured view of readiness, lock state, and month-end checklist completion.
+              - generic [ref=e295]:
+                - paragraph [ref=e296]: Progress
+                - paragraph [ref=e297]: 0%
+            - generic [ref=e299]:
+              - generic [ref=e305]:
+                - generic [ref=e306]:
+                  - paragraph [ref=e307]: Readiness review
+                  - paragraph [ref=e308]: Backend readiness checks returned blockers.
+                - generic "pending" [ref=e309]:
+                  - img [ref=e310]
+                  - generic [ref=e319]: pending
+              - generic [ref=e325]:
+                - generic [ref=e326]:
+                  - paragraph [ref=e327]: Period lock state
+                  - paragraph [ref=e328]: Current period state returned by the backend.
+                - generic "open" [ref=e329]:
+                  - img [ref=e330]
+                  - generic [ref=e339]: open
+              - generic [ref=e344]:
+                - generic [ref=e345]:
+                  - paragraph [ref=e346]: Month-end checklist
+                  - paragraph [ref=e347]: No checklist loaded for the selected period.
+                - generic "Unavailable" [ref=e348]:
+                  - img [ref=e349]
+                  - generic [ref=e358]: Unavailable
+            - paragraph [ref=e359]: Month-end checklist close emits closed_at, but closed_by is not exposed by the current API.
+  - generic [ref=e361]:
+    - paragraph [ref=e362]:
+      - text: We use essential cookies only for authentication and security. No tracking or advertising cookies.
+      - link "Learn more" [ref=e363] [cursor=pointer]:
+        - /url: /legal/cookies
+    - button "Accept Cookies" [ref=e364] [cursor=pointer]
+  - region "Notifications alt+T"
+  - alert [ref=e365]
+```

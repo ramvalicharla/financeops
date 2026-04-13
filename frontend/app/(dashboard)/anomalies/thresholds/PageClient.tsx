@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/Dialog"
 import { Input } from "@/components/ui/input"
@@ -23,7 +24,6 @@ export default function AnomalyThresholdsPage() {
   const [loading, setLoading] = useState(false)
   const [savingRule, setSavingRule] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [editState, setEditState] = useState<EditState | null>(null)
 
   const loadRows = useCallback(async () => {
@@ -43,12 +43,6 @@ export default function AnomalyThresholdsPage() {
   useEffect(() => {
     void loadRows()
   }, [loadRows])
-
-  useEffect(() => {
-    if (!toastMessage) return
-    const timeoutId = window.setTimeout(() => setToastMessage(null), 2500)
-    return () => window.clearTimeout(timeoutId)
-  }, [toastMessage])
 
   const sortedRows = useMemo(
     () => [...rows].sort((left, right) => left.rule_code.localeCompare(right.rule_code)),
@@ -97,7 +91,7 @@ export default function AnomalyThresholdsPage() {
       }
       await loadRows()
       setEditState(null)
-      setToastMessage("Threshold updated.")
+      toast.success("Threshold updated.")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to update threshold.")
     } finally {
@@ -107,12 +101,6 @@ export default function AnomalyThresholdsPage() {
 
   return (
     <div className="space-y-6">
-      {toastMessage ? (
-        <div className="fixed right-4 top-4 z-[60] rounded-md border border-[hsl(var(--brand-success)/0.5)] bg-[hsl(var(--brand-success)/0.2)] px-3 py-2 text-sm text-[hsl(var(--brand-success))]">
-          {toastMessage}
-        </div>
-      ) : null}
-
       <div>
         <h1 className="text-2xl font-semibold text-foreground">Anomaly Thresholds</h1>
         <p className="text-sm text-muted-foreground">

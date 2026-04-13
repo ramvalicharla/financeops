@@ -1,6 +1,8 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import type { CSSProperties } from "react"
+import type { Column } from "@tanstack/react-table"
 import { useSession } from "next-auth/react"
 import dynamic from "next/dynamic"
 import {
@@ -14,11 +16,13 @@ import {
 import { MISDashboard as MISDashboardCards } from "@/components/mis/MISDashboard"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { SortableHeader } from "@/components/ui/SortableHeader"
+import { TableSkeleton } from "@/components/ui/TableSkeleton"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { useMISDashboard, useMISPeriods } from "@/hooks/useMIS"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { getAccessErrorMessage } from "@/lib/ui-access"
 import { useDisplayScale } from "@/lib/store/displayScale"
+import { useUIStore } from "@/lib/store/ui"
 import { isZeroDecimal } from "@/lib/utils"
 import type { MISLineItem } from "@/types/mis"
 
@@ -39,7 +43,7 @@ export default function MISPage() {
   const { data: session } = useSession()
   const entityRoles = session?.user?.entity_roles ?? []
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
-  const [selectedPeriod, setSelectedPeriod] = useState(currentMonth)
+  const { activePeriod, setActivePeriod } = useUIStore()
   const [sorting, setSorting] = useState<SortingState>([])
 
   const scale = useDisplayScale((state) => state.scale)
@@ -47,7 +51,7 @@ export default function MISPage() {
   const { fmtNum, scaleLabel } = useFormattedAmount()
 
   const periodsQuery = useMISPeriods(selectedEntityId)
-  const dashboardQuery = useMISDashboard(selectedEntityId, selectedPeriod)
+  const dashboardQuery = useMISDashboard(selectedEntityId, activePeriod)
   const accessErrorMessage = getAccessErrorMessage(
     periodsQuery.error ?? dashboardQuery.error ?? null,
     "MIS",
@@ -128,6 +132,9 @@ export default function MISPage() {
   const table = useReactTable({
     data: dashboardQuery.data?.line_items ?? [],
     columns,
+    initialState: {
+      columnPinning: { left: ["label"] },
+    },
     state: { sorting },
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
@@ -138,6 +145,17 @@ export default function MISPage() {
     key: sorting[0]?.id ?? "",
     direction: sorting[0]?.desc === undefined ? null : sorting[0].desc ? "desc" : "asc",
   } as const
+
+  function getPinStyles(column: Column<MISLineItem>): CSSProperties {
+    const isPinned = column.getIsPinned()
+    if (!isPinned) return {}
+    return {
+      position: "sticky",
+      left: column.getStart("left"),
+      zIndex: 1,
+      background: "hsl(var(--background))",
+    }
+  }
 
   if (accessErrorMessage) {
     return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
@@ -175,8 +193,8 @@ export default function MISPage() {
             <select
               id="mis-period"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={selectedPeriod}
-              onChange={(event) => setSelectedPeriod(event.target.value)}
+              value={activePeriod}
+              onChange={(event) => setActivePeriod(event.target.value)}
             >
               {[...(periodsQuery.data ?? [{ period: currentMonth, label: currentMonth }])].map(
                 (period) => (
@@ -192,14 +210,6 @@ export default function MISPage() {
 
       <MISDashboardCards dashboard={dashboardQuery.data ?? null} />
 
-      {dashboardQuery.isLoading ? (
-        <div className="h-48 w-full rounded-lg bg-muted" />
-      ) : null}
-
-      {dashboardQuery.isSuccess ? (
-        <div className="h-3 w-3 animate-pulse rounded-full bg-muted" />
-      ) : null}
-
       {dashboardQuery.isError ? (
         <p className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           Failed to load MIS dashboard data.
@@ -211,7 +221,13 @@ export default function MISPage() {
       <section className="rounded-lg border border-border bg-card p-4">
         <h3 className="mb-1 text-lg font-semibold text-foreground">MIS Detail</h3>
         <p className="mb-3 text-xs text-muted-foreground">{scaleLabel}</p>
-        <div className="overflow-x-auto rounded-md border border-border">
+        <div
+          className="overflow-x-auto w-full rounded-md border border-border"
+          role="region"
+          aria-label="MIS report data"
+          aria-busy={dashboardQuery.isLoading}
+          aria-live="polite"
+        >
           <table aria-label="Management information" className="w-full min-w-[860px] text-sm">
             <thead>
               {table.getHeaderGroups().map((headerGroup) => (
@@ -226,6 +242,7 @@ export default function MISPage() {
                           table.getColumn(key)?.toggleSorting()
                         }}
                         className="px-3 py-2 text-left text-foreground"
+                        style={getPinStyles(header.column)}
                       >
                         {flexRender(
                           header.column.columnDef.header,
@@ -237,17 +254,25 @@ export default function MISPage() {
                 </tr>
               ))}
             </thead>
-            <tbody>
-              {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-t border-border">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2 text-muted-foreground">
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
+            {dashboardQuery.isLoading ? (
+              <TableSkeleton rows={8} cols={5} />
+            ) : (
+              <tbody>
+                {table.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-t border-border">
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        key={cell.id}
+                        className="px-3 py-2 text-muted-foreground"
+                        style={getPinStyles(cell.column)}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            )}
           </table>
         </div>
       </section>

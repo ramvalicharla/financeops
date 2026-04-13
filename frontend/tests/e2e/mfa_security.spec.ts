@@ -1,6 +1,24 @@
 import { expect, test } from "@playwright/test"
 import { apiResponse, enableAuthBypassHeader, fulfillJson } from "./helpers/mocks"
 
+// Helper to go through the 3-step login form and trigger the MFA backend response.
+// Step 1: email → Continue | Step 2: password → Sign in | Step 3: inline OTP (no URL change)
+async function triggerMfaChallenge(
+  page: import("@playwright/test").Page,
+  email: string,
+  password: string,
+) {
+  await page.goto("/login")
+  await page.getByLabel("Email").fill(email)
+  await page.getByRole("button", { name: "Continue", exact: true }).click()
+  await page.getByLabel("Password").fill(password)
+  await page.getByRole("button", { name: "Sign in" }).click()
+  // Step 3 appears inline — wait for the OTP subtitle
+  await expect(
+    page.getByText("Enter the 6-digit code from your authenticator app."),
+  ).toBeVisible()
+}
+
 test.describe("MFA security", () => {
   test.beforeEach(async ({ page }) => {
     await enableAuthBypassHeader(page)
@@ -17,11 +35,7 @@ test.describe("MFA security", () => {
       )
     })
 
-    await page.goto("/login")
-    await page.getByLabel("Email").fill("mfa.user@example.com")
-    await page.getByLabel("Password").fill("SuperSecret123!")
-    await page.getByRole("button", { name: "Sign in" }).click()
-    await page.waitForURL("**/mfa?challenge=**")
+    await triggerMfaChallenge(page, "mfa.user@example.com", "SuperSecret123!")
 
     const storageState = await page.evaluate(() => {
       const legacyKeyEmpty = sessionStorage.getItem("MFA_SESSION_KEY") === null
@@ -52,11 +66,7 @@ test.describe("MFA security", () => {
       )
     })
 
-    await page.goto("/login")
-    await page.getByLabel("Email").fill("secure.user@example.com")
-    await page.getByLabel("Password").fill("NeverStoreThis123!")
-    await page.getByRole("button", { name: "Sign in" }).click()
-    await page.waitForURL("**/mfa?challenge=**")
+    await triggerMfaChallenge(page, "secure.user@example.com", "NeverStoreThis123!")
 
     const storageState = await page.evaluate(() => {
       const keys = Object.keys(localStorage)
@@ -80,11 +90,7 @@ test.describe("MFA security", () => {
       )
     })
 
-    await page.goto("/login")
-    await page.getByLabel("Email").fill("token.user@example.com")
-    await page.getByLabel("Password").fill("DoNotPersist123!")
-    await page.getByRole("button", { name: "Sign in" }).click()
-    await page.waitForURL("**/mfa?challenge=**")
+    await triggerMfaChallenge(page, "token.user@example.com", "DoNotPersist123!")
 
     const persisted = await page.evaluate(() => {
       const allValues = [

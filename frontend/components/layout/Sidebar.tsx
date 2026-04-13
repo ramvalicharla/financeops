@@ -3,9 +3,9 @@
 import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
+import { ChevronsLeft, ChevronsRight } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
-import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
 import { Button } from "@/components/ui/button"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
@@ -15,6 +15,7 @@ import {
   ADMIN_NAV_ITEMS,
   ADVISORY_NAV_ITEMS,
   DIRECTOR_NAV_LABELS,
+  NAV_GROUP_DEFINITIONS,
   NAV_ITEMS,
   type NavigationGroupItem,
   type NavigationLeafItem,
@@ -53,6 +54,8 @@ export function Sidebar({
   )
   const sidebarOpen = useUIStore((state) => state.sidebarOpen)
   const closeSidebar = useUIStore((state) => state.closeSidebar)
+  const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed)
+  const toggleSidebarCollapsed = useUIStore((state) => state.toggleSidebarCollapsed)
   const setTenant = useTenantStore((state) => state.setTenant)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
@@ -97,18 +100,7 @@ export function Sidebar({
     return `${first?.[0] ?? ""}${second?.[0] ?? ""}`.toUpperCase()
   }, [userName])
 
-  const entityOptions = useMemo(() => {
-    if (entityRoles.length) {
-      return entityRoles
-    }
-    return (entitiesQuery.data ?? []).map((entity) => ({
-      entity_id: entity.id,
-      entity_name: entity.entity_name,
-      role: null,
-    }))
-  }, [entitiesQuery.data, entityRoles])
-
-  const showTrust = userRole === "finance_leader"
+const showTrust = userRole === "finance_leader"
   const showAdvisory = userRole === "finance_leader"
   const showAdmin = [
     "platform_owner",
@@ -177,9 +169,6 @@ export function Sidebar({
     ],
   )
 
-  const primaryNavItems = visibleNavItems.filter(
-    (item) => !("children" in item),
-  ) as readonly NavigationLeafItem[]
   const reconciliationItem = visibleNavItems.find(
     (item) => "children" in item,
   ) as NavigationGroupItem | undefined
@@ -202,49 +191,90 @@ export function Sidebar({
       ) : null}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-card transition-transform duration-200",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-card transition-all duration-200",
+          // Width: collapse only applies on desktop (md+); mobile always hides via translate
+          sidebarCollapsed ? "md:w-14 w-60" : "w-60",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           "md:translate-x-0",
         )}
       >
-        <div className="border-b border-border px-4 py-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Finqor
-          </p>
-          <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Organization</p>
-                <p className="mt-1 text-sm font-semibold text-foreground">{organizationLabel}</p>
-              </div>
-              <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                Backend
-              </span>
-            </div>
-            <div className="mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3 text-sm text-muted-foreground">
-              <p>Entity: {contextQuery.data?.current_entity.entity_name ?? "Unavailable"}</p>
-              <p>Workspace: {contextQuery.data?.current_module.module_name ?? "Unavailable"}</p>
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        {sidebarCollapsed ? (
+          <div className="flex justify-center border-b border-border py-[18px]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
+              <span className="text-primary-foreground font-bold text-sm select-none">F</span>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="border-b border-border px-4 py-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Finqor
+            </p>
+            <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Organization</p>
+                  <p className="mt-1 text-sm font-semibold text-foreground">{organizationLabel}</p>
+                </div>
+                <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Backend
+                </span>
+              </div>
+              <div className="mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3 text-sm text-muted-foreground">
+                <p>Entity: {contextQuery.data?.current_entity.entity_name ?? "Unavailable"}</p>
+                <p>Workspace: {contextQuery.data?.current_module.module_name ?? "Unavailable"}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
-        <nav aria-label="Main navigation" className="flex-1 space-y-3 overflow-y-auto p-3">
-          <SidebarNavGroup
-            closeSidebar={closeSidebar}
-            items={primaryNavItems}
-            pathname={pathname}
-            type="plain"
-          />
+        {/* ── Nav ────────────────────────────────────────────────────────── */}
+        <nav
+          aria-label="Main navigation"
+          className={cn(
+            "flex-1 overflow-y-auto p-3",
+            sidebarCollapsed ? "space-y-1" : "space-y-3",
+          )}
+        >
+          {NAV_GROUP_DEFINITIONS.map((group) => {
+            const hrefSet = new Set<string>(group.hrefs)
+            const leafItems = visibleNavItems.filter(
+              (item): item is NavigationLeafItem =>
+                !("children" in item) && hrefSet.has(item.href),
+            )
+            const disclosureInGroup =
+              reconciliationItem != null &&
+              reconciliationItem.children.some((child) => hrefSet.has(child.href))
 
-          {reconciliationItem ? (
-            <SidebarDisclosureGroup
-              closeSidebar={closeSidebar}
-              item={reconciliationItem}
-              open={reconciliationOpen}
-              pathname={pathname}
-              onToggle={() => setReconciliationOpen((value) => !value)}
-            />
-          ) : null}
+            if (!leafItems.length && !disclosureInGroup) return null
+
+            return (
+              <div key={group.label} className="space-y-1">
+                {!sidebarCollapsed ? (
+                  <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {group.label}
+                  </div>
+                ) : null}
+                {leafItems.length > 0 ? (
+                  <SidebarNavGroup
+                    closeSidebar={closeSidebar}
+                    items={leafItems}
+                    pathname={pathname}
+                    type="plain"
+                  />
+                ) : null}
+                {disclosureInGroup ? (
+                  <SidebarDisclosureGroup
+                    closeSidebar={closeSidebar}
+                    item={reconciliationItem}
+                    open={reconciliationOpen}
+                    pathname={pathname}
+                    onToggle={() => setReconciliationOpen((value) => !value)}
+                  />
+                ) : null}
+              </div>
+            )
+          })}
 
           {showTrust ? (
             <SidebarNavGroup
@@ -289,31 +319,65 @@ export function Sidebar({
           ) : null}
         </nav>
 
-        <div className="space-y-3 border-t border-border p-3">
-          <EntitySwitcher entityRoles={entityOptions} />
-          <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
-            <div className="mb-2 flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium">
+        {/* ── Footer ─────────────────────────────────────────────────────── */}
+        <div className="space-y-2 border-t border-border p-3">
+          {sidebarCollapsed ? (
+            /* Collapsed footer: initials avatar acts as a sign-out shortcut */
+            <div className="flex justify-center py-1">
+              <button
+                type="button"
+                title={`${userName} · ${String(userRole).replace(/_/g, " ")}\n${userEmail}\nClick to sign out`}
+                aria-label="Sign out"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium hover:opacity-80 transition-opacity"
+                onClick={() => signOut({ callbackUrl: "/login" })}
+              >
                 {initials}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{userName}</p>
-                <p className="text-xs text-muted-foreground">{userEmail}</p>
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Role: {String(userRole).replace(/_/g, " ")}
-                </p>
-              </div>
+              </button>
             </div>
-            <Button
-              className="w-full"
-              size="sm"
-              variant="outline"
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              type="button"
-            >
-              Sign out
-            </Button>
-          </div>
+          ) : (
+            <>
+              <div className="rounded-2xl border border-border bg-background p-4 shadow-sm">
+                <div className="mb-2 flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium">
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{userName}</p>
+                    <p className="text-xs text-muted-foreground">{userEmail}</p>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                      Role: {String(userRole).replace(/_/g, " ")}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  className="w-full"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  type="button"
+                >
+                  Sign out
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* Collapse toggle — desktop only (mobile sidebar uses translate) */}
+          <button
+            type="button"
+            onClick={toggleSidebarCollapsed}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="hidden md:flex w-full h-8 items-center justify-center hover:bg-accent rounded-md transition-colors"
+          >
+            {sidebarCollapsed ? (
+              <ChevronsRight size={14} />
+            ) : (
+              <>
+                <ChevronsLeft size={14} />
+                <span className="ml-2 text-xs text-muted-foreground">Collapse</span>
+              </>
+            )}
+          </button>
         </div>
       </aside>
     </>

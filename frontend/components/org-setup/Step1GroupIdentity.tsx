@@ -47,7 +47,7 @@ export function Step1GroupIdentity({
 
   return (
     <form className="space-y-4 rounded-xl border border-border bg-card p-5" onSubmit={handleSubmit}>
-      <h2 className="text-lg font-semibold text-foreground">Group identity</h2>
+      <h2 className="text-lg font-semibold text-foreground">Org details</h2>
       <div className="grid gap-4 md:grid-cols-2">
         <FormField id="group-legal-name" label="Legal name" required>
           <Input value={groupName} onChange={(event) => setGroupName(event.target.value)} required />

@@ -14,7 +14,24 @@ import redis.asyncio as aioredis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from financeops.api.deps import get_async_session, get_current_user, get_redis
+from financeops.api.deps import get_async_session, get_current_tenant, get_current_user, get_redis
+from financeops.api.v1.schemas.auth_responses import (
+    ChangePasswordResponse,
+    ChangePasswordSuccessResponse,
+    EntityRoleSchema,
+    LoginMfaChallengeResponse,
+    LoginMfaSetupResponse,
+    LoginPasswordChangeResponse,
+    LoginResponse,
+    LogoutResponse,
+    MeResponse,
+    MessageResponse,
+    MfaSetupResponse,
+    MfaVerifySetupResponse,
+    RegisterResponse,
+    RevokeAllSessionsResponse,
+    TokenPairResponse,
+)
 from financeops.config import limiter, settings
 from financeops.core.exceptions import AuthenticationError
 from financeops.core.security import (
@@ -26,7 +43,7 @@ from financeops.core.security import (
     verify_totp,
 )
 from financeops.db.models.auth_tokens import MfaRecoveryCode, PasswordResetToken
-from financeops.db.models.tenants import TenantType
+from financeops.db.models.tenants import IamTenant, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import set_tenant_context
 from financeops.db.transaction import commit_session
@@ -224,12 +241,12 @@ async def _set_refresh_tenant_context(
     await set_tenant_context(session, tenant_id)
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED, response_model=RegisterResponse)
 async def register(
     body: RegisterRequest,
     request: Request,
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> RegisterResponse:
     """
     POST /api/v1/auth/register
     Creates tenant + user + initial credit balance.
@@ -298,20 +315,20 @@ async def register(
     await session.flush()
     await commit_session(session)
     setup_token = generate_mfa_setup_token(user)
-    return {
-        "user_id": str(user.id),
-        "tenant_id": str(tenant.id),
-        "status": "requires_mfa_setup",
-        "setup_token": setup_token,
-        "mfa_setup_required": True,
-    }
+    return RegisterResponse(
+        user_id=str(user.id),
+        tenant_id=str(tenant.id),
+        status="requires_mfa_setup",
+        setup_token=setup_token,
+        mfa_setup_required=True,
+    )
 
 
-@router.post("/mfa/setup")
+@router.post("/mfa/setup", response_model=MfaSetupResponse)
 async def mfa_setup(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user_or_setup_token),
-) -> dict:
+) -> MfaSetupResponse:
     """
     POST /api/v1/auth/mfa/setup
     Generate and store TOTP secret. Returns secret + QR code URL.
@@ -319,18 +336,18 @@ async def mfa_setup(
     result = await setup_totp(user, session)
     await session.flush()
     await commit_session(session)
-    return {
-        "secret": result["totp_secret"],
-        "qr_url": result["qr_code_url"],
-    }
+    return MfaSetupResponse(
+        secret=result["totp_secret"],
+        qr_url=result["qr_code_url"],
+    )
 
 
-@router.post("/mfa/verify-setup")
+@router.post("/mfa/verify-setup", response_model=MfaVerifySetupResponse)
 async def verify_mfa_setup(
     body: MFAVerifySetupRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user_or_setup_token),
-) -> dict:
+) -> MfaVerifySetupResponse:
     if not user.totp_secret_encrypted:
         raise AuthenticationError("MFA not initialized for user")
     if body.secret:
@@ -363,22 +380,22 @@ async def verify_mfa_setup(
     tokens = await _issue_session_tokens(session, user=user)
     await session.flush()
     await commit_session(session)
-    return {
-        "status": "mfa_enabled",
-        "access_token": tokens["access_token"],
-        "refresh_token": tokens["refresh_token"],
-        "recovery_codes": plain_codes,
-    }
+    return MfaVerifySetupResponse(
+        status="mfa_enabled",
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        recovery_codes=plain_codes,
+    )
 
 
 @limiter.limit(settings.AUTH_MFA_RATE_LIMIT)
-@router.post("/mfa/verify")
+@router.post("/mfa/verify", response_model=TokenPairResponse)
 async def mfa_verify(
     request: Request,
     body: MfaVerifyRequest,
     session: AsyncSession = Depends(get_async_session),
     redis_client: aioredis.Redis = Depends(get_redis),
-) -> dict:
+) -> TokenPairResponse:
     """
     POST /api/v1/auth/mfa/verify
     Verify MFA challenge token + TOTP and issue token pair.
@@ -404,25 +421,27 @@ async def mfa_verify(
     )
     await session.flush()
     await commit_session(session)
-    return tokens
+    return TokenPairResponse.model_validate(tokens)
 
 
 @limiter.limit(settings.AUTH_LOGIN_RATE_LIMIT)
-@router.post("/login")
+@router.post("/login", response_model=LoginResponse)
 async def user_login(
     request: Request,
     body: LoginRequest,
     session: AsyncSession = Depends(get_async_session),
     redis_client: aioredis.Redis = Depends(get_redis),
-) -> dict:
+) -> LoginResponse:
     """
     POST /api/v1/auth/login
     Authenticate user, verify MFA if enabled, return token pair.
     """
     normalized_email = normalize_email(str(body.email))
+    import hashlib as _hashlib
+    email_ref = _hashlib.sha256(normalized_email.encode()).hexdigest()[:8]
     user = await get_user_by_email(session, body.email)
     if user is None:
-        log.info(f"Login rejected: user_missing email={normalized_email}")
+        log.info(f"Login rejected: user_missing email_ref={email_ref}")
         record_auth_event(
             event="auth_login_failed",
             outcome="failure",
@@ -432,7 +451,7 @@ async def user_login(
         raise AuthenticationError("Invalid email or password")
     if not user.is_active:
         log.info(
-            f"Login rejected: inactive_user email={normalized_email} user={user.id}"
+            f"Login rejected: inactive_user email_ref={email_ref} user={user.id}"
         )
         record_auth_event(
             event="auth_login_failed",
@@ -445,7 +464,7 @@ async def user_login(
         raise AuthenticationError("Invalid email or password")
     if not verify_password(body.password, user.hashed_password):
         log.info(
-            f"Login rejected: password_mismatch email={normalized_email} user={user.id}"
+            f"Login rejected: password_mismatch email_ref={email_ref} user={user.id}"
         )
         record_auth_event(
             event="auth_login_failed",
@@ -459,25 +478,25 @@ async def user_login(
     await set_tenant_context(session, user.tenant_id)
 
     if user.force_password_change:
-        return {
-            "status": "requires_password_change",
-            "requires_password_change": True,
-            "password_change_token": generate_password_change_token(user),
-        }
+        return LoginPasswordChangeResponse(
+            status="requires_password_change",
+            requires_password_change=True,
+            password_change_token=generate_password_change_token(user),
+        )
 
     if user.force_mfa_setup and not user.mfa_enabled:
         setup_token = generate_mfa_setup_token(user)
-        return {
-            "status": "requires_mfa_setup",
-            "requires_mfa_setup": True,
-            "setup_token": setup_token,
-        }
+        return LoginMfaSetupResponse(
+            status="requires_mfa_setup",
+            requires_mfa_setup=True,
+            setup_token=setup_token,
+        )
     if user.mfa_enabled:
         challenge_token = await create_mfa_challenge(redis_client, user=user)
-        return {
-            "requires_mfa": True,
-            "mfa_challenge_token": challenge_token,
-        }
+        return LoginMfaChallengeResponse(
+            requires_mfa=True,
+            mfa_challenge_token=challenge_token,
+        )
 
     tokens = await login(
         session,
@@ -498,15 +517,15 @@ async def user_login(
     )
     await session.flush()
     await commit_session(session)
-    return tokens
+    return TokenPairResponse.model_validate(tokens)
 
 
-@router.post("/change-password")
+@router.post("/change-password", response_model=ChangePasswordResponse)
 async def change_password(
     body: ChangePasswordRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user_for_password_change),
-) -> dict:
+) -> ChangePasswordResponse:
     validate_strong_password(body.new_password)
     user.hashed_password = hash_password(body.new_password)
     user.force_password_change = False
@@ -514,19 +533,21 @@ async def change_password(
     await commit_session(session)
     if user.force_mfa_setup and not user.mfa_enabled:
         setup_token = generate_mfa_setup_token(user)
-        return {
-            "status": "requires_mfa_setup",
-            "requires_mfa_setup": True,
-            "setup_token": setup_token,
-        }
-    return {"status": "password_changed"}
+        return LoginMfaSetupResponse(
+            status="requires_mfa_setup",
+            requires_mfa_setup=True,
+            setup_token=setup_token,
+        )
+    return ChangePasswordSuccessResponse(status="password_changed")
 
 
-@router.post("/forgot-password")
+@limiter.limit(settings.AUTH_LOGIN_RATE_LIMIT)
+@router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(
+    request: Request,
     body: ForgotPasswordRequest,
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> MessageResponse:
     user = await get_user_by_email(session, body.email)
     if user is not None:
         token = secrets.token_urlsafe(32)
@@ -539,14 +560,16 @@ async def forgot_password(
             )
         )
         await session.flush()
-    return {"message": "If that email exists, a reset link has been sent."}
+    return MessageResponse(message="If that email exists, a reset link has been sent.")
 
 
-@router.post("/reset-password")
+@limiter.limit(settings.AUTH_LOGIN_RATE_LIMIT)
+@router.post("/reset-password", response_model=MessageResponse)
 async def reset_password(
+    request: Request,
     body: ResetPasswordRequest,
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> MessageResponse:
     token_hash = hashlib.sha256(body.token.encode("utf-8")).hexdigest()
     record = (
         await session.execute(
@@ -564,14 +587,14 @@ async def reset_password(
     user.hashed_password = hash_password(body.new_password)
     record.used_at = datetime.now(UTC)
     await session.flush()
-    return {"message": "Password reset successful. Please sign in."}
+    return MessageResponse(message="Password reset successful. Please sign in.")
 
 
-@router.post("/accept-invite")
+@router.post("/accept-invite", response_model=MessageResponse)
 async def accept_invite(
     body: AcceptInviteRequest,
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> MessageResponse:
     if not body.terms_accepted:
         raise HTTPException(status_code=400, detail="Terms of Service must be accepted")
 
@@ -598,16 +621,16 @@ async def accept_invite(
     user.terms_accepted_at = datetime.utcnow()
     user.terms_version_accepted = settings.CURRENT_TERMS_VERSION
     await session.flush()
-    return {"message": "Account activated. Please sign in."}
+    return MessageResponse(message="Account activated. Please sign in.")
 
 
 @limiter.limit(settings.AUTH_TOKEN_RATE_LIMIT)
-@router.post("/refresh")
+@router.post("/refresh", response_model=TokenPairResponse)
 async def token_refresh(
     request: Request,
     body: RefreshRequest,
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> TokenPairResponse:
     """
     POST /api/v1/auth/refresh
     Rotate refresh token — invalidate old, issue new pair.
@@ -616,14 +639,14 @@ async def token_refresh(
     tokens = await refresh_tokens(session, body.refresh_token)
     await session.flush()
     await commit_session(session)
-    return tokens
+    return TokenPairResponse.model_validate(tokens)
 
 
-@router.post("/logout")
+@router.post("/logout", response_model=LogoutResponse)
 async def user_logout(
     body: LogoutRequest,
     session: AsyncSession = Depends(get_async_session),
-) -> dict:
+) -> LogoutResponse:
     """
     POST /api/v1/auth/logout
     Revoke current session in DB.
@@ -632,16 +655,16 @@ async def user_logout(
     await logout(session, body.refresh_token)
     await session.flush()
     await commit_session(session)
-    return {"logged_out": True}
+    return LogoutResponse(logged_out=True)
 
 
 @limiter.limit(settings.AUTH_TOKEN_RATE_LIMIT)
-@router.post("/sessions/revoke-all")
+@router.post("/sessions/revoke-all", response_model=RevokeAllSessionsResponse)
 async def revoke_all_my_sessions(
     request: Request,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> dict:
+) -> RevokeAllSessionsResponse:
     """
     Revoke all active refresh sessions for current user.
     Access tokens remain valid until expiry; refresh is blocked immediately.
@@ -662,14 +685,14 @@ async def revoke_all_my_sessions(
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
-    return {"revoked_sessions": revoked_count}
+    return RevokeAllSessionsResponse(revoked_sessions=revoked_count)
 
 
-@router.get("/me")
+@router.get("/me", response_model=MeResponse)
 async def get_me(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> dict:
+) -> MeResponse:
     """
     GET /api/v1/auth/me
     Returns current user profile + tenant info.
@@ -706,16 +729,29 @@ async def get_me(
                 "price": str(plan.price) if plan.price is not None else None,
                 "currency": plan.currency,
             }
+    from financeops.platform.services.tenancy.entity_access import get_entities_for_user
+    entities = await get_entities_for_user(
+        session, tenant_id=user.tenant_id, user_id=user.id, user_role=user.role
+    )
+    entity_roles = [
+        {
+            "entity_id": str(e.id),
+            "entity_name": e.entity_name,
+            "role": user.role.value,
+            "currency": e.base_currency,
+        }
+        for e in entities
+    ]
     org_setup_service = OrgSetupService(session)
-    return {
-        "user_id": str(user.id),
-        "email": user.email,
-        "full_name": user.full_name,
-        "role": user.role.value,
-        "mfa_enabled": user.mfa_enabled,
-        "is_active": user.is_active,
-        "created_at": user.created_at.isoformat(),
-        "tenant": {
+    return MeResponse(
+        user_id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role.value,
+        mfa_enabled=user.mfa_enabled,
+        is_active=user.is_active,
+        created_at=user.created_at.isoformat(),
+        tenant={
             "tenant_id": str(tenant.id),
             "display_name": tenant.display_name,
             "slug": tenant.slug,
@@ -728,7 +764,7 @@ async def get_me(
             "coa_status": await org_setup_service.get_coa_status(user.tenant_id),
             "onboarding_score": await org_setup_service.get_onboarding_score(user.tenant_id),
         },
-        "billing": None
+        billing=None
         if subscription is None
         else {
             "subscription_id": str(subscription.id),
@@ -736,4 +772,30 @@ async def get_me(
             "status": subscription.status,
             "plan": plan_payload,
         },
-    }
+        entity_roles=entity_roles,
+    )
+
+
+@router.get("/entity-roles", response_model=list[EntityRoleSchema])
+async def get_my_entity_roles(
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+    current_tenant: IamTenant = Depends(get_current_tenant),
+) -> list[EntityRoleSchema]:
+    from financeops.platform.services.tenancy.entity_access import get_entities_for_user
+
+    entities = await get_entities_for_user(
+        session,
+        tenant_id=current_tenant.id,
+        user_id=current_user.id,
+        user_role=current_user.role,
+    )
+    return [
+        EntityRoleSchema(
+            entity_id=str(entity.id),
+            entity_name=entity.entity_name,
+            role=current_user.role.value,
+            currency=entity.base_currency,
+        )
+        for entity in entities
+    ]

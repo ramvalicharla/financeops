@@ -33,18 +33,11 @@ export default function ScheduledDeliveryPage() {
     sheetError,
     sheetMode,
     sourceOptions,
-    toastMessage,
     triggerNow,
   } = useDeliveries()
 
   return (
     <div className="space-y-6">
-      {toastMessage ? (
-        <div className="fixed right-4 top-4 z-[60] rounded-md border border-[hsl(var(--brand-success)/0.5)] bg-[hsl(var(--brand-success)/0.2)] px-3 py-2 text-sm text-[hsl(var(--brand-success))]">
-          {toastMessage}
-        </div>
-      ) : null}
-
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Scheduled Delivery</h1>

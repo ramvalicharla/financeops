@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from financeops.modules.accounting_layer.domain.journal_status import JournalStatusLiteral
+
 
 class JVLineCreate(BaseModel):
     account_code: str = Field(..., min_length=1, max_length=32)
@@ -100,7 +102,7 @@ class JVUpdateLines(BaseModel):
 
 
 class JVTransitionRequest(BaseModel):
-    to_status: str
+    to_status: JournalStatusLiteral
     comment: str | None = None
     expected_version: int = Field(..., ge=1)
 
@@ -109,8 +111,8 @@ class JVStateEventResponse(BaseModel):
     id: uuid.UUID
     jv_id: uuid.UUID
     jv_version: int
-    from_status: str
-    to_status: str
+    from_status: JournalStatusLiteral
+    to_status: JournalStatusLiteral
     triggered_by: uuid.UUID
     actor_role: str | None
     comment: str | None
@@ -126,7 +128,7 @@ class JVResponse(BaseModel):
     location_id: uuid.UUID | None
     cost_centre_id: uuid.UUID | None
     jv_number: str
-    status: str
+    status: JournalStatusLiteral
     version: int
     period_date: date
     fiscal_year: int
@@ -225,7 +227,7 @@ class JournalResponse(BaseModel):
     journal_date: date
     reference: str | None
     narration: str | None
-    status: str
+    status: JournalStatusLiteral
     posted_at: datetime | None
     total_debit: Decimal
     total_credit: Decimal
@@ -233,13 +235,13 @@ class JournalResponse(BaseModel):
     created_by: uuid.UUID | None = None
     intent_id: uuid.UUID | None = None
     job_id: uuid.UUID | None = None
-    approval_status: str | None = None
+    approval_status: JournalStatusLiteral | None = None
     lines: list[JournalLineResponse]
 
 
 class JournalActionResponse(BaseModel):
     id: uuid.UUID
-    status: str
+    status: JournalStatusLiteral
     posted_at: datetime | None
 
 

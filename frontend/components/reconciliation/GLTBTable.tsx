@@ -1,11 +1,13 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import type { CSSProperties } from "react"
 import {
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
   getSortedRowModel,
+  type Column,
   type ColumnDef,
   type SortingState,
   useReactTable,
@@ -94,11 +96,23 @@ export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: {
+      columnPinning: { left: ["account_code"] },
       pagination: {
         pageSize: 50,
       },
     },
   })
+
+  function getPinStyles(column: Column<GLTBAccount>): CSSProperties {
+    const isPinned = column.getIsPinned()
+    if (!isPinned) return {}
+    return {
+      position: "sticky",
+      left: column.getStart("left"),
+      zIndex: 1,
+      background: "hsl(var(--background))",
+    }
+  }
 
   const currentSort = {
     key: sorting[0]?.id ?? "",
@@ -122,6 +136,7 @@ export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
                         table.getColumn(key)?.toggleSorting()
                       }}
                       className="px-3 py-2 text-left text-foreground"
+                      style={getPinStyles(header.column)}
                     >
                       {flexRender(
                         header.column.columnDef.header,
@@ -150,7 +165,11 @@ export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
                 aria-label={`View details for ${row.original.account_name || row.original.account_code}`}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-3 py-2 text-muted-foreground">
+                  <td
+                    key={cell.id}
+                    className="px-3 py-2 text-muted-foreground"
+                    style={getPinStyles(cell.column)}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

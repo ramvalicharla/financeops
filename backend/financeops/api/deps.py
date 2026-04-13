@@ -95,6 +95,10 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
     """
     path = request.url.path
     if path in PUBLIC_ROUTE_PATHS:
+        # PUBLIC ROUTE ASSUMPTION: Sessions for PUBLIC_ROUTE_PATHS have no RLS tenant context.
+        # These sessions MUST NOT query financial tables without explicitly calling
+        # set_tenant_context(session, tenant_id=...) first.
+        # Violation results in empty result sets (not errors) - silent data access failure.
         async with AsyncSessionLocal() as session:
             try:
                 request.state.auth_mode = AuthMode.PUBLIC.value
@@ -513,3 +517,29 @@ async def get_redis() -> AsyncGenerator[aioredis.Redis, None]:
 
 def get_settings_dep() -> Settings:
     return get_settings()
+
+
+def require_role(*roles: str):
+    """
+    Returns a FastAPI dependency that checks user.role is in the allowed set.
+    Raises 403 if not.
+    """
+    allowed = set(roles)
+
+    async def _check_role(user: IamUser = Depends(get_current_user)) -> IamUser:
+        if user.role.value not in allowed:
+            raise AuthorizationError(
+                f"Role '{user.role.value}' not allowed. Required: {sorted(allowed)}"
+            )
+        return user
+
+    return _check_role
+
+
+async def require_mfa(user: IamUser = Depends(get_current_user)) -> IamUser:
+    """Dependency that raises 403 if MFA is not enabled on the account."""
+    if not user.mfa_enabled:
+        raise AuthorizationError(
+            "Multi-factor authentication must be enabled to access this resource"
+        )
+    return user

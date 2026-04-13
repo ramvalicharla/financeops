@@ -7,7 +7,7 @@ dependencies = [
     "fastapi==0.115.0",
     "uvicorn[standard]==0.30.0",
     "gunicorn==22.0.0",
-    "python-multipart==0.0.9",
+    "python-multipart==0.0.9",  # NOTE: CVE-2024-53981 fix requires >=0.0.18 but incompatible with starlette 0.38.6 — needs coordinated FastAPI/starlette/multipart upgrade
     # Database
     "sqlalchemy==2.0.35",
     "asyncpg==0.30.0",
@@ -23,15 +23,15 @@ dependencies = [
     "pydantic-settings==2.5.0",
     "email-validator==2.2.0",
     # Auth & Security
-    "python-jose[cryptography]==3.3.0",
+    "python-jose[cryptography]==3.4.0",
     "passlib[bcrypt]==1.7.4",
     "pyotp==2.9.0",
-    "cryptography==43.0.0",
+    "cryptography==43.0.1",
     "slowapi==0.1.9",
     "starlette-csrf==3.0.0",
     # File Processing
     "openpyxl==3.1.5",
-    "jinja2==3.1.4",
+    "jinja2==3.1.6",
     "xlsxwriter==3.2.0",
     "pandas==2.2.3",
     "numpy==2.1.0",

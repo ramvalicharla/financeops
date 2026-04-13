@@ -387,7 +387,7 @@ async def review_journal(
         },
     )
     await db.flush()
-    return JournalActionResponse(id=jv.id, status="REVIEWED", posted_at=None)
+    return JournalActionResponse(id=jv.id, status=JVStatus.UNDER_REVIEW, posted_at=None)
 
 
 async def post_journal(
@@ -406,7 +406,7 @@ async def post_journal(
     )
     if _is_posted_status(jv.status):
         posted_at = await _resolve_posted_at(db, jv)
-        return JournalActionResponse(id=jv.id, status="POSTED", posted_at=posted_at)
+        return JournalActionResponse(id=jv.id, status=JVStatus.PUSHED, posted_at=posted_at)
     if jv.status != JVStatus.APPROVED:
         raise ValidationError("Only APPROVED journals can be posted.")
     await assert_period_allows_posting(
@@ -481,7 +481,7 @@ async def post_journal(
         },
     )
     await db.flush()
-    return JournalActionResponse(id=jv.id, status="POSTED", posted_at=posted_at)
+    return JournalActionResponse(id=jv.id, status=JVStatus.PUSHED, posted_at=posted_at)
 
 
 async def reverse_journal(
@@ -499,7 +499,7 @@ async def reverse_journal(
         journal_id=journal_id,
     )
     if not _is_posted_status(original.status):
-        raise ValidationError("Only POSTED journals can be reversed.")
+        raise ValidationError("Only PUSHED journals can be reversed.")
     await assert_period_allows_posting(
         db,
         tenant_id=tenant_id,
@@ -1069,7 +1069,7 @@ async def _serialize_journals(
             _serialize_line(line, account_id_map.get(line.account_code))
             for line in active_lines
         ]
-        is_posted = journal.jv_number in posted_refs or _is_posted_status(journal.status)
+        is_posted = journal.jv_number in posted_refs or journal.status == JVStatus.PUSHED
         journal_status = _map_journal_status(journal.status, is_posted)
         payload.append(
             JournalResponse(
@@ -1080,14 +1080,25 @@ async def _serialize_journals(
                 reference=journal.reference,
                 narration=journal.description,
                 status=journal_status,
-                posted_at=journal.updated_at if journal_status == "POSTED" else None,
+                posted_at=journal.updated_at if journal_status == JVStatus.PUSHED else None,
                 total_debit=_q4(journal.total_debit),
                 total_credit=_q4(journal.total_credit),
                 currency=journal.currency,
                 created_by=journal.created_by,
                 intent_id=journal.created_by_intent_id,
                 job_id=journal.recorded_by_job_id,
-                approval_status=journal_status if journal_status in {"SUBMITTED", "REVIEWED", "APPROVED"} else None,
+                approval_status=journal_status
+                if journal_status
+                in {
+                    JVStatus.SUBMITTED,
+                    JVStatus.PENDING_REVIEW,
+                    JVStatus.UNDER_REVIEW,
+                    JVStatus.RESUBMITTED,
+                    JVStatus.REJECTED,
+                    JVStatus.ESCALATED,
+                    JVStatus.APPROVED,
+                }
+                else None,
                 lines=serialised_lines,
             )
         )
@@ -1100,16 +1111,8 @@ def _is_posted_status(status: str) -> bool:
 
 def _map_journal_status(status: str, is_posted: bool) -> str:
     if is_posted:
-        return "POSTED"
-    if status == JVStatus.VOIDED:
-        return "REVERSED"
-    if status == JVStatus.SUBMITTED:
-        return "SUBMITTED"
-    if status == JVStatus.APPROVED:
-        return "APPROVED"
-    if status in REVIEW_SOURCE_STATUSES:
-        return "REVIEWED"
-    return "DRAFT"
+        return JVStatus.PUSHED
+    return status
 
 
 def _serialize_line(

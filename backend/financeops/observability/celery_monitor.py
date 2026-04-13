@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from datetime import UTC, datetime
 from functools import lru_cache
 from typing import Any
 
+import redis
 import redis.asyncio as aioredis
 import sentry_sdk
 from celery.signals import task_failure
@@ -17,11 +20,13 @@ log = logging.getLogger(__name__)
 class CeleryMonitor:
     ALERT_THRESHOLD = 100
     CRITICAL_THRESHOLD_MULTIPLIER = 5
+    DEAD_LETTER_KEY = "finqor:dead_letter"
     QUEUE_KEYS: dict[str, str] = {
         "default": "celery",
         "financial": "financial",
         "sync": "sync",
         "notifications": "notifications",
+        "dead_letter": "dead_letter",
     }
 
     def __init__(self, redis_url: str) -> None:
@@ -92,6 +97,69 @@ class CeleryMonitor:
         )
         if settings.SENTRY_DSN and exception is not None:
             sentry_sdk.capture_exception(exception)
+        self._push_dead_letter_item(
+            sender=sender,
+            task_id=task_id,
+            exception=exception,
+        )
+
+    def list_dead_letter_items(self) -> list[dict[str, Any]]:
+        client = redis.Redis.from_url(
+            self._redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+        )
+        try:
+            rows = client.lrange(self.DEAD_LETTER_KEY, 0, -1)
+            items: list[dict[str, Any]] = []
+            for row in rows:
+                if not row:
+                    continue
+                try:
+                    payload = json.loads(row)
+                except json.JSONDecodeError:
+                    items.append({"raw": row, "decode_error": True})
+                    continue
+                if isinstance(payload, dict):
+                    items.append(payload)
+            return items
+        finally:
+            client.close()
+
+    def _push_dead_letter_item(
+        self,
+        *,
+        sender: Any,
+        task_id: str | None,
+        exception: Exception | None,
+    ) -> None:
+        request = getattr(sender, "request", None)
+        retries = int(getattr(request, "retries", 0) or 0)
+        max_retries = getattr(sender, "max_retries", None)
+        if max_retries is None or retries < int(max_retries):
+            return
+
+        client = redis.Redis.from_url(
+            self._redis_url,
+            encoding="utf-8",
+            decode_responses=True,
+        )
+        try:
+            client.lpush(
+                self.DEAD_LETTER_KEY,
+                json.dumps(
+                    {
+                        "task_name": getattr(sender, "name", str(sender)),
+                        "task_id": str(task_id) if task_id is not None else "",
+                        "error": str(exception) if exception else "unknown",
+                        "failed_at": datetime.now(UTC).isoformat(),
+                    }
+                ),
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging path
+            log.error("celery_dead_letter_push_failed", extra={"error": str(exc)})
+        finally:
+            client.close()
 
 
 @lru_cache

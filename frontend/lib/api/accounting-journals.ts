@@ -1,5 +1,19 @@
 import apiClient from "@/lib/api/client"
 
+export type JournalStatus =
+  | "DRAFT"
+  | "SUBMITTED"
+  | "PENDING_REVIEW"
+  | "UNDER_REVIEW"
+  | "APPROVED"
+  | "RESUBMITTED"
+  | "REJECTED"
+  | "PUSH_IN_PROGRESS"
+  | "PUSHED"
+  | "PUSH_FAILED"
+  | "ESCALATED"
+  | "VOIDED"
+
 export interface JournalLineInput {
   account_code?: string
   tenant_coa_account_id?: string
@@ -41,7 +55,7 @@ export interface JournalRecord {
   journal_date: string
   reference: string | null
   narration: string | null
-  status: string
+  status: JournalStatus
   posted_at: string | null
   total_debit: string
   total_credit: string
@@ -49,7 +63,7 @@ export interface JournalRecord {
   created_by?: string | null
   intent_id?: string | null
   job_id?: string | null
-  approval_status?: string | null
+  approval_status?: JournalStatus | null
   lines: JournalLine[]
 }
 
@@ -63,7 +77,7 @@ export interface GovernedMutationResponse {
 
 export const listJournals = async (params?: {
   org_entity_id?: string
-  status?: "DRAFT" | "SUBMITTED" | "REVIEWED" | "APPROVED" | "POSTED" | "REVERSED"
+  status?: JournalStatus
   limit?: number
   offset?: number
 }): Promise<JournalRecord[]> => {

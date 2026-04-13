@@ -95,7 +95,7 @@ async def test_offboard_revokes_all_sessions(
     async_session: AsyncSession,
     test_tenant: IamTenant,
 ) -> None:
-    """Offboarding revokes every active session for the user."""
+    """Offboarding preserves session rows and revokes every active session."""
     await set_tenant_context(async_session, test_tenant.id)
     actor = await _create_finance_leader(async_session, test_tenant.id)
     token = create_access_token(actor.id, actor.tenant_id, actor.role.value)
@@ -123,7 +123,21 @@ async def test_offboard_revokes_all_sessions(
             {"id": str(target.id)},
         )
     ).scalar_one()
-    assert remaining == 0
+    revoked = (
+        await async_session.execute(
+            text(
+                """
+                SELECT COUNT(*)
+                FROM iam_sessions
+                WHERE user_id = CAST(:id AS uuid)
+                  AND revoked_at IS NOT NULL
+                """
+            ),
+            {"id": str(target.id)},
+        )
+    ).scalar_one()
+    assert remaining == 3
+    assert revoked == 3
 
 
 @pytest.mark.asyncio

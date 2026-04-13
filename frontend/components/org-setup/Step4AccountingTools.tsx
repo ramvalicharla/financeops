@@ -54,7 +54,7 @@ export function Step4AccountingTools({
 
   return (
     <form className="space-y-4 rounded-xl border border-border bg-card p-5" onSubmit={handleSubmit}>
-      <h2 className="text-lg font-semibold text-foreground">Accounting tools</h2>
+      <h2 className="text-lg font-semibold text-foreground">Connect ERP</h2>
       <div className="space-y-3">
         {entities.map((entity, index) => {
           const selected = rows[index]

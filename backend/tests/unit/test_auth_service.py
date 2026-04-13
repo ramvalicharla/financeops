@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import patch
+import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,7 @@ from financeops.core.exceptions import AuthenticationError
 from financeops.core.security import get_totp_uri, hash_password, verify_password, verify_totp
 from financeops.services.audit_writer import AuditWriter
 from financeops.services.auth_service import (
+    build_billing_token_claims,
     login,
     logout,
     refresh_tokens,
@@ -151,3 +153,38 @@ def test_password_hashing_and_verification():
     hashed = hash_password(password)
     assert verify_password(password, hashed) is True
     assert verify_password("wrong_password", hashed) is False
+
+
+@pytest.mark.asyncio
+async def test_build_billing_token_claims_populates_entity_roles(
+    async_session: AsyncSession,
+) -> None:
+    fake_entity_1 = MagicMock()
+    fake_entity_1.id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+    fake_entity_1.entity_name = "Acme Corp"
+    fake_entity_1.base_currency = "INR"
+
+    fake_entity_2 = MagicMock()
+    fake_entity_2.id = uuid.UUID("00000000-0000-0000-0000-000000000002")
+    fake_entity_2.entity_name = "Beta Ltd"
+    fake_entity_2.base_currency = "USD"
+
+    with patch(
+        "financeops.platform.services.tenancy.entity_access.get_entities_for_user",
+        new_callable=AsyncMock,
+        return_value=[fake_entity_1, fake_entity_2],
+    ):
+        claims = await build_billing_token_claims(
+            async_session,
+            tenant_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+            user_role="finance_leader",
+        )
+
+    assert "entity_roles" in claims
+    assert len(claims["entity_roles"]) == 2
+    for item in claims["entity_roles"]:
+        assert "entity_id" in item
+        assert "entity_name" in item
+        assert "role" in item
+        assert "currency" in item

@@ -4,13 +4,15 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.core.security import hash_password
-from financeops.db.models.users import IamSession, IamUser, UserRole
+from financeops.db.models.users import IamUser, UserRole
+from financeops.db.transaction import commit_session
 from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
+from financeops.services.auth_service import revoke_all_sessions
 from financeops.services.audit_service import log_action
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
@@ -201,25 +203,48 @@ async def offboard_user(
     if not user.is_active:
         raise ValidationError(f"User {user_id} is already inactive")
 
-    sessions_result = await session.execute(
-        delete(IamSession)
-        .where(IamSession.user_id == user_id)
-        .returning(IamSession.id)
+    sessions_revoked = await revoke_all_sessions(
+        session,
+        tenant_id=tenant_id,
+        user_id=user_id,
     )
-    sessions_revoked = len(list(sessions_result.fetchall()))
 
-    grants_revoked = 0
-    try:
-        from financeops.db.models.auditor import AuditorGrant
+    from financeops.db.models.auditor import AuditorGrant
 
-        grants_result = await session.execute(
-            delete(AuditorGrant)
-            .where(AuditorGrant.user_id == user_id)
-            .returning(AuditorGrant.id)
+    active_grants_result = await session.execute(
+        select(AuditorGrant).where(
+            AuditorGrant.auditor_user_id == user_id,
+            AuditorGrant.is_active.is_(True),
         )
-        grants_revoked = len(list(grants_result.fetchall()))
-    except Exception:
-        grants_revoked = 0
+    )
+    active_grants = active_grants_result.scalars().all()
+    for grant in active_grants:
+        all_cols = {c.name: getattr(grant, c.name) for c in grant.__table__.columns}
+        revocation_values = {
+            **all_cols,
+            "id": uuid.uuid4(),
+            "is_active": False,
+            "revoked_at": datetime.now(UTC),
+            "revoked_by": offboarded_by,
+        }
+        revocation_values.pop("tenant_id", None)
+        revocation_values.pop("chain_hash", None)
+        revocation_values.pop("previous_hash", None)
+        await AuditWriter.insert_financial_record(
+            session,
+            model_class=AuditorGrant,
+            tenant_id=grant.tenant_id,
+            record_data=all_cols,
+            values=revocation_values,
+            audit=AuditEvent(
+                tenant_id=grant.tenant_id,
+                user_id=offboarded_by,
+                action="auditor_grant.revoked_on_offboard",
+                resource_type="auditor_grant",
+                resource_id=str(grant.id),
+            ),
+        )
+    grants_revoked = len(active_grants)
 
     await session.execute(
         update(IamUser)
@@ -248,7 +273,7 @@ async def offboard_user(
             "grants_revoked": grants_revoked,
         },
     )
-    await session.commit()
+    await commit_session(session)
     return {
         "user_id": str(user_id),
         "offboarded_at": datetime.now(UTC).isoformat(),

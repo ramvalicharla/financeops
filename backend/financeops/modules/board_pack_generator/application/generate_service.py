@@ -68,13 +68,58 @@ class BoardPackGenerateService:
         run_id: uuid.UUID,
         tenant_id: uuid.UUID,
     ) -> AssembledPack:
+        running_run, context = await self.start_generation(
+            db=db,
+            run_id=run_id,
+            tenant_id=tenant_id,
+        )
+
+        try:
+            rendered_sections: list[RenderedSection] = []
+
+            for section_config in sorted(
+                context.definition.section_configs,
+                key=lambda row: row.order,
+            ):
+                rendered_sections.append(
+                    await self.generate_section(
+                        db=db,
+                        tenant_id=tenant_id,
+                        run_id=running_run.id,
+                        context=context,
+                        section_config=section_config,
+                    )
+                )
+
+            return await self.complete_generation(
+                db=db,
+                tenant_id=tenant_id,
+                running_run=running_run,
+                context=context,
+                rendered_sections=rendered_sections,
+            )
+        except Exception as exc:
+            await self.fail_generation(
+                db=db,
+                tenant_id=tenant_id,
+                run_id=running_run.id,
+                error_message=str(exc),
+            )
+            raise
+
+    async def start_generation(
+        self,
+        *,
+        db: AsyncSession,
+        run_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> tuple["BoardPackGeneratorRun", PackRunContext]:
         run = await self._load_run(db=db, run_id=run_id, tenant_id=tenant_id)
         definition = await self._load_definition(
             db=db,
             definition_id=run.definition_id,
             tenant_id=tenant_id,
         )
-
         running_run = await self._transition_run_state(
             db=db,
             source_run=run,
@@ -82,139 +127,203 @@ class BoardPackGenerateService:
             started_at=datetime.now(UTC),
         )
         await db.commit()
+        return running_run, self._build_context(run=running_run, definition=definition)
 
+    async def generate_section(
+        self,
+        *,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        context: PackRunContext,
+        section_config: SectionConfig,
+    ) -> RenderedSection:
+        existing = await self._load_persisted_section(
+            db=db,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            section_order=section_config.order,
+        )
+        if existing is not None:
+            return existing
+
+        source_data = await self._fetch_section_source_data(
+            db=db,
+            context=context,
+            section_type=section_config.section_type,
+        )
+        renderer = get_renderer(section_config.section_type)
+        rendered_section = renderer.render(
+            context=context,
+            section_config=section_config,
+            source_data=source_data,
+        )
+        await self._persist_rendered_section(
+            db=db,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            rendered_section=rendered_section,
+        )
+        return rendered_section
+
+    async def complete_generation(
+        self,
+        *,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        running_run: "BoardPackGeneratorRun",
+        context: PackRunContext,
+        rendered_sections: list[RenderedSection],
+    ) -> AssembledPack:
+        assembled_pack = self._assembler.assemble(
+            context=context,
+            rendered_sections=rendered_sections,
+        )
+
+        generated_at = datetime.now(UTC)
+        display_scale_raw = str(context.definition.config.get("display_scale", "LAKHS"))
         try:
-            context = self._build_context(run=running_run, definition=definition)
-            rendered_sections: list[RenderedSection] = []
-
-            for section_config in sorted(
-                context.definition.section_configs,
-                key=lambda row: row.order,
-            ):
-                source_data = await self._fetch_section_source_data(
-                    db=db,
-                    context=context,
-                    section_type=section_config.section_type,
-                )
-                renderer = get_renderer(section_config.section_type)
-                rendered_section = renderer.render(
-                    context=context,
-                    section_config=section_config,
-                    source_data=source_data,
-                )
-                rendered_sections.append(rendered_section)
-                await self._persist_rendered_section(
-                    db=db,
-                    run_id=running_run.id,
-                    tenant_id=tenant_id,
-                    rendered_section=rendered_section,
-                )
-
-            assembled_pack = self._assembler.assemble(
-                context=context,
-                rendered_sections=rendered_sections,
+            display_scale = DisplayScale(display_scale_raw)
+        except ValueError:
+            display_scale = DisplayScale.LAKHS
+        try:
+            pdf_bytes, pdf_filename = self._export_service.export_pdf(
+                pack=assembled_pack,
+                pack_name=context.definition.name,
+                generated_at=generated_at,
+                display_scale=display_scale,
             )
-
-            generated_at = datetime.now(UTC)
-            display_scale_raw = str(context.definition.config.get("display_scale", "LAKHS"))
-            try:
-                display_scale = DisplayScale(display_scale_raw)
-            except ValueError:
-                display_scale = DisplayScale.LAKHS
-            try:
-                pdf_bytes, pdf_filename = self._export_service.export_pdf(
-                    pack=assembled_pack,
-                    pack_name=context.definition.name,
-                    generated_at=generated_at,
-                    display_scale=display_scale,
-                )
-            except TypeError:
-                pdf_bytes, pdf_filename = self._export_service.export_pdf(
-                    pack=assembled_pack,
-                    pack_name=context.definition.name,
-                    generated_at=generated_at,
-                )
-            try:
-                xlsx_bytes, xlsx_filename = self._export_service.export_excel(
-                    pack=assembled_pack,
-                    pack_name=context.definition.name,
-                    generated_at=generated_at,
-                    display_scale=display_scale,
-                )
-            except TypeError:
-                xlsx_bytes, xlsx_filename = self._export_service.export_excel(
-                    pack=assembled_pack,
-                    pack_name=context.definition.name,
-                    generated_at=generated_at,
-                )
-
-            await self._persist_artifact(
-                db=db,
-                run_id=running_run.id,
-                tenant_id=tenant_id,
-                export_format=ExportFormat.PDF,
-                filename=pdf_filename,
-                content=pdf_bytes,
+        except TypeError:
+            pdf_bytes, pdf_filename = self._export_service.export_pdf(
+                pack=assembled_pack,
+                pack_name=context.definition.name,
                 generated_at=generated_at,
             )
-            await self._persist_artifact(
-                db=db,
-                run_id=running_run.id,
-                tenant_id=tenant_id,
-                export_format=ExportFormat.EXCEL,
-                filename=xlsx_filename,
-                content=xlsx_bytes,
+        try:
+            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
+                pack=assembled_pack,
+                pack_name=context.definition.name,
+                generated_at=generated_at,
+                display_scale=display_scale,
+            )
+        except TypeError:
+            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
+                pack=assembled_pack,
+                pack_name=context.definition.name,
                 generated_at=generated_at,
             )
 
+        await self._persist_artifact(
+            db=db,
+            run_id=running_run.id,
+            tenant_id=tenant_id,
+            export_format=ExportFormat.PDF,
+            filename=pdf_filename,
+            content=pdf_bytes,
+            generated_at=generated_at,
+        )
+        await self._persist_artifact(
+            db=db,
+            run_id=running_run.id,
+            tenant_id=tenant_id,
+            export_format=ExportFormat.EXCEL,
+            filename=xlsx_filename,
+            content=xlsx_bytes,
+            generated_at=generated_at,
+        )
+
+        await self._transition_run_state(
+            db=db,
+            source_run=running_run,
+            to_status=PackRunStatus.COMPLETE,
+            completed_at=datetime.now(UTC),
+            chain_hash=assembled_pack.chain_hash,
+        )
+        mutation_context = get_mutation_context()
+        from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
+
+        await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
+            tenant_id=tenant_id,
+            actor_user_id=(mutation_context.actor_user_id if mutation_context else None) or running_run.triggered_by,
+            actor_role=(mutation_context.actor_role if mutation_context else None) or "system",
+            subject_type="board_pack_run",
+            subject_id=str(running_run.id),
+            trigger_event="board_pack_generation_complete",
+        )
+        await db.commit()
+        return assembled_pack
+
+    async def fail_generation(
+        self,
+        *,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        error_message: str,
+    ) -> None:
+        await db.rollback()
+        sentry_sdk.add_breadcrumb(
+            category="board_pack_generator",
+            message="board pack generation failed",
+            level="error",
+            data={
+                "run_id": str(run_id),
+                "tenant_id": str(tenant_id),
+                "error": error_message,
+            },
+        )
+        try:
+            running_run = await self._load_run(db=db, run_id=run_id, tenant_id=tenant_id)
             await self._transition_run_state(
                 db=db,
                 source_run=running_run,
-                to_status=PackRunStatus.COMPLETE,
+                to_status=PackRunStatus.FAILED,
                 completed_at=datetime.now(UTC),
-                chain_hash=assembled_pack.chain_hash,
-            )
-            mutation_context = get_mutation_context()
-            from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
-
-            await Phase4ControlPlaneService(db).ensure_snapshot_for_subject(
-                tenant_id=tenant_id,
-                actor_user_id=(mutation_context.actor_user_id if mutation_context else None) or running_run.triggered_by,
-                actor_role=(mutation_context.actor_role if mutation_context else None) or "system",
-                subject_type="board_pack_run",
-                subject_id=str(running_run.id),
-                trigger_event="board_pack_generation_complete",
+                error_message=error_message[:2000],
             )
             await db.commit()
-            return assembled_pack
-        except Exception as exc:
+        except Exception:
             await db.rollback()
-            sentry_sdk.add_breadcrumb(
-                category="board_pack_generator",
-                message="board pack generation failed",
-                level="error",
-                data={
-                    "run_id": str(run_id),
-                    "tenant_id": str(tenant_id),
-                    "error": str(exc),
-                },
+            log.exception(
+                "Failed to append FAILED run status row",
+                extra={"run_id": str(run_id), "tenant_id": str(tenant_id)},
             )
-            try:
-                await self._transition_run_state(
-                    db=db,
-                    source_run=running_run,
-                    to_status=PackRunStatus.FAILED,
-                    completed_at=datetime.now(UTC),
-                    error_message=str(exc)[:2000],
+
+    async def load_rendered_sections(
+        self,
+        *,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+    ) -> list[RenderedSection]:
+        from financeops.db.models.board_pack_generator import BoardPackGeneratorSection
+
+        rows = (
+            await db.execute(
+                select(BoardPackGeneratorSection)
+                .where(
+                    BoardPackGeneratorSection.tenant_id == tenant_id,
+                    BoardPackGeneratorSection.run_id == run_id,
                 )
-                await db.commit()
-            except Exception:
-                await db.rollback()
-                log.exception(
-                    "Failed to append FAILED run status row",
-                    extra={"run_id": str(run_id), "tenant_id": str(tenant_id)},
+                .order_by(
+                    BoardPackGeneratorSection.section_order.asc(),
+                    BoardPackGeneratorSection.id.asc(),
                 )
-            raise
+            )
+        ).scalars().all()
+        rendered: list[RenderedSection] = []
+        for row in rows:
+            payload = dict(row.data_snapshot or {})
+            rendered.append(
+                RenderedSection(
+                    section_type=SectionType(str(row.section_type)),
+                    section_order=int(row.section_order),
+                    title=str(payload.get("title") or str(row.section_type).replace("_", " ").title()),
+                    data_snapshot=payload,
+                    section_hash=str(row.section_hash),
+                )
+            )
+        return rendered
 
     async def _load_run(
         self,
@@ -393,6 +502,37 @@ class BoardPackGenerateService:
             apply_mutation_linkage(row)
         db.add(row)
         await db.flush()
+
+    async def _load_persisted_section(
+        self,
+        *,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        section_order: int,
+    ) -> RenderedSection | None:
+        from financeops.db.models.board_pack_generator import BoardPackGeneratorSection
+
+        row = (
+            await db.execute(
+                select(BoardPackGeneratorSection).where(
+                    BoardPackGeneratorSection.tenant_id == tenant_id,
+                    BoardPackGeneratorSection.run_id == run_id,
+                    BoardPackGeneratorSection.section_order == section_order,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+
+        payload = dict(row.data_snapshot or {})
+        return RenderedSection(
+            section_type=SectionType(str(row.section_type)),
+            section_order=int(row.section_order),
+            title=str(payload.get("title") or str(row.section_type).replace("_", " ").title()),
+            data_snapshot=payload,
+            section_hash=str(row.section_hash),
+        )
 
     async def _persist_artifact(
         self,

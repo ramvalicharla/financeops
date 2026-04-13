@@ -199,6 +199,24 @@ async def test_get_me_with_valid_token(
     assert "tenant" in data
     assert "coa_status" in data["tenant"]
     assert "onboarding_score" in data["tenant"]
+    assert "entity_roles" in data
+
+
+@pytest.mark.asyncio
+async def test_get_entity_roles_with_valid_token(
+    async_client: AsyncClient,
+    test_access_token: str,
+) -> None:
+    response = await async_client.get(
+        "/api/v1/auth/entity-roles",
+        headers={"Authorization": f"Bearer {test_access_token}"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    assert {"entity_id", "entity_name", "role", "currency"} <= set(data[0].keys())
 
 
 @pytest.mark.asyncio

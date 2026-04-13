@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import importlib
-import subprocess
+from pathlib import Path
 
 
 def test_set_rls_context_not_importable_from_session() -> None:
@@ -21,15 +21,14 @@ def test_canonical_rls_functions_importable_from_rls() -> None:
 
 def test_no_rls_context_calls_in_codebase() -> None:
     """No source file uses the deprecated set_rls_context name."""
-    result = subprocess.run(
-        ["rg", "-n", "set_rls_context|clear_rls_context", "financeops/"],
-        capture_output=True,
-        text=True,
-        cwd=".",
-        check=False,
-    )
-    assert result.stdout == "", (
+    root = Path(__file__).parent.parent / "financeops"
+    hits: list[str] = []
+    for path in root.rglob("*.py"):
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if "set_rls_context" in line or "clear_rls_context" in line:
+                hits.append(f"{path}:{lineno}: {line}")
+    assert not hits, (
         "Deprecated RLS function names still in use:\n"
-        f"{result.stdout}"
+        + "\n".join(hits)
     )
 

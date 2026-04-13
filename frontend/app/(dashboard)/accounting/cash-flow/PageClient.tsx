@@ -39,7 +39,7 @@ export default function AccountingCashFlowPage() {
     queryFn: async () =>
       listJournals({
         org_entity_id: activeEntityId as string,
-        status: "POSTED",
+        status: "PUSHED",
         limit: 200,
       }),
   })

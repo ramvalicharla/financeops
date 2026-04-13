@@ -65,6 +65,12 @@ class EntryType:
     CREDIT = "CREDIT"
 
 
+# INTENTIONAL DESIGN NOTE: accounting_jv_aggregates is a MUTABLE state projection.
+# It is intentionally excluded from APPEND_ONLY_TABLES.
+# The immutable audit trail lives in accounting_jv_state_events (append-only).
+# This table tracks current JV state only - a read-optimised view of the event log.
+# Any JV status change MUST also insert a row in accounting_jv_state_events.
+# See docs/design/append-only-architecture.md for the full pattern rationale.
 class AccountingJVAggregate(FinancialBase):
     __tablename__ = "accounting_jv_aggregates"
     __table_args__ = (

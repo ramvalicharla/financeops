@@ -172,7 +172,7 @@ export function JournalList() {
                 Review
               </Button>
             ) : null}
-            {journal.status === "REVIEWED" && canPerformAction("journal.approve", userRole) ? (
+            {journal.status === "UNDER_REVIEW" && canPerformAction("journal.approve", userRole) ? (
               <Button
                 variant="outline"
                 size="sm"
@@ -202,7 +202,7 @@ export function JournalList() {
                 Post
               </Button>
             ) : null}
-            {journal.status === "POSTED" && canPerformAction("journal.reverse", userRole) ? (
+            {journal.status === "PUSHED" && canPerformAction("journal.reverse", userRole) ? (
               <Button
                 variant="outline"
                 size="sm"

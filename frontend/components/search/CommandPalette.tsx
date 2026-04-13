@@ -1,217 +1,160 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react"
-import { Loader2, Search, Sparkles } from "lucide-react"
+import { useState } from "react"
+import { ChevronLeft, Loader2, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { searchGlobal } from "@/lib/api/search"
-import type { SearchResultRow } from "@/lib/types/search"
-import { SearchResult } from "@/components/search/SearchResult"
-import { Dialog } from "@/components/ui/Dialog"
+import {
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
 import { useStreamingAI } from "@/hooks/useStreamingAI"
+import {
+  NAV_GROUP_DEFINITIONS,
+  NAV_ITEMS,
+  type NavigationLeafItem,
+} from "@/lib/config/navigation"
+
+// ---------------------------------------------------------------------------
+// Static data — built once at module load from the nav config
+// ---------------------------------------------------------------------------
+
+const allNavLeafItems: NavigationLeafItem[] = Array.from(NAV_ITEMS).flatMap(
+  (item): NavigationLeafItem[] =>
+    "children" in item
+      ? Array.from(item.children as readonly NavigationLeafItem[])
+      : [item as NavigationLeafItem],
+)
+
+const hrefToNavItem = new Map<string, NavigationLeafItem>(
+  allNavLeafItems.map((item) => [item.href, item]),
+)
+
+const QUICK_ACTIONS = [
+  { label: "Run GL reconciliation", href: "/reconciliation/gl-tb" },
+  { label: "Generate MIS report", href: "/mis" },
+  { label: "Sync ERP data", href: "/erp/connectors" },
+  { label: "View anomalies", href: "/anomalies" },
+] as const
+
+const AI_SYSTEM_PROMPT =
+  "You are a financial assistant for Finqor. The user is a CA or CFO. Answer concisely with Indian financial context (GST, IndAS, MCA, RBI). Never give tax advice."
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 type CommandPaletteProps = {
   isOpen: boolean
   onClose: () => void
 }
 
-const groupLabel = (entityType: string): string => entityType.replaceAll("_", " ")
-
 export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const router = useRouter()
-  const inputRef = useRef<HTMLInputElement | null>(null)
-  const aiInputRef = useRef<HTMLInputElement | null>(null)
-  const [mode, setMode] = useState<"search" | "ai">("search")
-  const [query, setQuery] = useState("")
+  const [showAIPanel, setShowAIPanel] = useState(false)
   const [aiPrompt, setAiPrompt] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<SearchResultRow[]>([])
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const {
-    response: aiResponse,
-    isStreaming,
-    error: streamError,
-    traceId,
-    stream,
-  } = useStreamingAI()
 
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-    const timer = setTimeout(() => {
-      if (mode === "search") {
-        inputRef.current?.focus()
-      } else {
-        aiInputRef.current?.focus()
-      }
-    }, 10)
-    return () => clearTimeout(timer)
-  }, [isOpen, mode])
+  const { response: aiResponse, isStreaming, error: streamError, traceId, stream } =
+    useStreamingAI()
 
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-    if (mode !== "search") {
-      return
-    }
-    const timer = setTimeout(async () => {
-      setLoading(true)
-      try {
-        const payload = await searchGlobal({
-          q: query,
-          limit: 12,
-        })
-        setResults(payload)
-        setSelectedIndex(0)
-      } catch {
-        setResults([])
-      } finally {
-        setLoading(false)
-      }
-    }, 200)
-    return () => clearTimeout(timer)
-  }, [isOpen, mode, query])
-
-  const grouped = useMemo(() => {
-    const bucket: Record<string, SearchResultRow[]> = {}
-    for (const row of results) {
-      if (!bucket[row.entity_type]) {
-        bucket[row.entity_type] = []
-      }
-      bucket[row.entity_type].push(row)
-    }
-    return Object.entries(bucket)
-  }, [results])
-
-  const handleSelect = (row: SearchResultRow) => {
-    onClose()
-    router.push(row.url)
-  }
-
-  const handleInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (mode !== "search") {
-      return
-    }
-    if (event.key === "ArrowDown") {
-      event.preventDefault()
-      setSelectedIndex((prev) => (results.length === 0 ? 0 : (prev + 1) % results.length))
-      return
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault()
-      setSelectedIndex((prev) =>
-        results.length === 0 ? 0 : (prev - 1 + results.length) % results.length,
-      )
-      return
-    }
-    if (event.key === "Enter") {
-      event.preventDefault()
-      const target = results[selectedIndex]
-      if (target) {
-        handleSelect(target)
-      }
-      return
-    }
-    if (event.key === "Escape") {
-      event.preventDefault()
-      onClose()
-    }
-  }
-
-  const handleAIPrompt = async (): Promise<void> => {
-    const prompt = aiPrompt.trim()
-    if (!prompt) {
-      return
-    }
+  function handleClose() {
+    setShowAIPanel(false)
     setAiPrompt("")
-    await stream(
-      prompt,
-      "You are a financial assistant for Finqor. The user is a CA or CFO. Answer concisely with Indian financial context (GST, IndAS, MCA, RBI). Never give tax advice.",
-    )
+    onClose()
   }
 
-  if (!isOpen) {
-    return null
+  async function handleAISubmit(): Promise<void> {
+    const prompt = aiPrompt.trim()
+    if (!prompt) return
+    setAiPrompt("")
+    await stream(prompt, AI_SYSTEM_PROMPT)
   }
-
-  let runningIndex = -1
 
   return (
-    <Dialog open={isOpen} onClose={onClose} title="Command palette" size="lg">
-      <div
-        className={`mx-auto max-h-[85vh] w-full overflow-hidden ${
-          mode === "ai" ? "max-w-4xl" : "max-w-3xl"
-        }`}
-      >
-        <div className="flex border-b border-border">
-          <button
-            type="button"
-            className={`px-4 py-2 text-sm ${mode === "search" ? "text-foreground" : "text-muted-foreground"}`}
-            onClick={() => setMode("search")}
-          >
-            Search
-          </button>
-          <button
-            type="button"
-            className={`px-4 py-2 text-sm ${mode === "ai" ? "text-foreground" : "text-muted-foreground"}`}
-            onClick={() => setMode("ai")}
-          >
-            Ask AI
-          </button>
-        </div>
+    <CommandDialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
+      {!showAIPanel ? (
+        <>
+          <CommandInput placeholder="Search modules or type a command…" />
+          <CommandList className="max-h-[min(400px,60vh)]">
+            <CommandEmpty>No results found.</CommandEmpty>
 
-        {mode === "search" ? (
-          <>
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={handleInputKeyDown}
-                className="w-full bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
-                placeholder="Type to search across all modules"
-              />
-              {loading ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
-            </div>
+            {NAV_GROUP_DEFINITIONS.map((group) => {
+              const items = group.hrefs
+                .map((href) => hrefToNavItem.get(href))
+                .filter((item): item is NavigationLeafItem => item !== undefined)
+              if (!items.length) return null
+              return (
+                <CommandGroup key={group.label} heading={group.label}>
+                  {items.map((item) => {
+                    const Icon = item.icon
+                    return (
+                      <CommandItem
+                        key={item.href}
+                        value={item.label.toLowerCase()}
+                        onSelect={() => {
+                          router.push(item.href)
+                          handleClose()
+                        }}
+                      >
+                        <Icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                        {item.label}
+                      </CommandItem>
+                    )
+                  })}
+                </CommandGroup>
+              )
+            })}
 
-            <div className="max-h-[70vh] overflow-y-auto p-3">
-              {results.length === 0 && !loading ? (
-                <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  Type to search across all modules
-                </p>
-              ) : null}
+            <CommandSeparator />
 
-              <div className="space-y-4">
-                {grouped.map(([entityType, items]) => (
-                  <section key={entityType} className="space-y-2">
-                    <p className="px-1 text-[10px] uppercase tracking-[0.16em] text-muted-foreground">
-                      {groupLabel(entityType)}
-                    </p>
-                    <div className="space-y-1">
-                      {items.map((item) => {
-                        runningIndex += 1
-                        const currentIndex = runningIndex
-                        return (
-                          <SearchResult
-                            key={`${item.entity_type}-${item.entity_id}`}
-                            result={item}
-                            query={query}
-                            isActive={currentIndex === selectedIndex}
-                            onSelect={handleSelect}
-                          />
-                        )
-                      })}
-                    </div>
-                  </section>
-                ))}
-              </div>
-            </div>
-          </>
-        ) : (
+            <CommandGroup heading="Quick Actions">
+              {QUICK_ACTIONS.map((action) => (
+                <CommandItem
+                  key={action.href}
+                  value={action.label.toLowerCase()}
+                  onSelect={() => {
+                    router.push(action.href)
+                    handleClose()
+                  }}
+                >
+                  {action.label}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+
+            <CommandSeparator />
+
+            <CommandGroup heading="AI">
+              <CommandItem
+                value="ask finqor ai"
+                onSelect={() => setShowAIPanel(true)}
+              >
+                <Sparkles className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                Ask Finqor AI anything…
+              </CommandItem>
+            </CommandGroup>
+          </CommandList>
+        </>
+      ) : (
+        <div className="flex flex-col">
+          {/* Back button */}
+          <div className="flex items-center border-b border-border px-3 py-2">
+            <button
+              type="button"
+              onClick={() => setShowAIPanel(false)}
+              className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Back to search
+            </button>
+          </div>
+
+          {/* AI response area */}
           <div className="p-4">
             <div className="rounded-md border border-border/60 bg-background p-3">
               <p className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.14em] text-muted-foreground">
@@ -222,40 +165,40 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 {aiResponse || "Ask anything about your financials..."}
                 {isStreaming ? <span className="animate-pulse">▊</span> : null}
               </div>
-              {streamError ? <p className="mt-2 text-xs text-red-400">{streamError}</p> : null}
+              {streamError ? (
+                <p className="mt-2 text-xs text-red-400">{streamError}</p>
+              ) : null}
               {traceId ? (
                 <p className="mt-2 text-[10px] text-muted-foreground">Trace: {traceId}</p>
               ) : null}
             </div>
+
+            {/* AI input */}
             <div className="mt-3 flex items-center gap-2">
               <Input
-                ref={aiInputRef}
                 placeholder="Ask anything about your financials..."
                 value={aiPrompt}
                 onChange={(event) => setAiPrompt(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault()
-                    void handleAIPrompt()
-                  }
-                  if (event.key === "Escape") {
-                    event.preventDefault()
-                    onClose()
+                    void handleAISubmit()
                   }
                 }}
+                autoFocus
               />
               <button
                 type="button"
-                onClick={() => void handleAIPrompt()}
-                className="rounded-md border border-border px-3 py-2 text-sm text-foreground"
+                onClick={() => void handleAISubmit()}
+                className="shrink-0 rounded-md border border-border px-3 py-2 text-sm text-foreground disabled:opacity-50"
                 disabled={isStreaming}
               >
-                Send
+                {isStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
               </button>
             </div>
           </div>
-        )}
-      </div>
-    </Dialog>
+        </div>
+      )}
+    </CommandDialog>
   )
 }

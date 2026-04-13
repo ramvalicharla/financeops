@@ -119,6 +119,107 @@ export const NAV_ITEMS = [
   { label: "Audit Portal", href: "/audit", icon: BriefcaseBusiness },
 ] as const satisfies readonly NavigationItem[]
 
+export interface NavGroupDefinition {
+  label: string
+  hrefs: readonly string[]
+}
+
+/**
+ * Maps every NAV_ITEMS entry to a labelled group for sidebar rendering.
+ * Items in a group are matched by href; the Reconciliation disclosure group
+ * is assigned to whichever group contains one of its children's hrefs.
+ */
+export const NAV_GROUP_DEFINITIONS: readonly NavGroupDefinition[] = [
+  {
+    label: "Financials",
+    hrefs: [
+      "/dashboard",
+      "/dashboard/cfo",
+      "/dashboard/kpis",
+      "/dashboard/variance",
+      "/dashboard/trends",
+      "/dashboard/ratios",
+      "/mis",
+      "/accounting/journals",
+      "/accounting/trial-balance",
+      "/accounting/pnl",
+      "/accounting/balance-sheet",
+      "/accounting/cash-flow",
+      "/accounting/revaluation",
+      "/trial-balance",
+      "/fx/rates",
+      "/close",
+      "/close/checklist",
+      "/treasury",
+      // Reconciliation sub-items — assigns the disclosure group to this section
+      "/reconciliation/gl-tb",
+      "/reconciliation/payroll",
+    ],
+  },
+  {
+    label: "Assets & Leases",
+    hrefs: [
+      "/fixed-assets",
+      "/prepaid",
+      "/modules",
+      "/modules/lease",
+      "/modules/revenue",
+      "/modules/assets",
+      "/modules/prepaid",
+    ],
+  },
+  {
+    label: "Consolidation",
+    hrefs: [
+      "/consolidation",
+      "/consolidation/translation",
+      "/gaap",
+    ],
+  },
+  {
+    label: "Tax & Compliance",
+    hrefs: [
+      "/tax",
+      "/invoice-classify",
+      "/transfer-pricing",
+      "/covenants",
+      "/signoff",
+      "/statutory",
+    ],
+  },
+  {
+    label: "Reporting",
+    hrefs: [
+      "/board-pack",
+      "/reports",
+      "/scheduled-delivery",
+      "/anomalies",
+      "/ai/anomalies",
+      "/ai/narrative",
+      "/ai/dashboard",
+      "/ai/recommendations",
+    ],
+  },
+  {
+    label: "Integrations",
+    hrefs: [
+      "/sync",
+      "/erp/connectors",
+      "/erp/sync",
+      "/erp/mappings",
+    ],
+  },
+  {
+    label: "Admin",
+    hrefs: [
+      "/billing",
+      "/marketplace",
+      "/partner",
+      "/audit",
+    ],
+  },
+]
+
 export const DIRECTOR_NAV_LABELS = [
   "Dashboard",
   "Board Packs",

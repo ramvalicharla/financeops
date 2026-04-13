@@ -18,14 +18,14 @@ class TestJournalStatusMapping:
     def test_draft_maps_to_draft(self) -> None:
         assert _map_journal_status(JVStatus.DRAFT, is_posted=False) == "DRAFT"
 
-    def test_review_status_maps_to_review(self) -> None:
-        assert _map_journal_status(JVStatus.PENDING_REVIEW, is_posted=False) == "REVIEWED"
+    def test_review_status_stays_canonical(self) -> None:
+        assert _map_journal_status(JVStatus.PENDING_REVIEW, is_posted=False) == JVStatus.PENDING_REVIEW
 
     def test_approved_maps_to_approved(self) -> None:
-        assert _map_journal_status(JVStatus.APPROVED, is_posted=False) == "APPROVED"
+        assert _map_journal_status(JVStatus.APPROVED, is_posted=False) == JVStatus.APPROVED
 
-    def test_posted_flag_wins(self) -> None:
-        assert _map_journal_status(JVStatus.APPROVED, is_posted=True) == "POSTED"
+    def test_posted_flag_maps_to_pushed(self) -> None:
+        assert _map_journal_status(JVStatus.APPROVED, is_posted=True) == JVStatus.PUSHED
 
     def test_posted_status_helper(self) -> None:
         assert _is_posted_status(JVStatus.PUSHED) is True

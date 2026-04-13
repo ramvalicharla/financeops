@@ -102,7 +102,9 @@ async def _issue_session_tokens(
     ip_address: str | None = None,
     device_info: str | None = None,
 ) -> dict:
-    token_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
+    token_claims = await build_billing_token_claims(
+        session, tenant_id=user.tenant_id, user_id=user.id, user_role=user.role
+    )
     access_token = create_access_token(
         user.id,
         user.tenant_id,
@@ -403,7 +405,9 @@ async def refresh_tokens(
         )
         raise AuthenticationError("User not found or deactivated")
 
-    token_claims = await build_billing_token_claims(session, tenant_id=user.tenant_id)
+    token_claims = await build_billing_token_claims(
+        session, tenant_id=user.tenant_id, user_id=user.id, user_role=user.role
+    )
     new_access = create_access_token(
         user.id,
         user.tenant_id,
@@ -451,7 +455,24 @@ async def build_billing_token_claims(
     session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
-) -> dict[str, str]:
+    user_id: uuid.UUID,
+    user_role: str,
+) -> dict:
+    from financeops.platform.services.tenancy.entity_access import get_entities_for_user
+
+    entities = await get_entities_for_user(
+        session, tenant_id=tenant_id, user_id=user_id, user_role=user_role
+    )
+    entity_roles_claim = [
+        {
+            "entity_id": str(e.id),
+            "entity_name": e.entity_name,
+            "role": user_role.value if hasattr(user_role, "value") else str(user_role),
+            "currency": e.base_currency,
+        }
+        for e in entities
+    ]
+
     subscription = (
         await session.execute(
             select(TenantSubscription)
@@ -461,9 +482,9 @@ async def build_billing_token_claims(
         )
     ).scalar_one_or_none()
     if subscription is None:
-        return {}
+        return {"entity_roles": entity_roles_claim}
 
-    claims: dict[str, str] = {
+    claims: dict = {
         "subscription_id": str(subscription.id),
         "plan_id": str(subscription.plan_id),
         "subscription_status": subscription.status,
@@ -478,6 +499,7 @@ async def build_billing_token_claims(
     ).scalar_one_or_none()
     if plan is not None:
         claims["plan_tier"] = plan.plan_tier
+    claims["entity_roles"] = entity_roles_claim
     return claims
 
 

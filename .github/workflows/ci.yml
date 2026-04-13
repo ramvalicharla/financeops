@@ -22,7 +22,7 @@ jobs:
     services:
       postgres:
         # postgres:16-compatible image with pgvector preinstalled for the backend suite
-        image: pgvector/pgvector:pg15
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_DB: financeops_test
           POSTGRES_USER: financeops_test
@@ -69,7 +69,21 @@ jobs:
         working-directory: backend
         run: |
           python -m pip install --upgrade pip
+          # TODO: switch to `uv sync --extra dev --locked` once the locked
+          # environment passes pytest with the repo's asyncio config unchanged.
           pip install -e ".[dev]"
+
+      - name: Check for float usage in financial fields
+        working-directory: backend
+        run: |
+          if grep -rn "float(" financeops/modules/ \
+              --include="*.py" \
+              --exclude-dir=tests \
+              | grep -v "confidence\|probability\|score\|#" \
+              | grep -i "debit\|credit\|amount\|balance\|total\|tax\|gst"; then
+            echo "ERROR: float() used for financial amount - use Decimal instead"
+            exit 1
+          fi
 
       - name: Wait for services
         run: |
@@ -98,14 +112,27 @@ jobs:
         working-directory: backend
         run: |
           unset DATABASE_URL TEST_DATABASE_URL MIGRATION_DATABASE_URL
-          python -m pytest -m "not slow" -n 6 --dist loadfile -q
+          python -m pytest -m "not slow" -n 6 --dist loadfile --tb=short -q --cov=financeops --cov-report=xml --cov-fail-under=70
 
       - name: Run backend full suite
         if: github.event_name == 'push'
         working-directory: backend
         run: |
           unset DATABASE_URL TEST_DATABASE_URL MIGRATION_DATABASE_URL
-          python -m pytest -n 9 --dist loadfile -q
+          python -m pytest -n 9 --dist loadfile --tb=short -q --cov=financeops --cov-report=xml --cov-fail-under=70
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: backend/coverage.xml
+
+      - name: Dependency vulnerability scan
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          pip install pip-audit
+          pip-audit --desc on
 
   frontend-build:
     name: Frontend Tests
@@ -130,10 +157,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-node20-
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install frontend dependencies
         if: steps.node-cache.outputs.cache-hit != 'true'
         working-directory: frontend
         run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps webkit
 
       - name: Run frontend tests
         working-directory: frontend
