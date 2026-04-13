@@ -4,98 +4,91 @@ import logging
 import time
 from collections.abc import AsyncGenerator
 
-import httpx
-
 from financeops.config import settings
 from financeops.core.exceptions import RateLimitError, AllModelsFailedError
 from financeops.llm.providers.base import BaseLLMProvider, LLMRequest, LLMResponse
 
 log = logging.getLogger(__name__)
 
-_BASE_URL = "https://api.anthropic.com"
-_API_VERSION = "2023-06-01"
-
 
 class AnthropicProvider(BaseLLMProvider):
-    """Anthropic Claude provider using httpx async client."""
+    """Anthropic Claude provider using the official anthropic SDK."""
 
     def __init__(self, api_key: str | None = None) -> None:
         self._api_key = api_key or settings.ANTHROPIC_API_KEY
 
+    def _client(self):
+        from anthropic import AsyncAnthropic
+        return AsyncAnthropic(api_key=self._api_key)
+
     async def generate(self, request: LLMRequest) -> LLMResponse:
         start = time.monotonic()
-        headers = {
-            "x-api-key": self._api_key,
-            "anthropic-version": _API_VERSION,
-            "content-type": "application/json",
-        }
-        body = {
-            "model": request.model,
-            "max_tokens": request.max_tokens,
-            "temperature": request.temperature,
-            "system": request.system_prompt,
-            "messages": [{"role": "user", "content": request.prompt}],
-        }
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            try:
-                resp = await client.post(
-                    f"{_BASE_URL}/v1/messages",
-                    json=body,
-                    headers=headers,
+        from anthropic import RateLimitError as AnthropicRateLimitError, APIStatusError
+
+        try:
+            async with self._client() as client:
+                message = await client.messages.create(
+                    model=request.model,
+                    max_tokens=request.max_tokens,
+                    temperature=request.temperature,
+                    system=request.system_prompt,
+                    messages=[{"role": "user", "content": request.prompt}],
                 )
-            except httpx.TimeoutException as exc:
-                raise TimeoutError(f"Anthropic request timed out: {exc}") from exc
-
-        if resp.status_code == 429:
-            raise RateLimitError("Anthropic rate limit exceeded")
-        if resp.status_code >= 400:
+        except AnthropicRateLimitError as exc:
+            raise RateLimitError("Anthropic rate limit exceeded") from exc
+        except APIStatusError as exc:
             raise AllModelsFailedError(
-                f"Anthropic API error {resp.status_code}: {resp.text[:200]}"
-            )
+                f"Anthropic API error {exc.status_code}: {str(exc)[:200]}"
+            ) from exc
 
-        data = resp.json()
         duration_ms = (time.monotonic() - start) * 1000
-        usage = data.get("usage", {})
-        content_blocks = data.get("content", [])
         content = " ".join(
-            block.get("text", "") for block in content_blocks if block.get("type") == "text"
+            block.text for block in message.content if hasattr(block, "text")
         )
+        prompt_tokens = message.usage.input_tokens
+        completion_tokens = message.usage.output_tokens
         log.info(
             "Anthropic: model=%s tokens=%d duration_ms=%.1f",
             request.model,
-            usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            prompt_tokens + completion_tokens,
             duration_ms,
         )
         return LLMResponse(
             content=content,
             model=request.model,
             provider="anthropic",
-            prompt_tokens=usage.get("input_tokens", 0),
-            completion_tokens=usage.get("output_tokens", 0),
-            total_tokens=usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
             duration_ms=duration_ms,
-            raw_response=data,
+            raw_response={},
         )
 
     async def stream_complete(self, request: LLMRequest) -> AsyncGenerator[str, None]:
-        """
-        Lightweight streaming adapter.
-        Uses regular completion and yields chunked text when SDK streaming is unavailable.
-        """
-        response = await self.generate(request)
-        for token in response.content.split():
-            yield f"{token} "
+        from anthropic import RateLimitError as AnthropicRateLimitError, APIStatusError
+
+        try:
+            async with self._client() as client:
+                async with client.messages.stream(
+                    model=request.model,
+                    max_tokens=request.max_tokens,
+                    temperature=request.temperature,
+                    system=request.system_prompt,
+                    messages=[{"role": "user", "content": request.prompt}],
+                ) as stream:
+                    async for text in stream.text_stream:
+                        yield text
+        except AnthropicRateLimitError as exc:
+            raise RateLimitError("Anthropic rate limit exceeded") from exc
+        except APIStatusError as exc:
+            raise AllModelsFailedError(
+                f"Anthropic API error {exc.status_code}: {str(exc)[:200]}"
+            ) from exc
 
     async def health_check(self) -> bool:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(
-                    f"{_BASE_URL}/v1/models",
-                    headers={
-                        "x-api-key": self._api_key,
-                        "anthropic-version": _API_VERSION,
-                    },
-                )
-            return resp.status_code < 500
+            async with self._client() as client:
+                await client.models.list()
+            return True
         except Exception:
             return False

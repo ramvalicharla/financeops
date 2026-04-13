@@ -52,13 +52,14 @@ export default function OrgSetupPageClient() {
 
   const refreshSessionAfterSetup = async () => {
     const currentSession = await getSession()
-    if (!currentSession?.access_token || !currentSession.refresh_token) {
+    const accessToken = currentSession?.access_token || currentSession?.accessToken
+    if (!accessToken || !currentSession?.refresh_token) {
       return null
     }
 
     const signInResult = await signIn("credentials", {
       redirect: false,
-      access_token: currentSession.access_token,
+      access_token: accessToken,
       refresh_token: currentSession.refresh_token,
     })
 

@@ -4,6 +4,7 @@ import type { UserRole } from "@/lib/auth"
 
 declare module "next-auth" {
   interface Session {
+    accessToken: string
     access_token: string
     refresh_token: string
     access_token_expires_at: number
@@ -32,6 +33,7 @@ declare module "next-auth" {
     coa_status: CoaStatus
     onboarding_score: number
     entity_roles: EntityRole[]
+    accessToken: string
     access_token: string
     refresh_token: string
     access_token_expires_at: number
@@ -51,6 +53,7 @@ declare module "next-auth/jwt" {
     coa_status: CoaStatus
     onboarding_score: number
     entity_roles: EntityRole[]
+    accessToken: string
     access_token: string
     refresh_token: string
     access_token_expires_at: number

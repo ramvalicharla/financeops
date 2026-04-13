@@ -1,13 +1,27 @@
 {
-  "description": "FinanceOps WAF Rules",
+  "description": "Finqor WAF Rules",
+  "managed_rules": {
+    "enabled": true
+  },
   "rules": [
     {
-      "id": "rate_limit_api",
-      "description": "Rate limit API endpoints",
-      "expression": "(http.request.uri.path matches \"^/api/v1/\")",
+      "id": "rate_limit_auth",
+      "description": "Rate limit auth endpoints on api.finqor.ai",
+      "expression": "(http.host eq \"api.finqor.ai\" and http.request.uri.path matches \"^/api/v1/auth/\")",
       "action": "challenge",
       "ratelimit": {
-        "requests_per_period": 1000,
+        "requests_per_period": 10,
+        "period": 60,
+        "mitigation_timeout": 600
+      }
+    },
+    {
+      "id": "rate_limit_api",
+      "description": "Rate limit API endpoints on api.finqor.ai",
+      "expression": "(http.host eq \"api.finqor.ai\" and http.request.uri.path matches \"^/api/\")",
+      "action": "challenge",
+      "ratelimit": {
+        "requests_per_period": 100,
         "period": 60,
         "mitigation_timeout": 600
       }
@@ -32,7 +46,7 @@
     },
     {
       "id": "challenge_admin_routes",
-      "description": "Challenge non-platform IPs on admin routes",
+      "description": "Challenge admin routes",
       "expression": "(http.request.uri.path matches \"^/admin\")",
       "action": "managed_challenge"
     },
@@ -53,4 +67,3 @@
     }
   ]
 }
-

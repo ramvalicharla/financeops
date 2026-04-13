@@ -28,6 +28,7 @@ class ComputedNarrativeBlock:
     narrative_text: str
     narrative_payload_json: dict[str, Any]
     block_order: int
+    generation_method: str = "template"
 
 
 @dataclass(frozen=True)

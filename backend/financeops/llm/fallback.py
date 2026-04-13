@@ -42,29 +42,35 @@ FALLBACK_CHAINS: dict[str, list[ModelConfig]] = {
     "classification": [
         ModelConfig("phi3:mini", "ollama", timeout=15),
         ModelConfig("mistral:7b", "ollama", timeout=20),
-        ModelConfig("claude-haiku-3-5", "anthropic", timeout=30),
+        ModelConfig("claude-haiku-4-5-20251001", "anthropic", timeout=30),
         ModelConfig("gpt-4o-mini", "openai", timeout=30),
     ],
     "variance_analysis": [
         ModelConfig("mistral:7b", "ollama", timeout=30),
-        ModelConfig("claude-sonnet-4-5", "anthropic", timeout=60),
+        ModelConfig("claude-sonnet-4-5-20251001", "anthropic", timeout=60),
         ModelConfig("gpt-4o", "openai", timeout=60),
         ModelConfig("gemini-1.5-pro", "google", timeout=60),
     ],
     "advisory": [
-        ModelConfig("claude-opus-4-5", "anthropic", timeout=120),
+        ModelConfig("claude-opus-4-5-20251001", "anthropic", timeout=120),
         ModelConfig("gpt-4o", "openai", timeout=120),
         ModelConfig("gemini-1.5-pro", "google", timeout=120),
     ],
     "validation": [
         ModelConfig("gpt-4o-mini", "openai", timeout=30),
-        ModelConfig("claude-haiku-3-5", "anthropic", timeout=30),
+        ModelConfig("claude-haiku-4-5-20251001", "anthropic", timeout=30),
         ModelConfig("gemini-1.5-flash", "google", timeout=30),
     ],
     "hr_manual": [
         ModelConfig("mistral:7b", "ollama", timeout=30),
         ModelConfig("phi3:mini", "ollama", timeout=20),
         # NO cloud models — HR data stays local only
+    ],
+    "invoice_classifier": [
+        ModelConfig("phi3:mini", "ollama", timeout=15),
+        ModelConfig("mistral:7b", "ollama", timeout=20),
+        ModelConfig("claude-haiku-4-5-20251001", "anthropic", timeout=30),
+        ModelConfig("gpt-4o-mini", "openai", timeout=30),
     ],
 }
 

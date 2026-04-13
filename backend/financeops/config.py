@@ -9,7 +9,6 @@ from pydantic import Field, PostgresDsn, RedisDsn, field_validator, model_valida
 from pydantic_settings import BaseSettings
 from sqlalchemy.engine import make_url
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from starlette.requests import Request
 
 
@@ -133,6 +132,7 @@ class Settings(BaseSettings):
     ERP_CONNECTOR_VERSIONING_ENABLED: bool = False
     ERP_CONNECTION_SERVICE_ENABLED: bool = False
     ENABLE_CHUNKED_TASKS: bool = False
+    REQUIRE_EXPLICIT_POLICY: bool = False
 
     model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
 
@@ -276,9 +276,19 @@ def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]
 
 
+def get_real_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    forwarded_ip = forwarded_for.split(",", 1)[0].strip()
+    return (
+        request.headers.get("cf-connecting-ip")
+        or forwarded_ip
+        or (request.client.host if request.client else "unknown")
+    )
+
+
 def _rate_limit_key(request: Request) -> str:
     """Rate-limit key: per IP and per tenant when tenant is resolved."""
-    remote_address = get_remote_address(request)
+    remote_address = get_real_ip(request)
     tenant_id = getattr(request.state, "tenant_id", None)
     base_key = f"{remote_address}:{tenant_id}" if tenant_id else remote_address
 

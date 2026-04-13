@@ -110,6 +110,7 @@ async def run_pipeline(
     )
 
     # Stage 3: Validation (use 'validation' chain for cross-provider check)
+    validation_failed = False
     try:
         validation_result = await gateway_generate(
             task_type="validation",
@@ -121,10 +122,13 @@ async def run_pipeline(
             circuit_registry=circuit_registry,
         )
     except Exception as exc:
-        log.warning("Validation stage failed: %s — proceeding with primary only", exc)
+        log.warning(
+            "Validation stage failed — routing to human review queue: %s", exc
+        )
+        validation_failed = True
         validation_result = AIResult(
-            content=primary_result.content,
-            model_used="none",
+            content="",
+            model_used="validation_failed",
             provider="none",
             was_fallback=False,
             attempt_number=0,
@@ -141,9 +145,11 @@ async def run_pipeline(
     )
     credits_used = credits_used.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
-    if agreement_score < AGREEMENT_THRESHOLD:
+    if validation_failed or agreement_score < AGREEMENT_THRESHOLD:
+        reason = "validation_unavailable" if validation_failed else "agreement_below_threshold"
         log.warning(
-            "Agreement score %s below threshold %s — queuing for human review",
+            "Pipeline routing to PENDING_REVIEW: reason=%s agreement=%s threshold=%s",
+            reason,
             agreement_score,
             AGREEMENT_THRESHOLD,
         )
@@ -152,7 +158,8 @@ async def run_pipeline(
             output_data={
                 "primary": primary_result.content,
                 "validation": validation_result.content,
-                "agreement_score": agreement_score,
+                "agreement_score": str(agreement_score),
+                "pending_reason": reason,
             },
             stage2_model=primary_result.model_used,
             stage3_model=validation_result.model_used,

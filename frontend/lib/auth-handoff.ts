@@ -16,7 +16,7 @@ export const hasEstablishedSession = (
     session?.user?.id &&
       session.user.tenant_id &&
       session.user.tenant_slug &&
-      session.access_token &&
+      (session.access_token || session.accessToken) &&
       session.refresh_token,
   )
 

@@ -24,6 +24,8 @@ from financeops.services.consolidation.run_queries import (
 )
 from financeops.services.consolidation.service_types import ExportPayload, RunCreateResult
 
+# DEPRECATED: legacy public consolidation helpers route intercompany execution
+# through financeops.modules.multi_entity_consolidation.application.intercompany_service.
 
 async def prepare_entities_for_run(
     session: AsyncSession,

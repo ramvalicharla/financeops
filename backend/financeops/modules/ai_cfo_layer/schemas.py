@@ -25,6 +25,7 @@ class AnomalyRow(BaseModel):
 class AnomalyResponse(BaseModel):
     rows: list[AnomalyRow]
     validation: dict[str, Any] = Field(default_factory=dict)
+    generation_method: str = "deterministic"
 
 
 class VarianceDriverRow(BaseModel):
@@ -69,6 +70,7 @@ class NarrativeResponse(BaseModel):
     actions: list[str]
     fact_basis: dict[str, Any] = Field(default_factory=dict)
     validation_passed: bool = True
+    generation_method: str = "deterministic"
 
 
 class SuggestedJournalLine(BaseModel):

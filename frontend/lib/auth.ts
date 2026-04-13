@@ -41,6 +41,7 @@ interface MePayload {
   email: string
   full_name: string
   role: UserRole
+  entity_roles?: EntityRole[]
   tenant: {
     tenant_id: string
     display_name: string
@@ -179,6 +180,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         mfa_challenge_token: { label: "MFA Challenge Token", type: "text" },
         access_token: { label: "Access Token", type: "text" },
         refresh_token: { label: "Refresh Token", type: "text" },
+        accessToken: { label: "Access Token", type: "text" },
+        refreshToken: { label: "Refresh Token", type: "text" },
       },
       async authorize(credentials) {
         const email = typeof credentials?.email === "string" ? credentials.email : undefined
@@ -189,9 +192,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             ? credentials.mfa_challenge_token
             : undefined
         const accessToken =
-          typeof credentials?.access_token === "string" ? credentials.access_token : undefined
+          typeof credentials?.access_token === "string"
+            ? credentials.access_token
+            : typeof credentials?.accessToken === "string"
+              ? credentials.accessToken
+              : undefined
         const refreshToken =
-          typeof credentials?.refresh_token === "string" ? credentials.refresh_token : undefined
+          typeof credentials?.refresh_token === "string"
+            ? credentials.refresh_token
+            : typeof credentials?.refreshToken === "string"
+              ? credentials.refreshToken
+              : undefined
 
         let tokenPayload: LoginTokenPayload | null = null
 
@@ -290,7 +301,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null
         }
 
-        const entityRoles: EntityRole[] = []
+        const entityRoles = readEntityRoles(meEnvelope.data.entity_roles)
         return {
           id: meEnvelope.data.user_id,
           email: meEnvelope.data.email,
@@ -312,6 +323,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
               ? meEnvelope.data.tenant.onboarding_score
               : 0,
           entity_roles: entityRoles,
+          accessToken: tokenPayload.access_token,
           access_token: tokenPayload.access_token,
           refresh_token: tokenPayload.refresh_token,
           access_token_expires_at: parseJwtExpMs(tokenPayload.access_token),
@@ -335,6 +347,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           coa_status: user.coa_status,
           onboarding_score: user.onboarding_score,
           entity_roles: user.entity_roles,
+          accessToken: user.access_token,
           access_token: user.access_token,
           refresh_token: user.refresh_token,
           access_token_expires_at: user.access_token_expires_at,
@@ -365,6 +378,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         access_token_expires_at: accessTokenExpiresAt,
       }).then((refreshed) => ({
         ...token,
+        accessToken: refreshed.access_token,
         ...refreshed,
       }))
     },
@@ -383,7 +397,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         onboarding_score: readTokenNumber(token.onboarding_score),
         entity_roles: readEntityRoles(token.entity_roles),
       }
-      session.access_token = readTokenString(token.access_token)
+      session.accessToken = readTokenString(token.accessToken || token.access_token)
+      session.access_token = readTokenString(token.access_token || token.accessToken)
       session.refresh_token = readTokenString(token.refresh_token)
       session.access_token_expires_at = readTokenNumber(token.access_token_expires_at)
       return session

@@ -21,6 +21,7 @@ from financeops.llm.token_manager import compute_token_budget
 from financeops.security.prompt_injection import PromptInjectionScanner
 from financeops.observability.ai_metrics import observe_ai_cost, observe_ai_tokens
 from financeops.llm.pipeline import PipelineContext, PipelineResult, run_pipeline
+from financeops.llm.prompt_store import load_active_system_prompt
 from financeops.modules.learning_engine.service import get_tenant_context_for_task
 
 log = logging.getLogger(__name__)
@@ -216,7 +217,26 @@ async def gateway_generate(
             tenant_id,
             len(prompt),
         )
-        enriched_system_prompt = system_prompt
+        # Load active DB prompt if one exists for this task_type; fall back to caller-supplied
+        effective_system_prompt = system_prompt
+        if session is not None:
+            try:
+                db_prompt = await load_active_system_prompt(session, task_type)
+                if db_prompt is not None:
+                    effective_system_prompt = db_prompt
+                    log.debug(
+                        "prompt_store loaded system_prompt task_type=%s trace_id=%s",
+                        task_type,
+                        request_trace_id,
+                    )
+            except Exception as exc:
+                log.warning(
+                    "prompt_store lookup failed task_type=%s error=%s — using caller prompt",
+                    task_type,
+                    exc,
+                )
+
+        enriched_system_prompt = effective_system_prompt
         if session is not None and tenant_uuid is not None:
             try:
                 examples = await get_tenant_context_for_task(

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.config import get_real_ip
 from financeops.db.models.users import IamUser
 from financeops.modules.digital_signoff.models import DirectorSignoff
 from financeops.modules.digital_signoff.service import (
@@ -122,7 +123,7 @@ async def complete_endpoint(
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> dict:
-    ip = request.client.host if request.client else ""
+    ip = get_real_ip(request)
     user_agent = request.headers.get("user-agent", "")
     current = (
         await session.execute(

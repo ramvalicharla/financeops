@@ -4,12 +4,15 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 MODEL_CONTEXT_LIMITS: dict[str, int] = {
-    "claude-opus-4-5": 200_000,
-    "claude-sonnet-4-5": 200_000,
-    "claude-haiku-4-5": 200_000,
+    "claude-opus-4-5-20251001": 200_000,
+    "claude-sonnet-4-5-20251001": 200_000,
+    "claude-haiku-4-5-20251001": 200_000,
     "gpt-4o": 128_000,
     "gpt-4o-mini": 128_000,
-    "ollama/mistral": 32_000,
+    "gemini-1.5-pro": 1_000_000,
+    "gemini-1.5-flash": 1_000_000,
+    "mistral:7b": 32_000,
+    "phi3:mini": 128_000,
 }
 
 RESPONSE_RESERVE = 4_000

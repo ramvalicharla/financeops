@@ -23,7 +23,7 @@ from financeops.api.deps import (
     require_finance_team,
     require_org_setup,
 )
-from financeops.config import limiter, settings
+from financeops.config import get_real_ip, limiter, settings
 from financeops.core.exceptions import ValidationError
 from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
 from financeops.db.models.users import IamUser
@@ -455,7 +455,7 @@ async def skip_coa_for_now(
         resource_id=str(user.tenant_id),
         resource_name="chart_of_accounts",
         new_value={"coa_status": "skipped"},
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await commit_session(session)

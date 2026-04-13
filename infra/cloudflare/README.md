@@ -1,21 +1,24 @@
 # Cloudflare WAF and Tunnel Configuration
 
+## Current Target Domain
+- API host: `api.finqor.ai`
+- App host: `app.finqor.ai`
+
 ## WAF Rules
 File: `waf_rules.json`
 
-Apply via Cloudflare Dashboard -> Security -> WAF -> Custom Rules
+Apply manually in the Cloudflare Dashboard under Security -> WAF -> Custom Rules.
 
-Or via Terraform:
-`terraform apply infra/terraform/cloudflare.tf`
-
-Rules summary:
-- Rate limit: 1,000 req/min on `/api/v1/*`
+Target state in this repo:
+- Managed rules: ON
+- Auth rate limit: `api.finqor.ai/api/v1/auth/*` -> 10 req/min/IP
+- API rate limit: `api.finqor.ai/api/*` -> 100 req/min/IP
 - Block SQL injection (WAF score > 40)
 - Block XSS (WAF score > 40)
 - Block path traversal
-- Managed challenge on `/admin` routes
+- Managed challenge on `/admin`
 - Block known bad bots
-- Skip rules for `/health` endpoint
+- Skip custom rules for `/health`
 
 ## Tunnel
 File: `tunnel_config.yml`
@@ -24,11 +27,9 @@ Apply:
 `cloudflared tunnel --config tunnel_config.yml run`
 
 Exposes:
-- `api.financeops.app` -> `localhost:8000` (FastAPI)
-- `app.financeops.app` -> `localhost:3000` (Next.js)
+- `api.finqor.ai` -> `localhost:8000` (FastAPI)
+- `app.finqor.ai` -> `localhost:3000` (Next.js)
 
-## Updating Rules
-1. Edit `waf_rules.json`
-2. Commit to `main`
-3. CI applies via Cloudflare API (requires `CF_API_TOKEN` secret)
-
+## Terraform
+- No Cloudflare Terraform file is currently present in this repo.
+- This repo defines the desired state only; Cloudflare changes still need to be applied manually.

@@ -195,7 +195,13 @@ PERMISSIONS: Final[dict[str, PermissionEntry]] = {
     },
     "journal.review": {
         "module": "accounting",
-        "roles": ["tenant_member", "tenant_admin", "tenant_owner"],
+        "roles": [
+            "tenant_member",
+            "tenant_admin",
+            "tenant_owner",
+            "platform_admin",
+            "platform_owner",
+        ],
         "entitlement_keys": [],
         "feature_flag": None,
         "runtime_roles": [
@@ -204,7 +210,7 @@ PERMISSIONS: Final[dict[str, PermissionEntry]] = {
     },
     "journal.approve": {
         "module": "accounting",
-        "roles": ["tenant_admin", "tenant_owner"],
+        "roles": ["tenant_admin", "tenant_owner", "platform_admin", "platform_owner"],
         "entitlement_keys": [],
         "feature_flag": None,
         "runtime_roles": [
@@ -213,7 +219,7 @@ PERMISSIONS: Final[dict[str, PermissionEntry]] = {
     },
     "journal.post": {
         "module": "accounting",
-        "roles": ["tenant_admin", "tenant_owner"],
+        "roles": ["tenant_admin", "tenant_owner", "platform_admin", "platform_owner"],
         "entitlement_keys": [],
         "feature_flag": None,
         "runtime_roles": [
@@ -222,7 +228,7 @@ PERMISSIONS: Final[dict[str, PermissionEntry]] = {
     },
     "journal.reverse": {
         "module": "accounting",
-        "roles": ["tenant_admin", "tenant_owner"],
+        "roles": ["tenant_admin", "tenant_owner", "platform_admin", "platform_owner"],
         "entitlement_keys": [],
         "feature_flag": None,
         "runtime_roles": [

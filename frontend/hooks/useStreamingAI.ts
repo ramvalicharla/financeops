@@ -63,7 +63,7 @@ export function useStreamingAI() {
       }
       const endpoint = `${BASE_URL}/api/v1/ai/stream`
       const session = await getSession()
-      const accessToken = session?.access_token
+      const accessToken = session?.access_token || session?.accessToken
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       }

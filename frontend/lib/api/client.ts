@@ -26,6 +26,11 @@ type ApiClientError = Error & {
   }
 }
 
+type SessionTokenCarrier = {
+  access_token?: unknown
+  accessToken?: unknown
+} | null | undefined
+
 export class ApiValidationError extends Error {
   constructor(message: string) {
     super(message)
@@ -75,6 +80,16 @@ export const parseWithSchema = <T>(
 
 export const BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").trim()
 
+export const readAccessTokenFromSession = (session: SessionTokenCarrier): string => {
+  if (typeof session?.access_token === "string" && session.access_token) {
+    return session.access_token
+  }
+  if (typeof session?.accessToken === "string" && session.accessToken) {
+    return session.accessToken
+  }
+  return ""
+}
+
 const apiClient = axios.create({
   baseURL: BASE_URL,
   timeout: 30_000,
@@ -87,12 +102,12 @@ const captureBillingWarning = (warningHeader?: string) => {
   useUIStore.getState().setBillingWarning(warningHeader)
 }
 
-const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
+export const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
   if (!BASE_URL) {
     throw new Error("NEXT_PUBLIC_API_URL is required")
   }
   const session = await readSessionForApi()
-  const token = session?.access_token
+  const token = readAccessTokenFromSession(session)
   const state = useTenantStore.getState()
   const locationState = useLocationStore.getState()
 

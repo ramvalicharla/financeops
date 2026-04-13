@@ -35,7 +35,7 @@ const sentryOptions = {
   disableServerWebpackPlugin: false,
 };
 
-const hasSentryDsn = Boolean(process.env.SENTRY_DSN?.trim());
+const hasSentryDsn = Boolean(process.env.NEXT_PUBLIC_SENTRY_DSN?.trim());
 
 const finalConfig = hasSentryDsn
   ? withSentryConfig(nextConfig, sentryOptions)

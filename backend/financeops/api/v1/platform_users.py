@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
-from financeops.config import settings
+from financeops.config import get_real_ip, settings
 from financeops.core.security import hash_password
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.audit_service import log_action
@@ -35,6 +35,18 @@ platform_user_create_guard = require_permission("platform.users.create")
 platform_user_update_guard = require_permission("platform.users.update")
 platform_user_delete_guard = require_permission("platform.users.delete")
 platform_user_view_guard = require_permission("platform.users.view")
+
+
+def _require_platform_owner(current_user: IamUser) -> IamUser:
+    """Compatibility shim for older callers/tests; canonical check lives in platform_identity."""
+    try:
+        require_platform_owner(current_user)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="platform_owner role required",
+        ) from exc
+    return current_user
 
 
 def _role_value(role: UserRole | str) -> str:
@@ -200,7 +212,7 @@ async def create_platform_user(
         resource_type="iam_user",
         resource_id=str(user.id),
         resource_name=user.email,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
@@ -279,7 +291,7 @@ async def update_platform_role(
         resource_name=row.email,
         old_value={"role": previous_role},
         new_value={"role": _role_value(row.role)},
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
@@ -314,7 +326,7 @@ async def deactivate_platform_user(
         resource_name=row.email,
         old_value={"is_active": True},
         new_value={"is_active": False},
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()

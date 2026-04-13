@@ -1,25 +1,25 @@
-﻿# Cloudflare WAF Rules for FinanceOps
+# Cloudflare WAF Rules for Finqor
 
-## Active rules (verify in Cloudflare dashboard)
+## Target state (verify in Cloudflare dashboard)
 
-1. **Block common attack patterns**
-   - SQL injection patterns
-   - XSS patterns
-   - Path traversal (../)
+1. **Managed protection**
+   - Managed rules: ON
+   - Bot protection: ON
 
 2. **Rate limiting rules**
-   - /api/v1/auth/* - 10 requests/minute per IP
-   - /api/v1/* - 100 requests/minute per IP
-   - /api/v1/audit/portal/* - 30 requests/minute per IP
+   - `api.finqor.ai/api/v1/auth/*` - 10 requests/minute per IP
+   - `api.finqor.ai/api/*` - 100 requests/minute per IP
 
-3. **Geo restrictions** (optional)
-   - Consider allowing only IN, SG, AE, GB, US initially
+3. **Custom attack blocking**
+   - SQL injection patterns
+   - XSS patterns
+   - Path traversal (`../`)
 
-4. **Bot protection**
-   - Enable Bot Fight Mode
-   - Challenge suspicious IPs
+4. **Route handling**
+   - Managed challenge on `/admin`
+   - Skip custom rules for `/health`
 
 ## Tunnel configuration
-- Backend: http://backend:8000
-- Frontend: http://frontend:3000
-- Health check: /health (bypass WAF)
+- Backend: `api.finqor.ai` -> `http://localhost:8000`
+- Frontend: `app.finqor.ai` -> `http://localhost:3000`
+- Health check: `/health`

@@ -1,14 +1,15 @@
 import { render, screen } from "@testing-library/react"
-import { describe, it, expect } from "vitest"
+import { describe, expect, it } from "vitest"
+
+import { ORG_SETUP_STEP_NAMES } from "@/components/org-setup/constants"
+
 import { StepIndicator } from "./StepIndicator"
 
-// ORG_SETUP_STEP_NAMES has 4 steps
-const ORG_TOTAL = 4
+const ORG_TOTAL = ORG_SETUP_STEP_NAMES.length
 
-describe("StepIndicator — onboarding variant (currentStep prop)", () => {
+describe("StepIndicator - onboarding variant (currentStep prop)", () => {
   it("renders the correct number of step bars", () => {
     const { container } = render(<StepIndicator currentStep={1} totalSteps={5} />)
-    // Each step is a div inside the flex container
     const bars = container.querySelectorAll('[title^="Step"]')
     expect(bars).toHaveLength(5)
   })
@@ -51,44 +52,48 @@ describe("StepIndicator — onboarding variant (currentStep prop)", () => {
   })
 })
 
-describe("StepIndicator — org-setup variant (step prop)", () => {
-  it("renders step and total in the text", () => {
+describe("StepIndicator - org-setup variant (step prop)", () => {
+  it("renders the setup progress list", () => {
     render(<StepIndicator step={1} />)
-    expect(screen.getByText(/Step 1 of/)).toBeInTheDocument()
+    expect(screen.getByLabelText("Setup progress")).toBeInTheDocument()
   })
 
   it("renders the step name from ORG_SETUP_STEP_NAMES", () => {
     render(<StepIndicator step={1} />)
-    // First step name is "Group identity"
-    expect(screen.getByText("Group identity")).toBeInTheDocument()
+    expect(screen.getByText(ORG_SETUP_STEP_NAMES[0])).toBeInTheDocument()
   })
 
   it("renders step 2 name", () => {
     render(<StepIndicator step={2} />)
-    expect(screen.getByText("Legal entities")).toBeInTheDocument()
+    expect(screen.getByText(ORG_SETUP_STEP_NAMES[1])).toBeInTheDocument()
   })
 
   it("clamps step below minimum to 1", () => {
-    render(<StepIndicator step={0} />)
-    expect(screen.getByText(/Step 1 of/)).toBeInTheDocument()
+    const { container } = render(<StepIndicator step={0} />)
+    const active = container.querySelector(".ring-1")
+    expect(active).toBeInTheDocument()
+    expect(active).toHaveTextContent(ORG_SETUP_STEP_NAMES[0])
   })
 
   it("clamps step above maximum to totalSteps", () => {
-    render(<StepIndicator step={99} />)
-    expect(screen.getByText(new RegExp(`Step ${ORG_TOTAL} of`))).toBeInTheDocument()
+    const { container } = render(<StepIndicator step={99} />)
+    const active = container.querySelector(".ring-1")
+    expect(active).toBeInTheDocument()
+    expect(active).toHaveTextContent(ORG_SETUP_STEP_NAMES[ORG_TOTAL - 1])
   })
 
-  it("renders a progress bar element", () => {
+  it("renders all org setup steps", () => {
     const { container } = render(<StepIndicator step={2} />)
-    // The progress bar div has an inline width style
-    const bar = container.querySelector("[style]")
-    expect(bar).toBeInTheDocument()
+    const items = container.querySelectorAll("ol[aria-label='Setup progress'] > li")
+    expect(items).toHaveLength(ORG_TOTAL)
   })
 
-  it("progress bar width reflects step fraction", () => {
+  it("marks completed and active steps correctly", () => {
     const { container } = render(<StepIndicator step={2} />)
-    const bar = container.querySelector("[style]") as HTMLElement
-    const expectedPct = ((2 / ORG_TOTAL) * 100).toFixed(0)
-    expect(bar.style.width).toContain(expectedPct)
+    const items = Array.from(container.querySelectorAll("li"))
+    const completed = items.find((item) => item.textContent?.includes(ORG_SETUP_STEP_NAMES[0]))
+    const active = container.querySelector(".ring-1")
+    expect(completed?.querySelector("svg")).toBeInTheDocument()
+    expect(active).toHaveTextContent(ORG_SETUP_STEP_NAMES[1])
   })
 })

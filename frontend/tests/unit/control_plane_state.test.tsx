@@ -21,6 +21,14 @@ vi.mock("@/lib/api/control-plane", () => ({
 
 describe("control plane state", () => {
   beforeEach(() => {
+    class ResizeObserverMock {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock)
+    window.HTMLElement.prototype.scrollIntoView = vi.fn()
     sessionStorage.clear()
     useTenantStore.setState({
       tenant_id: "tenant-1",
@@ -106,7 +114,8 @@ describe("control plane state", () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText(/select active scope/i), "entity-2")
+    await user.click(screen.getByRole("button", { name: /switch active entity/i }))
+    await user.click(screen.getByText("Acme Holdings"))
 
     expect(useTenantStore.getState().active_entity_id).toBe("entity-2")
   })

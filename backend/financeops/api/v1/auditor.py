@@ -15,6 +15,7 @@ from financeops.api.deps import (
     require_auditor_or_above,
     require_finance_leader,
 )
+from financeops.config import get_real_ip
 from financeops.core.exceptions import AuthorizationError
 from financeops.db.models.users import IamUser, UserRole
 from financeops.services.auditor_service import (
@@ -201,7 +202,7 @@ async def check_my_access(
             grant_id=grant.id,
             auditor_user_id=user.id,
             accessed_resource=f"access_check:{module or 'all'}",
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_real_ip(request),
             user_agent=request.headers.get("user-agent"),
             access_result="granted",
         )
@@ -221,7 +222,7 @@ async def check_my_access(
             grant_id=_uuid_mod.UUID(int=0),
             auditor_user_id=user.id,
             accessed_resource=f"access_check:{module or 'all'}",
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_real_ip(request),
             user_agent=request.headers.get("user-agent"),
             access_result="denied",
         )

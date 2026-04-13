@@ -34,6 +34,9 @@ from financeops.services.consolidation.translation_service import (
     translate_group_financials,
 )
 
+# DEPRECATED: public consolidation exports keep compatibility, but intercompany
+# execution is routed through financeops.modules.multi_entity_consolidation.application.intercompany_service.
+
 __all__ = [
     "EntitySnapshotMapping",
     "ExportPayload",

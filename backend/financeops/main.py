@@ -13,6 +13,8 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
+from starlette.middleware.httpsredirect import HTTPSRedirectMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from prometheus_client import make_asgi_app
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -27,6 +29,7 @@ from financeops.core.exceptions import FinanceOpsError, register_exception_handl
 from financeops.core.middleware import (
     CorrelationIdMiddleware,
     FinanceOpsCSRFMiddleware,
+    RequestTimeoutMiddleware,
     RequestSizeLimitMiddleware,
     RequestLoggingMiddleware,
     RLSMiddleware,
@@ -114,6 +117,13 @@ def _resolve_cors_origins() -> list[str]:
     return ["http://localhost:3000"]
 
 
+def _resolve_trusted_hosts() -> list[str]:
+    hosts = ["api.finqor.ai", "*.finqor.ai"]
+    if settings.APP_ENV.lower() != "production":
+        hosts.extend(["localhost", "127.0.0.1", "test", "testserver"])
+    return hosts
+
+
 async def _check_database_connectivity() -> None:
     """Verify database connectivity during application startup."""
     async def _ping_database() -> None:
@@ -144,11 +154,45 @@ async def _initialize_redis_pool() -> None:
         log.warning("Redis connection failed: %s", _exception_text(exc))
 
 
+def _check_ai_provider_keys() -> None:
+    """
+    Warn at startup if a cloud LLM provider appears in a fallback chain but its
+    API key is not configured.  Never raises — Ollama-only deployments must still start.
+    """
+    from financeops.llm.fallback import FALLBACK_CHAINS
+
+    _KEY_ENV: dict[str, str] = {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "google": "GEMINI_API_KEY",
+    }
+    _KEY_VALUE: dict[str, str] = {
+        "anthropic": settings.ANTHROPIC_API_KEY or "",
+        "openai": settings.OPENAI_API_KEY or "",
+        "google": settings.GEMINI_API_KEY or "",
+    }
+    needed: set[str] = set()
+    for chain in FALLBACK_CHAINS.values():
+        for cfg in chain:
+            if cfg.provider in _KEY_ENV:
+                needed.add(cfg.provider)
+
+    for provider in sorted(needed):
+        if not _KEY_VALUE[provider]:
+            log.warning(
+                "AI provider '%s' appears in fallback chains but %s is not set — "
+                "calls to this provider will fail at runtime",
+                provider,
+                _KEY_ENV[provider],
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
     log.info("FinanceOps starting up (env=%s)", settings.APP_ENV)
     log.info("DATABASE_URL in use: %s", _masked_database_url(str(settings.DATABASE_URL)))
+    _check_ai_provider_keys()
     startup_errors: list[str] = []
     app.state.startup_errors = startup_errors
     app.state.migration_state = {
@@ -353,6 +397,7 @@ def create_app() -> FastAPI:
 
     # Custom middlewares (order matters: last added = outermost)
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=30.0)
     app.add_middleware(RLSMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)
@@ -361,6 +406,9 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
     app.add_middleware(LoggingMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_resolve_trusted_hosts())
+    if _is_prod:
+        app.add_middleware(HTTPSRedirectMiddleware)
 
     # CORS (registered last so it executes before custom middleware in Starlette)
     resolved_origins = _resolve_cors_origins()

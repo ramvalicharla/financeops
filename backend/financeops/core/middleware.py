@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
@@ -34,6 +35,10 @@ _REQUEST_SIZE_BYPASS_PREFIXES = (
     "/docs",
     "/redoc",
     "/openapi.json",
+)
+_REQUEST_TIMEOUT_BYPASS_PREFIXES = (
+    "/api/v1/ai/stream",
+    "/api/v1/notifications/stream",
 )
 
 
@@ -142,3 +147,32 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
                     content={"error": "payload_too_large", "message": "Request payload exceeds allowed size"},
                 )
         return await call_next(request)
+
+
+class RequestTimeoutMiddleware(BaseHTTPMiddleware):
+    """
+    Bound request handling time for non-streaming endpoints.
+    """
+
+    def __init__(self, app: ASGIApp, timeout_seconds: float = 30.0) -> None:
+        super().__init__(app)
+        self.timeout_seconds = timeout_seconds
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        if any(request.url.path.startswith(prefix) for prefix in _REQUEST_TIMEOUT_BYPASS_PREFIXES):
+            return await call_next(request)
+        try:
+            return await asyncio.wait_for(call_next(request), timeout=self.timeout_seconds)
+        except asyncio.TimeoutError:
+            log.warning(
+                "Rejected timed out request path=%s timeout_seconds=%s",
+                request.url.path,
+                self.timeout_seconds,
+            )
+            return JSONResponse(
+                status_code=504,
+                content={
+                    "error": "request_timeout",
+                    "message": "Request exceeded allowed processing time",
+                },
+            )

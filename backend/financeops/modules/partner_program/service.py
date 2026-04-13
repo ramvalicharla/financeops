@@ -362,7 +362,7 @@ async def get_partner_dashboard(
 
     return {
         "partner": partner,
-        "referral_link": f"https://app.financeops.app?ref={partner.partner_code}",
+        "referral_link": f"https://app.finqor.ai?ref={partner.partner_code}",
         "stats": {
             "total_clicks": total_clicks,
             "total_signups": total_signups,

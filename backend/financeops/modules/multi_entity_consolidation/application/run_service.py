@@ -2,9 +2,16 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
+from financeops.accounting_policy_engine import AccountingPolicyService
 from financeops.config import settings
+from financeops.data_quality_engine import (
+    DataQualityValidationService,
+    consolidation_metric_rules,
+    consolidation_variance_rules,
+)
 from financeops.modules.multi_entity_consolidation.application.adjustment_service import (
     AdjustmentService,
 )
@@ -32,6 +39,12 @@ from financeops.modules.multi_entity_consolidation.infrastructure.token_builder 
     build_consolidation_run_token,
     build_definition_version_token,
 )
+from financeops.modules.ownership_consolidation.application.mapping_service import (
+    MappingService as OwnershipMappingService,
+)
+from financeops.modules.ownership_consolidation.infrastructure.repository import (
+    OwnershipConsolidationRepository,
+)
 
 
 class RunService:
@@ -46,6 +59,7 @@ class RunService:
         aggregation_service: AggregationService,
         intercompany_service: IntercompanyService,
         adjustment_service: AdjustmentService,
+        policy_service: AccountingPolicyService | None = None,
     ) -> None:
         self._repository = repository
         self._validation = validation_service
@@ -53,6 +67,8 @@ class RunService:
         self._aggregation = aggregation_service
         self._intercompany = intercompany_service
         self._adjustment = adjustment_service
+        self._policy = policy_service or AccountingPolicyService()
+        self._data_quality = DataQualityValidationService()
 
     async def create_run(
         self,
@@ -184,6 +200,16 @@ class RunService:
             tenant_id=tenant_id,
             hierarchy_id=run.hierarchy_id,
         )
+        intercompany = await self._repository.active_intercompany_rules(
+            tenant_id=tenant_id,
+            organisation_id=run.organisation_id,
+            reporting_period=run.reporting_period,
+        )
+        adjustments = await self._repository.active_adjustment_definitions(
+            tenant_id=tenant_id,
+            organisation_id=run.organisation_id,
+            reporting_period=run.reporting_period,
+        )
         entity_ids = self._hierarchy.deterministic_entity_order(nodes=nodes)
         allowed_entity_ids = {str(value) for value in entity_ids}
 
@@ -219,6 +245,16 @@ class RunService:
             tenant_id=tenant_id,
             run_ids=variance_run_ids,
         )
+        metric_validation = self._data_quality.validate_dataset(
+            rules=consolidation_metric_rules(),
+            rows=[self._metric_validation_row(row) for row in metric_rows],
+        )
+        self._data_quality.raise_if_fail(report=metric_validation)
+        variance_validation = self._data_quality.validate_dataset(
+            rules=consolidation_variance_rules(),
+            rows=[self._variance_validation_row(row) for row in variance_rows],
+        )
+        self._data_quality.raise_if_fail(report=variance_validation)
 
         consolidated_metrics = self._aggregation.aggregate_metrics(
             metric_rows=metric_rows,
@@ -228,20 +264,69 @@ class RunService:
             variance_rows=variance_rows,
             allowed_entity_ids=allowed_entity_ids,
         )
-        intercompany_summary = self._intercompany.classify_source_refs(source_run_refs=source_refs)
-        adjustment_summary = self._adjustment.summarize_adjustments()
+        intercompany_summary = self._intercompany.classify_source_refs(
+            source_run_refs=source_refs,
+            metric_rows=metric_rows,
+            intercompany_rules=intercompany,
+        )
+        intercompany_policy = self._policy.apply_intercompany_profit_elimination_policy(
+            elimination_entries=list(intercompany_summary["elimination_entries"]),
+            current_date=run.reporting_period,
+        )
+        intercompany_summary = {
+            **intercompany_summary,
+            "elimination_entries": list(intercompany_policy["policy_applied_entries"]),
+            "elimination_count": len(intercompany_policy["policy_applied_entries"]),
+            "elimination_applied": any(
+                str(row.get("elimination_status", "")) == "applied"
+                for row in intercompany_policy["policy_applied_entries"]
+            ),
+            "policy_application": intercompany_policy,
+        }
+        adjustment_summary = self._adjustment.summarize_adjustments(
+            consolidated_metrics=consolidated_metrics,
+            intercompany_summary=intercompany_summary,
+            adjustment_rows=adjustments,
+        )
+        minority_interest_summary = await self._compute_minority_interest_summary(
+            tenant_id=tenant_id,
+            organisation_id=run.organisation_id,
+            reporting_period=run.reporting_period,
+            allowed_entity_ids=allowed_entity_ids,
+            metric_rows=metric_rows,
+        )
+        minority_interest_summary = self._policy.apply_minority_interest_policy(
+            minority_interest_summary=minority_interest_summary,
+            current_date=run.reporting_period,
+        )
+        revenue_policy = self._policy.apply_revenue_reclassification_policy(
+            consolidated_metrics=consolidated_metrics,
+            current_date=run.reporting_period,
+        )
+
+        has_effect = bool(intercompany_summary["elimination_entries"]) or bool(
+            adjustment_summary["adjustment_entries"] or adjustment_summary["reclassification_entries"]
+        )
+        no_intercompany_data = (
+            intercompany_summary["validation_report"]["status"] == "PASS"
+            and intercompany_summary["validation_report"]["reason"] == "no intercompany transactions"
+        )
+        if not has_effect and not no_intercompany_data:
+            raise ValueError(
+                "validation_report.status=FAIL: consolidation produced no elimination or adjustment evidence"
+            )
 
         metric_db_rows = [
             {
                 "line_no": index,
-                "metric_code": row.metric_code,
+                "metric_code": str(row["metric_code"]),
                 "scope_json": {"entity_ids": sorted(allowed_entity_ids)},
-                "currency_code": row.currency_code,
-                "aggregated_value": row.aggregated_value,
-                "entity_count": row.entity_count,
+                "currency_code": str(row["currency_code"]),
+                "aggregated_value": Decimal(str(row["aggregated_value"])),
+                "entity_count": int(row["entity_count"]),
                 "materiality_flag": False,
             }
-            for index, row in enumerate(consolidated_metrics, start=1)
+            for index, row in enumerate(revenue_policy["policy_applied_entries"], start=1)
         ]
         variance_db_rows = [
             {
@@ -296,9 +381,24 @@ class RunService:
             {
                 "metric_result_id": None,
                 "variance_result_id": None,
+                "evidence_type": "validation_report",
+                "evidence_ref": "data-quality:summary",
+                "evidence_label": "Data quality validation reports",
+                "evidence_payload_json": {
+                    "reports": [
+                        metric_validation["validation_report"],
+                        variance_validation["validation_report"],
+                    ]
+                },
+            }
+        )
+        evidence_rows.append(
+            {
+                "metric_result_id": None,
+                "variance_result_id": None,
                 "evidence_type": "intercompany_decision",
                 "evidence_ref": "intercompany:summary",
-                "evidence_label": "Intercompany hook evaluation",
+                "evidence_label": "Intercompany matching and elimination evidence",
                 "evidence_payload_json": intercompany_summary,
             }
         )
@@ -308,8 +408,34 @@ class RunService:
                 "variance_result_id": None,
                 "evidence_type": "adjustment_reference",
                 "evidence_ref": "adjustment:summary",
-                "evidence_label": "Adjustment hook evaluation",
+                "evidence_label": "Adjustment and reclassification evidence",
                 "evidence_payload_json": adjustment_summary,
+            }
+        )
+        evidence_rows.append(
+            {
+                "metric_result_id": None,
+                "variance_result_id": None,
+                "evidence_type": "adjustment_reference",
+                "evidence_ref": "minority-interest:summary",
+                "evidence_label": "Minority interest computation trace",
+                "evidence_payload_json": minority_interest_summary,
+            }
+        )
+        evidence_rows.append(
+            {
+                "metric_result_id": None,
+                "variance_result_id": None,
+                "evidence_type": "adjustment_reference",
+                "evidence_ref": "accounting-policy:summary",
+                "evidence_label": "Accounting policy application trace",
+                "evidence_payload_json": {
+                    "intercompany_profit_elimination": intercompany_policy,
+                    "minority_interest_adjustment": minority_interest_summary.get(
+                        "policy_application", {}
+                    ),
+                    "revenue_reclassification": revenue_policy,
+                },
             }
         )
         created_evidence = await self._create_evidence_links(
@@ -337,6 +463,13 @@ class RunService:
             **summary,
             "intercompany_unmatched_count": int(intercompany_summary["unmatched_count"]),
             "adjustment_count": int(adjustment_summary["adjustment_count"]),
+            "elimination_entry_count": int(intercompany_summary["elimination_count"]),
+            "adjustment_entry_count": int(len(adjustment_summary["adjustment_entries"])),
+            "reclassification_entry_count": int(
+                len(adjustment_summary["reclassification_entries"])
+            ),
+            "minority_interest_total": str(minority_interest_summary["aggregate_amount"]),
+            "validation_report": intercompany_summary["validation_report"],
             "evidence_count": len(created_evidence),
         }
 
@@ -523,3 +656,177 @@ class RunService:
             rows[index : index + self._RESULT_CHUNK_SIZE]
             for index in range(0, len(rows), self._RESULT_CHUNK_SIZE)
         ]
+
+    async def _compute_minority_interest_summary(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        organisation_id: uuid.UUID,
+        reporting_period: date,
+        allowed_entity_ids: set[str],
+        metric_rows: list[object],
+    ) -> dict[str, Any]:
+        repository = OwnershipConsolidationRepository(self._repository._session)
+        structures = await repository.active_structure_definitions(
+            tenant_id=tenant_id,
+            organisation_id=organisation_id,
+            reporting_period=reporting_period,
+        )
+        if not structures:
+            return {
+                "validation_report": {
+                    "status": "PASS",
+                    "reason": "No active ownership structure available for minority-interest computation",
+                },
+                "aggregate_amount": "0.000000",
+                "entity_traces": [],
+                "applied": False,
+            }
+
+        selected_structure = sorted(
+            structures,
+            key=lambda value: (value.ownership_structure_code, value.id),
+        )[0]
+        relationships = await repository.active_relationships(
+            tenant_id=tenant_id,
+            ownership_structure_id=selected_structure.id,
+            reporting_period=reporting_period,
+        )
+        relevant_relationships = [
+            row
+            for row in relationships
+            if bool(getattr(row, "minority_interest_indicator", False))
+            and str(row.child_entity_id) in allowed_entity_ids
+        ]
+        if not relevant_relationships:
+            return {
+                "validation_report": {
+                    "status": "PASS",
+                    "reason": "No minority-interest relationships active for the consolidation scope",
+                },
+                "aggregate_amount": "0.000000",
+                "entity_traces": [],
+                "applied": False,
+            }
+
+        mapper = OwnershipMappingService()
+        metric_rows_by_entity: dict[str, list[object]] = {}
+        for row in metric_rows:
+            entity_id = self._extract_entity_id(row)
+            if entity_id is None:
+                continue
+            metric_rows_by_entity.setdefault(str(entity_id), []).append(row)
+
+        traces: list[dict[str, Any]] = []
+        aggregate_amount = Decimal("0.000000")
+        missing_entities: list[str] = []
+        for relationship in sorted(
+            relevant_relationships,
+            key=lambda value: (str(value.child_entity_id), str(value.id)),
+        ):
+            entity_rows = metric_rows_by_entity.get(str(relationship.child_entity_id), [])
+            if not entity_rows:
+                missing_entities.append(str(relationship.child_entity_id))
+                continue
+            for row in sorted(
+                entity_rows,
+                key=lambda value: (str(getattr(value, "metric_code", "")), str(value.id)),
+            ):
+                source_value = self._minority_source_value(row)
+                minority_value = mapper.derive_minority_value(
+                    source_value=source_value,
+                    relationship=relationship,
+                )
+                if minority_value is None:
+                    continue
+                aggregate_amount += Decimal(str(minority_value))
+                traces.append(
+                    {
+                        "entity_id": str(relationship.child_entity_id),
+                        "source_metric_result_id": str(row.id),
+                        "metric_code": str(getattr(row, "metric_code", "")),
+                        "source_balance": str(source_value),
+                        "ownership_percentage": str(relationship.ownership_percentage),
+                        "minority_interest_value": str(minority_value),
+                        "reason": "Minority interest computed from source balance and ownership share",
+                    }
+                )
+        if missing_entities:
+            raise ValueError(
+                "validation_report.status=FAIL: missing minority-interest source rows for entities "
+                + ", ".join(missing_entities)
+            )
+        return {
+            "validation_report": {
+                "status": "PASS",
+                "reason": "Minority interest computed per subsidiary and aggregated",
+            },
+            "aggregate_amount": str(aggregate_amount.quantize(Decimal("0.000000"))),
+            "entity_traces": traces,
+            "applied": bool(traces),
+        }
+
+    def _extract_entity_id(self, row: object) -> uuid.UUID | None:
+        dimension_json = dict(getattr(row, "dimension_json", {}) or {})
+        scope_json = dimension_json.get("scope")
+        if not isinstance(scope_json, dict):
+            scope_json = {}
+        for raw in (
+            dimension_json.get("entity_id"),
+            dimension_json.get("legal_entity"),
+            scope_json.get("entity_id"),
+            scope_json.get("entity"),
+        ):
+            if raw is None or raw == "":
+                continue
+            try:
+                return uuid.UUID(str(raw))
+            except ValueError:
+                continue
+        return None
+
+    def _minority_source_value(self, row: object) -> Decimal:
+        source_summary_json = dict(getattr(row, "source_summary_json", {}) or {})
+        for raw in (
+            source_summary_json.get("nci_balance"),
+            source_summary_json.get("source_balance"),
+            getattr(row, "metric_value", None),
+        ):
+            if raw is None:
+                continue
+            return Decimal(str(raw))
+        raise ValueError(
+            f"validation_report.status=FAIL: missing minority-interest source balance for metric row {getattr(row, 'id', 'unknown')}"
+        )
+
+    def _metric_validation_row(self, row: object) -> dict[str, Any]:
+        source_summary_json = dict(getattr(row, "source_summary_json", {}) or {})
+        dimension_json = dict(getattr(row, "dimension_json", {}) or {})
+        scope_json = dimension_json.get("scope")
+        if not isinstance(scope_json, dict):
+            scope_json = {}
+        return {
+            "id": getattr(row, "id", None),
+            "run_id": getattr(row, "run_id", None),
+            "metric_code": getattr(row, "metric_code", None),
+            "metric_value": getattr(row, "metric_value", None),
+            "entity_id": self._extract_entity_id(row),
+            "currency_code": (
+                source_summary_json.get("currency_code")
+                or dimension_json.get("currency_code")
+                or scope_json.get("currency_code")
+            ),
+        }
+
+    def _variance_validation_row(self, row: object) -> dict[str, Any]:
+        return {
+            "id": getattr(row, "id", None),
+            "run_id": getattr(row, "run_id", None),
+            "metric_code": getattr(row, "metric_code", None),
+            "comparison_type": getattr(row, "comparison_type", None),
+            "base_value": getattr(row, "base_value", None),
+            "current_value": getattr(row, "current_value", None),
+            "variance_value": getattr(row, "variance_value", None),
+            "variance_pct": getattr(row, "variance_pct", None),
+            "currency_code": getattr(row, "currency_code", None),
+        }

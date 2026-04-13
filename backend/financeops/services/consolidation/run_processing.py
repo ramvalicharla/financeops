@@ -21,17 +21,12 @@ from financeops.services.consolidation.consolidation_aggregator import (
     AggregationLineInput,
     aggregate_consolidation,
 )
-from financeops.services.consolidation.elimination_engine import build_elimination_decisions
 from financeops.services.consolidation.entity_loader import load_entity_snapshots
 from financeops.services.consolidation.fx_application import (
     apply_fx_to_snapshots,
     resolve_expected_rate_for_entity,
 )
-from financeops.services.consolidation.ic_matcher import (
-    IntercompanyMatchDecision,
-    MatchCandidateLine,
-    match_intercompany_lines,
-)
+from financeops.services.consolidation.ic_matcher import MatchCandidateLine
 from financeops.services.consolidation.run_queries import list_results
 from financeops.services.consolidation.run_store import get_run_or_raise
 from financeops.services.consolidation.service_types import config_mappings, config_tolerance
@@ -200,6 +195,11 @@ async def match_intercompany_for_run(
     user_id: UUID | None,
     correlation_id: str | None,
 ) -> int:
+    # DEPRECATED: routed to legacy engine via intercompany_service.py
+    from financeops.modules.multi_entity_consolidation.application.intercompany_service import (
+        IntercompanyService,
+    )
+
     existing_count = await session.scalar(
         select(func.count()).select_from(IntercompanyPair).where(
             IntercompanyPair.tenant_id == tenant_id,
@@ -245,36 +245,36 @@ async def match_intercompany_for_run(
         )
         for line_item, ic_account_class in lines_result.all()
     ]
-    decisions = match_intercompany_lines(lines=candidates, tolerance=tolerance)
-    for decision in decisions:
+    contract = IntercompanyService().match_candidates(candidates=candidates, tolerance=tolerance)
+    for decision in contract["matched_pairs"] + contract["unmatched_items"]:
         await AuditWriter.insert_financial_record(
             session,
             model_class=IntercompanyPair,
             tenant_id=tenant_id,
             record_data={
                 "run_id": str(run_id),
-                "match_key_hash": decision.match_key_hash,
-                "entity_from": str(decision.entity_from),
-                "entity_to": str(decision.entity_to),
-                "account_code": decision.account_code,
-                "classification": decision.classification,
+                "match_key_hash": decision["match_key_hash"],
+                "entity_from": str(decision["entity_from"]),
+                "entity_to": str(decision["entity_to"]),
+                "account_code": decision["account_code"],
+                "classification": decision["classification"],
             },
             values={
                 "run_id": run_id,
-                "match_key_hash": decision.match_key_hash,
-                "entity_from": decision.entity_from,
-                "entity_to": decision.entity_to,
-                "account_code": decision.account_code,
-                "ic_reference": decision.ic_reference,
-                "amount_local_from": decision.amount_local_from,
-                "amount_local_to": decision.amount_local_to,
-                "amount_parent_from": decision.amount_parent_from,
-                "amount_parent_to": decision.amount_parent_to,
-                "expected_difference": decision.expected_difference,
-                "actual_difference": decision.actual_difference,
-                "fx_explained": decision.fx_explained,
-                "unexplained_difference": decision.unexplained_difference,
-                "classification": decision.classification,
+                "match_key_hash": decision["match_key_hash"],
+                "entity_from": UUID(str(decision["entity_from"])),
+                "entity_to": UUID(str(decision["entity_to"])),
+                "account_code": decision["account_code"],
+                "ic_reference": decision["ic_reference"],
+                "amount_local_from": Decimal(str(decision["amount_local_from"])),
+                "amount_local_to": Decimal(str(decision["amount_local_to"])),
+                "amount_parent_from": Decimal(str(decision["amount_parent_from"])),
+                "amount_parent_to": Decimal(str(decision["amount_parent_to"])),
+                "expected_difference": Decimal(str(decision["expected_difference"])),
+                "actual_difference": Decimal(str(decision["actual_difference"])),
+                "fx_explained": Decimal(str(decision["fx_explained"])),
+                "unexplained_difference": Decimal(str(decision["unexplained_difference"])),
+                "classification": decision["classification"],
                 "correlation_id": correlation_id,
             },
             audit=AuditEvent(
@@ -284,34 +284,13 @@ async def match_intercompany_for_run(
                 resource_type="intercompany_pair",
                 new_value={
                     "run_id": str(run_id),
-                    "classification": decision.classification,
-                    "match_key_hash": decision.match_key_hash,
+                    "classification": decision["classification"],
+                    "match_key_hash": decision["match_key_hash"],
                     "correlation_id": correlation_id,
                 },
             ),
         )
-    return len(decisions)
-
-
-def _pair_to_decision(pair: IntercompanyPair) -> IntercompanyMatchDecision:
-    return IntercompanyMatchDecision(
-        match_key_hash=pair.match_key_hash,
-        entity_from=pair.entity_from,
-        entity_to=pair.entity_to,
-        account_code=pair.account_code,
-        ic_reference=pair.ic_reference,
-        amount_local_from=pair.amount_local_from,
-        amount_local_to=pair.amount_local_to,
-        amount_parent_from=pair.amount_parent_from,
-        amount_parent_to=pair.amount_parent_to,
-        expected_difference=pair.expected_difference,
-        actual_difference=pair.actual_difference,
-        fx_explained=pair.fx_explained,
-        unexplained_difference=pair.unexplained_difference,
-        classification=pair.classification,
-        transaction_date_from=None,
-        transaction_date_to=None,
-    )
+    return len(contract["matched_pairs"]) + len(contract["unmatched_items"])
 
 
 async def compute_eliminations_for_run(
@@ -322,6 +301,11 @@ async def compute_eliminations_for_run(
     user_id: UUID | None,
     correlation_id: str | None,
 ) -> int:
+    # DEPRECATED: routed to legacy engine via intercompany_service.py
+    from financeops.modules.multi_entity_consolidation.application.intercompany_service import (
+        IntercompanyService,
+    )
+
     existing_count = await session.scalar(
         select(func.count()).select_from(ConsolidationElimination).where(
             ConsolidationElimination.tenant_id == tenant_id,
@@ -340,36 +324,37 @@ async def compute_eliminations_for_run(
         .order_by(IntercompanyPair.match_key_hash)
     )
     pair_rows = list(pairs_result.scalars().all())
-    pair_ids = {row.match_key_hash: row.id for row in pair_rows}
-    decisions = build_elimination_decisions(
-        pair_ids=pair_ids,
-        pairs=[_pair_to_decision(row) for row in pair_rows],
+    run = await get_run_or_raise(session, tenant_id=tenant_id, run_id=run_id)
+    tolerance = config_tolerance(run.configuration_json)
+    contract = IntercompanyService().build_eliminations_from_pairs(
+        pair_rows=pair_rows,
+        tolerance=tolerance,
     )
-    for decision in decisions:
+    for decision in contract["elimination_entries"]:
         await AuditWriter.insert_financial_record(
             session,
             model_class=ConsolidationElimination,
             tenant_id=tenant_id,
             record_data={
                 "run_id": str(run_id),
-                "intercompany_pair_id": str(decision.intercompany_pair_id),
-                "classification_at_time": decision.classification_at_time,
-                "elimination_status": decision.elimination_status,
-                "rule_code": decision.rule_code,
+                "intercompany_pair_id": str(decision["intercompany_pair_id"]),
+                "classification_at_time": decision["classification_at_time"],
+                "elimination_status": decision["elimination_status"],
+                "rule_code": decision["rule_code"],
             },
             values={
                 "run_id": run_id,
-                "intercompany_pair_id": decision.intercompany_pair_id,
-                "entity_from": decision.entity_from,
-                "entity_to": decision.entity_to,
-                "account_code": decision.account_code,
-                "classification_at_time": decision.classification_at_time,
-                "elimination_status": decision.elimination_status,
-                "eliminated_amount_parent": decision.eliminated_amount_parent,
-                "fx_component_impact_parent": decision.fx_component_impact_parent,
-                "residual_difference_parent": decision.residual_difference_parent,
-                "rule_code": decision.rule_code,
-                "reason": decision.reason,
+                "intercompany_pair_id": UUID(str(decision["intercompany_pair_id"])),
+                "entity_from": UUID(str(decision["entity_from"])),
+                "entity_to": UUID(str(decision["entity_to"])),
+                "account_code": decision["account_code"],
+                "classification_at_time": decision["classification_at_time"],
+                "elimination_status": decision["elimination_status"],
+                "eliminated_amount_parent": Decimal(str(decision["eliminated_amount_parent"])),
+                "fx_component_impact_parent": Decimal(str(decision["fx_component_impact_parent"])),
+                "residual_difference_parent": Decimal(str(decision["residual_difference_parent"])),
+                "rule_code": decision["rule_code"],
+                "reason": decision["reason"],
                 "correlation_id": correlation_id,
             },
             audit=AuditEvent(
@@ -379,13 +364,13 @@ async def compute_eliminations_for_run(
                 resource_type="consolidation_elimination",
                 new_value={
                     "run_id": str(run_id),
-                    "intercompany_pair_id": str(decision.intercompany_pair_id),
-                    "elimination_status": decision.elimination_status,
+                    "intercompany_pair_id": str(decision["intercompany_pair_id"]),
+                    "elimination_status": decision["elimination_status"],
                     "correlation_id": correlation_id,
                 },
             ),
         )
-    return len(decisions)
+    return len(contract["elimination_entries"])
 
 
 async def aggregate_results_for_run(

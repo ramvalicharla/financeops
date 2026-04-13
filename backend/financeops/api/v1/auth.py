@@ -32,7 +32,7 @@ from financeops.api.v1.schemas.auth_responses import (
     RevokeAllSessionsResponse,
     TokenPairResponse,
 )
-from financeops.config import limiter, settings
+from financeops.config import get_real_ip, limiter, settings
 from financeops.core.exceptions import AuthenticationError
 from financeops.core.security import (
     create_access_token,
@@ -294,7 +294,7 @@ async def register(
         resource_type="user",
         resource_id=str(user.id),
         resource_name=user.email,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     user.terms_accepted_at = datetime.utcnow()
@@ -406,7 +406,7 @@ async def mfa_verify(
         mfa_challenge_token=body.mfa_challenge_token,
         totp_code=body.totp_code,
         recovery_code=body.recovery_code,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         device_info=request.headers.get("user-agent"),
     )
     await log_action(
@@ -416,7 +416,7 @@ async def mfa_verify(
         action="user.login.mfa_verified",
         resource_type="user",
         resource_id=str(user.id),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
@@ -502,7 +502,7 @@ async def user_login(
         session,
         user=user,
         totp_code=body.totp_code,
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         device_info=request.headers.get("user-agent"),
     )
     await log_action(
@@ -512,7 +512,7 @@ async def user_login(
         action="user.login",
         resource_type="user",
         resource_id=str(user.id),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()
@@ -681,7 +681,7 @@ async def revoke_all_my_sessions(
         action="user.sessions.revoke_all",
         resource_type="iam_session",
         resource_id=str(user.id),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     await session.flush()

@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
 from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
+from financeops.data_quality_engine import (
+    DataQualityValidationService,
+    report_source_rules,
+)
 from financeops.db.models.custom_report_builder import ReportDefinition, ReportRun
 from financeops.db.rls import set_tenant_context
 from financeops.modules.custom_report_builder.application.export_service import (
@@ -60,6 +64,8 @@ class ReportRunService:
     ) -> None:
         self._repository = repository or ReportRepository()
         self._export_service = export_service or ReportExportService()
+        self._data_quality = DataQualityValidationService()
+        self._validation_reports: list[dict[str, Any]] = []
 
     async def run(
         self,
@@ -83,6 +89,7 @@ class ReportRunService:
         await db.commit()
 
         try:
+            self._validation_reports = []
             schema = self._build_definition_schema(definition)
             rows = await self._collect_rows(
                 db=db,
@@ -117,6 +124,7 @@ class ReportRunService:
                 completed_at=datetime.now(UTC),
                 row_count=len(rows),
                 result_hash=result_hash,
+                validation_reports=self._validation_reports,
             )
             mutation_context = get_mutation_context()
             from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
@@ -164,6 +172,7 @@ class ReportRunService:
                     to_status=ReportRunStatus.FAILED,
                     completed_at=datetime.now(UTC),
                     error_message=str(exc)[:2000],
+                    validation_reports=self._validation_reports,
                 )
                 await db.commit()
             except Exception:
@@ -240,6 +249,12 @@ class ReportRunService:
                 filters=schema.filter_config,
                 group_by=schema.group_by,
             )
+            validation = self._data_quality.validate_dataset(
+                rules=report_source_rules(table_name=table_name, value_column="metric_value"),
+                rows=rows,
+            )
+            self._validation_reports.append(validation["validation_report"])
+            self._data_quality.raise_if_fail(report=validation)
             for row in rows:
                 value = row.get("metric_value")
                 metric_value = self._normalize_metric_value(value=value, data_type=metric.data_type)
@@ -277,6 +292,8 @@ class ReportRunService:
                 selected_cols.append(field)
         if "reporting_period" in table_columns:
             selected_cols.append("reporting_period")
+        if "currency_code" in table_columns:
+            selected_cols.append("currency_code")
 
         sql_parts = [
             f"SELECT {', '.join(selected_cols)}",
@@ -403,6 +420,7 @@ class ReportRunService:
         error_message: str | None = None,
         row_count: int | None = None,
         result_hash: str | None = None,
+        validation_reports: list[dict[str, Any]] | None = None,
     ) -> ReportRun:
         from_status = ReportRunStatus(str(source_run.status))
         allowed = self._ALLOWED_TRANSITIONS.get(from_status, set())
@@ -419,6 +437,8 @@ class ReportRunService:
         metadata["transitioned_at"] = datetime.now(UTC).isoformat()
         if result_hash:
             metadata["result_hash"] = result_hash
+        if validation_reports:
+            metadata["data_quality_validation_reports"] = validation_reports
 
         next_row = ReportRun(
             tenant_id=source_run.tenant_id,

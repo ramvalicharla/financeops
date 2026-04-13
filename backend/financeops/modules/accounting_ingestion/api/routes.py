@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_tenant_id
-from financeops.config import limiter
+from financeops.config import get_real_ip, limiter
 from financeops.db.session import get_raw_session
 from financeops.modules.accounting_ingestion.application.email_ingestion_service import (
     ingest_email,
@@ -56,7 +56,7 @@ class PortalStatusResponse(BaseModel):
 def _vendor_submit_rate_key(request: Request) -> str:
     email = request.headers.get("x-submitter-email", "").strip().lower()
     tenant = request.headers.get("x-tenant-id", "").strip().lower()
-    client = request.client.host if request.client else "unknown"
+    client = get_real_ip(request)
     return f"{client}:{tenant}:{email or 'unknown'}"
 
 
@@ -155,4 +155,3 @@ async def vendor_portal_status_endpoint(
         tenant_id=tenant_id,
     )
     return PortalStatusResponse(**result)
-

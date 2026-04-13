@@ -2,21 +2,20 @@ tunnel: financeops-production
 credentials-file: /etc/cloudflare/tunnel-credentials.json
 
 ingress:
-  - hostname: api.financeops.app
+  - hostname: api.finqor.ai
     service: http://localhost:8000
     originRequest:
-      httpHostHeader: api.financeops.app
+      httpHostHeader: api.finqor.ai
       connectTimeout: 30s
       tcpKeepAlive: 30s
       noHappyEyeballs: false
       keepAliveConnections: 100
       keepAliveTimeout: 90s
 
-  - hostname: app.financeops.app
+  - hostname: app.finqor.ai
     service: http://localhost:3000
     originRequest:
-      httpHostHeader: app.financeops.app
+      httpHostHeader: app.finqor.ai
       connectTimeout: 30s
 
   - service: http_status:404
-
