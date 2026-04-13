@@ -76,6 +76,9 @@ secrets/
 # Logs
 *.log
 logs/
+backend/_local_logs/
+frontend/test-results/
+.last-run.json
 
 # Docker
 .docker/
