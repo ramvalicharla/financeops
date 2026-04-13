@@ -26,7 +26,7 @@ interface TrendsChartProps {
 
 export function TrendsChart({ data }: TrendsChartProps) {
   return (
-    <div className="h-[420px]">
+    <div className="w-full h-[420px]">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
           <CartesianGrid strokeDasharray="3 3" />

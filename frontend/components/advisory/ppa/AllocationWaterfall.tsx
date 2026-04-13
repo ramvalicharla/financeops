@@ -36,7 +36,7 @@ export function AllocationWaterfall({
   ]
 
   return (
-    <div className="h-72 rounded-xl border border-border bg-card p-4">
+    <div className="w-full h-72 rounded-xl border border-border bg-card p-4">
       <p className="mb-3 text-sm font-semibold text-foreground">Purchase Price Waterfall</p>
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={chartData}>

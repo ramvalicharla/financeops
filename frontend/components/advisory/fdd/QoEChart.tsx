@@ -33,7 +33,7 @@ export function QoEChart({ periods, reported_ebitda, adjusted_ebitda }: QoEChart
   })
 
   return (
-    <div className="h-72 rounded-xl border border-border bg-card p-4">
+    <div className="w-full h-72 rounded-xl border border-border bg-card p-4">
       <p className="mb-3 text-sm font-semibold text-foreground">Quality of Earnings Trend</p>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={chartData}>

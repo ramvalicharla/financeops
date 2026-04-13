@@ -31,7 +31,7 @@ export function MISLineChart({ data }: MISLineChartProps) {
     <section className="rounded-lg border border-border bg-card p-4">
       <h3 className="mb-1 text-lg font-semibold text-foreground">Trend (12 Months)</h3>
       <p className="mb-3 text-xs text-muted-foreground">{scaleLabel}</p>
-      <div className="h-[320px] w-full">
+      <div className="w-full h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

@@ -29,7 +29,7 @@ export function WorkingCapitalChart({
   return (
     <article className="rounded-xl border border-border bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-foreground">{title}</h3>
-      <div className="h-64">
+      <div className="w-full h-64">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

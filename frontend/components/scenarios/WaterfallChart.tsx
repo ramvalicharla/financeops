@@ -35,7 +35,7 @@ export function WaterfallChart({ waterfall }: WaterfallChartProps) {
   return (
     <article className="rounded-xl border border-border bg-card p-4">
       <h2 className="mb-3 text-sm font-semibold text-foreground">EBITDA Waterfall</h2>
-      <div className="h-72">
+      <div className="w-full h-72">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

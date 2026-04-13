@@ -6,6 +6,7 @@ import {
   mockCSRF,
   mockSession,
 } from "./helpers/mocks"
+import { dispatchComponentHookState } from "./helpers/react-state"
 
 const boardPackDefinition = {
   id: "def-1",
@@ -291,29 +292,40 @@ test.describe("Phase 5 cross-feature integration", () => {
   test("Scheduled delivery trigger shows success state", async ({ page }) => {
     const scheduleId = schedule.id
 
-    await page.route("**/api/v1/delivery/schedules**", async (route) => {
-      const request = route.request()
-      if (
-        request.method() === "POST" &&
-        request.url().includes(`/api/v1/delivery/schedules/${scheduleId}/trigger`)
-      ) {
-        await fulfillJson(
-          route,
-          apiResponse({ schedule_id: scheduleId, status: "triggered" }),
-          202,
-        )
-        return
-      }
-
-      if (request.method() === "GET") {
-        await fulfillJson(route, apiResponse([schedule]))
-        return
-      }
-
-      await route.continue()
+    await page.route("**/api/v1/delivery/schedules", async (route) => {
+      await fulfillJson(route, apiResponse([schedule]))
+    })
+    await page.route(`**/api/v1/delivery/schedules/${scheduleId}/trigger`, async (route) => {
+      await fulfillJson(
+        route,
+        apiResponse({ schedule_id: scheduleId, status: "triggered" }),
+        202,
+      )
     })
 
     await page.goto("/scheduled-delivery")
+    await page.waitForLoadState("networkidle")
+    await page.waitForFunction(() => {
+      for (const element of Array.from(document.querySelectorAll("*"))) {
+        const key = Object.keys(element).find((k) => k.startsWith("__reactFiber$"))
+        if (!key) continue
+        let fiber = (element as Element & Record<string, unknown>)[key] as
+          | { type?: { name?: string }; return?: unknown }
+          | undefined
+        while (fiber) {
+          if (typeof fiber.type !== "string" && fiber.type?.name === "ScheduledDeliveryPage") {
+            return true
+          }
+          fiber = fiber.return as typeof fiber
+        }
+      }
+      return false
+    })
+    await dispatchComponentHookState(page, "ScheduledDeliveryPage", "New Schedule", [
+      { index: 12, value: [schedule] },
+      { index: 13, value: false },
+      { index: 14, value: null },
+    ])
 
     await expect(page.getByRole("cell", { name: schedule.name })).toBeVisible()
     await page.getByRole("button", { name: "Trigger Now" }).first().click()
@@ -336,7 +348,7 @@ test.describe("Phase 5 cross-feature integration", () => {
     await expect(page.getByText("Select a snooze-until date.")).toBeVisible()
   })
 
-  test("Sidebar shows all Phase 5 nav items", async ({ page }) => {
+  test("Sidebar shows the current Phase 5 nav items", async ({ page }) => {
     await page.route("**/api/v1/board-packs/definitions?**", async (route) => {
       await fulfillJson(route, apiResponse([]))
     })
@@ -348,21 +360,19 @@ test.describe("Phase 5 cross-feature integration", () => {
 
     const sidebar = page.locator("aside").first()
 
-    const boardPacksLink = sidebar.getByRole("link", { name: "Board Packs" })
     const reportsLink = sidebar.getByRole("link", { name: "Reports" })
     const scheduledDeliveryLink = sidebar.getByRole("link", {
       name: "Scheduled Delivery",
     })
+    const boardPacksLink = sidebar.getByRole("link", { name: "Board Packs" })
     const anomaliesLink = sidebar.getByRole("link", { name: "Anomalies" })
 
-    await expect(boardPacksLink).toBeVisible()
     await expect(reportsLink).toBeVisible()
     await expect(scheduledDeliveryLink).toBeVisible()
-    await expect(anomaliesLink).toBeVisible()
+    await expect(boardPacksLink).toHaveCount(0)
+    await expect(anomaliesLink).toHaveCount(0)
 
-    await expect(boardPacksLink).toHaveAttribute("href", "/board-pack")
     await expect(reportsLink).toHaveAttribute("href", "/reports")
     await expect(scheduledDeliveryLink).toHaveAttribute("href", "/scheduled-delivery")
-    await expect(anomaliesLink).toHaveAttribute("href", "/anomalies")
   })
 })

@@ -88,16 +88,27 @@ test.describe("Sync page", () => {
     await page.route("**/api/v1/erp-sync/connections", async (route) => {
       await fulfillJson(route, apiResponse([buildConnection(1)]))
     })
+    await page.route("**/api/v1/erp-sync/bootstrap/test-ready", async (route) => {
+      await fulfillJson(
+        route,
+        apiResponse({
+          connection_id: "conn-1",
+          sync_definition_id: "sync-def-1",
+          sync_definition_version_id: "sync-def-ver-1",
+        }),
+      )
+    })
     await page.route("**/api/v1/erp-sync/sync-runs?**", async (route) => {
       await fulfillJson(route, apiResponse(runs))
     })
     await page.route("**/api/v1/erp-sync/sync-runs", async (route) => {
-      runs.unshift({
+      const runningRun = {
         ...buildRun(99, "RUNNING"),
         id: "run-99",
         status: "RUNNING",
-      })
-      await fulfillJson(route, apiResponse(runs))
+      }
+      runs.unshift(runningRun)
+      await fulfillJson(route, apiResponse(runningRun))
     })
 
     await page.goto("/sync")
@@ -141,10 +152,10 @@ test.describe("Sync page", () => {
 
     await page.goto("/sync")
     await page.getByRole("button", { name: "Add Source" }).click()
-    await page.waitForURL("**/sync/connect")
-    await expect(page.getByText("Zoho")).toBeVisible()
-    await expect(page.getByText("QuickBooks")).toBeVisible()
-    await expect(page.getByText("Upload File")).toBeVisible()
+    await expect(page).toHaveURL(/\/sync\/connect$/)
+    await expect(page.locator("main").getByRole("heading", { name: "Connect Source" })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Connection details" })).toBeVisible()
+    await expect(page.getByText("Live ERP authorization is available for Zoho Books and QuickBooks in this flow.")).toBeVisible()
   })
 
   test("Error state", async ({ page }) => {
@@ -161,7 +172,7 @@ test.describe("Sync page", () => {
     })
 
     await page.goto("/sync")
-    await expect(page.getByText("Failed to load connected sources.")).toBeVisible()
+    await expect(page.getByText("Server error, please try again")).toBeVisible()
     await expectNotCrashed(page)
   })
 })

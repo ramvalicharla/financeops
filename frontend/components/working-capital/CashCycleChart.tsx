@@ -31,7 +31,7 @@ export function CashCycleChart({ trends }: CashCycleChartProps) {
   return (
     <section className="rounded-xl border border-border bg-card p-4">
       <h3 className="mb-3 text-sm font-semibold text-foreground">Cash Cycle (12 Months)</h3>
-      <div className="h-72 w-full">
+      <div className="w-full h-72">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

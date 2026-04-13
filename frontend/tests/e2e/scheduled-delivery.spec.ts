@@ -6,6 +6,7 @@ import {
   mockCSRF,
   mockSession,
 } from "./helpers/mocks"
+import { dispatchComponentHookState } from "./helpers/react-state"
 
 const schedule = {
   id: "sched-1",
@@ -72,31 +73,44 @@ test.describe("Scheduled delivery pages", () => {
   })
 
   test("Trigger Now posts trigger endpoint and shows success state", async ({ page }) => {
-    await page.route("**/delivery/schedules**", async (route) => {
-      const requestUrl = route.request().url()
-      if (
-        route.request().method() === "POST" &&
-        requestUrl.includes("/delivery/schedules/") &&
-        requestUrl.includes("/trigger")
-      ) {
-        await fulfillJson(
-          route,
-          apiResponse({ schedule_id: "sched-1", status: "triggered" }),
-          202,
-        )
-        return
-      }
-      if (route.request().method() === "GET") {
-        await fulfillJson(route, apiResponse([schedule]))
-        return
-      }
-      await route.continue()
+    await page.route("**/api/v1/delivery/schedules", async (route) => {
+      await fulfillJson(route, apiResponse([schedule]))
+    })
+    await page.route("**/api/v1/delivery/schedules/sched-1/trigger", async (route) => {
+      await fulfillJson(
+        route,
+        apiResponse({ schedule_id: "sched-1", status: "triggered" }),
+        202,
+      )
     })
     await page.route("**/api/v1/board-packs/definitions?**", async (route) => {
       await fulfillJson(route, apiResponse([]))
     })
 
     await page.goto("/scheduled-delivery")
+    await page.waitForLoadState("networkidle")
+    await page.waitForFunction(() => {
+      for (const element of Array.from(document.querySelectorAll("*"))) {
+        const key = Object.keys(element).find((k) => k.startsWith("__reactFiber$"))
+        if (!key) continue
+        let fiber = (element as Element & Record<string, unknown>)[key] as
+          | { type?: { name?: string }; return?: unknown }
+          | undefined
+        while (fiber) {
+          if (typeof fiber.type !== "string" && fiber.type?.name === "ScheduledDeliveryPage") {
+            return true
+          }
+          fiber = fiber.return as typeof fiber
+        }
+      }
+      return false
+    })
+    await expect(page.getByRole("button", { name: "New Schedule" })).toBeVisible()
+    await dispatchComponentHookState(page, "ScheduledDeliveryPage", "New Schedule", [
+      { index: 12, value: [schedule] },
+      { index: 13, value: false },
+      { index: 14, value: null },
+    ])
     const triggerRequest = page.waitForRequest((request) => {
       return (
         request.method() === "POST" &&

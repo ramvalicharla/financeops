@@ -199,14 +199,16 @@ test.describe("Billing page", () => {
 
     await page.goto("/billing")
     await page.getByRole("button", { name: "Buy More Credits" }).click()
-    await expect(page.getByText("Top up credits")).toBeVisible()
-    await page.getByRole("button", { name: "500 Credits" }).click()
-    await page.getByRole("button", { name: "Confirm Top-up" }).click()
-    await expect(page.getByText("Top up credits")).not.toBeVisible()
+    const topUpDialog = page.getByRole("dialog", { name: "Add credits" })
+    await expect(topUpDialog).toBeVisible()
+    await topUpDialog.getByRole("button", { name: "500 Credits" }).click()
+    await topUpDialog.getByRole("button", { name: "Confirm Top-up" }).click()
+    await expect(topUpDialog).not.toBeVisible()
     await expect(page.getByText("950").first()).toBeVisible()
   })
 
   test("Cancel subscription confirmation", async ({ page }) => {
+    let cancelRequested = false
     await page.route("**/api/v1/billing/subscriptions/current", async (route) => {
       await fulfillJson(route, apiResponse(activeSubscription))
     })
@@ -228,14 +230,22 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse(invoices))
     })
     await page.route("**/api/v1/billing/subscriptions/cancel", async (route) => {
+      cancelRequested = true
       await fulfillJson(route, apiResponse({ success: true }))
     })
 
     await page.goto("/billing")
     await page.getByRole("button", { name: "Cancel Subscription" }).click()
-    await expect(page.getByText("Cancel subscription")).toBeVisible()
-    await page.getByRole("textbox").fill("CANCEL")
-    await expect(page.getByRole("button", { name: "Confirm Cancellation" })).toBeEnabled()
+    const cancelDialog = page.getByRole("dialog", { name: /Cancel subscription/i })
+    await expect(cancelDialog).toBeVisible()
+    await expect(
+      cancelDialog.getByText(
+        "Your subscription will remain active until the end of the current billing period.",
+      ),
+    ).toBeVisible()
+    await cancelDialog.getByRole("button", { name: "Cancel subscription" }).click()
+    await expect(cancelDialog).not.toBeVisible()
+    expect(cancelRequested).toBeTruthy()
   })
 
   test("Error state", async ({ page }) => {

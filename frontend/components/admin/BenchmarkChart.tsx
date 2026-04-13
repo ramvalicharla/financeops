@@ -49,7 +49,7 @@ export function BenchmarkChart({ results }: BenchmarkChartProps) {
   }, [results])
 
   return (
-    <div className="h-80 rounded-xl border border-border bg-card p-4">
+    <div className="w-full h-80 rounded-xl border border-border bg-card p-4">
       <p className="mb-3 text-sm font-semibold text-foreground">Benchmark Accuracy Trend</p>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>

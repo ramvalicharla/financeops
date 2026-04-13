@@ -67,9 +67,9 @@ test.describe("Reconciliation pages", () => {
     })
 
     await page.goto("/reconciliation/gl-tb")
-    await expect(page.getByLabel("Entity")).toBeVisible()
-    await expect(page.getByLabel("Period")).toBeVisible()
-    await expect(page.getByLabel("Sync Run")).toBeVisible()
+    await expect(page.getByLabel("Entity", { exact: true })).toBeVisible()
+    await expect(page.getByLabel("Period", { exact: true })).toBeVisible()
+    await expect(page.getByLabel("Sync Run", { exact: true })).toBeVisible()
   })
 
   test("GL/TB results load after filter selection", async ({ page }) => {
@@ -99,8 +99,8 @@ test.describe("Reconciliation pages", () => {
     })
 
     await page.goto("/reconciliation/gl-tb")
-    await page.getByLabel("Entity").selectOption("entity-001")
-    await page.getByLabel("Sync Run").selectOption("run-1")
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
+    await page.getByLabel("Sync Run", { exact: true }).selectOption("run-1")
     await expect(page.getByText("Total Accounts")).toBeVisible()
     await expect(page.locator("table").first().locator("tbody tr")).toHaveCount(10)
   })
@@ -142,8 +142,8 @@ test.describe("Reconciliation pages", () => {
     })
 
     await page.goto("/reconciliation/gl-tb")
-    await page.getByLabel("Entity").selectOption("entity-001")
-    await page.getByLabel("Sync Run").selectOption("run-1")
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
+    await page.getByLabel("Sync Run", { exact: true }).selectOption("run-1")
     await page.getByRole("cell", { name: "Payroll Expense" }).click()
     await expect(page.getByText("Payroll Expense")).toBeVisible()
     await expect(page.getByText("Payroll posting")).toBeVisible()
@@ -179,8 +179,8 @@ test.describe("Reconciliation pages", () => {
     })
 
     await page.goto("/reconciliation/payroll")
-    await page.getByLabel("Entity").selectOption("entity-001")
-    await page.getByLabel("Sync Run").selectOption("run-1")
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
+    await page.getByLabel("Sync Run", { exact: true }).selectOption("run-1")
     await expect(page.getByText("Payroll Gross")).toBeVisible()
     await expect(page.getByText("Cost Centres")).toBeVisible()
   })
@@ -198,9 +198,9 @@ test.describe("Reconciliation pages", () => {
       )
     })
     await page.goto("/reconciliation/gl-tb")
-    await page.getByLabel("Entity").selectOption("entity-001")
-    await page.getByLabel("Sync Run").selectOption("run-1")
-    await expect(page.getByText("Failed to load GL/TB reconciliation results.")).toBeVisible()
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
+    await page.getByLabel("Sync Run", { exact: true }).selectOption("run-1")
+    await expect(page.getByText("Server error, please try again")).toBeVisible()
     await expectNotCrashed(page)
   })
 })

@@ -133,11 +133,9 @@ test.describe("Reports pages", () => {
     await page.locator("#report-name").fill("Test Report")
     await page.getByRole("button", { name: "Next" }).click()
 
+    await expect(page.locator("summary").filter({ hasText: /^mis$/ })).toBeVisible()
     await expect(
-      page.locator("aside details summary").filter({ hasText: /^mis$/ }),
-    ).toBeVisible()
-    await expect(
-      page.locator("aside details summary").filter({ hasText: /^cash_flow$/ }),
+      page.locator("summary").filter({ hasText: /^cash_flow$/ }),
     ).toBeVisible()
 
     await page.getByRole("button", { name: "Next" }).click()
@@ -167,12 +165,7 @@ test.describe("Reports pages", () => {
     await page.locator("#report-name").fill("Test Report")
     await page.getByRole("button", { name: "Next" }).click()
 
-    await page
-      .locator("aside details")
-      .first()
-      .locator('input[type="checkbox"]')
-      .first()
-      .check()
+    await page.getByRole("checkbox", { name: "Revenue (mis.kpi.revenue)" }).check()
     await page.getByRole("button", { name: "Next" }).click()
 
     await page.locator("#period-start").fill("2024-03-01")

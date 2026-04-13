@@ -29,7 +29,7 @@ export function WeeklyBridgeChart({ points }: WeeklyBridgeChartProps) {
     <div className="rounded-xl border border-border bg-card p-4">
       <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Weekly Bridge</p>
       <p className="mt-1 text-xs text-muted-foreground">{scaleLabel}</p>
-      <div className="mt-3 h-[320px]">
+      <div className="mt-3 w-full h-[320px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

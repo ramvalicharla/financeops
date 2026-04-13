@@ -37,7 +37,7 @@ export function ForecastChart({ lines, metric, basePeriod }: ForecastChartProps)
   return (
     <article className="rounded-xl border border-border bg-card p-4">
       <h2 className="mb-3 text-sm font-semibold text-foreground">Actual vs Forecast</h2>
-      <div className="h-80">
+      <div className="w-full h-80">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data}>
             <XAxis dataKey="period" stroke="hsl(var(--muted-foreground))" />
@@ -53,4 +53,3 @@ export function ForecastChart({ lines, metric, basePeriod }: ForecastChartProps)
     </article>
   )
 }
-

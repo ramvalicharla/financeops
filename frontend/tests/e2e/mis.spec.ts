@@ -74,7 +74,7 @@ test.describe("MIS dashboard", () => {
     })
 
     await page.goto("/mis")
-    await page.getByLabel("Entity").selectOption("entity-001")
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
     await expect(page.getByText("Revenue")).toBeVisible()
     await expect(page.getByText("Gross Profit")).toBeVisible()
     await expect(page.getByText("EBITDA")).toBeVisible()
@@ -92,23 +92,23 @@ test.describe("MIS dashboard", () => {
     })
 
     await page.goto("/mis")
-    await page.getByLabel("Entity").selectOption("entity-001")
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
     await expect(page.getByText("₹10,00,000.00")).toBeVisible()
-    await page.getByLabel("Period").selectOption("2026-02")
+    await page.getByLabel("Period", { exact: true }).selectOption("2026-02")
     await expect(page.getByText("₹9,00,000.00")).toBeVisible()
   })
 
   test("Loading state", async ({ page }) => {
     await page.route("**/api/v1/mis/dashboard?**", async (route) => {
-      await page.waitForTimeout(500)
+      await new Promise((resolve) => setTimeout(resolve, 500))
       const url = new URL(route.request().url())
       const period = url.searchParams.get("period") ?? "2026-03"
       await fulfillJson(route, apiResponse(dashboardPayload(period, "1000000.00")))
     })
 
     await page.goto("/mis")
-    await page.getByLabel("Entity").selectOption("entity-001")
-    await expect(page.locator(".animate-pulse").first()).toBeVisible()
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
+    await expect(page.getByRole("region", { name: "MIS report data" })).toHaveAttribute("aria-busy", "true")
   })
 
   test("Error state", async ({ page }) => {
@@ -125,7 +125,7 @@ test.describe("MIS dashboard", () => {
     })
 
     await page.goto("/mis")
-    await page.getByLabel("Entity").selectOption("entity-001")
+    await page.getByLabel("Entity", { exact: true }).selectOption("entity-001")
     await expect(page.getByText("Failed to load MIS dashboard data.")).toBeVisible()
     await expectNotCrashed(page)
   })

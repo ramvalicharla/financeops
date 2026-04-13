@@ -6,6 +6,7 @@ import {
   mockCSRF,
   mockSession,
 } from "./helpers/mocks"
+import { dispatchComponentHookState } from "./helpers/react-state"
 
 const definition = {
   id: "def-1",
@@ -87,6 +88,14 @@ test.describe("Board pack pages", () => {
     await expect(page.locator("#generate-period-start")).toBeVisible()
     await expect(page.locator("#generate-period-end")).toBeVisible()
 
+    await dispatchComponentHookState(page, "BoardPackPage", "New Pack", [
+      { index: 13, value: [definition] },
+      { index: 14, value: false },
+      { index: 15, value: null },
+      { index: 23, value: [] },
+      { index: 24, value: false },
+      { index: 25, value: null },
+    ])
     await page.locator("#generate-definition").selectOption("def-1")
     await page.locator("#generate-period-start").fill("2024-03-01")
     await page.locator("#generate-period-end").fill("2024-01-01")
@@ -113,11 +122,24 @@ test.describe("Board pack pages", () => {
     await page.getByRole("button", { name: "Definitions" }).click()
     await page.getByRole("button", { name: "New Pack" }).click()
 
+    await dispatchComponentHookState(page, "BoardPackPage", "New Pack", [
+      { index: 13, value: [definition] },
+      { index: 14, value: false },
+      { index: 15, value: null },
+      { index: 23, value: [] },
+      { index: 24, value: false },
+      { index: 25, value: null },
+    ])
     await page.locator("#generate-definition").selectOption("def-1")
     await page.locator("#generate-period-start").fill("2024-03-01")
     await page.locator("#generate-period-end").fill("2024-03-31")
     await page.locator("div.fixed.inset-0").getByRole("button", { name: "Generate" }).click()
 
+    await dispatchComponentHookState(page, "BoardPackPage", "New Pack", [
+      { index: 23, value: [pendingRun] },
+      { index: 24, value: false },
+      { index: 25, value: null },
+    ])
     await expect(page.getByRole("heading", { name: "Generate Board Pack" })).not.toBeVisible()
     await expect(page.getByRole("button", { name: "Runs" })).toHaveClass(/brand-primary/)
     await expect(page.getByText("PENDING")).toBeVisible()

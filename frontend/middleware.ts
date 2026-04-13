@@ -67,7 +67,11 @@ const applySecurityHeaders = (
     // Local development often targets changing backends during live testing.
     connectSrc.push("http:", "https:", "ws:", "wss:")
   }
-  const scriptSrc = ["'self'", "'unsafe-inline'"]
+  const scriptSrc = [
+    "'self'",
+    "'unsafe-inline'",
+    "https://static.cloudflareinsights.com",
+  ]
   if (!isProduction) {
     scriptSrc.push("'unsafe-eval'")
   }

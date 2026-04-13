@@ -34,7 +34,7 @@ export function ScenarioComparison({ scenarios }: ScenarioComparisonProps) {
             <p>EBITDA: {formatINR(scenario.summary.ebitda_total)}</p>
             <p>EBITDA Margin: {scenario.summary.ebitda_margin_pct}%</p>
           </div>
-          <div className="mt-3 h-24">
+          <div className="mt-3 w-full h-24">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={scenario.monthly}>
                 <Tooltip />
@@ -53,4 +53,3 @@ export function ScenarioComparison({ scenarios }: ScenarioComparisonProps) {
     </section>
   )
 }
-
