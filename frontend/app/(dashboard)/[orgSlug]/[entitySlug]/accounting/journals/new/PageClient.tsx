@@ -13,6 +13,8 @@ import { useTenantStore } from "@/lib/store/tenant"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { StateBadge } from "@/components/ui/StateBadge"
 import { Button } from "@/components/ui/button"
+import { z } from "zod"
+import { toast } from "sonner"
 
 type DraftLine = {
   tenant_coa_account_id: string
@@ -30,6 +32,34 @@ const asNumber = (value: string): number => {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
 }
+
+const journalSchema = z.object({
+  org_entity_id: z.string({ required_error: "Select an active entity before posting a journal." }).min(1),
+  journal_date: z.string().min(1, "Journal date is required"),
+  reference: z.string().optional(),
+  narration: z.string().optional(),
+  lines: z.array(z.object({
+    tenant_coa_account_id: z.string().min(1, "Account is required on all lines"),
+    account_code: z.string().optional(),
+    debit: z.string().refine(v => asNumber(v) >= 0, "Debit must be non-negative"),
+    credit: z.string().refine(v => asNumber(v) >= 0, "Credit must be non-negative"),
+    memo: z.string().optional(),
+    transaction_currency: z.string().optional(),
+    fx_rate: z.string().optional()
+  })).min(2, "Journal needs at least two lines.")
+}).superRefine((data, ctx) => {
+  // Validate that lines are correctly populated
+  data.lines.forEach((line, index) => {
+    const debit = asNumber(line.debit)
+    const credit = asNumber(line.credit)
+    if (debit > 0 && credit > 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Line ${index + 1} cannot have both debit and credit`, path: ["lines", index] });
+    }
+    if (debit <= 0 && credit <= 0) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Line ${index + 1} must have a debit or credit`, path: ["lines", index] });
+    }
+  });
+})
 
 export default function NewJournalPage() {
   const router = useRouter()
@@ -103,11 +133,12 @@ export default function NewJournalPage() {
   const createMutation = useMutation({
     mutationFn: createGovernedIntent,
     onSuccess: (result) => {
+      toast.success("Journal draft successfully recorded!")
       openIntentPanel(result)
       router.push("/accounting/journals")
     },
     onError: (cause) => {
-      setError(cause instanceof Error ? cause.message : "Failed to create journal")
+      toast.error(cause instanceof Error ? cause.message : "Failed to create journal")
     },
   })
 
@@ -153,21 +184,16 @@ export default function NewJournalPage() {
   }
 
   const submit = (): void => {
-    setError(null)
     if (!activeEntityId) {
-      setError("Select an active entity before posting a journal.")
+      toast.error("Select an active entity before posting a journal.")
       return
     }
     if (!canCreateJournal) {
-      setError(getPermissionDeniedMessage("journal.create"))
-      return
-    }
-    if (lines.length < 2) {
-      setError("Journal needs at least two lines.")
+      toast.error(getPermissionDeniedMessage("journal.create"))
       return
     }
     if (!isBalanced) {
-      setError("Total debit and total credit must match.")
+      toast.error("Total debit and total credit must match.")
       return
     }
 
@@ -180,20 +206,28 @@ export default function NewJournalPage() {
         account,
       }
     })
-    const hasInvalidLine = resolvedLines.some(({ line, accountId, account }) => {
-      const debit = asNumber(line.debit)
-      const credit = asNumber(line.credit)
-      return (
-        !accountId ||
-        !account ||
-        (debit > 0 && credit > 0) ||
-        (debit <= 0 && credit <= 0) ||
-        debit < 0 ||
-        credit < 0
-      )
-    })
-    if (hasInvalidLine) {
-      setError("Choose a valid COA suggestion and enter exactly one debit or credit on each line.")
+
+    const rawData = {
+      org_entity_id: activeEntityId,
+      journal_date: journalDate,
+      reference: reference || undefined,
+      narration: narration || undefined,
+      lines: resolvedLines.map(({ line, accountId, account }) => ({
+        tenant_coa_account_id: accountId ?? undefined,
+        account_code: account?.code,
+        debit: String(asNumber(line.debit)),
+        credit: String(asNumber(line.credit)),
+        memo: line.memo || undefined,
+        transaction_currency: line.transaction_currency ? line.transaction_currency.toUpperCase() : undefined,
+        fx_rate: line.fx_rate ? String(asNumber(line.fx_rate)) : undefined,
+      }))
+    }
+
+    const parseResult = journalSchema.safeParse(rawData)
+    
+    if (!parseResult.success) {
+      const errorStr = parseResult.error.errors.map(e => e.message).join(" • ")
+      toast.error("Validation Failed: " + errorStr)
       return
     }
 
@@ -204,17 +238,7 @@ export default function NewJournalPage() {
         journal_date: journalDate,
         reference: reference || undefined,
         narration: narration || undefined,
-        lines: resolvedLines.map(({ line, accountId, account }) => ({
-          tenant_coa_account_id: accountId ?? undefined,
-          account_code: account?.code,
-          debit: String(asNumber(line.debit)),
-          credit: String(asNumber(line.credit)),
-          memo: line.memo || undefined,
-          transaction_currency: line.transaction_currency
-            ? line.transaction_currency.toUpperCase()
-            : undefined,
-          fx_rate: line.fx_rate ? String(asNumber(line.fx_rate)) : undefined,
-        })),
+        lines: parseResult.data.lines,
       } as CreateJournalPayload,
     }
 
@@ -420,11 +444,7 @@ export default function NewJournalPage() {
         )}
       </section>
 
-      {error ? (
-        <div className="rounded-md border border-rose-400/40 bg-rose-500/10 p-3 text-sm text-rose-300">
-          {error}
-        </div>
-      ) : null}
+
 
       <div className="flex justify-end">
         <Button

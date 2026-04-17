@@ -1,0 +1,41 @@
+import { TableSkeleton } from "@/components/ui/TableSkeleton"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+export default function JournalsLoadingBoundary() {
+  return (
+    <div className="space-y-6 p-6 animate-in fade-in duration-500">
+      <section className="flex flex-col md:flex-row md:items-start justify-between gap-4 rounded-xl border border-border bg-card p-4">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-32" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-9 w-24" />
+          <Skeleton className="h-9 w-28" />
+        </div>
+      </section>
+
+      <div className="rounded-md border border-border shadow-sm overflow-hidden bg-card">
+        <Table>
+          <TableHeader className="bg-muted/50 border-b border-border shadow-sm">
+            <TableRow>
+              <TableHead><Skeleton className="h-4 w-12" /></TableHead>
+              <TableHead><Skeleton className="h-4 w-20" /></TableHead>
+              <TableHead><Skeleton className="h-4 w-24" /></TableHead>
+              <TableHead><Skeleton className="h-4 w-16" /></TableHead>
+              <TableHead><Skeleton className="h-4 w-32" /></TableHead>
+              <TableHead><Skeleton className="h-4 w-16" /></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableSkeleton rows={10} cols={6} />
+        </Table>
+      </div>
+    </div>
+  )
+}

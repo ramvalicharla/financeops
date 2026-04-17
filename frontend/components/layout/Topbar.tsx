@@ -18,6 +18,7 @@ import { EntityLocationSelector } from "@/components/layout/EntityLocationSelect
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { DensitySelector } from "@/components/ui/DensitySelector"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
@@ -429,17 +430,24 @@ export function Topbar({
             Jobs
           </button>
 
-          <button
-            type="button"
-            onClick={openPalette}
-            className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-xs text-muted-foreground hover:text-foreground md:px-3"
-          >
-            <Search className="h-3.5 w-3.5" />
-            <span className="hidden md:inline">Search</span>
-            <span className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] md:inline">
-              Ctrl+K
-            </span>
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={openPalette}
+                className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-xs text-muted-foreground hover:text-foreground md:px-3"
+              >
+                <Search className="h-3.5 w-3.5" />
+                <span className="hidden md:inline">Search</span>
+                <span className="hidden rounded border border-border px-1.5 py-0.5 text-[10px] md:inline">
+                  Ctrl+K
+                </span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p>Launch Command Palette (Ctrl+K)</p>
+            </TooltipContent>
+          </Tooltip>
 
           <NotificationBell onTrigger={() => setProfileOpen(false)} />
 
