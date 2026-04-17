@@ -24,7 +24,6 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
-  CommandShortcut,
 } from "@/components/ui/command"
 import { useTenantStore } from "@/lib/store/tenant"
 
@@ -87,7 +86,7 @@ export function CommandPalette() {
             <CommandItem onSelect={() => navigateTo("/accounting/journals", true)}>
               <FileBarChart className="mr-2 h-4 w-4" />
               <span>Ledger & Journals</span>
-              <CommandShortcut>J</CommandShortcut>
+              <span className="ml-auto text-xs tracking-widest text-muted-foreground">⌘J</span>
             </CommandItem>
             <CommandItem onSelect={() => navigateTo("/accounting/trial-balance", true)}>
               <Calculator className="mr-2 h-4 w-4" />

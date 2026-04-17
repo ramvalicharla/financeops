@@ -256,8 +256,6 @@ export default function ErpConnectorsPage() {
         />
       </section>
 
-      </section>
-
       {testResult ? (
         <section className="rounded-xl border border-border bg-card p-4">
           <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">

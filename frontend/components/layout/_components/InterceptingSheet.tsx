@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Sheet } from "@/components/ui/sheet"
+import { Sheet } from "@/components/ui/Sheet"
 
 interface InterceptingSheetProps {
   title: string

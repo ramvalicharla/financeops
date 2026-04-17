@@ -34,7 +34,7 @@ const asNumber = (value: string): number => {
 }
 
 const journalSchema = z.object({
-  org_entity_id: z.string({ required_error: "Select an active entity before posting a journal." }).min(1),
+  org_entity_id: z.string().min(1, "Select an active entity before posting a journal."),
   journal_date: z.string().min(1, "Journal date is required"),
   reference: z.string().optional(),
   narration: z.string().optional(),
@@ -226,7 +226,7 @@ export default function NewJournalPage() {
     const parseResult = journalSchema.safeParse(rawData)
     
     if (!parseResult.success) {
-      const errorStr = parseResult.error.errors.map(e => e.message).join(" • ")
+      const errorStr = parseResult.error.issues.map(e => e.message).join(" • ")
       toast.error("Validation Failed: " + errorStr)
       return
     }

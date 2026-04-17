@@ -1,5 +1,5 @@
 import { InterceptingSheet } from "@/components/layout/_components/InterceptingSheet"
-import PageClient from "../../../new/PageClient"
+import PageClient from "../../new/PageClient"
 
 export default function CreateJournalModal() {
   return (

@@ -1,5 +1,5 @@
 import { InterceptingSheet } from "@/components/layout/_components/InterceptingSheet"
-import PageClient from "../../../[id]/PageClient"
+import PageClient from "../../[id]/PageClient"
 
 export default function ViewJournalModal({ params }: { params: { id: string } }) {
   return (
