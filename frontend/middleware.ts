@@ -202,7 +202,10 @@ export default auth(async function middleware(request: AuthenticatedRequest) {
     )
   }
 
-  if (request.nextUrl.pathname.startsWith("/admin")) {
+  if (
+    request.nextUrl.pathname.startsWith("/admin") ||
+    request.nextUrl.pathname.startsWith("/control-plane")
+  ) {
     const role = String(session.user.role ?? "")
     if (!["platform_owner", "platform_admin", "super_admin", "admin"].includes(role)) {
       return applySecurityHeaders(

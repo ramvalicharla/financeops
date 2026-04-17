@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
 import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
@@ -173,11 +174,9 @@ const showTrust = userRole === "finance_leader"
     (item) => "children" in item,
   ) as NavigationGroupItem | undefined
   const organizationLabel =
-    contextQuery.isLoading
-      ? "Loading..."
-      : contextQuery.data?.current_organisation.organisation_name ??
-        contextQuery.data?.tenant_slug ??
-        "Unavailable"
+    contextQuery.data?.current_organisation.organisation_name ??
+    contextQuery.data?.tenant_slug ??
+    "Unavailable"
 
   return (
     <>
@@ -214,15 +213,28 @@ const showTrust = userRole === "finance_leader"
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">Organization</p>
-                  <p className="mt-1 text-sm font-semibold text-foreground">{organizationLabel}</p>
+                  {contextQuery.isLoading ? (
+                    <Skeleton className="mt-1 h-5 w-32" />
+                  ) : (
+                    <p className="mt-1 text-sm font-semibold text-foreground">{organizationLabel}</p>
+                  )}
                 </div>
                 <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                   Backend
                 </span>
               </div>
               <div className="mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3 text-sm text-muted-foreground">
-                <p>Entity: {contextQuery.data?.current_entity.entity_name ?? "Unavailable"}</p>
-                <p>Workspace: {contextQuery.data?.current_module.module_name ?? "Unavailable"}</p>
+                {contextQuery.isLoading ? (
+                  <>
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-32" />
+                  </>
+                ) : (
+                  <>
+                    <p>Entity: {contextQuery.data?.current_entity.entity_name ?? "Unavailable"}</p>
+                    <p>Workspace: {contextQuery.data?.current_module.module_name ?? "Unavailable"}</p>
+                  </>
+                )}
               </div>
             </div>
           </div>

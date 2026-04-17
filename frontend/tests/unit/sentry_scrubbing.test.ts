@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { scrubSentryEvent } from "../../sentry.client.config"
+import { scrubSentryEvent } from "../../sentry.shared"
 
 describe("sentry scrubbing", () => {
   it("beforeSend removes Authorization header from Sentry events.", () => {

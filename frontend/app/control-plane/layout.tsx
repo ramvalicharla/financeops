@@ -46,6 +46,14 @@ export default async function ControlPlaneLayout({
     redirect("/login")
   }
 
+  const role = String(user.role ?? "")
+  if (
+    !isE2EBypass &&
+    !["platform_owner", "platform_admin", "super_admin", "admin"].includes(role)
+  ) {
+    redirect("/dashboard")
+  }
+
   const tenantSlugHeader = requestHeaders.get("x-tenant-slug")
   const tenantSlug = tenantSlugHeader || user.tenant_slug || "dev"
 

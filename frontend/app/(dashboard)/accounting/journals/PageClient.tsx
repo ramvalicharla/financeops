@@ -1,16 +1,11 @@
 "use client"
 
 import Link from "next/link"
-import { useSession } from "next-auth/react"
 import { JournalList } from "@/components/journals/JournalList"
 import { Button } from "@/components/ui/button"
-import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
+import { ActionGuard } from "@/components/auth/ActionGuard"
 
 export default function JournalsPage() {
-  const { data: session } = useSession()
-  const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
-  const canCreateJournal = canPerformAction("journal.create", userRole)
-
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3">
@@ -24,15 +19,11 @@ export default function JournalsPage() {
           <Link href="/accounting/trial-balance">
             <Button variant="outline">Trial Balance</Button>
           </Link>
-          {canCreateJournal ? (
+          <ActionGuard action="journal.create">
             <Link href="/accounting/journals/new">
               <Button>Create Journal</Button>
             </Link>
-          ) : (
-            <Button disabled title={getPermissionDeniedMessage("journal.create")}>
-              Create Journal
-            </Button>
-          )}
+          </ActionGuard>
         </div>
       </header>
 

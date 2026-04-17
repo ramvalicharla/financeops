@@ -2,7 +2,7 @@
 
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios"
 import { signOut } from "next-auth/react"
-import * as Sentry from "@sentry/nextjs"
+import * as Sentry from "@sentry/browser"
 import { ZodError, type ZodType } from "zod"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
