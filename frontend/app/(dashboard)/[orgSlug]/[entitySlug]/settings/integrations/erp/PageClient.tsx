@@ -21,6 +21,8 @@ import {
 } from "@/lib/ui-access"
 import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
+import { DataGrid } from "@/components/ui/data-grid"
+import type { ColumnDef } from "@tanstack/react-table"
 
 const ERP_TYPES = ["TALLY", "ZOHO", "QUICKBOOKS", "SAP", "ORACLE", "MANUAL"] as const
 const AUTH_TYPES: ErpAuthType[] = ["API_KEY", "OAUTH", "BASIC"]
@@ -97,6 +99,66 @@ export default function ErpConnectorsPage() {
     testMutation.error?.message ??
     statusMutation.error?.message ??
     null
+
+  const columns = useMemo<ColumnDef<any>[]>(
+    () => [
+      {
+        accessorKey: "erp_type",
+        header: "ERP",
+      },
+      {
+        accessorKey: "org_entity_id",
+        header: "Entity",
+        cell: ({ row }) => <span className="font-mono text-xs">{row.original.org_entity_id}</span>,
+      },
+      {
+        accessorKey: "auth_type",
+        header: "Auth",
+      },
+      {
+        accessorKey: "status",
+        header: "Status",
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => {
+          const connector = row.original
+          return (
+            <div className="space-x-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => testMutation.mutate(connector.id)}
+                disabled={!canUpdateConnector}
+                title={!canUpdateConnector ? getPermissionDeniedMessage("erp.connectors.update") : undefined}
+                type="button"
+              >
+                Test
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  statusMutation.mutate({
+                    connectorId: connector.id,
+                    status: connector.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
+                  })
+                }
+                disabled={!canUpdateConnector}
+                title={!canUpdateConnector ? getPermissionDeniedMessage("erp.connectors.update") : undefined}
+                type="button"
+              >
+                {connector.status === "ACTIVE" ? "Deactivate" : "Activate"}
+              </Button>
+            </div>
+          )
+        },
+      },
+    ],
+    [canUpdateConnector, testMutation, statusMutation]
+  )
+
   const accessErrorMessage = getAccessErrorMessage(
     connectorsQuery.error ??
       createMutation.error ??
@@ -187,64 +249,13 @@ export default function ErpConnectorsPage() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-xl border border-border bg-card">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-border text-sm">
-            <thead className="bg-muted/30">
-              <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                <th className="px-4 py-2">ERP</th>
-                <th className="px-4 py-2">Entity</th>
-                <th className="px-4 py-2">Auth</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {(connectorsQuery.data ?? []).map((connector) => (
-                <tr key={connector.id}>
-                  <td className="px-4 py-2">{connector.erp_type}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{connector.org_entity_id}</td>
-                  <td className="px-4 py-2">{connector.auth_type}</td>
-                  <td className="px-4 py-2">{connector.status}</td>
-                  <td className="space-x-2 px-4 py-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => testMutation.mutate(connector.id)}
-                      disabled={!canUpdateConnector}
-                      title={!canUpdateConnector ? getPermissionDeniedMessage("erp.connectors.update") : undefined}
-                      type="button"
-                    >
-                      Test
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        statusMutation.mutate({
-                          connectorId: connector.id,
-                          status: connector.status === "ACTIVE" ? "INACTIVE" : "ACTIVE",
-                        })
-                      }
-                      disabled={!canUpdateConnector}
-                      title={!canUpdateConnector ? getPermissionDeniedMessage("erp.connectors.update") : undefined}
-                      type="button"
-                    >
-                      {connector.status === "ACTIVE" ? "Deactivate" : "Activate"}
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-              {!connectorsQuery.isLoading && !connectorsQuery.data?.length && !pageErrorMessage ? (
-                <tr>
-                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                    No ERP connectors configured yet.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
+      <section>
+        <DataGrid 
+          columns={columns} 
+          data={connectorsQuery.data ?? []} 
+        />
+      </section>
+
       </section>
 
       {testResult ? (

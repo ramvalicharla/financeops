@@ -15,6 +15,7 @@ interface DashboardShellProps {
  */
 export function DashboardShell({ children }: DashboardShellProps) {
   const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed)
+  const density = useUIStore((state) => state.density)
 
   return (
     <div
@@ -22,6 +23,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
         "flex h-full flex-col transition-all duration-200",
         sidebarCollapsed ? "md:pl-14" : "md:pl-60",
       )}
+      data-density={density}
     >
       {children}
     </div>

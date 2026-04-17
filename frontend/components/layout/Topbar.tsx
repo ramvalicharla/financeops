@@ -17,6 +17,7 @@ import { useSearch } from "@/components/search/SearchProvider"
 import { EntityLocationSelector } from "@/components/layout/EntityLocationSelector"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
+import { DensitySelector } from "@/components/ui/DensitySelector"
 import { Button } from "@/components/ui/button"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
@@ -407,7 +408,10 @@ export function Topbar({
 
         <div className="flex items-center gap-3">
           <EntityLocationSelector />
-          <ScaleSelector value={scale} onChange={setScale} size="sm" />
+          <div className="flex items-center gap-2 border-r border-border pr-3">
+            <DensitySelector />
+            <ScaleSelector value={scale} onChange={setScale} size="sm" />
+          </div>
 
           <button
             type="button"

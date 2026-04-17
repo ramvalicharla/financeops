@@ -6,6 +6,7 @@ import { createJSONStorage, persist } from "zustand/middleware"
 interface UIState {
   sidebarOpen: boolean
   sidebarCollapsed: boolean
+  density: "comfortable" | "compact"
   activePeriod: string
   notificationCount: number
   notificationItems: Array<{
@@ -18,6 +19,7 @@ interface UIState {
   toggleSidebar: () => void
   closeSidebar: () => void
   toggleSidebarCollapsed: () => void
+  setDensity: (density: "comfortable" | "compact") => void
   setActivePeriod: (period: string) => void
   setNotificationCount: (count: number) => void
   setNotificationItems: (
@@ -36,6 +38,7 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       sidebarOpen: true,
       sidebarCollapsed: false,
+      density: "comfortable",
       activePeriod: new Date().toISOString().slice(0, 7),
       notificationCount: 0,
       notificationItems: [],
@@ -46,6 +49,7 @@ export const useUIStore = create<UIState>()(
       closeSidebar: () => set({ sidebarOpen: false }),
       toggleSidebarCollapsed: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      setDensity: (density) => set({ density }),
       setActivePeriod: (period) => set({ activePeriod: period }),
       setNotificationCount: (count) => set({ notificationCount: count }),
       setNotificationItems: (items) =>
@@ -66,6 +70,7 @@ export const useUIStore = create<UIState>()(
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
         sidebarCollapsed: state.sidebarCollapsed,
+        density: state.density,
         activePeriod: state.activePeriod,
         notificationCount: state.notificationCount,
         notificationItems: state.notificationItems,
