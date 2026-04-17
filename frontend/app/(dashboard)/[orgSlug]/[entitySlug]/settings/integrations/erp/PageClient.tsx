@@ -28,8 +28,7 @@ const AUTH_TYPES: ErpAuthType[] = ["API_KEY", "OAUTH", "BASIC"]
 export default function ErpConnectorsPage() {
   const { data: session } = useSession()
   const queryClient = useQueryClient()
-  const entityRoles = useTenantStore((state) => state.entity_roles)
-  const defaultEntityId = entityRoles.at(0)?.entity_id ?? ""
+  const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const entitlementsQuery = useCurrentEntitlements({
     enabled: Boolean(session?.user?.tenant_id),
   })
@@ -46,7 +45,7 @@ export default function ErpConnectorsPage() {
     accessContext,
   )
 
-  const [orgEntityId, setOrgEntityId] = useState(defaultEntityId)
+
   const [erpType, setErpType] = useState<(typeof ERP_TYPES)[number]>("TALLY")
   const [authType, setAuthType] = useState<ErpAuthType>("API_KEY")
   const [credentialsJson, setCredentialsJson] = useState("{\n  \"api_key\": \"\"\n}")
@@ -67,7 +66,7 @@ export default function ErpConnectorsPage() {
         credentials = {}
       }
       return createErpConnector({
-        org_entity_id: orgEntityId,
+        org_entity_id: activeEntityId ?? "",
         erp_type: erpType,
         auth_type: authType,
         connection_config: { credentials },
@@ -91,7 +90,7 @@ export default function ErpConnectorsPage() {
     },
   })
 
-  const canCreate = useMemo(() => Boolean(orgEntityId), [orgEntityId])
+  const canCreate = useMemo(() => Boolean(activeEntityId), [activeEntityId])
   const pageErrorMessage =
     connectorsQuery.error?.message ??
     createMutation.error?.message ??
@@ -143,19 +142,7 @@ export default function ErpConnectorsPage() {
           New Connector
         </h2>
         <div className="grid gap-3 md:grid-cols-3">
-          <select
-            value={orgEntityId}
-            onChange={(event) => setOrgEntityId(event.target.value)}
-            disabled={!canCreateConnector}
-            className="rounded-md border border-border bg-background px-3 py-2 text-sm"
-          >
-            <option value="">Select entity</option>
-            {entityRoles.map((entity) => (
-              <option key={entity.entity_id} value={entity.entity_id}>
-                {entity.entity_name}
-              </option>
-            ))}
-          </select>
+
           <select
             value={erpType}
             onChange={(event) => setErpType(event.target.value as (typeof ERP_TYPES)[number])}
