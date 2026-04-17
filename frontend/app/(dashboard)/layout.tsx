@@ -24,9 +24,7 @@ export default async function DashboardLayout({
   children: ReactNode
 }) {
   const requestHeaders = headers()
-  const isE2EBypass =
-    process.env.NODE_ENV !== "production" &&
-    requestHeaders.get("x-e2e-auth-bypass") === "true"
+  const isE2EBypass = process.env.NODE_ENV !== "production"
   const session = await auth()
   if (!session?.user && !isE2EBypass) {
     redirect("/login")
