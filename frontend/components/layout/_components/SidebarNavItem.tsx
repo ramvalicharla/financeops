@@ -3,6 +3,7 @@
 import Link from "next/link"
 import type { NavigationLeafItem } from "@/lib/config/navigation"
 import { useUIStore } from "@/lib/store/ui"
+import { useTenantStore } from "@/lib/store/tenant"
 import { cn } from "@/lib/utils"
 
 interface SidebarNavItemProps {
@@ -22,11 +23,21 @@ export function SidebarNavItem({
 }: SidebarNavItemProps) {
   const Icon = item.icon
   const collapsed = useUIStore((state) => state.sidebarCollapsed)
+  const orgSlug = useTenantStore((state) => state.tenant_slug) ?? ""
+  const entitySlug = useTenantStore((state) => state.active_entity_id) ?? ""
+
+  // Transform static hrefs for module pathways that have been migrated to the context-locked layout
+  let targetHref = item.href
+  if (targetHref.startsWith("/accounting") || targetHref.startsWith("/settings/integrations/erp")) {
+    if (orgSlug && entitySlug) {
+      targetHref = `/${orgSlug}/${entitySlug}${targetHref}`
+    }
+  }
 
   if (collapsed) {
     return (
       <Link
-        href={item.href}
+        href={targetHref}
         onClick={onClick}
         title={item.label}
         aria-label={item.label}
@@ -44,8 +55,8 @@ export function SidebarNavItem({
 
   return (
     <Link
-      key={item.href}
-      href={item.href}
+      key={targetHref}
+      href={targetHref}
       onClick={onClick}
       title={item.label}
       className={cn(
