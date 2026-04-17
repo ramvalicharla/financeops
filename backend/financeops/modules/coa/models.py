@@ -44,6 +44,11 @@ class CoaUploadMode(str, enum.Enum):
     VALIDATE_ONLY = "VALIDATE_ONLY"
 
 
+class CoaBatchConfirmationStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+
+
 class CoaIndustryTemplate(Base):
     __tablename__ = "coa_industry_templates"
     __table_args__ = (
@@ -557,6 +562,12 @@ class CoaUploadBatch(Base):
         server_default=text("'PENDING'::coa_upload_status_enum"),
         default=CoaUploadStatus.PENDING,
     )
+    confirmation_status: Mapped[CoaBatchConfirmationStatus] = mapped_column(
+        Enum(CoaBatchConfirmationStatus, name="coa_batch_confirmation_status_enum"),
+        nullable=False,
+        server_default=text("'PENDING'::coa_batch_confirmation_status_enum"),
+        default=CoaBatchConfirmationStatus.PENDING,
+    )
     error_log: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -631,6 +642,7 @@ __all__ = [
     "CoaSourceType",
     "CoaUploadStatus",
     "CoaUploadMode",
+    "CoaBatchConfirmationStatus",
     "CoaIndustryTemplate",
     "CoaFsClassification",
     "CoaFsSchedule",

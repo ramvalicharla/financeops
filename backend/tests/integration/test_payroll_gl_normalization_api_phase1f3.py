@@ -20,12 +20,12 @@ from tests.integration.normalization_phase1f3_helpers import (
 @pytest.mark.integration
 async def test_detect_endpoint_requires_context_token(
     async_client: AsyncClient,
-    test_access_token: str,
+    api_test_access_token: str,
 ) -> None:
     response = await async_client.post(
         "/api/v1/normalization/sources/detect",
         headers={
-            "Authorization": f"Bearer {test_access_token}",
+            "Authorization": f"Bearer {api_test_access_token}",
             "X-Control-Plane-Token": "",
         },
         json={
@@ -45,20 +45,20 @@ async def test_detect_endpoint_requires_context_token(
 @pytest.mark.integration
 async def test_detect_endpoint_requires_module_enablement(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     await seed_control_plane_for_normalization(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
         enable_module=False,
         grant_permissions=True,
     )
     response = await async_client.post(
         "/api/v1/normalization/sources/detect",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
             "source_code": "payroll_api_detect_mod_disabled",
             "file_name": "payroll.csv",
@@ -76,22 +76,22 @@ async def test_detect_endpoint_requires_module_enablement(
 @pytest.mark.integration
 async def test_upload_endpoint_requires_rbac_permission(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     await seed_control_plane_for_normalization(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
         enable_module=True,
         grant_permissions=False,
     )
     response = await async_client.post(
         "/api/v1/normalization/runs/upload",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "source_id": str(uuid.uuid4()),
             "source_version_id": str(uuid.uuid4()),
             "run_type": "payroll_normalization",
@@ -111,27 +111,27 @@ async def test_upload_endpoint_requires_rbac_permission(
 @pytest.mark.integration
 async def test_finalize_endpoint_denies_wrong_tenant_access(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     tenant_b = uuid.uuid4()
     user_b = uuid.uuid4()
     await seed_identity_user(
-        async_session,
+        api_db_session,
         tenant_id=tenant_b,
         user_id=user_b,
         email="norm_b@example.com",
     )
     await seed_control_plane_for_normalization(
-        async_session,
+        api_db_session,
         tenant_id=tenant_b,
         user_id=user_b,
         enable_module=True,
         grant_permissions=True,
     )
-    await ensure_tenant_context(async_session, tenant_b)
-    service_b = build_normalization_service(async_session)
+    await ensure_tenant_context(api_db_session, tenant_b)
+    service_b = build_normalization_service(api_db_session)
     committed = await service_b.commit_source_version(
         tenant_id=tenant_b,
         organisation_id=tenant_b,
@@ -169,15 +169,15 @@ async def test_finalize_endpoint_denies_wrong_tenant_access(
     )
 
     await seed_control_plane_for_normalization(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
         enable_module=True,
         grant_permissions=True,
     )
     response = await async_client.post(
         f"/api/v1/normalization/runs/{validated['run_id']}/finalize",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code in (403, 404)
 
@@ -186,27 +186,27 @@ async def test_finalize_endpoint_denies_wrong_tenant_access(
 @pytest.mark.integration
 async def test_normalized_lines_endpoint_returns_only_tenant_scoped_data(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     tenant_b = uuid.uuid4()
     user_b = uuid.uuid4()
     await seed_identity_user(
-        async_session,
+        api_db_session,
         tenant_id=tenant_b,
         user_id=user_b,
         email="norm_lines_b@example.com",
     )
     await seed_control_plane_for_normalization(
-        async_session,
+        api_db_session,
         tenant_id=tenant_b,
         user_id=user_b,
         enable_module=True,
         grant_permissions=True,
     )
-    await ensure_tenant_context(async_session, tenant_b)
-    service_b = build_normalization_service(async_session)
+    await ensure_tenant_context(api_db_session, tenant_b)
+    service_b = build_normalization_service(api_db_session)
     committed = await service_b.commit_source_version(
         tenant_id=tenant_b,
         organisation_id=tenant_b,
@@ -238,15 +238,15 @@ async def test_normalized_lines_endpoint_returns_only_tenant_scoped_data(
         created_by=user_b,
     )
     await seed_control_plane_for_normalization(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
         enable_module=True,
         grant_permissions=True,
     )
     response = await async_client.get(
         f"/api/v1/normalization/runs/{uploaded['run_id']}/payroll-lines",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code in (200, 404)
     if response.status_code == 200:
@@ -257,22 +257,22 @@ async def test_normalized_lines_endpoint_returns_only_tenant_scoped_data(
 @pytest.mark.integration
 async def test_normalization_upload_allow_path(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     await seed_control_plane_for_normalization(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
         enable_module=True,
         grant_permissions=True,
     )
     commit = await async_client.post(
         "/api/v1/normalization/sources/commit-version",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "source_family": "payroll",
             "source_code": f"allow_{uuid.uuid4().hex[:8]}",
             "source_name": "Allow Source",
@@ -289,9 +289,9 @@ async def test_normalization_upload_allow_path(
     payload = commit.json()["data"]
     upload = await async_client.post(
         "/api/v1/normalization/runs/upload",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "source_id": payload["source_id"],
             "source_version_id": payload["source_version_id"],
             "run_type": "payroll_normalization",
@@ -310,7 +310,7 @@ async def test_normalization_upload_allow_path(
 
     validate = await async_client.post(
         f"/api/v1/normalization/runs/{upload_payload['run_id']}/validate",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert validate.status_code == 200
     validate_payload = validate.json()["data"]
@@ -319,14 +319,14 @@ async def test_normalization_upload_allow_path(
     if validate_payload["run_status"] == "validated":
         finalize = await async_client.post(
             f"/api/v1/normalization/runs/{validate_payload['run_id']}/finalize",
-            headers={"Authorization": f"Bearer {test_access_token}"},
+            headers={"Authorization": f"Bearer {api_test_access_token}"},
         )
         assert finalize.status_code == 200
     assert finalize.json()["data"]["run_status"] == "finalized"
 
     summary = await async_client.get(
         f"/api/v1/normalization/runs/{upload_payload['run_id']}/summary",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert summary.status_code == 200
     assert summary.json()["data"]["payroll_line_count"] >= 1

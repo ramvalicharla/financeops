@@ -15,6 +15,7 @@ from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.budgeting.service import (
     approve_budget as _approve_budget,
     create_budget_version as _create_budget_version,
+    submit_budget as _submit_budget,
     upsert_budget_line as _upsert_budget_line,
 )
 from financeops.modules.forecasting.models import ForecastAssumption, ForecastLineItem, ForecastRun
@@ -51,6 +52,11 @@ async def upsert_budget_line(*args, **kwargs):
 async def approve_budget(*args, **kwargs):
     with governed_mutation_context(_governed_context("APPROVE_BUDGET_VERSION")):
         return await _approve_budget(*args, **kwargs)
+
+
+async def submit_budget(*args, **kwargs):
+    with governed_mutation_context(_governed_context("SUBMIT_BUDGET_VERSION")):
+        return await _submit_budget(*args, **kwargs)
 
 
 async def create_forecast_run(*args, **kwargs):
@@ -127,6 +133,7 @@ async def _create_approved_budget(async_session: AsyncSession, test_user: IamUse
         mis_category="Cost of Revenue",
         monthly_values=[Decimal("600000.00")] * 12,
     )
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
 
@@ -381,10 +388,10 @@ async def test_forecast_lower_than_budget_negative_variance(async_session: Async
 
 # API (5)
 @pytest.mark.asyncio
-async def test_create_forecast_via_api(async_client: AsyncClient, test_access_token: str) -> None:
+async def test_create_forecast_via_api(async_client: AsyncClient, api_test_access_token: str) -> None:
     response = await async_client.post(
         "/api/v1/forecast",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
             "run_name": "Rolling Forecast",
             "forecast_type": "rolling_12",
@@ -397,10 +404,10 @@ async def test_create_forecast_via_api(async_client: AsyncClient, test_access_to
 
 
 @pytest.mark.asyncio
-async def test_update_assumption_via_api(async_client: AsyncClient, test_access_token: str) -> None:
+async def test_update_assumption_via_api(async_client: AsyncClient, api_test_access_token: str) -> None:
     create_response = await async_client.post(
         "/api/v1/forecast",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
             "run_name": "Rolling Forecast",
             "forecast_type": "rolling_12",
@@ -411,7 +418,7 @@ async def test_update_assumption_via_api(async_client: AsyncClient, test_access_
     run_id = create_response.json()["data"]["run"]["id"]
     response = await async_client.patch(
         f"/api/v1/forecast/{run_id}/assumptions/revenue_growth_pct_monthly",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={"value": "6.500000"},
     )
     assert response.status_code == 200
@@ -419,10 +426,10 @@ async def test_update_assumption_via_api(async_client: AsyncClient, test_access_
 
 
 @pytest.mark.asyncio
-async def test_compute_endpoint_creates_lines(async_client: AsyncClient, test_access_token: str) -> None:
+async def test_compute_endpoint_creates_lines(async_client: AsyncClient, api_test_access_token: str) -> None:
     create_response = await async_client.post(
         "/api/v1/forecast",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
             "run_name": "Rolling Forecast",
             "forecast_type": "rolling_12",
@@ -433,27 +440,33 @@ async def test_compute_endpoint_creates_lines(async_client: AsyncClient, test_ac
     run_id = create_response.json()["data"]["run"]["id"]
     response = await async_client.post(
         f"/api/v1/forecast/{run_id}/compute",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code == 200
     assert response.json()["data"]["line_items_created"] > 0
 
 
 @pytest.mark.asyncio
-async def test_publish_requires_finance_leader(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser) -> None:
-    run = await _create_run(async_session, test_user.tenant_id, test_user.id)
-    employee = IamUser(
-        tenant_id=test_user.tenant_id,
+async def test_publish_requires_finance_leader(
+    async_client: AsyncClient,
+    api_session_factory,
+    api_test_user: IamUser,
+) -> None:
+    async with api_session_factory() as session:
+        run = await _create_run(session, api_test_user.tenant_id, api_test_user.id)
+        employee = IamUser(
+            tenant_id=api_test_user.tenant_id,
         email=f"forecast-emp-{uuid.uuid4().hex[:6]}@example.com",
         hashed_password=hash_password("TestPass123!"),
         full_name="Forecast Emp",
         role=UserRole.employee,
         is_active=True,
         mfa_enabled=False,
-    )
-    async_session.add(employee)
-    await async_session.flush()
-    employee_token = create_access_token(employee.id, employee.tenant_id, employee.role.value)
+        )
+        session.add(employee)
+        await session.flush()
+        employee_token = create_access_token(employee.id, employee.tenant_id, employee.role.value)
+        await session.commit()
     response = await async_client.post(
         f"/api/v1/forecast/{run.id}/publish",
         headers={"Authorization": f"Bearer {employee_token}"},
@@ -462,12 +475,19 @@ async def test_publish_requires_finance_leader(async_client: AsyncClient, async_
 
 
 @pytest.mark.asyncio
-async def test_export_returns_xlsx(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser, test_access_token: str) -> None:
-    run = await _create_run(async_session, test_user.tenant_id, test_user.id)
-    await compute_forecast_lines(async_session, test_user.tenant_id, run.id)
+async def test_export_returns_xlsx(
+    async_client: AsyncClient,
+    api_session_factory,
+    api_test_user: IamUser,
+    api_test_access_token: str,
+) -> None:
+    async with api_session_factory() as session:
+        run = await _create_run(session, api_test_user.tenant_id, api_test_user.id)
+        await compute_forecast_lines(session, api_test_user.tenant_id, run.id)
+        await session.commit()
     response = await async_client.get(
         f"/api/v1/forecast/{run.id}/export",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -475,46 +495,55 @@ async def test_export_returns_xlsx(async_client: AsyncClient, async_session: Asy
 
 # Isolation (3)
 @pytest.mark.asyncio
-async def test_tenant_isolation_forecast_runs(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _create_run(async_session, test_user.tenant_id, test_user.id)
+async def test_tenant_isolation_forecast_runs(api_session_factory, test_user: IamUser) -> None:
     tenant_b = uuid.uuid4()
-    await _create_run(async_session, tenant_b, test_user.id)
-    rows = (
-        await async_session.execute(select(ForecastRun).where(ForecastRun.tenant_id == test_user.tenant_id))
-    ).scalars().all()
+    async with api_session_factory() as session:
+        await _create_run(session, test_user.tenant_id, test_user.id)
+        await _create_run(session, tenant_b, test_user.id)
+        await session.commit()
+    async with api_session_factory() as session:
+        rows = (
+            await session.execute(select(ForecastRun).where(ForecastRun.tenant_id == test_user.tenant_id))
+        ).scalars().all()
     assert rows
     assert all(row.tenant_id == test_user.tenant_id for row in rows)
 
 
 @pytest.mark.asyncio
-async def test_tenant_isolation_forecast_lines(async_session: AsyncSession, test_user: IamUser) -> None:
-    run_a = await _create_run(async_session, test_user.tenant_id, test_user.id)
-    await compute_forecast_lines(async_session, test_user.tenant_id, run_a.id)
+async def test_tenant_isolation_forecast_lines(api_session_factory, test_user: IamUser) -> None:
     tenant_b = uuid.uuid4()
-    run_b = await _create_run(async_session, tenant_b, test_user.id)
-    await compute_forecast_lines(async_session, tenant_b, run_b.id)
-    rows = (
-        await async_session.execute(select(ForecastLineItem).where(ForecastLineItem.tenant_id == test_user.tenant_id))
-    ).scalars().all()
+    async with api_session_factory() as session:
+        run_a = await _create_run(session, test_user.tenant_id, test_user.id)
+        await compute_forecast_lines(session, test_user.tenant_id, run_a.id)
+        run_b = await _create_run(session, tenant_b, test_user.id)
+        await compute_forecast_lines(session, tenant_b, run_b.id)
+        await session.commit()
+    async with api_session_factory() as session:
+        rows = (
+            await session.execute(select(ForecastLineItem).where(ForecastLineItem.tenant_id == test_user.tenant_id))
+        ).scalars().all()
     assert rows
     assert all(row.tenant_id == test_user.tenant_id for row in rows)
 
 
 @pytest.mark.asyncio
-async def test_tenant_isolation_assumptions(async_session: AsyncSession, test_user: IamUser) -> None:
-    run_a = await _create_run(async_session, test_user.tenant_id, test_user.id)
+async def test_tenant_isolation_assumptions(api_session_factory, test_user: IamUser) -> None:
     tenant_b = uuid.uuid4()
-    run_b = await _create_run(async_session, tenant_b, test_user.id)
-    assumptions_a = (
-        await async_session.execute(
-            select(ForecastAssumption).where(ForecastAssumption.forecast_run_id == run_a.id)
-        )
-    ).scalars().all()
-    assumptions_b = (
-        await async_session.execute(
-            select(ForecastAssumption).where(ForecastAssumption.forecast_run_id == run_b.id)
-        )
-    ).scalars().all()
+    async with api_session_factory() as session:
+        run_a = await _create_run(session, test_user.tenant_id, test_user.id)
+        run_b = await _create_run(session, tenant_b, test_user.id)
+        await session.commit()
+    async with api_session_factory() as session:
+        assumptions_a = (
+            await session.execute(
+                select(ForecastAssumption).where(ForecastAssumption.forecast_run_id == run_a.id)
+            )
+        ).scalars().all()
+        assumptions_b = (
+            await session.execute(
+                select(ForecastAssumption).where(ForecastAssumption.forecast_run_id == run_b.id)
+            )
+        ).scalars().all()
     assert assumptions_a and assumptions_b
     assert all(row.tenant_id == test_user.tenant_id for row in assumptions_a)
     assert all(row.tenant_id == tenant_b for row in assumptions_b)

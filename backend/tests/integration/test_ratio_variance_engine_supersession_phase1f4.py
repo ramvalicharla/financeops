@@ -6,9 +6,22 @@ from datetime import date
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from tests.integration.ratio_variance_phase1f4_helpers import ensure_tenant_context
+
+
+async def _local_ratio_session(ratio_phase1f4_db_url: str):
+    engine = create_async_engine(ratio_phase1f4_db_url, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            yield session
+            await session.rollback()
+    finally:
+        await engine.dispose()
 
 
 async def _insert_metric_definition(
@@ -60,149 +73,155 @@ async def _insert_metric_definition(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_metric_definition_allows_linear_supersession(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
-    code = f"MD_{uuid.uuid4().hex[:6]}"
-    v1 = await _insert_metric_definition(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        code=code,
-        supersedes_id=None,
-        status="active",
-        effective_from=date(2026, 1, 1),
-    )
-    v2 = await _insert_metric_definition(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        code=code,
-        supersedes_id=v1,
-        status="candidate",
-        effective_from=date(2026, 2, 1),
-    )
-    assert v2 is not None
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        await ensure_tenant_context(session, tenant_id)
+        code = f"MD_{uuid.uuid4().hex[:6]}"
+        v1 = await _insert_metric_definition(
+            session,
+            tenant_id=tenant_id,
+            organisation_id=tenant_id,
+            code=code,
+            supersedes_id=None,
+            status="active",
+            effective_from=date(2026, 1, 1),
+        )
+        v2 = await _insert_metric_definition(
+            session,
+            tenant_id=tenant_id,
+            organisation_id=tenant_id,
+            code=code,
+            supersedes_id=v1,
+            status="candidate",
+            effective_from=date(2026, 2, 1),
+        )
+        assert v2 is not None
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_metric_definition_rejects_self_cross_branch_and_second_active(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        await ensure_tenant_context(session, tenant_id)
 
-    row_id = uuid.uuid4()
-    with pytest.raises(DBAPIError, match="self-supersession"):
-        await _insert_metric_definition(
-            ratio_phase1f4_session,
+        row_id = uuid.uuid4()
+        with pytest.raises(DBAPIError, match="self-supersession"):
+            await _insert_metric_definition(
+                session,
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                code="MD_SELF",
+                supersedes_id=row_id,
+                status="candidate",
+                effective_from=date(2026, 1, 1),
+                row_id=row_id,
+            )
+            await session.flush()
+        if session.in_transaction():
+            await session.rollback()
+        await session.begin()
+        await ensure_tenant_context(session, tenant_id)
+
+        parent = await _insert_metric_definition(
+            session,
             tenant_id=tenant_id,
             organisation_id=tenant_id,
-            code="MD_SELF",
-            supersedes_id=row_id,
+            code=f"MD_A_{uuid.uuid4().hex[:4]}",
+            supersedes_id=None,
+            status="active",
+            effective_from=date(2026, 1, 1),
+        )
+        with pytest.raises(DBAPIError, match="across metric definition codes"):
+            await _insert_metric_definition(
+                session,
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                code=f"MD_B_{uuid.uuid4().hex[:4]}",
+                supersedes_id=parent,
+                status="candidate",
+                effective_from=date(2026, 2, 1),
+            )
+            await session.flush()
+        if session.in_transaction():
+            await session.rollback()
+        await session.begin()
+        await ensure_tenant_context(session, tenant_id)
+
+        code = f"MD_BRANCH_{uuid.uuid4().hex[:4]}"
+        p = await _insert_metric_definition(
+            session,
+            tenant_id=tenant_id,
+            organisation_id=tenant_id,
+            code=code,
+            supersedes_id=None,
             status="candidate",
             effective_from=date(2026, 1, 1),
-            row_id=row_id,
         )
-        await ratio_phase1f4_session.flush()
-    if ratio_phase1f4_session.in_transaction():
-        await ratio_phase1f4_session.rollback()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
-
-    parent = await _insert_metric_definition(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        code=f"MD_A_{uuid.uuid4().hex[:4]}",
-        supersedes_id=None,
-        status="active",
-        effective_from=date(2026, 1, 1),
-    )
-    with pytest.raises(DBAPIError, match="across metric definition codes"):
         await _insert_metric_definition(
-            ratio_phase1f4_session,
-            tenant_id=tenant_id,
-            organisation_id=tenant_id,
-            code=f"MD_B_{uuid.uuid4().hex[:4]}",
-            supersedes_id=parent,
-            status="candidate",
-            effective_from=date(2026, 2, 1),
-        )
-        await ratio_phase1f4_session.flush()
-    if ratio_phase1f4_session.in_transaction():
-        await ratio_phase1f4_session.rollback()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
-
-    code = f"MD_BRANCH_{uuid.uuid4().hex[:4]}"
-    p = await _insert_metric_definition(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        code=code,
-        supersedes_id=None,
-        status="candidate",
-        effective_from=date(2026, 1, 1),
-    )
-    await _insert_metric_definition(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        code=code,
-        supersedes_id=p,
-        status="candidate",
-        effective_from=date(2026, 2, 1),
-    )
-    with pytest.raises(DBAPIError, match="branching"):
-        await _insert_metric_definition(
-            ratio_phase1f4_session,
+            session,
             tenant_id=tenant_id,
             organisation_id=tenant_id,
             code=code,
             supersedes_id=p,
             status="candidate",
-            effective_from=date(2026, 3, 1),
+            effective_from=date(2026, 2, 1),
         )
-        await ratio_phase1f4_session.flush()
-    if ratio_phase1f4_session.in_transaction():
-        await ratio_phase1f4_session.rollback()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
+        with pytest.raises(DBAPIError, match="branching"):
+            await _insert_metric_definition(
+                session,
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                code=code,
+                supersedes_id=p,
+                status="candidate",
+                effective_from=date(2026, 3, 1),
+            )
+            await session.flush()
+        if session.in_transaction():
+            await session.rollback()
+        await session.begin()
+        await ensure_tenant_context(session, tenant_id)
 
-    active_code = f"MD_ACTIVE_{uuid.uuid4().hex[:4]}"
-    await _insert_metric_definition(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        code=active_code,
-        supersedes_id=None,
-        status="active",
-        effective_from=date(2026, 1, 1),
-    )
-    with pytest.raises(IntegrityError, match="uq_metric_definitions_one_active"):
+        active_code = f"MD_ACTIVE_{uuid.uuid4().hex[:4]}"
         await _insert_metric_definition(
-            ratio_phase1f4_session,
+            session,
             tenant_id=tenant_id,
             organisation_id=tenant_id,
             code=active_code,
             supersedes_id=None,
             status="active",
-            effective_from=date(2026, 2, 1),
+            effective_from=date(2026, 1, 1),
         )
-        await ratio_phase1f4_session.flush()
+        with pytest.raises(IntegrityError, match="uq_metric_definitions_one_active"):
+            await _insert_metric_definition(
+                session,
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                code=active_code,
+                supersedes_id=None,
+                status="active",
+                effective_from=date(2026, 2, 1),
+            )
+            await session.flush()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_variance_trend_materiality_reject_self_supersession(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        await ensure_tenant_context(session, tenant_id)
 
-    with pytest.raises(DBAPIError, match="self-supersession"):
-        row_id = uuid.uuid4()
-        await ratio_phase1f4_session.execute(
+        with pytest.raises(DBAPIError, match="self-supersession"):
+            row_id = uuid.uuid4()
+            await session.execute(
             text(
                 """
                 INSERT INTO variance_definitions
@@ -217,26 +236,27 @@ async def test_variance_trend_materiality_reject_self_supersession(
                    'candidate', :created_by)
                 """
             ),
-            {
-                "id": str(row_id),
-                "tenant_id": str(tenant_id),
-                "chain_hash": "1" * 64,
-                "previous_hash": "0" * 64,
-                "organisation_id": str(tenant_id),
-                "version_token": uuid.uuid4().hex,
-                "effective_from": date(2026, 1, 1),
-                "supersedes_id": str(row_id),
-                "created_by": str(tenant_id),
-            },
-        )
-        await ratio_phase1f4_session.flush()
-    if ratio_phase1f4_session.in_transaction():
-        await ratio_phase1f4_session.rollback()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
+                {
+                    "id": str(row_id),
+                    "tenant_id": str(tenant_id),
+                    "chain_hash": "1" * 64,
+                    "previous_hash": "0" * 64,
+                    "organisation_id": str(tenant_id),
+                    "version_token": uuid.uuid4().hex,
+                    "effective_from": date(2026, 1, 1),
+                    "supersedes_id": str(row_id),
+                    "created_by": str(tenant_id),
+                },
+            )
+            await session.flush()
+        if session.in_transaction():
+            await session.rollback()
+        await session.begin()
+        await ensure_tenant_context(session, tenant_id)
 
-    with pytest.raises(DBAPIError, match="self-supersession"):
-        row_id = uuid.uuid4()
-        await ratio_phase1f4_session.execute(
+        with pytest.raises(DBAPIError, match="self-supersession"):
+            row_id = uuid.uuid4()
+            await session.execute(
             text(
                 """
                 INSERT INTO trend_definitions
@@ -251,26 +271,27 @@ async def test_variance_trend_materiality_reject_self_supersession(
                    :supersedes_id, 'candidate', :created_by)
                 """
             ),
-            {
-                "id": str(row_id),
-                "tenant_id": str(tenant_id),
-                "chain_hash": "1" * 64,
-                "previous_hash": "0" * 64,
-                "organisation_id": str(tenant_id),
-                "version_token": uuid.uuid4().hex,
-                "effective_from": date(2026, 1, 1),
-                "supersedes_id": str(row_id),
-                "created_by": str(tenant_id),
-            },
-        )
-        await ratio_phase1f4_session.flush()
-    if ratio_phase1f4_session.in_transaction():
-        await ratio_phase1f4_session.rollback()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
+                {
+                    "id": str(row_id),
+                    "tenant_id": str(tenant_id),
+                    "chain_hash": "1" * 64,
+                    "previous_hash": "0" * 64,
+                    "organisation_id": str(tenant_id),
+                    "version_token": uuid.uuid4().hex,
+                    "effective_from": date(2026, 1, 1),
+                    "supersedes_id": str(row_id),
+                    "created_by": str(tenant_id),
+                },
+            )
+            await session.flush()
+        if session.in_transaction():
+            await session.rollback()
+        await session.begin()
+        await ensure_tenant_context(session, tenant_id)
 
-    with pytest.raises(DBAPIError, match="self-supersession"):
-        row_id = uuid.uuid4()
-        await ratio_phase1f4_session.execute(
+        with pytest.raises(DBAPIError, match="self-supersession"):
+            row_id = uuid.uuid4()
+            await session.execute(
             text(
                 """
                 INSERT INTO materiality_rules
@@ -283,16 +304,16 @@ async def test_variance_trend_materiality_reject_self_supersession(
                    :effective_from, :supersedes_id, 'candidate', :created_by)
                 """
             ),
-            {
-                "id": str(row_id),
-                "tenant_id": str(tenant_id),
-                "chain_hash": "1" * 64,
-                "previous_hash": "0" * 64,
-                "organisation_id": str(tenant_id),
-                "version_token": uuid.uuid4().hex,
-                "effective_from": date(2026, 1, 1),
-                "supersedes_id": str(row_id),
-                "created_by": str(tenant_id),
-            },
-        )
-        await ratio_phase1f4_session.flush()
+                {
+                    "id": str(row_id),
+                    "tenant_id": str(tenant_id),
+                    "chain_hash": "1" * 64,
+                    "previous_hash": "0" * 64,
+                    "organisation_id": str(tenant_id),
+                    "version_token": uuid.uuid4().hex,
+                    "effective_from": date(2026, 1, 1),
+                    "supersedes_id": str(row_id),
+                    "created_by": str(tenant_id),
+                },
+            )
+            await session.flush()

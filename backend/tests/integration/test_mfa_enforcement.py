@@ -15,23 +15,100 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytest_asyncio
+from fastapi import Request
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
+from financeops.db.rls import clear_tenant_context, set_tenant_context
+from financeops.platform.db.models import CpEntity, CpOrganisation
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 _MFA_REQUIRED_MESSAGE = "MFA is required for this role. Please complete MFA setup."
-
-# A protected endpoint that a platform_owner/admin would normally reach.
 _PROTECTED_URL = "/api/v1/platform/users"
 
 
-# ---------------------------------------------------------------------------
-# helpers
-# ---------------------------------------------------------------------------
+@pytest_asyncio.fixture(scope="session")
+async def engine(test_database_url: str):
+    test_engine = create_async_engine(test_database_url, echo=False, poolclass=NullPool)
+    yield test_engine
+    await test_engine.dispose()
+
+
+@pytest.fixture
+def auth_session_factory(engine):
+    return async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+
+@pytest_asyncio.fixture
+async def async_client(engine) -> AsyncClient:
+    from financeops.api.deps import get_async_session
+    from financeops.main import app
+
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    original_startup_errors = getattr(app.state, "startup_errors", [])
+    original_migration_state = getattr(app.state, "migration_state", None)
+    app.state.startup_errors = []
+    app.state.migration_state = {
+        "status": "ok",
+        "current_revision": "test",
+        "head_revision": "test",
+        "detail": None,
+    }
+
+    async def override_session(request: Request):
+        tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+        if not tenant_id:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                from financeops.core.security import decode_token
+
+                token = auth_header[7:]
+                try:
+                    payload = decode_token(token)
+                except Exception:
+                    payload = {}
+                tenant_id = str(payload.get("tenant_id", "") or "")
+
+        async with session_factory() as session:
+            if tenant_id:
+                await set_tenant_context(session, tenant_id)
+            try:
+                yield session
+            finally:
+                if tenant_id:
+                    try:
+                        await clear_tenant_context(session)
+                    except Exception:
+                        await session.rollback()
+
+    app.dependency_overrides[get_async_session] = override_session
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        yield client
+    app.dependency_overrides.clear()
+    app.state.startup_errors = original_startup_errors
+    app.state.migration_state = original_migration_state
 
 
 def _make_token(user: IamUser) -> str:
@@ -39,27 +116,29 @@ def _make_token(user: IamUser) -> str:
 
 
 def _extract_message(body: dict) -> str:
-    """Extract the error message from either the envelope or a raw detail field."""
-    # Wrapped: {"success": false, "error": {"message": "..."}, ...}
     error = body.get("error")
     if isinstance(error, dict):
         return str(error.get("message", ""))
-    # Raw: {"detail": "..."}
     return str(body.get("detail", ""))
 
 
-async def _make_platform_tenant(session: AsyncSession) -> IamTenant:
-    tid = uuid.uuid4()
+async def _create_tenant(
+    auth_session_factory,
+    *,
+    display_name: str,
+    is_platform_tenant: bool,
+) -> IamTenant:
+    tenant_id = uuid.uuid4()
     record_data = {
-        "display_name": "Platform Tenant",
+        "display_name": display_name,
         "tenant_type": TenantType.direct.value,
         "country": "US",
         "timezone": "UTC",
     }
     tenant = IamTenant(
-        id=tid,
-        tenant_id=tid,
-        display_name="Platform Tenant",
+        id=tenant_id,
+        tenant_id=tenant_id,
+        display_name=display_name,
         tenant_type=TenantType.direct,
         country="US",
         timezone="UTC",
@@ -68,41 +147,73 @@ async def _make_platform_tenant(session: AsyncSession) -> IamTenant:
         previous_hash=GENESIS_HASH,
         org_setup_complete=True,
         org_setup_step=7,
+        is_platform_tenant=is_platform_tenant,
+    )
+    org_payload = {
+        "tenant_id": str(tenant_id),
+        "organisation_code": f"ORG_{tenant_id.hex[:8].upper()}",
+        "organisation_name": f"{display_name} Org",
+    }
+    org = CpOrganisation(
+        tenant_id=tenant_id,
+        organisation_code=org_payload["organisation_code"],
+        organisation_name=org_payload["organisation_name"],
+        parent_organisation_id=None,
+        supersedes_id=None,
+        is_active=True,
+        correlation_id=f"mfa-org-{tenant_id.hex[:12]}",
+        chain_hash=compute_chain_hash(org_payload, GENESIS_HASH),
+        previous_hash=GENESIS_HASH,
+    )
+
+    async with auth_session_factory() as session:
+        session.add(tenant)
+        session.add(org)
+        await session.flush()
+        entity_payload = {
+            "tenant_id": str(tenant_id),
+            "entity_code": f"ENT_{tenant_id.hex[:8].upper()}",
+            "entity_name": f"{display_name} Entity",
+            "organisation_id": str(org.id),
+        }
+        entity = CpEntity(
+            tenant_id=tenant_id,
+            organisation_id=org.id,
+            group_id=None,
+            entity_code=entity_payload["entity_code"],
+            entity_name=entity_payload["entity_name"],
+            base_currency="INR",
+            country_code="IN",
+            status="active",
+            deactivated_at=None,
+            correlation_id=f"mfa-entity-{tenant_id.hex[:12]}",
+            chain_hash=compute_chain_hash(entity_payload, GENESIS_HASH),
+            previous_hash=GENESIS_HASH,
+        )
+        session.add(entity)
+        await session.commit()
+
+    return tenant
+
+
+async def _make_platform_tenant(auth_session_factory) -> IamTenant:
+    return await _create_tenant(
+        auth_session_factory,
+        display_name="Platform Tenant",
         is_platform_tenant=True,
     )
-    session.add(tenant)
-    await session.flush()
-    return tenant
 
 
-async def _make_regular_tenant(session: AsyncSession) -> IamTenant:
-    tid = uuid.uuid4()
-    record_data = {
-        "display_name": "Regular Tenant",
-        "tenant_type": TenantType.direct.value,
-        "country": "US",
-        "timezone": "UTC",
-    }
-    tenant = IamTenant(
-        id=tid,
-        tenant_id=tid,
+async def _make_regular_tenant(auth_session_factory) -> IamTenant:
+    return await _create_tenant(
+        auth_session_factory,
         display_name="Regular Tenant",
-        tenant_type=TenantType.direct,
-        country="US",
-        timezone="UTC",
-        status=TenantStatus.active,
-        chain_hash=compute_chain_hash(record_data, GENESIS_HASH),
-        previous_hash=GENESIS_HASH,
-        org_setup_complete=True,
-        org_setup_step=7,
+        is_platform_tenant=False,
     )
-    session.add(tenant)
-    await session.flush()
-    return tenant
 
 
 async def _make_user(
-    session: AsyncSession,
+    auth_session_factory,
     tenant: IamTenant,
     role: UserRole,
     mfa_enabled: bool,
@@ -119,28 +230,39 @@ async def _make_user(
         mfa_enabled=mfa_enabled,
         force_mfa_setup=force_mfa_setup,
     )
-    session.add(user)
-    await session.flush()
+    async with auth_session_factory() as session:
+        session.add(user)
+        await session.commit()
     return user
 
 
-# ---------------------------------------------------------------------------
-# platform_owner — MFA not enabled → 403 on any protected endpoint
-# ---------------------------------------------------------------------------
+async def _set_user_mfa_enabled(
+    auth_session_factory,
+    *,
+    user_id: uuid.UUID,
+    mfa_enabled: bool,
+) -> None:
+    async with auth_session_factory() as session:
+        await session.execute(
+            update(IamUser)
+            .where(IamUser.id == user_id)
+            .values(mfa_enabled=mfa_enabled)
+        )
+        await session.commit()
 
 
 @pytest.mark.asyncio
 async def test_platform_owner_without_mfa_gets_403(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=False,
-        force_mfa_setup=False,  # flag cleared — hard policy must still fire
+        force_mfa_setup=False,
     )
     token = _make_token(user)
 
@@ -155,11 +277,11 @@ async def test_platform_owner_without_mfa_gets_403(
 @pytest.mark.asyncio
 async def test_platform_owner_without_mfa_403_exact_message(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=False,
@@ -177,11 +299,11 @@ async def test_platform_owner_without_mfa_403_exact_message(
 @pytest.mark.asyncio
 async def test_platform_owner_with_mfa_enabled_passes_mfa_enforcement(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=True,
@@ -192,28 +314,21 @@ async def test_platform_owner_with_mfa_enabled_passes_mfa_enforcement(
         _PROTECTED_URL,
         headers={"Authorization": f"Bearer {token}"},
     )
-    # Must not be rejected with the MFA enforcement error specifically
-    msg = _extract_message(response.json())
-    assert "MFA is required" not in msg
-
-
-# ---------------------------------------------------------------------------
-# platform_admin — same hard enforcement
-# ---------------------------------------------------------------------------
+    assert "MFA is required" not in _extract_message(response.json())
 
 
 @pytest.mark.asyncio
 async def test_platform_admin_without_mfa_gets_403(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_admin,
         mfa_enabled=False,
-        force_mfa_setup=False,  # flag cleared — hard policy must still fire
+        force_mfa_setup=False,
     )
     token = _make_token(user)
 
@@ -228,11 +343,11 @@ async def test_platform_admin_without_mfa_gets_403(
 @pytest.mark.asyncio
 async def test_platform_admin_with_mfa_enabled_passes_mfa_enforcement(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_admin,
         mfa_enabled=True,
@@ -243,24 +358,17 @@ async def test_platform_admin_with_mfa_enabled_passes_mfa_enforcement(
         _PROTECTED_URL,
         headers={"Authorization": f"Bearer {token}"},
     )
-    msg = _extract_message(response.json())
-    assert "MFA is required" not in msg
-
-
-# ---------------------------------------------------------------------------
-# Non-admin roles are NOT subject to the hard MFA policy
-# ---------------------------------------------------------------------------
+    assert "MFA is required" not in _extract_message(response.json())
 
 
 @pytest.mark.asyncio
 async def test_finance_leader_without_mfa_is_not_blocked_by_hard_policy(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    """finance_leader without MFA must not get the hard-policy 403."""
-    tenant = await _make_regular_tenant(async_session)
+    tenant = await _make_regular_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.finance_leader,
         mfa_enabled=False,
@@ -268,31 +376,23 @@ async def test_finance_leader_without_mfa_is_not_blocked_by_hard_policy(
     )
     token = _make_token(user)
 
-    # Use /api/v1/auth/me which a finance_leader can reach
     response = await async_client.get(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"},
     )
-    msg = _extract_message(response.json())
-    assert "MFA is required for this role" not in msg
-
-
-# ---------------------------------------------------------------------------
-# MFA setup bypass paths remain accessible before MFA is complete
-# ---------------------------------------------------------------------------
+    assert "MFA is required for this role" not in _extract_message(response.json())
 
 
 @pytest.mark.asyncio
 async def test_platform_owner_can_reach_mfa_setup_endpoint(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    """The /api/v1/auth/mfa/setup endpoint must not be blocked by hard-enforce."""
     from financeops.api.v1.auth import generate_mfa_setup_token
 
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=False,
@@ -304,19 +404,17 @@ async def test_platform_owner_can_reach_mfa_setup_endpoint(
         "/api/v1/auth/mfa/setup",
         headers={"Authorization": f"Bearer {setup_token}"},
     )
-    # Must not be the MFA enforcement 403
     assert _extract_message(response.json()) != _MFA_REQUIRED_MESSAGE
 
 
 @pytest.mark.asyncio
 async def test_mfa_enforcement_does_not_block_auth_me(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    """/api/v1/auth/me is in the bypass list and must remain accessible."""
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=False,
@@ -327,35 +425,22 @@ async def test_mfa_enforcement_does_not_block_auth_me(
         "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {token}"},
     )
-    # /api/v1/auth/me is bypassed — should succeed (200) for a valid token
     assert response.status_code == 200
     assert "MFA is required" not in _extract_message(response.json())
-
-
-# ---------------------------------------------------------------------------
-# Flag-clearing bypass scenario — the key regression test
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_clearing_force_mfa_setup_flag_does_not_bypass_hard_policy(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    """
-    Core regression test.
-
-    Before this change, a platform_owner could bypass MFA by having force_mfa_setup
-    cleared in the DB (e.g. via a direct SQL update).  The hard policy must reject
-    them regardless of that flag.
-    """
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=False,
-        force_mfa_setup=False,  # simulates DB flag having been cleared
+        force_mfa_setup=False,
     )
     token = _make_token(user)
 
@@ -370,37 +455,57 @@ async def test_clearing_force_mfa_setup_flag_does_not_bypass_hard_policy(
 @pytest.mark.asyncio
 async def test_enabling_mfa_lifts_the_403_block(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
-    """
-    After mfa_enabled is set True on the user record, the same JWT must be able
-    to pass the MFA enforcement gate (the user record is re-read from DB on every
-    request — the JWT does not carry mfa_enabled).
-    """
-    tenant = await _make_platform_tenant(async_session)
+    tenant = await _make_platform_tenant(auth_session_factory)
     user = await _make_user(
-        async_session,
+        auth_session_factory,
         tenant,
         UserRole.platform_owner,
         mfa_enabled=False,
     )
     token = _make_token(user)
 
-    # Step 1 — blocked before MFA enabled
-    r1 = await async_client.get(
+    first = await async_client.get(
         _PROTECTED_URL,
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert r1.status_code == 403
-    assert "MFA is required" in _extract_message(r1.json())
+    assert first.status_code == 403
+    assert "MFA is required" in _extract_message(first.json())
 
-    # Step 2 — enable MFA directly on the user record
-    user.mfa_enabled = True
-    await async_session.flush()
+    await _set_user_mfa_enabled(
+        auth_session_factory,
+        user_id=user.id,
+        mfa_enabled=True,
+    )
 
-    # Step 3 — same token, same endpoint, must NOT be the MFA enforcement 403
-    r2 = await async_client.get(
+    second = await async_client.get(
         _PROTECTED_URL,
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert "MFA is required" not in _extract_message(r2.json())
+    assert "MFA is required" not in _extract_message(second.json())
+
+
+@pytest.mark.asyncio
+async def test_mfa_user_state_persisted_for_followup_reads(
+    auth_session_factory,
+) -> None:
+    tenant = await _make_platform_tenant(auth_session_factory)
+    user = await _make_user(
+        auth_session_factory,
+        tenant,
+        UserRole.platform_owner,
+        mfa_enabled=False,
+    )
+
+    await _set_user_mfa_enabled(
+        auth_session_factory,
+        user_id=user.id,
+        mfa_enabled=True,
+    )
+
+    async with auth_session_factory() as session:
+        refreshed = (
+            await session.execute(select(IamUser).where(IamUser.id == user.id))
+        ).scalar_one()
+    assert refreshed.mfa_enabled is True

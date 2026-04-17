@@ -4,12 +4,25 @@ import logging
 import uuid
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
-from financeops.db.models.gst import GstReturn, GstReconItem
+from financeops.db.models.gst import GstReconItem, GstReturn, GstReturnLineItem
+from financeops.modules.gst_reconciliation.application.gst_service import (
+    get_gst_rate_master as load_gst_rate_master,
+)
+from financeops.modules.gst_reconciliation.application.gstn_import_service import (
+    ParsedGstReturnLineItem,
+    parse_gstr1_json,
+    parse_gstr2b_json,
+)
+from financeops.modules.gst_reconciliation.application.invoice_match_service import (
+    GstMatchContext,
+    build_recon_items,
+)
 from financeops.platform.db.models.entities import CpEntity
 from financeops.platform.db.models.organisations import CpOrganisation
 from financeops.utils.chain_hash import GENESIS_HASH
@@ -26,6 +39,10 @@ RECONCILABLE_FIELDS = [
     "cess_amount",
     "total_tax",
 ]
+
+
+async def get_gst_rate_master(session: AsyncSession) -> frozenset[Decimal]:
+    return await load_gst_rate_master(session)
 
 
 async def _resolve_or_create_entity(
@@ -195,32 +212,24 @@ async def run_gst_reconciliation(
     Creates GstReconItem for each field where values differ.
     """
     require_mutation_context("GST reconciliation run")
-    # Fetch the two returns
-    criteria = [
-        GstReturn.tenant_id == tenant_id,
-        GstReturn.period_year == period_year,
-        GstReturn.period_month == period_month,
-    ]
-    if entity_id is not None:
-        criteria.append(GstReturn.entity_id == entity_id)
-    elif entity_name:
-        criteria.append(GstReturn.entity_name == entity_name)
-
-    result_a = await session.execute(
-        select(GstReturn)
-        .where(*criteria, GstReturn.return_type == return_type_a)
-        .order_by(desc(GstReturn.created_at))
-        .limit(1)
+    return_a = await _latest_return(
+        session,
+        tenant_id=tenant_id,
+        period_year=period_year,
+        period_month=period_month,
+        entity_id=entity_id,
+        entity_name=entity_name,
+        return_type=return_type_a,
     )
-    return_a = result_a.scalar_one_or_none()
-
-    result_b = await session.execute(
-        select(GstReturn)
-        .where(*criteria, GstReturn.return_type == return_type_b)
-        .order_by(desc(GstReturn.created_at))
-        .limit(1)
+    return_b = await _latest_return(
+        session,
+        tenant_id=tenant_id,
+        period_year=period_year,
+        period_month=period_month,
+        entity_id=entity_id,
+        entity_name=entity_name,
+        return_type=return_type_b,
     )
-    return_b = result_b.scalar_one_or_none()
 
     if return_a is None or return_b is None:
         log.warning(
@@ -230,6 +239,18 @@ async def run_gst_reconciliation(
             str(entity_id or entity_name or ""),
         )
         return []
+
+    lines_a = await _list_return_line_items(session, tenant_id=tenant_id, gst_return_id=return_a.id)
+    lines_b = await _list_return_line_items(session, tenant_id=tenant_id, gst_return_id=return_b.id)
+    if lines_a or lines_b:
+        return await _run_line_item_reconciliation(
+            session,
+            return_a=return_a,
+            return_b=return_b,
+            lines_a=lines_a,
+            lines_b=lines_b,
+            run_by=run_by,
+        )
 
     items: list[GstReconItem] = []
     for field_name in RECONCILABLE_FIELDS:
@@ -283,6 +304,54 @@ async def run_gst_reconciliation(
         period_year, period_month, len(items),
     )
     return items
+
+
+async def import_gst_return_json(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    period_year: int,
+    period_month: int,
+    gstin: str,
+    return_type: str,
+    json_data: dict[str, Any],
+    created_by: uuid.UUID,
+    entity_id: uuid.UUID | None = None,
+    entity_name: str | None = None,
+    location_id: uuid.UUID | None = None,
+    cost_centre_id: uuid.UUID | None = None,
+    notes: str | None = None,
+) -> GstReturn:
+    require_mutation_context("GST return import")
+    parsed_items = _parse_import_payload(return_type=return_type, json_data=json_data)
+    totals = _aggregate_totals(parsed_items)
+    gst_return = await create_gst_return(
+        session,
+        tenant_id=tenant_id,
+        period_year=period_year,
+        period_month=period_month,
+        entity_id=entity_id,
+        entity_name=entity_name,
+        gstin=gstin,
+        return_type=return_type,
+        taxable_value=totals["taxable_value"],
+        igst_amount=totals["igst_amount"],
+        cgst_amount=totals["cgst_amount"],
+        sgst_amount=totals["sgst_amount"],
+        cess_amount=totals["cess_amount"],
+        created_by=created_by,
+        filing_date=None,
+        notes=notes,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
+    )
+    await _append_return_line_items(
+        session,
+        tenant_id=tenant_id,
+        gst_return=gst_return,
+        parsed_items=parsed_items,
+    )
+    return gst_return
 
 
 async def submit_gst_return(
@@ -367,4 +436,169 @@ async def list_gst_recon_items(
     stmt = stmt.order_by(desc(GstReconItem.created_at)).limit(bounded_limit).offset(effective_skip)
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def _latest_return(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    period_year: int,
+    period_month: int,
+    entity_id: uuid.UUID | None,
+    entity_name: str | None,
+    return_type: str,
+) -> GstReturn | None:
+    criteria = [
+        GstReturn.tenant_id == tenant_id,
+        GstReturn.period_year == period_year,
+        GstReturn.period_month == period_month,
+        GstReturn.return_type == return_type,
+    ]
+    if entity_id is not None:
+        criteria.append(GstReturn.entity_id == entity_id)
+    elif entity_name:
+        criteria.append(GstReturn.entity_name == entity_name)
+    result = await session.execute(
+        select(GstReturn).where(*criteria).order_by(desc(GstReturn.created_at)).limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _list_return_line_items(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    gst_return_id: uuid.UUID,
+) -> list[GstReturnLineItem]:
+    result = await session.execute(
+        select(GstReturnLineItem)
+        .where(
+            GstReturnLineItem.tenant_id == tenant_id,
+            GstReturnLineItem.gst_return_id == gst_return_id,
+        )
+        .order_by(GstReturnLineItem.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def _run_line_item_reconciliation(
+    session: AsyncSession,
+    *,
+    return_a: GstReturn,
+    return_b: GstReturn,
+    lines_a: list[GstReturnLineItem],
+    lines_b: list[GstReturnLineItem],
+    run_by: uuid.UUID,
+) -> list[GstReconItem]:
+    rate_master = await get_gst_rate_master(session)
+    pending_items = build_recon_items(
+        return_a=return_a,
+        return_b=return_b,
+        lines_a=lines_a,
+        lines_b=lines_b,
+        run_by=run_by,
+        context=GstMatchContext(rate_master=rate_master, today=date.today()),
+    )
+    if not pending_items:
+        return []
+
+    previous_hash = await get_previous_hash_locked(session, GstReconItem, return_a.tenant_id)
+    items: list[GstReconItem] = []
+    for pending in pending_items:
+        record_data = {
+            "tenant_id": str(return_a.tenant_id),
+            "period_year": return_a.period_year,
+            "period_month": return_a.period_month,
+            "entity_id": str(return_a.entity_id),
+            "supplier_gstin": pending.supplier_gstin,
+            "invoice_number": pending.invoice_number,
+            "match_type": pending.match_type,
+            "difference": str(pending.difference),
+        }
+        chain_hash = compute_chain_hash(record_data, previous_hash)
+        pending.chain_hash = chain_hash
+        pending.previous_hash = previous_hash
+        apply_mutation_linkage(pending)
+        session.add(pending)
+        items.append(pending)
+        previous_hash = chain_hash
+
+    await session.flush()
+    return items
+
+
+def _parse_import_payload(
+    *,
+    return_type: str,
+    json_data: dict[str, Any],
+) -> list[ParsedGstReturnLineItem]:
+    normalized_type = str(return_type).strip().upper()
+    if normalized_type == "GSTR1":
+        return parse_gstr1_json(json_data)
+    if normalized_type == "GSTR2B":
+        return parse_gstr2b_json(json_data)
+    return parse_gstr1_json(json_data)
+
+
+def _aggregate_totals(parsed_items: list[ParsedGstReturnLineItem]) -> dict[str, Decimal]:
+    totals = {
+        "taxable_value": Decimal("0"),
+        "igst_amount": Decimal("0"),
+        "cgst_amount": Decimal("0"),
+        "sgst_amount": Decimal("0"),
+        "cess_amount": Decimal("0"),
+    }
+    for row in parsed_items:
+        totals["taxable_value"] += row.taxable_value
+        totals["igst_amount"] += row.igst_amount
+        totals["cgst_amount"] += row.cgst_amount
+        totals["sgst_amount"] += row.sgst_amount
+        totals["cess_amount"] += row.cess_amount
+    return totals
+
+
+async def _append_return_line_items(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    gst_return: GstReturn,
+    parsed_items: list[ParsedGstReturnLineItem],
+) -> list[GstReturnLineItem]:
+    if not parsed_items:
+        return []
+    previous_hash = await get_previous_hash_locked(session, GstReturnLineItem, tenant_id)
+    rows: list[GstReturnLineItem] = []
+    for parsed in parsed_items:
+        record_data = {
+            "tenant_id": str(tenant_id),
+            "gst_return_id": str(gst_return.id),
+            "supplier_gstin": parsed.supplier_gstin,
+            "invoice_number": parsed.invoice_number,
+            "taxable_value": str(parsed.taxable_value),
+        }
+        chain_hash = compute_chain_hash(record_data, previous_hash)
+        row = apply_mutation_linkage(GstReturnLineItem(
+            tenant_id=tenant_id,
+            chain_hash=chain_hash,
+            previous_hash=previous_hash,
+            gst_return_id=gst_return.id,
+            return_type=gst_return.return_type,
+            supplier_gstin=parsed.supplier_gstin,
+            invoice_number=parsed.invoice_number,
+            invoice_date=parsed.invoice_date,
+            taxable_value=parsed.taxable_value,
+            igst_amount=parsed.igst_amount,
+            cgst_amount=parsed.cgst_amount,
+            sgst_amount=parsed.sgst_amount,
+            cess_amount=parsed.cess_amount,
+            total_tax=parsed.total_tax,
+            gst_rate=parsed.gst_rate,
+            payment_status=parsed.payment_status,
+            expense_category=parsed.expense_category,
+        ))
+        session.add(row)
+        rows.append(row)
+        previous_hash = chain_hash
+    await session.flush()
+    return rows
 

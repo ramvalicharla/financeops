@@ -10,6 +10,7 @@ from decimal import Decimal
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import StreamingResponse
 
@@ -50,7 +51,7 @@ def _serialize_event(event: NotificationEvent, state: NotificationReadState) -> 
         "body": event.body,
         "action_url": event.action_url,
         "metadata": event.metadata_json,
-        "channels_sent": list(event.channels_sent or []),
+        "channels_sent": list(state.channels_sent or []),
         "created_at": event.created_at.isoformat(),
         "read_state": {
             "is_read": state.is_read,
@@ -103,6 +104,37 @@ async def list_notifications_endpoint(
         "total": payload["total"],
         "limit": limit,
         "offset": offset,
+    }
+
+
+@router.get("/{notification_id}/status")
+async def notification_status_endpoint(
+    notification_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    row = (
+        await session.execute(
+            select(NotificationEvent, NotificationReadState)
+            .outerjoin(
+                NotificationReadState,
+                NotificationReadState.notification_event_id == NotificationEvent.id,
+            )
+            .where(
+                NotificationEvent.id == notification_id,
+                NotificationEvent.tenant_id == user.tenant_id,
+                NotificationEvent.recipient_user_id == user.id,
+            )
+        )
+    ).first()
+    if row is None:
+        return {"status": "not_found", "notification_id": str(notification_id), "channels_sent": []}
+    _, state = row
+    channels_sent = list(state.channels_sent or []) if state is not None else []
+    return {
+        "status": "delivered" if channels_sent else "queued",
+        "notification_id": str(notification_id),
+        "channels_sent": channels_sent,
     }
 
 

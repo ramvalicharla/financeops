@@ -130,6 +130,7 @@ async def test_t_207_delivery_tables_exist_with_expected_columns(async_session: 
             "source_run_id",
             "error_message",
             "retry_count",
+            "idempotency_key",
             "response_metadata",
             "created_at",
         },

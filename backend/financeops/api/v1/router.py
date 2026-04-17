@@ -16,7 +16,6 @@ from financeops.api.v1 import (
     cash_flow_engine,
     consolidation,
     erp_sync,
-    erp,
     erp_push,
     equity_engine,
     financial_risk_engine,
@@ -235,12 +234,6 @@ router.include_router(
     prefix="/observability",
     tags=["Observability Engine"],
     dependencies=[org_setup_guard, observability_entitlement_guard],
-)
-router.include_router(
-    erp.router,
-    prefix="",
-    tags=["ERP Integration"],
-    dependencies=[org_setup_guard, erp_entitlement_guard],
 )
 router.include_router(
     erp_sync.router,

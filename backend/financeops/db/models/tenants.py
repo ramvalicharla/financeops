@@ -53,7 +53,12 @@ class IamTenant(FinancialBase):
         nullable=True,
     )
     country: Mapped[str] = mapped_column(String(2), nullable=False)  # ISO 3166-1 alpha-2
-    timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="UTC")
+    timezone: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="Asia/Kolkata",
+        server_default=text("'Asia/Kolkata'"),
+    )
     status: Mapped[TenantStatus] = mapped_column(
         Enum(TenantStatus, name="tenant_status_enum"),
         nullable=False,

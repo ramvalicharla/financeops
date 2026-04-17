@@ -4,11 +4,11 @@ import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Date, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, Date, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from financeops.db.base import FinancialBase
+from financeops.db.base import Base, FinancialBase
 
 
 class GstReturn(FinancialBase):
@@ -22,6 +22,7 @@ class GstReturn(FinancialBase):
         Index("idx_gst_returns_entity_id", "tenant_id", "entity_id"),
         Index("idx_gst_returns_entity", "tenant_id", "entity_name"),
         Index("idx_gst_returns_type", "tenant_id", "return_type"),
+        Index("idx_gst_returns_tenant_created", "tenant_id", "created_at"),
     )
 
     period_year: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -103,3 +104,66 @@ class GstReconItem(FinancialBase):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolved_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     run_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    line_item_a_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gst_return_line_items.id"),
+        nullable=True,
+    )
+    line_item_b_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gst_return_line_items.id"),
+        nullable=True,
+    )
+    supplier_gstin: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    invoice_number: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    gst_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    rate_mismatch: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    match_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    itc_eligible: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    itc_blocked_reason: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reverse_itc: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class GstReturnLineItem(FinancialBase):
+    """
+    GST return line item — INSERT ONLY.
+    Stores invoice-level evidence imported from GSTR-1/GSTR-2B payloads.
+    """
+
+    __tablename__ = "gst_return_line_items"
+    __table_args__ = (
+        Index("idx_gst_return_line_items_return", "tenant_id", "gst_return_id"),
+        Index("idx_gst_return_line_items_invoice", "tenant_id", "supplier_gstin", "invoice_number"),
+    )
+
+    gst_return_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gst_returns.id"),
+        nullable=False,
+    )
+    return_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    supplier_gstin: Mapped[str] = mapped_column(String(20), nullable=False)
+    invoice_number: Mapped[str] = mapped_column(String(128), nullable=False)
+    invoice_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    taxable_value: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
+    igst_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
+    cgst_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
+    sgst_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
+    cess_amount: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
+    total_tax: Mapped[Decimal] = mapped_column(Numeric(20, 6), nullable=False, default=Decimal("0"))
+    gst_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
+    payment_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    expense_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class GstRateMaster(Base):
+    __tablename__ = "gst_rate_master"
+    __table_args__ = (
+        UniqueConstraint("rate", name="uq_gst_rate_master_rate"),
+        Index("idx_gst_rate_master_rate", "rate"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rate: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(128), nullable=True)

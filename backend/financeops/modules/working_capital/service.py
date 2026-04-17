@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import ValidationError
 from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
-from financeops.db.models.working_capital import WorkingCapitalSnapshot
+from financeops.modules.accounting_layer.infrastructure.repository import AccountingLayerRepository
+from financeops.modules.working_capital.domain.exceptions import InsufficientGLDataError
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 
@@ -30,9 +31,14 @@ def _period_end(period: str) -> date:
     return date(year, month, day)
 
 
-def _days_in_period(period: str) -> Decimal:
-    year, month = _parse_period(period)
-    return Decimal(str(calendar.monthrange(year, month)[1]))
+def financial_year_start(value: date) -> date:
+    return date(value.year, 4, 1) if value.month >= 4 else date(value.year - 1, 4, 1)
+
+
+def _months_in_financial_year(period: str) -> int:
+    period_end = _period_end(period)
+    fy_start = financial_year_start(period_end)
+    return ((period_end.year - fy_start.year) * 12) + (period_end.month - fy_start.month) + 1
 
 
 def _q2(value: Decimal) -> Decimal:
@@ -50,35 +56,80 @@ async def _load_financial_inputs(
     period: str,
     entity_id: uuid.UUID | None,
 ) -> dict[str, Decimal]:
-    year, month = _parse_period(period)
-    legacy = (
-        await session.execute(
-            select(WorkingCapitalSnapshot)
-            .where(
-                WorkingCapitalSnapshot.tenant_id == tenant_id,
-                WorkingCapitalSnapshot.period_year == year,
-                WorkingCapitalSnapshot.period_month == month,
-            )
-            .order_by(WorkingCapitalSnapshot.created_at.desc(), WorkingCapitalSnapshot.id.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+    repo = AccountingLayerRepository()
+    fy_months = _months_in_financial_year(period)
+    has_current_gl = await repo.has_gl_activity(
+        tenant_id,
+        session,
+        period=period,
+        entity_id=entity_id,
+    )
+    has_fy_gl = await repo.has_gl_activity(
+        tenant_id,
+        session,
+        period=period,
+        entity_id=entity_id,
+        months=fy_months,
+    )
+    if not has_current_gl and not has_fy_gl:
+        raise InsufficientGLDataError(tenant_id)
 
-    if legacy is not None:
-        ar_total = Decimal(str(legacy.accounts_receivable))
-        ap_total = Decimal(str(legacy.accounts_payable))
-        inventory = Decimal(str(legacy.inventory))
-        current_assets = Decimal(str(legacy.total_current_assets))
-        current_liabilities = Decimal(str(legacy.total_current_liabilities))
-    else:
-        ar_total = Decimal("1000000")
-        ap_total = Decimal("600000")
-        inventory = Decimal("250000")
-        current_assets = Decimal("3000000")
-        current_liabilities = Decimal("1800000")
+    ar_total = await repo.get_balance_by_account_group(
+        tenant_id,
+        "ACCOUNTS_RECEIVABLE",
+        session,
+        period=period,
+        entity_id=entity_id,
+    )
+    ap_total = await repo.get_balance_by_account_group(
+        tenant_id,
+        "ACCOUNTS_PAYABLE",
+        session,
+        period=period,
+        entity_id=entity_id,
+    )
+    inventory = await repo.get_balance_by_account_group(
+        tenant_id,
+        "INVENTORY",
+        session,
+        period=period,
+        entity_id=entity_id,
+    )
+    current_assets = await repo.get_balance_by_account_group(
+        tenant_id,
+        "CURRENT_ASSETS",
+        session,
+        period=period,
+        entity_id=entity_id,
+    )
+    current_liabilities = await repo.get_balance_by_account_group(
+        tenant_id,
+        "CURRENT_LIABILITIES",
+        session,
+        period=period,
+        entity_id=entity_id,
+    )
+    revenue = await repo.get_balance_by_account_group(
+        tenant_id,
+        "REVENUE",
+        session,
+        period=period,
+        entity_id=entity_id,
+        months=fy_months,
+    )
+    cogs = await repo.get_balance_by_account_group(
+        tenant_id,
+        "COST_OF_SALES",
+        session,
+        period=period,
+        entity_id=entity_id,
+        months=fy_months,
+    )
 
-    revenue = Decimal("5000000")
-    cogs = Decimal("2500000")
+    assert isinstance(ar_total, Decimal), "AR must be Decimal not float"
+    assert isinstance(ap_total, Decimal), "AP must be Decimal not float"
+    assert isinstance(revenue, Decimal), "Revenue must be Decimal not float"
+    assert isinstance(inventory, Decimal), "Inventory must be Decimal not float"
 
     return {
         "ar_total": ar_total,
@@ -192,10 +243,9 @@ async def compute_wc_snapshot(
     current_assets = inputs["current_assets"]
     current_liabilities = inputs["current_liabilities"]
 
-    days_in_period = _days_in_period(period)
-    dso_days = Decimal("0") if revenue == Decimal("0") else (ar_total / revenue) * days_in_period
-    dpo_days = Decimal("0") if cogs == Decimal("0") else (ap_total / cogs) * days_in_period
-    inventory_days = Decimal("0")
+    dso_days = Decimal("0") if revenue == Decimal("0") else (ar_total / revenue) * Decimal("365")
+    dpo_days = Decimal("0") if cogs == Decimal("0") else (ap_total / cogs) * Decimal("365")
+    inventory_days = Decimal("0") if cogs == Decimal("0") else (inventory / cogs) * Decimal("365")
     ccc_days = dso_days + inventory_days - dpo_days
 
     current_ratio = Decimal("0") if current_liabilities == Decimal("0") else current_assets / current_liabilities

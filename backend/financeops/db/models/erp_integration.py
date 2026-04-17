@@ -126,6 +126,7 @@ class ErpSyncJob(Base):
         Index("ix_erp_sync_jobs_connector", "tenant_id", "erp_connector_id"),
         Index("ix_erp_sync_jobs_status", "tenant_id", "status"),
         Index("ix_erp_sync_jobs_module", "tenant_id", "module"),
+        Index("idx_erp_sync_jobs_tenant_created", "tenant_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

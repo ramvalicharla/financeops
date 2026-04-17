@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -10,6 +11,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
+from financeops.storage.provider import get_storage
 from financeops.modules.board_pack_generator.application.export_service import (
     BoardPackExportService,
 )
@@ -181,55 +183,15 @@ class BoardPackGenerateService:
         )
 
         generated_at = datetime.now(UTC)
-        display_scale_raw = str(context.definition.config.get("display_scale", "LAKHS"))
-        try:
-            display_scale = DisplayScale(display_scale_raw)
-        except ValueError:
-            display_scale = DisplayScale.LAKHS
-        try:
-            pdf_bytes, pdf_filename = self._export_service.export_pdf(
-                pack=assembled_pack,
-                pack_name=context.definition.name,
-                generated_at=generated_at,
-                display_scale=display_scale,
-            )
-        except TypeError:
-            pdf_bytes, pdf_filename = self._export_service.export_pdf(
-                pack=assembled_pack,
-                pack_name=context.definition.name,
-                generated_at=generated_at,
-            )
-        try:
-            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
-                pack=assembled_pack,
-                pack_name=context.definition.name,
-                generated_at=generated_at,
-                display_scale=display_scale,
-            )
-        except TypeError:
-            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
-                pack=assembled_pack,
-                pack_name=context.definition.name,
-                generated_at=generated_at,
-            )
-
-        await self._persist_artifact(
+        await self._render_and_persist_artifacts(
             db=db,
-            run_id=running_run.id,
             tenant_id=tenant_id,
-            export_format=ExportFormat.PDF,
-            filename=pdf_filename,
-            content=pdf_bytes,
-            generated_at=generated_at,
-        )
-        await self._persist_artifact(
-            db=db,
             run_id=running_run.id,
-            tenant_id=tenant_id,
-            export_format=ExportFormat.EXCEL,
-            filename=xlsx_filename,
-            content=xlsx_bytes,
+            triggered_by=running_run.triggered_by,
+            assembled_pack=assembled_pack,
+            pack_name=context.definition.name,
             generated_at=generated_at,
+            display_scale_raw=str(context.definition.config.get("display_scale", "LAKHS")),
         )
 
         await self._transition_run_state(
@@ -252,6 +214,109 @@ class BoardPackGenerateService:
         )
         await db.commit()
         return assembled_pack
+
+    async def export_run_artifacts(
+        self,
+        *,
+        db: AsyncSession,
+        run_id: uuid.UUID,
+        tenant_id: uuid.UUID,
+    ) -> list["BoardPackGeneratorArtifact"]:
+        run = await self._load_run(db=db, run_id=run_id, tenant_id=tenant_id)
+        definition = await self._load_definition(
+            db=db,
+            definition_id=run.definition_id,
+            tenant_id=tenant_id,
+        )
+        context = self._build_context(run=run, definition=definition)
+        rendered_sections = await self.load_rendered_sections(
+            db=db,
+            tenant_id=tenant_id,
+            run_id=run_id,
+        )
+        if not rendered_sections:
+            raise BoardPackGenerationError("Board pack run has no rendered sections to export")
+
+        assembled_pack = self._assembler.assemble(
+            context=context,
+            rendered_sections=rendered_sections,
+        )
+        generated_at = datetime.now(UTC)
+        return await self._render_and_persist_artifacts(
+            db=db,
+            tenant_id=tenant_id,
+            run_id=run.id,
+            triggered_by=run.triggered_by,
+            assembled_pack=assembled_pack,
+            pack_name=context.definition.name,
+            generated_at=generated_at,
+            display_scale_raw=str(context.definition.config.get("display_scale", "LAKHS")),
+        )
+
+    async def _render_and_persist_artifacts(
+        self,
+        *,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        triggered_by: uuid.UUID,
+        assembled_pack: AssembledPack,
+        pack_name: str,
+        generated_at: datetime,
+        display_scale_raw: str,
+    ) -> list["BoardPackGeneratorArtifact"]:
+        try:
+            display_scale = DisplayScale(display_scale_raw)
+        except ValueError:
+            display_scale = DisplayScale.LAKHS
+        try:
+            pdf_bytes, pdf_filename = self._export_service.export_pdf(
+                pack=assembled_pack,
+                pack_name=pack_name,
+                generated_at=generated_at,
+                display_scale=display_scale,
+            )
+        except TypeError:
+            pdf_bytes, pdf_filename = self._export_service.export_pdf(
+                pack=assembled_pack,
+                pack_name=pack_name,
+                generated_at=generated_at,
+            )
+        try:
+            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
+                pack=assembled_pack,
+                pack_name=pack_name,
+                generated_at=generated_at,
+                display_scale=display_scale,
+            )
+        except TypeError:
+            xlsx_bytes, xlsx_filename = self._export_service.export_excel(
+                pack=assembled_pack,
+                pack_name=pack_name,
+                generated_at=generated_at,
+            )
+
+        pdf_artifact = await self._persist_artifact(
+            db=db,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            export_format=ExportFormat.PDF,
+            filename=pdf_filename,
+            content=pdf_bytes,
+            generated_at=generated_at,
+            uploaded_by=triggered_by,
+        )
+        xlsx_artifact = await self._persist_artifact(
+            db=db,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            export_format=ExportFormat.EXCEL,
+            filename=xlsx_filename,
+            content=xlsx_bytes,
+            generated_at=generated_at,
+            uploaded_by=triggered_by,
+        )
+        return [pdf_artifact, xlsx_artifact]
 
     async def fail_generation(
         self,
@@ -544,23 +609,39 @@ class BoardPackGenerateService:
         filename: str,
         content: bytes,
         generated_at: datetime,
-    ) -> None:
+        uploaded_by: uuid.UUID,
+    ) -> "BoardPackGeneratorArtifact":
         from financeops.db.models.board_pack_generator import BoardPackGeneratorArtifact
 
-        storage_path = f"artifacts/board_packs/{tenant_id}/{run_id}/{filename}"
+        artifact_id = uuid.uuid4()
+        storage_path = f"artifacts/board_packs/{tenant_id}/{run_id}/{artifact_id}/{filename}"
+        content_type = (
+            "application/pdf"
+            if export_format is ExportFormat.PDF
+            else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        get_storage().upload_file(
+            file_bytes=content,
+            key=storage_path,
+            content_type=content_type,
+            tenant_id=str(tenant_id),
+            uploaded_by=str(uploaded_by),
+        )
         artifact = BoardPackGeneratorArtifact(
+            id=artifact_id,
             run_id=run_id,
             tenant_id=tenant_id,
             format=export_format.value,
             storage_path=storage_path,
             file_size_bytes=len(content),
             generated_at=generated_at,
-            checksum=RenderedSection.compute_hash({"filename": filename, "content_length": len(content)}),
+            checksum=hashlib.sha256(content).hexdigest(),
         )
         if get_mutation_context() is not None:
             apply_mutation_linkage(artifact)
         db.add(artifact)
         await db.flush()
+        return artifact
 
     async def _fetch_section_source_data(
         self,

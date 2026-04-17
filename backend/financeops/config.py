@@ -65,8 +65,10 @@ class Settings(BaseSettings):
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # AI Providers
-    ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
+    AI_CFO_ENABLED: bool = False
+    ANTHROPIC_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+    DEEPSEEK_API_KEY: str | None = None
     GEMINI_API_KEY: str = ""
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     AI_DEFAULT_MONTHLY_TOKEN_LIMIT: int = 1000000
@@ -226,6 +228,22 @@ class Settings(BaseSettings):
         if not normalized:
             return True
         return any(marker in normalized for marker in Settings._PLACEHOLDER_MARKERS)
+
+    @property
+    def anthropic_api_key(self) -> str | None:
+        return self.ANTHROPIC_API_KEY
+
+    @property
+    def openai_api_key(self) -> str | None:
+        return self.OPENAI_API_KEY
+
+    @property
+    def deepseek_api_key(self) -> str | None:
+        return self.DEEPSEEK_API_KEY
+
+    @property
+    def ai_cfo_enabled(self) -> bool:
+        return bool(self.AI_CFO_ENABLED)
 
     @model_validator(mode="after")
     def validate_production_security_requirements(self) -> Settings:

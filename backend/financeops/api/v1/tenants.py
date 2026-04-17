@@ -19,8 +19,7 @@ from financeops.api.deps import (
 from financeops.config import settings
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
-from financeops.modules.notifications.channels.email_channel import send_direct
-from financeops.modules.notifications.templates.emails import user_invited_email
+from financeops.modules.notifications.service import send_notification
 from financeops.modules.org_setup.application.org_setup_service import OrgSetupService
 from financeops.platform.db.models.user_membership import CpUserEntityAssignment
 from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
@@ -230,18 +229,24 @@ async def invite_user(
 
     frontend_base = str(getattr(settings, "FRONTEND_URL", "http://localhost:3000")).rstrip("/")
     invite_url = f"{frontend_base}/accept-invite?token={invite_token}"
-    subject, html = user_invited_email(
-        invitee_name=body.full_name,
-        inviter_name=user.full_name,
-        company_name=tenant.display_name,
-        invite_url=invite_url,
-        unsubscribe_url=f"{frontend_base}/settings/privacy",
-    )
-    await send_direct(
-        to=body.email,
-        subject=subject,
-        html_body=html,
-        text_body=f"You are invited to FinanceOps. Accept invitation: {invite_url}",
+    await send_notification(
+        session,
+        tenant_id=user.tenant_id,
+        recipient_user_id=new_user.id,
+        notification_type="user_invited",
+        title="You've been invited to FinanceOps",
+        body=(
+            f"{user.full_name} invited you to join {tenant.display_name}. "
+            f"Accept invitation: {invite_url}"
+        ),
+        action_url=invite_url,
+        metadata={
+            "invitee_name": body.full_name,
+            "inviter_name": user.full_name,
+            "company_name": tenant.display_name,
+            "invite_url": invite_url,
+            "unsubscribe_url": f"{frontend_base}/settings/privacy",
+        },
     )
 
     await session.flush()

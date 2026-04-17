@@ -43,15 +43,16 @@ def _build_gstin(state_code: str, pan: str = "AABCF1234A", entity_code: str = "1
     return f"{body}{_checksum_char(body)}"
 
 
-async def _default_entity_id(async_session: AsyncSession, tenant_id: uuid.UUID) -> str:
-    entity_id = (
-        await async_session.execute(
-            select(CpEntity.id)
-            .where(CpEntity.tenant_id == tenant_id)
-            .order_by(CpEntity.created_at.asc())
-            .limit(1)
-        )
-    ).scalar_one()
+async def _default_entity_id(api_session_factory, tenant_id: uuid.UUID) -> str:
+    async with api_session_factory() as db:
+        entity_id = (
+            await db.execute(
+                select(CpEntity.id)
+                .where(CpEntity.tenant_id == tenant_id)
+                .order_by(CpEntity.created_at.asc())
+                .limit(1)
+            )
+        ).scalar_one()
     return str(entity_id)
 
 
@@ -134,8 +135,8 @@ async def test_all_36_state_codes_present() -> None:
 
 
 @pytest.mark.asyncio
-async def test_create_location(async_client, async_session: AsyncSession, test_user: IamUser) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+async def test_create_location(async_client, api_session_factory, test_user: IamUser) -> None:
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     response = await async_client.post(
         "/api/v1/locations",
         headers=_auth_headers(test_user),
@@ -154,10 +155,10 @@ async def test_create_location(async_client, async_session: AsyncSession, test_u
 @pytest.mark.asyncio
 async def test_create_location_extracts_state_code(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     gstin = _build_gstin("36")
     response = await async_client.post(
         "/api/v1/locations",
@@ -176,10 +177,10 @@ async def test_create_location_extracts_state_code(
 @pytest.mark.asyncio
 async def test_create_location_validates_gstin(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     response = await async_client.post(
         "/api/v1/locations",
         headers=_auth_headers(test_user),
@@ -196,10 +197,10 @@ async def test_create_location_validates_gstin(
 @pytest.mark.asyncio
 async def test_location_code_unique_per_entity(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     payload = {
         "entity_id": entity_id,
         "location_name": "Mumbai Office",
@@ -214,10 +215,10 @@ async def test_location_code_unique_per_entity(
 @pytest.mark.asyncio
 async def test_set_primary_unsets_others(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     a = await async_client.post(
         "/api/v1/locations",
         headers=_auth_headers(test_user),
@@ -258,10 +259,10 @@ async def test_set_primary_unsets_others(
 @pytest.mark.asyncio
 async def test_get_locations_paginated(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     for index in range(3):
         created = await async_client.post(
             "/api/v1/locations",
@@ -287,10 +288,10 @@ async def test_get_locations_paginated(
 @pytest.mark.asyncio
 async def test_create_cost_centre(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     response = await async_client.post(
         "/api/v1/locations/cost-centres",
         headers=_auth_headers(test_user),
@@ -307,10 +308,10 @@ async def test_create_cost_centre(
 @pytest.mark.asyncio
 async def test_cost_centre_tree_structure(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     parent = await async_client.post(
         "/api/v1/locations/cost-centres",
         headers=_auth_headers(test_user),
@@ -359,10 +360,10 @@ async def test_cost_centre_tree_structure(
 @pytest.mark.asyncio
 async def test_cost_centre_code_unique_per_entity(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    entity_id = await _default_entity_id(async_session, test_user.tenant_id)
+    entity_id = await _default_entity_id(api_session_factory, test_user.tenant_id)
     payload = {
         "entity_id": entity_id,
         "cost_centre_code": "CC-UNI",

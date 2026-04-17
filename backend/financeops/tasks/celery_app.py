@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from celery import Celery
+from celery.schedules import crontab
 import logging
 from datetime import UTC, datetime, timedelta
 
@@ -64,6 +65,7 @@ celery_app.conf.update(
         "ops.check_dead_letter_queue": {"queue": "dead_letter"},
     },
     imports=(
+        "financeops.tasks.auth_tasks",
         "financeops.tasks.payment_tasks",
         "financeops.modules.scheduled_delivery.tasks",
         "financeops.modules.erp_push.application.push_task",
@@ -73,6 +75,8 @@ celery_app.conf.update(
         "financeops.modules.auto_trigger.pipeline",
         "financeops.modules.search.tasks",
         "financeops.modules.ai_cfo_layer.tasks",
+        "financeops.modules.fixed_assets.tasks",
+        "financeops.modules.notifications.tasks",
     ),
     beat_schedule={
         "payment-check-trial-conversions-daily-0000-utc": {
@@ -118,6 +122,10 @@ celery_app.conf.update(
         "accounting-daily-digest": {
             "task": "accounting_layer.daily_digest",
             "schedule": 86400.0,
+        },
+        "fa-monthly-depreciation": {
+            "task": "financeops.modules.fixed_assets.tasks.run_monthly_depreciation_task",
+            "schedule": crontab(day_of_month=1, hour=2, minute=0),
         },
     },
     # Result expiry

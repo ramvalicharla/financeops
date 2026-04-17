@@ -27,6 +27,13 @@ from financeops.modules.multi_entity_consolidation.application.intercompany_serv
 from financeops.modules.multi_entity_consolidation.application.validation_service import (
     ValidationService,
 )
+from financeops.modules.multi_entity_consolidation.domain.exceptions import (
+    ConsolidationRunNotFoundError,
+    InvalidConsolidationInputError,
+    InvalidSourceRunError,
+    MissingSourceBalanceError,
+    MissingSourceEntityError,
+)
 from financeops.modules.multi_entity_consolidation.domain.enums import RunStatus
 from financeops.modules.multi_entity_consolidation.domain.value_objects import (
     ConsolidationRunTokenInput,
@@ -183,7 +190,7 @@ class RunService:
     ) -> dict[str, Any]:
         run = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
         if run is None:
-            raise ValueError("Consolidation run not found")
+            raise ConsolidationRunNotFoundError(run_id)
 
         existing_metrics = await self._repository.list_metric_results(tenant_id=tenant_id, run_id=run_id)
         if existing_metrics:
@@ -235,7 +242,7 @@ class RunService:
         runs_by_id = {row.id: row for row in metric_runs}
         for run_ref in metric_run_ids + variance_run_ids:
             if runs_by_id.get(run_ref) is None:
-                raise ValueError(f"Referenced source run not found: {run_ref}")
+                raise InvalidSourceRunError(str(run_ref))
 
         metric_rows = await self._repository.list_metric_results_for_runs(
             tenant_id=tenant_id,
@@ -312,7 +319,7 @@ class RunService:
             and intercompany_summary["validation_report"]["reason"] == "no intercompany transactions"
         )
         if not has_effect and not no_intercompany_data:
-            raise ValueError(
+            raise InvalidConsolidationInputError(
                 "validation_report.status=FAIL: consolidation produced no elimination or adjustment evidence"
             )
 
@@ -498,7 +505,7 @@ class RunService:
     async def summary(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> dict[str, Any]:
         row = await self._repository.get_run(tenant_id=tenant_id, run_id=run_id)
         if row is None:
-            raise ValueError("Consolidation run not found")
+            raise ConsolidationRunNotFoundError(run_id)
         summary = await self._repository.summarize_run(tenant_id=tenant_id, run_id=run_id)
         return {
             "run_id": str(row.id),
@@ -719,14 +726,14 @@ class RunService:
 
         traces: list[dict[str, Any]] = []
         aggregate_amount = Decimal("0.000000")
-        missing_entities: list[str] = []
+        missing_entities: list[uuid.UUID] = []
         for relationship in sorted(
             relevant_relationships,
             key=lambda value: (str(value.child_entity_id), str(value.id)),
         ):
             entity_rows = metric_rows_by_entity.get(str(relationship.child_entity_id), [])
             if not entity_rows:
-                missing_entities.append(str(relationship.child_entity_id))
+                missing_entities.append(relationship.child_entity_id)
                 continue
             for row in sorted(
                 entity_rows,
@@ -752,10 +759,7 @@ class RunService:
                     }
                 )
         if missing_entities:
-            raise ValueError(
-                "validation_report.status=FAIL: missing minority-interest source rows for entities "
-                + ", ".join(missing_entities)
-            )
+            raise MissingSourceEntityError(missing_ids=missing_entities)
         return {
             "validation_report": {
                 "status": "PASS",
@@ -795,8 +799,8 @@ class RunService:
             if raw is None:
                 continue
             return Decimal(str(raw))
-        raise ValueError(
-            f"validation_report.status=FAIL: missing minority-interest source balance for metric row {getattr(row, 'id', 'unknown')}"
+        raise MissingSourceBalanceError(
+            str(getattr(row, "id", "unknown"))
         )
 
     def _metric_validation_row(self, row: object) -> dict[str, Any]:

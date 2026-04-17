@@ -320,7 +320,7 @@ async def get_forecast_vs_budget(
             select(BudgetVersion).where(
                 BudgetVersion.tenant_id == tenant_id,
                 BudgetVersion.fiscal_year == fiscal_year,
-                BudgetVersion.status == "approved",
+                BudgetVersion.status.in_(("cfo_approved", "board_approved")),
             )
             .order_by(desc(BudgetVersion.version_number))
             .limit(1)

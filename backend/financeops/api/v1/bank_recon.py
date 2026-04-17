@@ -28,6 +28,10 @@ from financeops.modules.bank_reconciliation.parsers.factory import (
     detect_bank_from_content,
     get_parser,
 )
+from financeops.modules.bank_reconciliation.domain.exceptions import (
+    InsufficientDataError,
+    StatementAlreadyProcessedError,
+)
 from financeops.services.bank_recon_service import (
     add_bank_transaction,
     create_bank_statement,
@@ -37,6 +41,7 @@ from financeops.services.bank_recon_service import (
     run_bank_reconciliation,
     store_bank_transactions,
 )
+from financeops.shared_kernel.idempotency import optional_idempotency_key
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -430,8 +435,10 @@ async def list_transactions(
 async def run_bank_recon(
     request: Request,
     statement_id: UUID,
+    force_rerun: bool = Query(default=False),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
+    _: str | None = Depends(optional_idempotency_key),
 ) -> dict:
     statement = (
         await session.execute(
@@ -444,18 +451,24 @@ async def run_bank_recon(
     if statement is None:
         raise HTTPException(status_code=404, detail="Bank statement not found")
     await assert_entity_access(session, user.tenant_id, statement.entity_id, user.id, user.role)
-    result = await _submit_intent(
-        request,
-        session,
-        user=user,
-        intent_type=IntentType.RUN_BANK_RECONCILIATION,
-        payload={
-            "statement_id": str(statement_id),
-            "entity_id": str(statement.entity_id),
-            "period_year": statement.period_year,
-            "period_number": statement.period_month,
-        },
-    )
+    try:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.RUN_BANK_RECONCILIATION,
+            payload={
+                "statement_id": str(statement_id),
+                "entity_id": str(statement.entity_id),
+                "period_year": statement.period_year,
+                "period_number": statement.period_month,
+                "force_rerun": force_rerun,
+            },
+        )
+    except StatementAlreadyProcessedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InsufficientDataError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     item_ids = [UUID(str(value)) for value in ((result.record_refs or {}).get("item_ids") or [])]
     items = []
     if item_ids:
@@ -472,6 +485,14 @@ async def run_bank_recon(
     return {
         "statement_id": str(statement_id),
         "open_items_created": int((result.record_refs or {}).get("open_items_created") or len(items)),
+        "summary": {
+            "matched": int((result.record_refs or {}).get("matched") or 0),
+            "near_match": int((result.record_refs or {}).get("near_match") or 0),
+            "fuzzy": int((result.record_refs or {}).get("fuzzy") or 0),
+            "bank_only": int((result.record_refs or {}).get("bank_only") or 0),
+            "gl_only": int((result.record_refs or {}).get("gl_only") or 0),
+            "net_difference": str((result.record_refs or {}).get("net_difference") or "0"),
+        },
         "items": [
             {
                 "item_id": str(i.id),

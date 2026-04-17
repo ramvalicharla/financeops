@@ -85,6 +85,7 @@ class DeliverySchedule(Base):
         nullable=True,
     )
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    webhook_secret: Mapped[str | None] = mapped_column(Text, nullable=True)
     config: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,
@@ -126,6 +127,11 @@ class DeliveryLog(Base):
             "tenant_id",
             "status",
         ),
+        Index(
+            "idx_delivery_logs_tenant_idempotency_key",
+            "tenant_id",
+            "idempotency_key",
+        ),
         {"extend_existing": True},
     )
 
@@ -162,6 +168,7 @@ class DeliveryLog(Base):
         server_default=text("0"),
         default=0,
     )
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
     response_metadata: Mapped[dict[str, Any]] = mapped_column(
         JSONB,
         nullable=False,

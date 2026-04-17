@@ -181,6 +181,10 @@ class R2Storage:
         )
         return url
 
+    def generate_signed_url(self, key: str, expires_in: int = 3600) -> str:
+        """Compatibility alias for signed direct-download URLs."""
+        return self.get_presigned_url(key, expires_in=expires_in)
+
     def file_exists(self, key: str) -> bool:
         """Return True if the object exists in R2."""
         try:

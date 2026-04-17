@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import logging
+from collections.abc import Iterable
 from typing import Final, TypedDict
+
+
+logger = logging.getLogger(__name__)
 
 
 class PermissionEntry(TypedDict):
@@ -146,6 +151,13 @@ PERMISSIONS: Final[dict[str, PermissionEntry]] = {
         "entitlement_keys": [],
         "feature_flag": None,
         "runtime_roles": [],
+    },
+    "budget.approve": {
+        "module": "budgeting",
+        "roles": ["tenant_manager", "tenant_admin", "tenant_owner"],
+        "entitlement_keys": [],
+        "feature_flag": None,
+        "runtime_roles": ["finance_leader"],
     },
     "close.view": {
         "module": "close",
@@ -370,3 +382,19 @@ for permission_name, entry in PERMISSIONS.items():
 
 for module_permissions in PERMISSIONS_BY_MODULE.values():
     module_permissions.sort()
+
+
+def validate_permission_matrix(
+    entries: Iterable[tuple[str, PermissionEntry]] | None = None,
+) -> None:
+    seen_keys: set[str] = set()
+    source = PERMISSIONS.items() if entries is None else entries
+    count = 0
+    for key, value in source:
+        if key in seen_keys:
+            raise ValueError(f"Duplicate permission key: {key}")
+        if value is None:
+            raise ValueError(f"Permission key has None value: {key}")
+        seen_keys.add(key)
+        count += 1
+    logger.info("Permission matrix validated: %s permissions OK", count)

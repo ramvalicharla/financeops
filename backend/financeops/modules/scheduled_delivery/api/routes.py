@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,11 +14,16 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.scheduled_delivery import DeliveryLog, DeliverySchedule
 from financeops.db.models.users import IamUser
+from financeops.modules.scheduled_delivery.application.delivery_service import (
+    compute_next_run_at,
+    validate_cron_expression,
+)
 from financeops.modules.scheduled_delivery.domain.enums import (
     ChannelType,
     DeliveryExportFormat,
     ScheduleType,
 )
+from financeops.modules.scheduled_delivery.domain.exceptions import InvalidCronExpressionError
 from financeops.modules.scheduled_delivery.domain.schedule_definition import (
     Recipient,
     ScheduleDefinitionSchema,
@@ -26,7 +32,9 @@ from financeops.modules.scheduled_delivery.infrastructure.repository import (
     DeliveryRepository,
 )
 from financeops.modules.scheduled_delivery.tasks import deliver_schedule_task
+from financeops.shared_kernel.idempotency import optional_idempotency_key
 from financeops.shared_kernel.pagination import Paginated
+from financeops.shared_kernel.response import err
 
 router = APIRouter(prefix="/delivery", tags=["delivery"])
 
@@ -101,13 +109,45 @@ class TriggerResponse(BaseModel):
     status: str
 
 
+def _next_run_at(*, cron_expression: str, timezone: str) -> datetime:
+    validate_cron_expression(cron_expression)
+    return compute_next_run_at(
+        cron_expression=cron_expression,
+        timezone=timezone,
+        from_time=datetime.now(UTC),
+    )
+
+
+def _invalid_cron_response(request: Request, expression: str) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content=err(
+            code="INVALID_CRON_EXPRESSION",
+            message="Invalid cron expression",
+            details={
+                "value": expression,
+                "hint": "Example: '0 9 * * 1' (every Monday at 9am)",
+            },
+            request_id=getattr(request.state, "request_id", None),
+        ).model_dump(mode="json"),
+    )
+
+
 @router.post("/schedules", response_model=ScheduleResponse, status_code=status.HTTP_201_CREATED)
 async def create_schedule(
+    request: Request,
     body: CreateScheduleRequest,
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> ScheduleResponse:
     repository = DeliveryRepository()
+    try:
+        next_run_at = _next_run_at(
+            cron_expression=body.cron_expression,
+            timezone=body.timezone,
+        )
+    except InvalidCronExpressionError:
+        return _invalid_cron_response(request, body.cron_expression)
     schema = ScheduleDefinitionSchema(
         name=body.name,
         description=body.description,
@@ -124,7 +164,7 @@ async def create_schedule(
         tenant_id=user.tenant_id,
         schema=schema,
         created_by=user.id,
-        next_run_at=datetime.now(UTC),
+        next_run_at=next_run_at,
     )
     await db.commit()
     return ScheduleResponse.model_validate(row)
@@ -174,6 +214,7 @@ async def get_schedule(
 @router.patch("/schedules/{id}", response_model=ScheduleResponse)
 async def update_schedule(
     id: uuid.UUID,
+    request: Request,
     body: UpdateScheduleRequest,
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
@@ -196,6 +237,16 @@ async def update_schedule(
             else:
                 normalized_recipients.append(dict(recipient))
         updates["recipients"] = normalized_recipients
+    if "cron_expression" in updates or "timezone" in updates:
+        effective_cron = str(updates.get("cron_expression") or existing.cron_expression)
+        effective_timezone = str(updates.get("timezone") or existing.timezone)
+        try:
+            updates["next_run_at"] = _next_run_at(
+                cron_expression=effective_cron,
+                timezone=effective_timezone,
+            )
+        except InvalidCronExpressionError:
+            return _invalid_cron_response(request, effective_cron)
 
     row = await repository.update_schedule(
         db=db,
@@ -225,6 +276,7 @@ async def delete_schedule(
 @router.post("/schedules/{id}/trigger", response_model=TriggerResponse, status_code=status.HTTP_202_ACCEPTED)
 async def trigger_schedule(
     id: uuid.UUID,
+    idempotency_key: str | None = Depends(optional_idempotency_key),
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
 ) -> TriggerResponse:
@@ -235,7 +287,13 @@ async def trigger_schedule(
     if not existing.is_active:
         raise HTTPException(status_code=400, detail="Schedule is inactive")
 
-    JobDispatcher().enqueue_task(deliver_schedule_task, str(id), str(user.tenant_id))
+    resolved_idempotency_key = idempotency_key or f"manual-trigger:{id}:{datetime.now(UTC).isoformat()}"
+    JobDispatcher().enqueue_task(
+        deliver_schedule_task,
+        str(id),
+        str(user.tenant_id),
+        resolved_idempotency_key,
+    )
     return TriggerResponse(schedule_id=str(id), status="triggered")
 
 

@@ -10,6 +10,7 @@ from financeops.modules.notifications.templates.emails import (
     board_pack_ready_email,
     covenant_breach_email,
     signoff_request_email,
+    user_invited_email,
 )
 from financeops.services.network_runtime import send_smtp_message
 
@@ -65,6 +66,14 @@ def _render_notification(notification_event: NotificationEvent) -> tuple[str, st
             portal_url=str(data.get("portal_url", notification_event.action_url or "#")),
             access_token=str(data.get("access_token", "")),
             valid_until=str(data.get("valid_until", "")),
+            unsubscribe_url=str(data.get("unsubscribe_url", "#")),
+        )
+    if ntype == "user_invited":
+        return user_invited_email(
+            invitee_name=str(data.get("invitee_name", "")),
+            inviter_name=str(data.get("inviter_name", "")),
+            company_name=str(data.get("company_name", "FinanceOps")),
+            invite_url=str(data.get("invite_url", notification_event.action_url or "#")),
             unsubscribe_url=str(data.get("unsubscribe_url", "#")),
         )
 

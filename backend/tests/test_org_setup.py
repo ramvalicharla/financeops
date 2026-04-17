@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import uuid
 from datetime import date
 from decimal import Decimal
@@ -22,9 +23,12 @@ from financeops.modules.org_setup.application.consolidation_method_service impor
     ConsolidationMethodService,
 )
 from financeops.modules.org_setup.application.org_setup_service import OrgSetupService
+from financeops.modules.org_setup.domain.exceptions import CircularOwnershipError
 from financeops.modules.org_setup.models import OrgEntity, OrgEntityErpConfig, OrgGroup, OrgOwnership, OrgSetupProgress
 from financeops.platform.db.models.entities import CpEntity
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+
+_API_SESSION_FACTORY = None
 
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
@@ -32,9 +36,17 @@ def _auth_headers(user: IamUser) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _seed_coa(async_session: AsyncSession) -> None:
-    await run_coa_seeds(async_session)
-    await async_session.flush()
+@pytest.fixture(autouse=True)
+def _bind_api_session_factory(api_session_factory):
+    global _API_SESSION_FACTORY
+    _API_SESSION_FACTORY = api_session_factory
+
+
+async def _seed_coa() -> None:
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        await run_coa_seeds(session)
+        await session.commit()
 
 
 async def _software_template(async_session: AsyncSession) -> CoaIndustryTemplate:
@@ -46,56 +58,60 @@ async def _software_template(async_session: AsyncSession) -> CoaIndustryTemplate
     return row
 
 
-async def _seed_tenant_coa(async_session: AsyncSession, tenant_id: uuid.UUID) -> CoaIndustryTemplate:
-    template = await _software_template(async_session)
-    await TenantCoaService(async_session).initialise_tenant_coa(tenant_id, template.id)
-    await async_session.flush()
-    return template
+async def _seed_tenant_coa(tenant_id: uuid.UUID) -> CoaIndustryTemplate:
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        template = await _software_template(session)
+        await TenantCoaService(session).initialise_tenant_coa(tenant_id, template.id)
+        await session.commit()
+        return template
 
 
 async def _setup_group_and_entity(
-    async_session: AsyncSession,
     tenant_id: uuid.UUID,
 ) -> tuple[OrgGroup, OrgEntity]:
-    service = OrgSetupService(async_session)
-    group = await service.submit_step1(
-        tenant_id,
-        {
-            "group_name": "Acme Group",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-            "logo_url": None,
-            "website": "https://acme.example",
-        },
-    )
-    entities = await service.submit_step2(
-        tenant_id,
-        group.id,
-        [
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        service = OrgSetupService(session)
+        group = await service.submit_step1(
+            tenant_id,
             {
-                "legal_name": "Acme India Pvt Ltd",
-                "display_name": "Acme India",
-                "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                "group_name": "Acme Group",
+                "country_of_incorp": "India",
                 "country_code": "IN",
-                "state_code": "KA",
                 "functional_currency": "INR",
                 "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
-                "incorporation_number": "INC-001",
-                "pan": "ABCDE1234F",
-                "tan": "BLRA12345A",
-                "cin": "L12345KA2020PTC123456",
-                "gstin": "29ABCDE1234F1Z5",
-                "lei": None,
-                "tax_jurisdiction": "India",
-                "tax_rate": Decimal("0.2500"),
-            }
-        ],
-    )
-    return group, entities[0]
+                "logo_url": None,
+                "website": "https://acme.example",
+            },
+        )
+        entities = await service.submit_step2(
+            tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Acme India Pvt Ltd",
+                    "display_name": "Acme India",
+                    "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                    "country_code": "IN",
+                    "state_code": "KA",
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                    "incorporation_number": "INC-001",
+                    "pan": "ABCDE1234F",
+                    "tan": "BLRA12345A",
+                    "cin": "L12345KA2020PTC123456",
+                    "gstin": "29ABCDE1234F1Z5",
+                    "lei": None,
+                    "tax_jurisdiction": "India",
+                    "tax_rate": Decimal("0.2500"),
+                }
+            ],
+        )
+        await session.commit()
+        return group, entities[0]
 
 
 async def _create_second_tenant(async_session: AsyncSession) -> tuple[IamTenant, IamUser]:
@@ -130,13 +146,70 @@ async def _create_second_tenant(async_session: AsyncSession) -> tuple[IamTenant,
     return tenant, user
 
 
+@asynccontextmanager
+async def _session_scope(api_session_factory):
+    async with api_session_factory() as session:
+        try:
+            yield session
+            if session.in_transaction():
+                await session.commit()
+        except Exception:
+            if session.in_transaction():
+                await session.rollback()
+            raise
+
+
+@asynccontextmanager
+async def _org_setup_scope(api_session_factory):
+    async with _session_scope(api_session_factory) as session:
+        yield OrgSetupService(session), session
+
+
+@pytest_asyncio.fixture
+async def test_user(api_session_factory) -> IamUser:
+    tenant_id = uuid.uuid4()
+    async with api_session_factory() as session:
+        tenant = IamTenant(
+            id=tenant_id,
+            tenant_id=tenant_id,
+            chain_hash=compute_chain_hash({"display_name": "Test Tenant"}, GENESIS_HASH),
+            previous_hash=GENESIS_HASH,
+            display_name="Test Tenant",
+            slug=f"org-setup-{tenant_id.hex[:8]}",
+            tenant_type=TenantType.direct,
+            country="IN",
+            timezone="UTC",
+            status=TenantStatus.active,
+            is_platform_tenant=False,
+            org_setup_complete=True,
+            org_setup_step=7,
+        )
+        session.add(tenant)
+        await session.flush()
+
+        user = IamUser(
+            tenant_id=tenant.id,
+            email=f"orgsetup-{tenant_id.hex[:8]}@example.com",
+            hashed_password="x",
+            full_name="Org Setup User",
+            role=UserRole.finance_leader,
+            is_active=True,
+            mfa_enabled=False,
+        )
+        session.add(user)
+        await session.flush()
+        await session.commit()
+        return user
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def _ensure_org_setup_incomplete(async_session: AsyncSession, test_user: IamUser) -> None:
-    tenant = await async_session.get(IamTenant, test_user.tenant_id)
-    assert tenant is not None
-    tenant.org_setup_complete = False
-    tenant.org_setup_step = 0
-    await async_session.flush()
+async def _ensure_org_setup_incomplete(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as session:
+        tenant = await session.get(IamTenant, test_user.tenant_id)
+        assert tenant is not None
+        tenant.org_setup_complete = False
+        tenant.org_setup_step = 0
+        await session.commit()
 
 
 @pytest.mark.asyncio
@@ -188,51 +261,57 @@ async def test_gate_passes_after_setup_complete(
 
 
 @pytest.mark.asyncio
-async def test_get_progress_creates_if_not_exists(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    row = await service.get_or_create_progress(test_user.tenant_id)
+async def test_get_progress_creates_if_not_exists(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        row = await service.get_or_create_progress(test_user.tenant_id)
     assert row.current_step == 1
 
 
 @pytest.mark.asyncio
-async def test_save_step_advances_current_step(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    await service.save_step(test_user.tenant_id, 1, {"ok": True})
-    row = await service.save_step(test_user.tenant_id, 3, {"ok": True})
-    tenant = await async_session.get(IamTenant, test_user.tenant_id)
+async def test_save_step_advances_current_step(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, session):
+        tenant = await session.get(IamTenant, test_user.tenant_id)
+        assert tenant is not None
+        tenant.org_setup_complete = False
+        tenant.org_setup_step = 0
+        await service.save_step(test_user.tenant_id, 1, {"ok": True})
+        row = await service.save_step(test_user.tenant_id, 3, {"ok": True})
+    async with _session_scope(api_session_factory) as session:
+        tenant = await session.get(IamTenant, test_user.tenant_id)
     assert row.current_step == 4
     assert tenant is not None and tenant.org_setup_step == 4
 
 
 @pytest.mark.asyncio
-async def test_save_step_idempotent(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    first = await service.save_step(test_user.tenant_id, 2, {"v": 1})
-    second = await service.save_step(test_user.tenant_id, 2, {"v": 2})
-    total = int(
-        (
-            await async_session.execute(
-                select(func.count()).select_from(OrgSetupProgress).where(OrgSetupProgress.tenant_id == test_user.tenant_id)
-            )
-        ).scalar_one()
-    )
+async def test_save_step_idempotent(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        first = await service.save_step(test_user.tenant_id, 2, {"v": 1})
+        second = await service.save_step(test_user.tenant_id, 2, {"v": 2})
+    async with _session_scope(api_session_factory) as session:
+        total = int(
+            (
+                await session.execute(
+                    select(func.count()).select_from(OrgSetupProgress).where(OrgSetupProgress.tenant_id == test_user.tenant_id)
+                )
+            ).scalar_one()
+        )
     assert first.id == second.id
     assert total == 1
 
 
 @pytest.mark.asyncio
-async def test_step1_creates_org_group(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    row = await service.submit_step1(
-        test_user.tenant_id,
-        {
-            "group_name": "Acme",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-        },
-    )
+async def test_step1_creates_org_group(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        row = await service.submit_step1(
+            test_user.tenant_id,
+            {
+                "group_name": "Acme",
+                "country_of_incorp": "India",
+                "country_code": "IN",
+                "functional_currency": "INR",
+                "reporting_currency": "INR",
+            },
+        )
     assert row.group_name == "Acme"
 
 
@@ -317,7 +396,7 @@ async def test_step1_second_submit_returns_updated_group(async_client: AsyncClie
 
 @pytest.mark.asyncio
 async def test_step2_creates_entities(async_session: AsyncSession, test_user: IamUser) -> None:
-    group, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
+    group, entity = await _setup_group_and_entity(test_user.tenant_id)
     assert group.id
     assert entity.id
 
@@ -408,150 +487,299 @@ async def test_step3_module_review_returns_review_only_payload(
 
 
 @pytest.mark.asyncio
-async def test_step2_creates_cp_entities(async_session: AsyncSession, test_user: IamUser) -> None:
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
+async def test_step2_creates_cp_entities(api_session_factory, test_user: IamUser) -> None:
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
     assert entity.cp_entity_id is not None
-    cp_row = await async_session.get(CpEntity, entity.cp_entity_id)
+    async with _session_scope(api_session_factory) as session:
+        cp_row = await session.get(CpEntity, entity.cp_entity_id)
     assert cp_row is not None
 
 
 @pytest.mark.asyncio
-async def test_step2_requires_minimum_one_entity(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    group = await service.submit_step1(
-        test_user.tenant_id,
-        {
-            "group_name": "Acme",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-        },
-    )
-    with pytest.raises(ValidationError):
-        await service.submit_step2(test_user.tenant_id, group.id, [])
+async def test_step2_requires_minimum_one_entity(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
+            {
+                "group_name": "Acme",
+                "country_of_incorp": "India",
+                "country_code": "IN",
+                "functional_currency": "INR",
+                "reporting_currency": "INR",
+            },
+        )
+        with pytest.raises(ValidationError):
+            await service.submit_step2(test_user.tenant_id, group.id, [])
 
 
 @pytest.mark.asyncio
-async def test_step3_creates_ownership_records(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    group = await service.submit_step1(
-        test_user.tenant_id,
-        {
-            "group_name": "Acme",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-        },
-    )
-    entities = await service.submit_step2(
-        test_user.tenant_id,
-        group.id,
-        [
+async def test_step3_creates_ownership_records(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
             {
-                "legal_name": "Parent Co",
-                "display_name": "Parent",
-                "entity_type": "HOLDING_COMPANY",
+                "group_name": "Acme",
+                "country_of_incorp": "India",
                 "country_code": "IN",
-                "state_code": None,
                 "functional_currency": "INR",
                 "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
             },
-            {
-                "legal_name": "Child Co",
-                "display_name": "Child",
-                "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
-                "country_code": "IN",
-                "state_code": None,
-                "functional_currency": "INR",
-                "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
-            },
-        ],
-    )
-    rows = await service.submit_step3(
-        test_user.tenant_id,
-        [
-            {
-                "parent_entity_id": entities[0].id,
-                "child_entity_id": entities[1].id,
-                "ownership_pct": Decimal("75.0000"),
-                "manual_consolidation_method": None,
-                "effective_from": date.today(),
-            }
-        ],
-    )
+        )
+        entities = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Parent Co",
+                    "display_name": "Parent",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Child Co",
+                    "display_name": "Child",
+                    "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+            ],
+        )
+        rows = await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": entities[0].id,
+                    "child_entity_id": entities[1].id,
+                    "ownership_pct": Decimal("75.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": date.today(),
+                }
+            ],
+        )
     assert len(rows) == 1
 
 
 @pytest.mark.asyncio
-async def test_step3_derives_full_consolidation(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    group = await service.submit_step1(
-        test_user.tenant_id,
-        {
-            "group_name": "Acme",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-        },
-    )
-    entities = await service.submit_step2(
-        test_user.tenant_id,
-        group.id,
-        [
+async def test_step3_derives_full_consolidation(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
             {
-                "legal_name": "Parent",
-                "display_name": "Parent",
-                "entity_type": "HOLDING_COMPANY",
+                "group_name": "Acme",
+                "country_of_incorp": "India",
                 "country_code": "IN",
-                "state_code": None,
                 "functional_currency": "INR",
                 "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
             },
-            {
-                "legal_name": "Sub",
-                "display_name": "Sub",
-                "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
-                "country_code": "IN",
-                "state_code": None,
-                "functional_currency": "INR",
-                "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
-            },
-        ],
-    )
-    rows = await service.submit_step3(
-        test_user.tenant_id,
-        [
-            {
-                "parent_entity_id": entities[0].id,
-                "child_entity_id": entities[1].id,
-                "ownership_pct": Decimal("51.0000"),
-                "manual_consolidation_method": None,
-                "effective_from": date.today(),
-            }
-        ],
-    )
+        )
+        entities = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Parent",
+                    "display_name": "Parent",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Sub",
+                    "display_name": "Sub",
+                    "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+            ],
+        )
+        rows = await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": entities[0].id,
+                    "child_entity_id": entities[1].id,
+                    "ownership_pct": Decimal("51.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": date.today(),
+                }
+            ],
+        )
     assert rows[0].consolidation_method == "FULL_CONSOLIDATION"
     assert isinstance(rows[0].ownership_pct, Decimal)
 
 
 @pytest.mark.asyncio
-async def test_step3_derives_equity_method(async_session: AsyncSession, test_user: IamUser) -> None:
+async def test_step3_derives_equity_method(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
+            {
+                "group_name": "Acme",
+                "country_of_incorp": "India",
+                "country_code": "IN",
+                "functional_currency": "INR",
+                "reporting_currency": "INR",
+            },
+        )
+        entities = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Parent",
+                    "display_name": "Parent",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Associate",
+                    "display_name": "Associate",
+                    "entity_type": "ASSOCIATE",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+            ],
+        )
+        rows = await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": entities[0].id,
+                    "child_entity_id": entities[1].id,
+                    "ownership_pct": Decimal("30.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": date.today(),
+                }
+            ],
+        )
+    assert rows[0].consolidation_method == "EQUITY_METHOD"
+
+
+@pytest.mark.asyncio
+async def test_step3_rejects_circular_ownership(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
+            {
+                "group_name": "Cycle Group",
+                "country_of_incorp": "India",
+                "country_code": "IN",
+                "functional_currency": "INR",
+                "reporting_currency": "INR",
+            },
+        )
+        entities = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Entity A",
+                    "display_name": "Entity A",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Entity B",
+                    "display_name": "Entity B",
+                    "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Entity C",
+                    "display_name": "Entity C",
+                    "entity_type": "ASSOCIATE",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+            ],
+        )
+        today = date.today()
+        await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": entities[0].id,
+                    "child_entity_id": entities[1].id,
+                    "ownership_pct": Decimal("80.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": today,
+                },
+                {
+                    "parent_entity_id": entities[1].id,
+                    "child_entity_id": entities[2].id,
+                    "ownership_pct": Decimal("35.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": today,
+                },
+            ],
+        )
+
+        with pytest.raises(CircularOwnershipError, match="circular ownership chain"):
+            await service.submit_step3(
+                test_user.tenant_id,
+                [
+                    {
+                        "parent_entity_id": entities[2].id,
+                        "child_entity_id": entities[0].id,
+                        "ownership_pct": Decimal("22.0000"),
+                        "manual_consolidation_method": None,
+                        "effective_from": today,
+                    }
+                ],
+            )
+
+
+@pytest.mark.asyncio
+async def test_step3_api_returns_422_for_circular_ownership(
+    async_client: AsyncClient,
+    async_session: AsyncSession,
+    test_user: IamUser,
+) -> None:
     service = OrgSetupService(async_session)
     group = await service.submit_step1(
         test_user.tenant_id,
         {
-            "group_name": "Acme",
+            "group_name": "Cycle API Group",
             "country_of_incorp": "India",
             "country_code": "IN",
             "functional_currency": "INR",
@@ -563,8 +791,8 @@ async def test_step3_derives_equity_method(async_session: AsyncSession, test_use
         group.id,
         [
             {
-                "legal_name": "Parent",
-                "display_name": "Parent",
+                "legal_name": "Parent API",
+                "display_name": "Parent API",
                 "entity_type": "HOLDING_COMPANY",
                 "country_code": "IN",
                 "state_code": None,
@@ -574,9 +802,9 @@ async def test_step3_derives_equity_method(async_session: AsyncSession, test_use
                 "applicable_gaap": "INDAS",
             },
             {
-                "legal_name": "Associate",
-                "display_name": "Associate",
-                "entity_type": "ASSOCIATE",
+                "legal_name": "Child API",
+                "display_name": "Child API",
+                "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
                 "country_code": "IN",
                 "state_code": None,
                 "functional_currency": "INR",
@@ -586,198 +814,230 @@ async def test_step3_derives_equity_method(async_session: AsyncSession, test_use
             },
         ],
     )
-    rows = await service.submit_step3(
-        test_user.tenant_id,
-        [
-            {
-                "parent_entity_id": entities[0].id,
-                "child_entity_id": entities[1].id,
-                "ownership_pct": Decimal("30.0000"),
-                "manual_consolidation_method": None,
-                "effective_from": date.today(),
-            }
-        ],
+    await async_session.commit()
+
+    headers = _auth_headers(test_user)
+    today = str(date.today())
+    first = await async_client.post(
+        "/api/v1/org-setup/step3",
+        headers=headers,
+        json={
+            "relationships": [
+                {
+                    "parent_entity_id": str(entities[0].id),
+                    "child_entity_id": str(entities[1].id),
+                    "ownership_pct": "75.0000",
+                    "manual_consolidation_method": None,
+                    "effective_from": today,
+                }
+            ]
+        },
     )
-    assert rows[0].consolidation_method == "EQUITY_METHOD"
+    assert first.status_code == 200
+
+    second = await async_client.post(
+        "/api/v1/org-setup/step3",
+        headers=headers,
+        json={
+            "relationships": [
+                {
+                    "parent_entity_id": str(entities[1].id),
+                    "child_entity_id": str(entities[0].id),
+                    "ownership_pct": "25.0000",
+                    "manual_consolidation_method": None,
+                    "effective_from": today,
+                }
+            ]
+        },
+    )
+    assert second.status_code == 422
+    payload = second.json()["error"]
+    assert payload["code"] == "validation_error"
+    assert "circular ownership chain" in payload["message"].lower()
 
 
 @pytest.mark.asyncio
-async def test_step3_manual_override_respected(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    group, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    parent = await service.submit_step2(
-        test_user.tenant_id,
-        group.id,
-        [
-            {
-                "legal_name": "Parent",
-                "display_name": "Parent",
-                "entity_type": "HOLDING_COMPANY",
-                "country_code": "IN",
-                "state_code": None,
-                "functional_currency": "INR",
-                "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
-            }
-        ],
-    )
-    rows = await service.submit_step3(
-        test_user.tenant_id,
-        [
-            {
-                "parent_entity_id": parent[0].id,
-                "child_entity_id": entity.id,
-                "ownership_pct": Decimal("10.0000"),
-                "manual_consolidation_method": "FULL_CONSOLIDATION",
-                "effective_from": date.today(),
-            }
-        ],
-    )
+async def test_step3_manual_override_respected(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group, entity = await _setup_group_and_entity(test_user.tenant_id)
+        parent = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Parent",
+                    "display_name": "Parent",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                }
+            ],
+        )
+        rows = await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": parent[0].id,
+                    "child_entity_id": entity.id,
+                    "ownership_pct": Decimal("10.0000"),
+                    "manual_consolidation_method": "FULL_CONSOLIDATION",
+                    "effective_from": date.today(),
+                }
+            ],
+        )
     assert rows[0].consolidation_method == "FULL_CONSOLIDATION"
 
 
 @pytest.mark.asyncio
-async def test_step4_creates_erp_configs(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    rows = await service.submit_step4(
-        test_user.tenant_id,
-        [
-            {
-                "org_entity_id": entity.id,
-                "erp_type": "TALLY_PRIME",
-                "erp_version": "3.0",
-                "is_primary": True,
-            }
-        ],
-    )
+async def test_step4_creates_erp_configs(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        _, entity = await _setup_group_and_entity(test_user.tenant_id)
+        rows = await service.submit_step4(
+            test_user.tenant_id,
+            [
+                {
+                    "org_entity_id": entity.id,
+                    "erp_type": "TALLY_PRIME",
+                    "erp_version": "3.0",
+                    "is_primary": True,
+                }
+            ],
+        )
     assert len(rows) == 1
     assert rows[0].erp_type == "TALLY_PRIME"
 
 
 @pytest.mark.asyncio
-async def test_step5_initialises_tenant_coa(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _seed_coa(async_session)
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
-    await service.submit_step5(
-        test_user.tenant_id,
-        [{"entity_id": entity.id, "template_id": template.id}],
-    )
-    count = int(
-        (
-            await async_session.execute(
-                select(func.count())
-                .select_from(TenantCoaAccount)
-                .where(TenantCoaAccount.tenant_id == test_user.tenant_id)
-            )
-        ).scalar_one()
-    )
+async def test_step5_initialises_tenant_coa(api_session_factory, test_user: IamUser) -> None:
+    await _seed_coa()
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    template = await _seed_tenant_coa(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.submit_step5(
+            test_user.tenant_id,
+            [{"entity_id": entity.id, "template_id": template.id}],
+        )
+    async with _session_scope(api_session_factory) as session:
+        count = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(TenantCoaAccount)
+                    .where(TenantCoaAccount.tenant_id == test_user.tenant_id)
+                )
+            ).scalar_one()
+        )
     assert count > 80
 
 
 @pytest.mark.asyncio
-async def test_step5_sets_industry_template_on_entity(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _seed_coa(async_session)
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
-    await service.submit_step5(
-        test_user.tenant_id,
-        [{"entity_id": entity.id, "template_id": template.id}],
-    )
-    await async_session.refresh(entity)
-    assert entity.industry_template_id == template.id
+async def test_step5_sets_industry_template_on_entity(api_session_factory, test_user: IamUser) -> None:
+    await _seed_coa()
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    template = await _seed_tenant_coa(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.submit_step5(
+            test_user.tenant_id,
+            [{"entity_id": entity.id, "template_id": template.id}],
+        )
+    async with _session_scope(api_session_factory) as session:
+        refreshed = await session.get(OrgEntity, entity.id)
+    assert refreshed is not None and refreshed.industry_template_id == template.id
 
 
 @pytest.mark.asyncio
-async def test_step5_allows_pending_coa_without_upload(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _seed_coa(async_session)
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _software_template(async_session)
-
-    summary = await service.submit_step5(
-        test_user.tenant_id,
-        [{"entity_id": entity.id, "template_id": template.id}],
-    )
-    progress = await service.get_or_create_progress(test_user.tenant_id)
+async def test_step5_allows_pending_coa_without_upload(api_session_factory, test_user: IamUser) -> None:
+    await _seed_coa()
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    async with _session_scope(api_session_factory) as session:
+        template = await _software_template(session)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        summary = await service.submit_step5(
+            test_user.tenant_id,
+            [{"entity_id": entity.id, "template_id": template.id}],
+        )
+        progress = await service.get_or_create_progress(test_user.tenant_id)
 
     assert summary[0]["account_count"] == 0
     assert (progress.step5_data or {}).get("coa_status") == "pending"
 
 
 @pytest.mark.asyncio
-async def test_mark_coa_skipped_sets_progress_status(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    progress = await service.mark_coa_skipped(test_user.tenant_id)
+async def test_mark_coa_skipped_sets_progress_status(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        progress = await service.mark_coa_skipped(test_user.tenant_id)
 
     assert progress.current_step == 1
     assert (progress.step5_data or {}).get("coa_status") == "skipped"
 
 
 @pytest.mark.asyncio
-async def test_step6_confirms_mappings(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _seed_coa(async_session)
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
-    await service.submit_step5(
-        test_user.tenant_id,
-        [{"entity_id": entity.id, "template_id": template.id}],
-    )
-    tenant_account = (
-        await async_session.execute(
-            select(TenantCoaAccount)
-            .where(TenantCoaAccount.tenant_id == test_user.tenant_id)
-            .order_by(TenantCoaAccount.account_code)
+async def test_step6_confirms_mappings(api_session_factory, test_user: IamUser) -> None:
+    await _seed_coa()
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    template = await _seed_tenant_coa(test_user.tenant_id)
+    async with _session_scope(api_session_factory) as session:
+        service = OrgSetupService(session)
+        await service.submit_step5(
+            test_user.tenant_id,
+            [{"entity_id": entity.id, "template_id": template.id}],
         )
-    ).scalars().first()
-    assert tenant_account is not None and entity.cp_entity_id is not None
+        tenant_account = (
+            await session.execute(
+                select(TenantCoaAccount)
+                .where(TenantCoaAccount.tenant_id == test_user.tenant_id)
+                .order_by(TenantCoaAccount.account_code)
+            )
+        ).scalars().first()
+        assert tenant_account is not None and entity.cp_entity_id is not None
 
-    mapping = ErpAccountMapping(
-        tenant_id=test_user.tenant_id,
-        entity_id=entity.cp_entity_id,
-        erp_connector_type="TALLY",
-        erp_account_code="1001",
-        erp_account_name="Sales",
-        erp_account_type="revenue",
-        tenant_coa_account_id=tenant_account.id,
-        mapping_confidence=Decimal("0.9500"),
-        is_auto_mapped=True,
-        is_confirmed=False,
-        is_active=True,
-    )
-    async_session.add(mapping)
-    await async_session.flush()
+        mapping = ErpAccountMapping(
+            tenant_id=test_user.tenant_id,
+            entity_id=entity.cp_entity_id,
+            erp_connector_type="TALLY",
+            erp_account_code="1001",
+            erp_account_name="Sales",
+            erp_account_type="revenue",
+            tenant_coa_account_id=tenant_account.id,
+            mapping_confidence=Decimal("0.9500"),
+            is_auto_mapped=True,
+            is_confirmed=False,
+            is_active=True,
+        )
+        session.add(mapping)
+        await session.flush()
 
-    confirmed = await service.submit_step6(
-        test_user.tenant_id,
-        [mapping.id],
-        confirmed_by=test_user.id,
-    )
-    await async_session.refresh(mapping)
+        confirmed = await service.submit_step6(
+            test_user.tenant_id,
+            [mapping.id],
+            confirmed_by=test_user.id,
+        )
+        await session.refresh(mapping)
     assert confirmed == 1
     assert mapping.is_confirmed is True
 
 
 @pytest.mark.asyncio
-async def test_step6_allows_unmapped_completion_when_coa_skipped(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    await service.mark_coa_skipped(test_user.tenant_id)
-    await service.submit_step6(test_user.tenant_id, [], confirmed_by=test_user.id)
-    tenant = await async_session.get(IamTenant, test_user.tenant_id)
+async def test_step6_allows_unmapped_completion_when_coa_skipped(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.mark_coa_skipped(test_user.tenant_id)
+        await service.submit_step6(test_user.tenant_id, [], confirmed_by=test_user.id)
+    async with _session_scope(api_session_factory) as session:
+        tenant = await session.get(IamTenant, test_user.tenant_id)
     assert tenant is not None and tenant.org_setup_complete is True
 
 
 @pytest.mark.asyncio
-async def test_complete_setup_sets_flag(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    await service.complete_setup(test_user.tenant_id)
-    tenant = await async_session.get(IamTenant, test_user.tenant_id)
-    progress = await service.get_or_create_progress(test_user.tenant_id)
+async def test_complete_setup_sets_flag(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.complete_setup(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, session):
+        tenant = await session.get(IamTenant, test_user.tenant_id)
+        progress = await service.get_or_create_progress(test_user.tenant_id)
     assert tenant is not None
     assert tenant.org_setup_complete is True
     assert tenant.org_setup_step == 7
@@ -785,56 +1045,58 @@ async def test_complete_setup_sets_flag(async_session: AsyncSession, test_user: 
 
 
 @pytest.mark.asyncio
-async def test_complete_setup_allows_pending_coa_without_erp(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    await service.complete_setup(test_user.tenant_id)
-    tenant = await async_session.get(IamTenant, test_user.tenant_id)
+async def test_complete_setup_allows_pending_coa_without_erp(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.complete_setup(test_user.tenant_id)
+    async with _session_scope(api_session_factory) as session:
+        tenant = await session.get(IamTenant, test_user.tenant_id)
     assert tenant is not None and tenant.org_setup_complete is True
 
 
 @pytest.mark.asyncio
-async def test_complete_setup_allows_erp_connected_without_coa(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    await service.submit_step4(
-        test_user.tenant_id,
-        [{"org_entity_id": entity.id, "erp_type": "MANUAL", "erp_version": None, "is_primary": True}],
-    )
-    assert entity.cp_entity_id is not None
-    async_session.add(
-        ErpAccountMapping(
-            tenant_id=test_user.tenant_id,
-            entity_id=entity.cp_entity_id,
-            erp_connector_type="MANUAL",
-            erp_account_code="ERP-1001",
-            erp_account_name="ERP Cash",
-            erp_account_type="asset",
-            tenant_coa_account_id=None,
-            mapping_confidence=Decimal("0.9000"),
-            is_auto_mapped=False,
-            is_confirmed=False,
-            is_active=True,
+async def test_complete_setup_allows_erp_connected_without_coa(api_session_factory, test_user: IamUser) -> None:
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    async with _session_scope(api_session_factory) as session:
+        service = OrgSetupService(session)
+        await service.submit_step4(
+            test_user.tenant_id,
+            [{"org_entity_id": entity.id, "erp_type": "MANUAL", "erp_version": None, "is_primary": True}],
         )
-    )
-    await async_session.flush()
-    await service.complete_setup(test_user.tenant_id)
-    tenant = await async_session.get(IamTenant, test_user.tenant_id)
+        assert entity.cp_entity_id is not None
+        session.add(
+            ErpAccountMapping(
+                tenant_id=test_user.tenant_id,
+                entity_id=entity.cp_entity_id,
+                erp_connector_type="MANUAL",
+                erp_account_code="ERP-1001",
+                erp_account_name="ERP Cash",
+                erp_account_type="asset",
+                tenant_coa_account_id=None,
+                mapping_confidence=Decimal("0.9000"),
+                is_auto_mapped=False,
+                is_confirmed=False,
+                is_active=True,
+            )
+        )
+        await session.flush()
+        await service.complete_setup(test_user.tenant_id)
+    async with _session_scope(api_session_factory) as session:
+        tenant = await session.get(IamTenant, test_user.tenant_id)
     assert tenant is not None and tenant.org_setup_complete is True
 
 
 @pytest.mark.asyncio
 async def test_active_erp_config_without_usable_data_keeps_coa_status_pending(
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    await service.submit_step4(
-        test_user.tenant_id,
-        [{"org_entity_id": entity.id, "erp_type": "MANUAL", "erp_version": None, "is_primary": True}],
-    )
-
-    assert await service.get_coa_status(test_user.tenant_id) == "pending"
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.submit_step4(
+            test_user.tenant_id,
+            [{"org_entity_id": entity.id, "erp_type": "MANUAL", "erp_version": None, "is_primary": True}],
+        )
+        assert await service.get_coa_status(test_user.tenant_id) == "pending"
 
 
 @pytest.mark.asyncio
@@ -888,68 +1150,68 @@ async def test_all_pct_values_are_decimal_not_float() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_ownership_tree_returns_hierarchy(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    group = await service.submit_step1(
-        test_user.tenant_id,
-        {
-            "group_name": "Tree Group",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-        },
-    )
-    entities = await service.submit_step2(
-        test_user.tenant_id,
-        group.id,
-        [
+async def test_get_ownership_tree_returns_hierarchy(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
             {
-                "legal_name": "Parent",
-                "display_name": "Parent",
-                "entity_type": "HOLDING_COMPANY",
+                "group_name": "Tree Group",
+                "country_of_incorp": "India",
                 "country_code": "IN",
-                "state_code": None,
                 "functional_currency": "INR",
                 "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
             },
-            {
-                "legal_name": "Child",
-                "display_name": "Child",
-                "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
-                "country_code": "IN",
-                "state_code": None,
-                "functional_currency": "INR",
-                "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
-            },
-        ],
-    )
-    await service.submit_step3(
-        test_user.tenant_id,
-        [
-            {
-                "parent_entity_id": entities[0].id,
-                "child_entity_id": entities[1].id,
-                "ownership_pct": Decimal("60.0000"),
-                "manual_consolidation_method": None,
-                "effective_from": date.today(),
-            }
-        ],
-    )
-    tree = await service.get_ownership_tree(test_user.tenant_id)
+        )
+        entities = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Parent",
+                    "display_name": "Parent",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Child",
+                    "display_name": "Child",
+                    "entity_type": "WHOLLY_OWNED_SUBSIDIARY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+            ],
+        )
+        await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": entities[0].id,
+                    "child_entity_id": entities[1].id,
+                    "ownership_pct": Decimal("60.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": date.today(),
+                }
+            ],
+        )
+        tree = await service.get_ownership_tree(test_user.tenant_id)
     assert tree["entities"]
     assert tree["entities"][0]["children"]
 
 
 @pytest.mark.asyncio
-async def test_single_entity_tree(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    tree = await service.get_ownership_tree(test_user.tenant_id)
+async def test_single_entity_tree(api_session_factory, test_user: IamUser) -> None:
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        tree = await service.get_ownership_tree(test_user.tenant_id)
     assert len(tree["entities"]) >= 1
     assert any(node["entity_id"] == str(entity.id) for node in tree["entities"])
 
@@ -968,7 +1230,7 @@ async def test_tenant_a_cannot_read_tenant_b_entities(
     service_b = OrgSetupService(async_session)
     await service_b.mark_coa_skipped(tenant_b.id)
     await service_b.complete_setup(tenant_b.id)
-    _, entity_b = await _setup_group_and_entity(async_session, tenant_b.id)
+    _, entity_b = await _setup_group_and_entity(tenant_b.id)
 
     response = await async_client.get(
         f"/api/v1/org-setup/entities/{entity_b.id}",
@@ -992,7 +1254,7 @@ async def test_tenant_a_cannot_modify_tenant_b_group(
     service_b = OrgSetupService(async_session)
     await service_b.mark_coa_skipped(tenant_b.id)
     await service_b.complete_setup(tenant_b.id)
-    _, entity_b = await _setup_group_and_entity(async_session, tenant_b.id)
+    _, entity_b = await _setup_group_and_entity(tenant_b.id)
 
     response = await async_client.patch(
         f"/api/v1/org-setup/entities/{entity_b.id}",
@@ -1003,101 +1265,103 @@ async def test_tenant_a_cannot_modify_tenant_b_group(
 
 
 @pytest.mark.asyncio
-async def test_step4_records_persist(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    await service.submit_step4(
-        test_user.tenant_id,
-        [{"org_entity_id": entity.id, "erp_type": "MANUAL", "erp_version": None, "is_primary": True}],
-    )
-    count = int(
-        (
-            await async_session.execute(
-                select(func.count())
-                .select_from(OrgEntityErpConfig)
-                .where(OrgEntityErpConfig.tenant_id == test_user.tenant_id)
-            )
-        ).scalar_one()
-    )
+async def test_step4_records_persist(api_session_factory, test_user: IamUser) -> None:
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.submit_step4(
+            test_user.tenant_id,
+            [{"org_entity_id": entity.id, "erp_type": "MANUAL", "erp_version": None, "is_primary": True}],
+        )
+    async with _session_scope(api_session_factory) as session:
+        count = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(OrgEntityErpConfig)
+                    .where(OrgEntityErpConfig.tenant_id == test_user.tenant_id)
+                )
+            ).scalar_one()
+        )
     assert count == 1
 
 
 @pytest.mark.asyncio
-async def test_step3_records_persist(async_session: AsyncSession, test_user: IamUser) -> None:
-    service = OrgSetupService(async_session)
-    group = await service.submit_step1(
-        test_user.tenant_id,
-        {
-            "group_name": "Acme",
-            "country_of_incorp": "India",
-            "country_code": "IN",
-            "functional_currency": "INR",
-            "reporting_currency": "INR",
-        },
-    )
-    entities = await service.submit_step2(
-        test_user.tenant_id,
-        group.id,
-        [
+async def test_step3_records_persist(api_session_factory, test_user: IamUser) -> None:
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        group = await service.submit_step1(
+            test_user.tenant_id,
             {
-                "legal_name": "Parent",
-                "display_name": "Parent",
-                "entity_type": "HOLDING_COMPANY",
+                "group_name": "Acme",
+                "country_of_incorp": "India",
                 "country_code": "IN",
-                "state_code": None,
                 "functional_currency": "INR",
                 "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
             },
-            {
-                "legal_name": "Child",
-                "display_name": "Child",
-                "entity_type": "ASSOCIATE",
-                "country_code": "IN",
-                "state_code": None,
-                "functional_currency": "INR",
-                "reporting_currency": "INR",
-                "fiscal_year_start": 4,
-                "applicable_gaap": "INDAS",
-            },
-        ],
-    )
-    await service.submit_step3(
-        test_user.tenant_id,
-        [
-            {
-                "parent_entity_id": entities[0].id,
-                "child_entity_id": entities[1].id,
-                "ownership_pct": Decimal("25.0000"),
-                "manual_consolidation_method": None,
-                "effective_from": date.today(),
-            }
-        ],
-    )
-    count = int(
-        (
-            await async_session.execute(
-                select(func.count())
-                .select_from(OrgOwnership)
-                .where(OrgOwnership.tenant_id == test_user.tenant_id)
-            )
-        ).scalar_one()
-    )
+        )
+        entities = await service.submit_step2(
+            test_user.tenant_id,
+            group.id,
+            [
+                {
+                    "legal_name": "Parent",
+                    "display_name": "Parent",
+                    "entity_type": "HOLDING_COMPANY",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+                {
+                    "legal_name": "Child",
+                    "display_name": "Child",
+                    "entity_type": "ASSOCIATE",
+                    "country_code": "IN",
+                    "state_code": None,
+                    "functional_currency": "INR",
+                    "reporting_currency": "INR",
+                    "fiscal_year_start": 4,
+                    "applicable_gaap": "INDAS",
+                },
+            ],
+        )
+        await service.submit_step3(
+            test_user.tenant_id,
+            [
+                {
+                    "parent_entity_id": entities[0].id,
+                    "child_entity_id": entities[1].id,
+                    "ownership_pct": Decimal("25.0000"),
+                    "manual_consolidation_method": None,
+                    "effective_from": date.today(),
+                }
+            ],
+        )
+    async with _session_scope(api_session_factory) as session:
+        count = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(OrgOwnership)
+                    .where(OrgOwnership.tenant_id == test_user.tenant_id)
+                )
+            ).scalar_one()
+        )
     assert count == 1
 
 
 @pytest.mark.asyncio
-async def test_get_setup_summary(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _seed_coa(async_session)
-    service = OrgSetupService(async_session)
-    _, entity = await _setup_group_and_entity(async_session, test_user.tenant_id)
-    template = await _seed_tenant_coa(async_session, test_user.tenant_id)
-    await service.submit_step5(
-        test_user.tenant_id,
-        [{"entity_id": entity.id, "template_id": template.id}],
-    )
-    summary = await service.get_setup_summary(test_user.tenant_id)
+async def test_get_setup_summary(api_session_factory, test_user: IamUser) -> None:
+    await _seed_coa()
+    _, entity = await _setup_group_and_entity(test_user.tenant_id)
+    template = await _seed_tenant_coa(test_user.tenant_id)
+    async with _org_setup_scope(api_session_factory) as (service, _):
+        await service.submit_step5(
+            test_user.tenant_id,
+            [{"entity_id": entity.id, "template_id": template.id}],
+        )
+        summary = await service.get_setup_summary(test_user.tenant_id)
     assert summary["group"] is not None
     assert summary["entities"]
     assert summary["current_step"] == 4
@@ -1123,7 +1387,7 @@ async def test_skip_coa_endpoint_marks_status(async_client: AsyncClient, test_us
 @pytest.mark.asyncio
 async def test_skip_coa_endpoint_writes_audit_log(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
     response = await async_client.post(
@@ -1132,17 +1396,18 @@ async def test_skip_coa_endpoint_writes_audit_log(
     )
     assert response.status_code == 200
 
-    row = (
-        await async_session.execute(
-            select(AuditTrail)
-            .where(
-                AuditTrail.tenant_id == test_user.tenant_id,
-                AuditTrail.user_id == test_user.id,
-                AuditTrail.action == "tenant.coa.skip",
-                AuditTrail.resource_type == "org_setup",
+    async with _session_scope(api_session_factory) as session:
+        row = (
+            await session.execute(
+                select(AuditTrail)
+                .where(
+                    AuditTrail.tenant_id == test_user.tenant_id,
+                    AuditTrail.user_id == test_user.id,
+                    AuditTrail.action == "tenant.coa.skip",
+                    AuditTrail.resource_type == "org_setup",
+                )
+                .order_by(AuditTrail.created_at.desc())
+                .limit(1)
             )
-            .order_by(AuditTrail.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
+        ).scalar_one_or_none()
     assert row is not None

@@ -18,34 +18,34 @@ from tests.integration.anomaly_pattern_phase1f6_helpers import (
 
 
 async def _seed_alert_and_rule(
-    async_session: AsyncSession,
+    api_db_session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
 ) -> tuple[str, str]:
     await seed_control_plane_for_anomaly(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         user_id=user_id,
         enable_module=True,
         grant_permissions=True,
     )
-    await ensure_tenant_context(async_session, tenant_id)
+    await ensure_tenant_context(api_db_session, tenant_id)
     upstream = await seed_upstream_for_anomaly(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         organisation_id=tenant_id,
         created_by=user_id,
         reporting_period=date(2026, 1, 31),
     )
     await seed_active_anomaly_configuration(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         organisation_id=tenant_id,
         created_by=user_id,
         effective_from=date(2026, 1, 1),
     )
-    service = build_anomaly_service(async_session)
+    service = build_anomaly_service(api_db_session)
     created = await service.create_run(
         tenant_id=tenant_id,
         organisation_id=tenant_id,
@@ -62,10 +62,10 @@ async def _seed_alert_and_rule(
         run_id=uuid.UUID(created["run_id"]),
         actor_user_id=user_id,
     )
-    await async_session.commit()
-    await ensure_tenant_context(async_session, tenant_id)
+    await api_db_session.commit()
+    await ensure_tenant_context(api_db_session, tenant_id)
     alert_id = (
-        await async_session.execute(
+        await api_db_session.execute(
             text(
                 """
                 SELECT id
@@ -79,7 +79,7 @@ async def _seed_alert_and_rule(
         )
     ).scalar_one()
     rule_code = (
-        await async_session.execute(
+        await api_db_session.execute(
             text(
                 """
                 SELECT rule_code
@@ -99,14 +99,14 @@ async def _seed_alert_and_rule(
 @pytest.mark.asyncio
 async def test_t_304_get_anomalies_returns_list(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
-    await _seed_alert_and_rule(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+    await _seed_alert_and_rule(api_db_session, tenant_id=api_test_user.tenant_id, user_id=api_test_user.id)
     response = await async_client.get(
         "/api/v1/anomalies",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code == 200
     data = response.json()["data"]
@@ -118,25 +118,25 @@ async def test_t_304_get_anomalies_returns_list(
 @pytest.mark.asyncio
 async def test_t_305_get_anomalies_filters_by_open_status(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     alert_id, _rule_code = await _seed_alert_and_rule(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
     )
     patch_response = await async_client.patch(
         f"/api/v1/anomalies/{alert_id}/status",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={"status": "RESOLVED", "note": "resolved in test"},
     )
     assert patch_response.status_code == 200
 
     response = await async_client.get(
         "/api/v1/anomalies?status=OPEN",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code == 200
     rows = response.json()["data"]
@@ -148,18 +148,18 @@ async def test_t_305_get_anomalies_filters_by_open_status(
 @pytest.mark.asyncio
 async def test_t_306_patch_anomaly_status_resolved(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     alert_id, _rule_code = await _seed_alert_and_rule(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
     )
     response = await async_client.patch(
         f"/api/v1/anomalies/{alert_id}/status",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={"status": "RESOLVED", "note": "manual review complete"},
     )
     assert response.status_code == 200
@@ -172,18 +172,18 @@ async def test_t_306_patch_anomaly_status_resolved(
 @pytest.mark.asyncio
 async def test_t_307_patch_snoozed_requires_snoozed_until(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     alert_id, _rule_code = await _seed_alert_and_rule(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
     )
     response = await async_client.patch(
         f"/api/v1/anomalies/{alert_id}/status",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={"status": "SNOOZED"},
     )
     assert response.status_code == 422
@@ -193,18 +193,18 @@ async def test_t_307_patch_snoozed_requires_snoozed_until(
 @pytest.mark.asyncio
 async def test_t_308_put_threshold_updates_rule(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ) -> None:
     _alert_id, rule_code = await _seed_alert_and_rule(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
     )
     response = await async_client.put(
         f"/api/v1/anomalies/thresholds/{rule_code}",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={"threshold_value": "2.750000", "config": {"moderate_z": "2.25"}},
     )
     assert response.status_code == 200

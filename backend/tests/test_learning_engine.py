@@ -425,28 +425,31 @@ async def test_benchmark_results_endpoint(async_client, async_session: AsyncSess
 @pytest.mark.asyncio
 async def test_validate_correction_endpoint_requires_admin(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    signal = await capture_signal(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
-        signal_type="classification_correction",
-        task_type="classification",
-        original_ai_output={"a": 1},
-        human_correction={"a": 2},
-        model_used="gpt-test",
-        provider="openai",
-    )
-    correction = (
-        await async_session.execute(
-            select(LearningCorrection).where(LearningCorrection.signal_id == signal.id)
+    async with api_session_factory() as db:
+        signal = await capture_signal(
+            db,
+            tenant_id=test_user.tenant_id,
+            user_id=test_user.id,
+            signal_type="classification_correction",
+            task_type="classification",
+            original_ai_output={"a": 1},
+            human_correction={"a": 2},
+            model_used="gpt-test",
+            provider="openai",
         )
-    ).scalar_one()
+        correction = (
+            await db.execute(
+                select(LearningCorrection).where(LearningCorrection.signal_id == signal.id)
+            )
+        ).scalar_one()
+        correction_id = correction.id
+        await db.commit()
 
     denied = await async_client.post(
-        f"/api/v1/learning/corrections/{correction.id}/validate",
+        f"/api/v1/learning/corrections/{correction_id}/validate",
         headers=_auth_headers(test_user),
         json={"quality_score": "0.90"},
     )

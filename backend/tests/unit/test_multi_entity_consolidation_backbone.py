@@ -7,6 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from financeops.modules.multi_entity_consolidation.domain.exceptions import (
+    MissingSourceEntityError,
+)
 from financeops.accounting_policy_engine import AccountingPolicyService, Policy
 from financeops.modules.multi_entity_consolidation.application.adjustment_service import (
     AdjustmentService,
@@ -890,8 +893,9 @@ async def test_execute_run_missing_data_triggers_validation_error(
         adjustment_service=AdjustmentService(),
     )
 
-    with pytest.raises(ValueError, match="validation_report.status=FAIL: missing minority-interest source rows"):
+    with pytest.raises(MissingSourceEntityError) as exc_info:
         await service.execute_run(tenant_id=tenant_id, run_id=run_id, created_by=uuid.uuid4())
+    assert exc_info.value.missing_ids == [str(entity_c)]
 
 
 @pytest.mark.asyncio

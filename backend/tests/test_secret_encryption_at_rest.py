@@ -22,7 +22,7 @@ from financeops.modules.scheduled_delivery.application.delivery_service import D
 from financeops.modules.payment.application.entitlement_service import EntitlementService
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def ensure_secret_rotation_schema(engine) -> None:
     """Ensure secret_rotation_log table and trigger exist before secret-rotation endpoint tests."""
     from sqlalchemy import text
@@ -94,9 +94,12 @@ async def test_webhook_secret_not_stored_plaintext(
     assert response.status_code == 200
     new_secret_hint = response.json()["data"]["hint"]
 
+    await set_tenant_context(async_session, test_user.tenant_id)
     refreshed = (
         await async_session.execute(
-            select(DeliverySchedule).where(
+            select(DeliverySchedule)
+            .execution_options(populate_existing=True)
+            .where(
                 DeliverySchedule.tenant_id == test_user.tenant_id,
                 DeliverySchedule.id == schedule.id,
             )
@@ -293,7 +296,7 @@ async def test_webhook_hmac_signing_works_after_encryption(
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     headers = captured["headers"]
     assert isinstance(headers, dict)
-    signature = headers.get("X-Signature-256")
+    signature = headers.get("X-Finqor-Signature")
     assert signature is not None
 
     expected = hmac.new(secret.encode("utf-8"), body, sha256).hexdigest()

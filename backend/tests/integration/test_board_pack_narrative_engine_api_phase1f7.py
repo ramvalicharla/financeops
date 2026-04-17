@@ -182,17 +182,19 @@ async def test_execute_endpoint_denies_wrong_tenant_access(
 @pytest.mark.integration
 async def test_definition_section_template_rule_endpoints_allow_path(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user,
     test_access_token: str,
 ) -> None:
-    await seed_control_plane_for_board_pack(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
-        enable_module=True,
-        grant_permissions=True,
-    )
+    async with api_session_factory() as db:
+        await seed_control_plane_for_board_pack(
+            db,
+            tenant_id=test_user.tenant_id,
+            user_id=test_user.id,
+            enable_module=True,
+            grant_permissions=True,
+        )
+        await db.commit()
 
     definition = await async_client.post(
         "/api/v1/board-pack/definitions",
@@ -213,8 +215,9 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     definition_id = definition_payload["id"]
     assert definition_payload["intent_id"]
     assert definition_payload["job_id"]
-    await set_tenant_context(async_session, test_user.tenant_id)
-    definition_row = await async_session.get(BoardPackDefinition, uuid.UUID(definition_id))
+    async with api_session_factory() as db:
+        await set_tenant_context(db, test_user.tenant_id)
+        definition_row = await db.get(BoardPackDefinition, uuid.UUID(definition_id))
     assert definition_row is not None
     assert definition_row.created_by_intent_id is not None
     assert definition_row.recorded_by_job_id is not None
@@ -234,7 +237,9 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     )
     assert section.status_code == 201
     section_id = section.json()["data"]["id"]
-    section_row = await async_session.get(BoardPackSectionDefinition, uuid.UUID(section_id))
+    async with api_session_factory() as db:
+        await set_tenant_context(db, test_user.tenant_id)
+        section_row = await db.get(BoardPackSectionDefinition, uuid.UUID(section_id))
     assert section_row is not None
     assert section_row.created_by_intent_id is not None
     assert section_row.recorded_by_job_id is not None
@@ -254,7 +259,9 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     )
     assert template.status_code == 201
     template_id = template.json()["data"]["id"]
-    template_row = await async_session.get(NarrativeTemplate, uuid.UUID(template_id))
+    async with api_session_factory() as db:
+        await set_tenant_context(db, test_user.tenant_id)
+        template_row = await db.get(NarrativeTemplate, uuid.UUID(template_id))
     assert template_row is not None
     assert template_row.created_by_intent_id is not None
     assert template_row.recorded_by_job_id is not None
@@ -274,7 +281,9 @@ async def test_definition_section_template_rule_endpoints_allow_path(
     )
     assert rule.status_code == 201
     rule_id = rule.json()["data"]["id"]
-    rule_row = await async_session.get(BoardPackInclusionRule, uuid.UUID(rule_id))
+    async with api_session_factory() as db:
+        await set_tenant_context(db, test_user.tenant_id)
+        rule_row = await db.get(BoardPackInclusionRule, uuid.UUID(rule_id))
     assert rule_row is not None
     assert rule_row.created_by_intent_id is not None
     assert rule_row.recorded_by_job_id is not None

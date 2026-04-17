@@ -287,349 +287,355 @@ async def _install_append_only_guard(session: AsyncSession, table_name: str) -> 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_001_all_board_pack_tables_exist_with_expected_columns(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> None:
-    expected: dict[str, dict[str, str]] = {
-        "board_pack_definitions": {
-            "id": "uuid",
-            "tenant_id": "uuid",
-            "name": "character varying",
-            "description": "text",
-            "section_types": "jsonb",
-            "entity_ids": "jsonb",
-            "period_type": "character varying",
-            "config": "jsonb",
-            "created_by": "uuid",
-            "created_at": "timestamp with time zone",
-            "updated_at": "timestamp with time zone",
-            "is_active": "boolean",
-        },
-        "board_pack_runs": {
-            "id": "uuid",
-            "tenant_id": "uuid",
-            "definition_id": "uuid",
-            "period_start": "date",
-            "period_end": "date",
-            "status": "character varying",
-            "triggered_by": "uuid",
-            "started_at": "timestamp with time zone",
-            "completed_at": "timestamp with time zone",
-            "error_message": "text",
-            "chain_hash": "character varying",
-            "run_metadata": "jsonb",
-            "created_at": "timestamp with time zone",
-        },
-        "board_pack_sections": {
-            "id": "uuid",
-            "run_id": "uuid",
-            "tenant_id": "uuid",
-            "section_type": "character varying",
-            "section_order": "integer",
-            "data_snapshot": "jsonb",
-            "section_hash": "character varying",
-            "rendered_at": "timestamp with time zone",
-        },
-        "board_pack_artifacts": {
-            "id": "uuid",
-            "run_id": "uuid",
-            "tenant_id": "uuid",
-            "format": "character varying",
-            "storage_path": "text",
-            "file_size_bytes": "bigint",
-            "generated_at": "timestamp with time zone",
-            "checksum": "character varying",
-        },
-    }
+    async with api_session_factory() as session:
+        expected: dict[str, dict[str, str]] = {
+            "board_pack_definitions": {
+                "id": "uuid",
+                "tenant_id": "uuid",
+                "name": "character varying",
+                "description": "text",
+                "section_types": "jsonb",
+                "entity_ids": "jsonb",
+                "period_type": "character varying",
+                "config": "jsonb",
+                "created_by": "uuid",
+                "created_at": "timestamp with time zone",
+                "updated_at": "timestamp with time zone",
+                "is_active": "boolean",
+            },
+            "board_pack_runs": {
+                "id": "uuid",
+                "tenant_id": "uuid",
+                "definition_id": "uuid",
+                "period_start": "date",
+                "period_end": "date",
+                "status": "character varying",
+                "triggered_by": "uuid",
+                "started_at": "timestamp with time zone",
+                "completed_at": "timestamp with time zone",
+                "error_message": "text",
+                "chain_hash": "character varying",
+                "run_metadata": "jsonb",
+                "created_at": "timestamp with time zone",
+            },
+            "board_pack_sections": {
+                "id": "uuid",
+                "run_id": "uuid",
+                "tenant_id": "uuid",
+                "section_type": "character varying",
+                "section_order": "integer",
+                "data_snapshot": "jsonb",
+                "section_hash": "character varying",
+                "rendered_at": "timestamp with time zone",
+            },
+            "board_pack_artifacts": {
+                "id": "uuid",
+                "run_id": "uuid",
+                "tenant_id": "uuid",
+                "format": "character varying",
+                "storage_path": "text",
+                "file_size_bytes": "bigint",
+                "generated_at": "timestamp with time zone",
+                "checksum": "character varying",
+            },
+        }
 
-    for table_name, expected_columns in expected.items():
-        rows = await async_session.execute(
-            text(
-                """
-                SELECT column_name, data_type
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = :table_name
-                """
-            ),
-            {"table_name": table_name},
-        )
-        actual = {column: data_type for column, data_type in rows.all()}
+        for table_name, expected_columns in expected.items():
+            rows = await session.execute(
+                text(
+                    """
+                    SELECT column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = :table_name
+                    """
+                ),
+                {"table_name": table_name},
+            )
+            actual = {column: data_type for column, data_type in rows.all()}
 
-        for column_name, data_type in expected_columns.items():
-            assert column_name in actual
-            assert actual[column_name] == data_type
+            for column_name, data_type in expected_columns.items():
+                assert column_name in actual
+                assert actual[column_name] == data_type
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_002_append_only_blocks_update_for_runs_sections_artifacts(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
+    async with api_session_factory() as session:
+        tenant_id = uuid.uuid4()
+        await set_tenant_context(session, tenant_id)
 
-    definition_id = await _insert_definition(async_session, tenant_id)
-    definition_update_column = (
-        await async_session.execute(
-            text(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = 'board_pack_definitions'
-                  AND column_name IN ('name', 'board_pack_name')
-                ORDER BY CASE WHEN column_name = 'name' THEN 0 ELSE 1 END
-                LIMIT 1
-                """
+        definition_id = await _insert_definition(session, tenant_id)
+        definition_update_column = (
+            await session.execute(
+                text(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_schema = 'public'
+                      AND table_name = 'board_pack_definitions'
+                      AND column_name IN ('name', 'board_pack_name')
+                    ORDER BY CASE WHEN column_name = 'name' THEN 0 ELSE 1 END
+                    LIMIT 1
+                    """
+                )
             )
+        ).scalar_one()
+        await session.execute(
+            text(f"UPDATE board_pack_definitions SET {definition_update_column}='updated-ok' WHERE id=:id"),
+            {"id": definition_id},
         )
-    ).scalar_one()
-    await async_session.execute(
-        text(f"UPDATE board_pack_definitions SET {definition_update_column}='updated-ok' WHERE id=:id"),
-        {"id": definition_id},
-    )
-    await async_session.commit()
-    await set_tenant_context(async_session, tenant_id)
+        await session.commit()
+        await set_tenant_context(session, tenant_id)
 
-    await _install_append_only_guard(async_session, "board_pack_runs")
-    run_id = await _insert_run(async_session, tenant_id, definition_id)
-    await async_session.commit()
-    await set_tenant_context(async_session, tenant_id)
-    with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
-        await async_session.execute(
-            text("UPDATE board_pack_runs SET status='RUNNING' WHERE id=:id"),
-            {"id": run_id},
-        )
-    await async_session.rollback()
-    await set_tenant_context(async_session, tenant_id)
-
-    if await _table_exists(async_session, "board_pack_sections"):
-        await _install_append_only_guard(async_session, "board_pack_sections")
-        section_id = await _insert_section(async_session, tenant_id, run_id)
-        await async_session.commit()
-        await set_tenant_context(async_session, tenant_id)
+        await _install_append_only_guard(session, "board_pack_runs")
+        run_id = await _insert_run(session, tenant_id, definition_id)
+        await session.commit()
+        await set_tenant_context(session, tenant_id)
         with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
-            await async_session.execute(
-                text("UPDATE board_pack_sections SET section_order=2 WHERE id=:id"),
-                {"id": section_id},
+            await session.execute(
+                text("UPDATE board_pack_runs SET status='RUNNING' WHERE id=:id"),
+                {"id": run_id},
             )
-        await async_session.rollback()
-        await set_tenant_context(async_session, tenant_id)
+        await session.rollback()
+        await set_tenant_context(session, tenant_id)
 
-    if await _table_exists(async_session, "board_pack_artifacts"):
-        await _install_append_only_guard(async_session, "board_pack_artifacts")
-        artifact_id = await _insert_artifact(async_session, tenant_id, run_id)
-        await async_session.commit()
-        await set_tenant_context(async_session, tenant_id)
-        with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
-            await async_session.execute(
-                text("UPDATE board_pack_artifacts SET storage_path='x' WHERE id=:id"),
-                {"id": artifact_id},
-            )
-        await async_session.rollback()
+        if await _table_exists(session, "board_pack_sections"):
+            await _install_append_only_guard(session, "board_pack_sections")
+            section_id = await _insert_section(session, tenant_id, run_id)
+            await session.commit()
+            await set_tenant_context(session, tenant_id)
+            with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
+                await session.execute(
+                    text("UPDATE board_pack_sections SET section_order=2 WHERE id=:id"),
+                    {"id": section_id},
+                )
+            await session.rollback()
+            await set_tenant_context(session, tenant_id)
+
+        if await _table_exists(session, "board_pack_artifacts"):
+            await _install_append_only_guard(session, "board_pack_artifacts")
+            artifact_id = await _insert_artifact(session, tenant_id, run_id)
+            await session.commit()
+            await set_tenant_context(session, tenant_id)
+            with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
+                await session.execute(
+                    text("UPDATE board_pack_artifacts SET storage_path='x' WHERE id=:id"),
+                    {"id": artifact_id},
+                )
+            await session.rollback()
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_003_append_only_blocks_delete_for_runs_sections_artifacts(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
+    async with api_session_factory() as session:
+        tenant_id = uuid.uuid4()
+        await set_tenant_context(session, tenant_id)
 
-    definition_id = await _insert_definition(async_session, tenant_id)
-    run_id = await _insert_run(async_session, tenant_id, definition_id)
-    section_id = (
-        await _insert_section(async_session, tenant_id, run_id)
-        if await _table_exists(async_session, "board_pack_sections")
-        else None
-    )
-    artifact_id = (
-        await _insert_artifact(async_session, tenant_id, run_id)
-        if await _table_exists(async_session, "board_pack_artifacts")
-        else None
-    )
-    await async_session.commit()
-    await set_tenant_context(async_session, tenant_id)
+        definition_id = await _insert_definition(session, tenant_id)
+        run_id = await _insert_run(session, tenant_id, definition_id)
+        section_id = (
+            await _insert_section(session, tenant_id, run_id)
+            if await _table_exists(session, "board_pack_sections")
+            else None
+        )
+        artifact_id = (
+            await _insert_artifact(session, tenant_id, run_id)
+            if await _table_exists(session, "board_pack_artifacts")
+            else None
+        )
+        await session.commit()
+        await set_tenant_context(session, tenant_id)
 
-    await _install_append_only_guard(async_session, "board_pack_runs")
-    with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
-        await async_session.execute(text("DELETE FROM board_pack_runs WHERE id=:id"), {"id": run_id})
-    await async_session.rollback()
-    await set_tenant_context(async_session, tenant_id)
-
-    if section_id is not None:
-        await _install_append_only_guard(async_session, "board_pack_sections")
+        await _install_append_only_guard(session, "board_pack_runs")
         with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
-            await async_session.execute(
-                text("DELETE FROM board_pack_sections WHERE id=:id"),
-                {"id": section_id},
-            )
-        await async_session.rollback()
-        await set_tenant_context(async_session, tenant_id)
+            await session.execute(text("DELETE FROM board_pack_runs WHERE id=:id"), {"id": run_id})
+        await session.rollback()
+        await set_tenant_context(session, tenant_id)
 
-    if artifact_id is not None:
-        await _install_append_only_guard(async_session, "board_pack_artifacts")
-        with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
-            await async_session.execute(
-                text("DELETE FROM board_pack_artifacts WHERE id=:id"),
-                {"id": artifact_id},
-            )
-        await async_session.rollback()
+        if section_id is not None:
+            await _install_append_only_guard(session, "board_pack_sections")
+            with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
+                await session.execute(
+                    text("DELETE FROM board_pack_sections WHERE id=:id"),
+                    {"id": section_id},
+                )
+            await session.rollback()
+            await set_tenant_context(session, tenant_id)
+
+        if artifact_id is not None:
+            await _install_append_only_guard(session, "board_pack_artifacts")
+            with pytest.raises((InternalError, ProgrammingError, DBAPIError)):
+                await session.execute(
+                    text("DELETE FROM board_pack_artifacts WHERE id=:id"),
+                    {"id": artifact_id},
+                )
+            await session.rollback()
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_004_rls_isolates_rows_by_tenant(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> None:
-    tenant_a = uuid.uuid4()
-    tenant_b = uuid.uuid4()
+    async with api_session_factory() as session:
+        tenant_a = uuid.uuid4()
+        tenant_b = uuid.uuid4()
 
-    await async_session.execute(text("ALTER TABLE board_pack_definitions ENABLE ROW LEVEL SECURITY"))
-    await async_session.execute(text("ALTER TABLE board_pack_definitions FORCE ROW LEVEL SECURITY"))
-    await async_session.execute(text("DROP POLICY IF EXISTS tenant_isolation ON board_pack_definitions"))
-    await async_session.execute(
-        text(
-            """
-            CREATE POLICY tenant_isolation ON board_pack_definitions
-            USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
-            """
-        )
-    )
-
-    await set_tenant_context(async_session, tenant_a)
-    await _insert_definition(async_session, tenant_a)
-
-    await set_tenant_context(async_session, tenant_b)
-    await _insert_definition(async_session, tenant_b)
-
-    await set_tenant_context(async_session, tenant_a)
-    count_a = (
-        await async_session.execute(
+        await session.execute(text("ALTER TABLE board_pack_definitions ENABLE ROW LEVEL SECURITY"))
+        await session.execute(text("ALTER TABLE board_pack_definitions FORCE ROW LEVEL SECURITY"))
+        await session.execute(text("DROP POLICY IF EXISTS tenant_isolation ON board_pack_definitions"))
+        await session.execute(
             text(
                 """
-                SELECT COUNT(*)
-                FROM board_pack_definitions
-                WHERE tenant_id = current_setting('app.current_tenant_id')::uuid
+                CREATE POLICY tenant_isolation ON board_pack_definitions
+                USING (tenant_id = current_setting('app.current_tenant_id')::uuid)
                 """
             )
         )
-    ).scalar_one()
 
-    await set_tenant_context(async_session, tenant_b)
-    count_b = (
-        await async_session.execute(
-            text(
-                """
-                SELECT COUNT(*)
-                FROM board_pack_definitions
-                WHERE tenant_id = current_setting('app.current_tenant_id')::uuid
-                """
+        await set_tenant_context(session, tenant_a)
+        await _insert_definition(session, tenant_a)
+
+        await set_tenant_context(session, tenant_b)
+        await _insert_definition(session, tenant_b)
+
+        await set_tenant_context(session, tenant_a)
+        count_a = (
+            await session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM board_pack_definitions
+                    WHERE tenant_id = current_setting('app.current_tenant_id')::uuid
+                    """
+                )
             )
-        )
-    ).scalar_one()
+        ).scalar_one()
 
-    pair_count = (
-        await async_session.execute(
-            text(
-                """
-                SELECT COUNT(*)
-                FROM board_pack_definitions
-                WHERE tenant_id IN (:tenant_a, :tenant_b)
-                """
-            ),
-            {"tenant_a": tenant_a, "tenant_b": tenant_b},
-        )
-    ).scalar_one()
+        await set_tenant_context(session, tenant_b)
+        count_b = (
+            await session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM board_pack_definitions
+                    WHERE tenant_id = current_setting('app.current_tenant_id')::uuid
+                    """
+                )
+            )
+        ).scalar_one()
 
-    assert count_a == 1
-    assert count_b == 1
-    assert pair_count == 2
+        pair_count = (
+            await session.execute(
+                text(
+                    """
+                    SELECT COUNT(*)
+                    FROM board_pack_definitions
+                    WHERE tenant_id IN (:tenant_a, :tenant_b)
+                    """
+                ),
+                {"tenant_a": tenant_a, "tenant_b": tenant_b},
+            )
+        ).scalar_one()
+
+        assert count_a == 1
+        assert count_b == 1
+        assert pair_count == 2
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_005_fk_constraint_rejects_run_with_unknown_definition(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
+    async with api_session_factory() as session:
+        tenant_id = uuid.uuid4()
+        await set_tenant_context(session, tenant_id)
 
-    with pytest.raises(IntegrityError):
-        await _insert_run(async_session, tenant_id, uuid.uuid4())
+        with pytest.raises(IntegrityError):
+            await _insert_run(session, tenant_id, uuid.uuid4())
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_006_check_constraint_rejects_invalid_run_status(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
+    async with api_session_factory() as session:
+        tenant_id = uuid.uuid4()
+        await set_tenant_context(session, tenant_id)
 
-    definition_id = await _insert_definition(async_session, tenant_id)
-    await async_session.execute(
-        text("ALTER TABLE board_pack_runs DROP CONSTRAINT IF EXISTS ck_board_pack_runs_status")
-    )
-    await async_session.execute(
-        text("ALTER TABLE board_pack_runs DROP CONSTRAINT IF EXISTS ck_board_pack_runs_generator_status")
-    )
-    await async_session.execute(
-        text(
-            """
-            ALTER TABLE board_pack_runs
-            ADD CONSTRAINT ck_board_pack_runs_status
-            CHECK (lower(status) IN ('pending', 'running', 'complete', 'failed'))
-            """
+        definition_id = await _insert_definition(session, tenant_id)
+        await session.execute(
+            text("ALTER TABLE board_pack_runs DROP CONSTRAINT IF EXISTS ck_board_pack_runs_status")
         )
-    )
-    with pytest.raises(IntegrityError):
-        await async_session.execute(
+        await session.execute(
+            text("ALTER TABLE board_pack_runs DROP CONSTRAINT IF EXISTS ck_board_pack_runs_generator_status")
+        )
+        await session.execute(
             text(
                 """
-                INSERT INTO board_pack_runs (
-                    id, tenant_id, definition_id, period_start, period_end,
-                    status, triggered_by, run_metadata, chain_hash, previous_hash,
-                    organisation_id, reporting_period, board_pack_definition_version_token,
-                    section_definition_version_token, narrative_template_version_token,
-                    inclusion_rule_version_token, source_metric_run_ids_json,
-                    source_risk_run_ids_json, source_anomaly_run_ids_json,
-                    run_token, validation_summary_json, created_by, created_at
-                ) VALUES (
-                    :id, :tenant_id, :definition_id, :period_start, :period_end,
-                    :status, :triggered_by, CAST(:run_metadata AS jsonb), :chain_hash, :previous_hash,
-                    :organisation_id, :reporting_period, :board_pack_definition_version_token,
-                    :section_definition_version_token, :narrative_template_version_token,
-                    :inclusion_rule_version_token, CAST(:source_metric_run_ids_json AS jsonb),
-                    CAST(:source_risk_run_ids_json AS jsonb), CAST(:source_anomaly_run_ids_json AS jsonb),
-                    :run_token, CAST(:validation_summary_json AS jsonb), :created_by, :created_at
-                )
+                ALTER TABLE board_pack_runs
+                ADD CONSTRAINT ck_board_pack_runs_status
+                CHECK (lower(status) IN ('pending', 'running', 'complete', 'failed'))
                 """
-            ),
-            {
-                "id": str(uuid.uuid4()),
-                "tenant_id": str(tenant_id),
-                "definition_id": str(definition_id),
-                "period_start": date(2026, 1, 1),
-                "period_end": date(2026, 1, 31),
-                "status": "INVALID",
-                "triggered_by": str(tenant_id),
-                "run_metadata": json.dumps({"origin_run_id": str(uuid.uuid4())}),
-                "chain_hash": "c" * 64,
-                "previous_hash": "b" * 64,
-                "organisation_id": str(tenant_id),
-                "reporting_period": date(2026, 1, 31),
-                "board_pack_definition_version_token": uuid.uuid4().hex,
-                "section_definition_version_token": uuid.uuid4().hex,
-                "narrative_template_version_token": uuid.uuid4().hex,
-                "inclusion_rule_version_token": uuid.uuid4().hex,
-                "source_metric_run_ids_json": json.dumps([str(uuid.uuid4())]),
-                "source_risk_run_ids_json": json.dumps([str(uuid.uuid4())]),
-                "source_anomaly_run_ids_json": json.dumps([str(uuid.uuid4())]),
-                "run_token": uuid.uuid4().hex,
-                "validation_summary_json": json.dumps({}),
-                "created_by": str(tenant_id),
-                "created_at": datetime.now(UTC),
-            },
+            )
         )
+        with pytest.raises(IntegrityError):
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO board_pack_runs (
+                        id, tenant_id, definition_id, period_start, period_end,
+                        status, triggered_by, run_metadata, chain_hash, previous_hash,
+                        organisation_id, reporting_period, board_pack_definition_version_token,
+                        section_definition_version_token, narrative_template_version_token,
+                        inclusion_rule_version_token, source_metric_run_ids_json,
+                        source_risk_run_ids_json, source_anomaly_run_ids_json,
+                        run_token, validation_summary_json, created_by, created_at
+                    ) VALUES (
+                        :id, :tenant_id, :definition_id, :period_start, :period_end,
+                        :status, :triggered_by, CAST(:run_metadata AS jsonb), :chain_hash, :previous_hash,
+                        :organisation_id, :reporting_period, :board_pack_definition_version_token,
+                        :section_definition_version_token, :narrative_template_version_token,
+                        :inclusion_rule_version_token, CAST(:source_metric_run_ids_json AS jsonb),
+                        CAST(:source_risk_run_ids_json AS jsonb), CAST(:source_anomaly_run_ids_json AS jsonb),
+                        :run_token, CAST(:validation_summary_json AS jsonb), :created_by, :created_at
+                    )
+                    """
+                ),
+                {
+                    "id": str(uuid.uuid4()),
+                    "tenant_id": str(tenant_id),
+                    "definition_id": str(definition_id),
+                    "period_start": date(2026, 1, 1),
+                    "period_end": date(2026, 1, 31),
+                    "status": "INVALID",
+                    "triggered_by": str(tenant_id),
+                    "run_metadata": json.dumps({"origin_run_id": str(uuid.uuid4())}),
+                    "chain_hash": "c" * 64,
+                    "previous_hash": "b" * 64,
+                    "organisation_id": str(tenant_id),
+                    "reporting_period": date(2026, 1, 31),
+                    "board_pack_definition_version_token": uuid.uuid4().hex,
+                    "section_definition_version_token": uuid.uuid4().hex,
+                    "narrative_template_version_token": uuid.uuid4().hex,
+                    "inclusion_rule_version_token": uuid.uuid4().hex,
+                    "source_metric_run_ids_json": json.dumps([str(uuid.uuid4())]),
+                    "source_risk_run_ids_json": json.dumps([str(uuid.uuid4())]),
+                    "source_anomaly_run_ids_json": json.dumps([str(uuid.uuid4())]),
+                    "run_token": uuid.uuid4().hex,
+                    "validation_summary_json": json.dumps({}),
+                    "created_by": str(tenant_id),
+                    "created_at": datetime.now(UTC),
+                },
+            )

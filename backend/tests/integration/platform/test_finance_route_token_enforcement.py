@@ -26,7 +26,7 @@ async def test_missing_control_plane_token_reaches_erp_entitlement_gate(
     test_access_token: str,
 ) -> None:
     response = await async_client.get(
-        "/api/v1/erp/connectors",
+        "/api/v1/fixed-assets/run/00000000-0000-0000-0000-000000000000",
         headers={
             "Authorization": f"Bearer {test_access_token}",
         },

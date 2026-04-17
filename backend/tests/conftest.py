@@ -34,22 +34,19 @@ def _initial_worker_database_url() -> str:
 
 
 # On Windows, asyncpg's persistent IOCP socket readers cause GetQueuedCompletionStatus
-# to block indefinitely between run_until_complete() calls (test → teardown boundary).
+# to block indefinitely between run_until_complete() calls (test â†’ teardown boundary).
 # Switching to SelectorEventLoop (non-IOCP) avoids this issue entirely.
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 import os
 
-# Ensure deterministic local integration endpoints for host-run pytest.
-# These defaults are only applied when not explicitly provided by the environment.
-os.environ.setdefault(
-    "DATABASE_URL",
-    _initial_worker_database_url(),
-)
-os.environ.setdefault(
-    "TEST_DATABASE_URL",
-    _initial_worker_database_url(),
-)
+# Ensure deterministic worker-local database URLs for every pytest process.
+# xdist workers inherit the controller environment, so ``setdefault()`` would
+# leave them pinned to ``finos_test_master``. Force the worker-specific URL
+# before any app modules import ``settings.DATABASE_URL``.
+_WORKER_DATABASE_URL = _initial_worker_database_url()
+os.environ["DATABASE_URL"] = _WORKER_DATABASE_URL
+os.environ["TEST_DATABASE_URL"] = _WORKER_DATABASE_URL
 os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
 os.environ.setdefault("TEST_REDIS_URL", "redis://localhost:6380/0")
 os.environ.setdefault("TEMPORAL_ADDRESS", "localhost:7233")
@@ -70,12 +67,13 @@ if os.environ.get("DEBUG", "").strip().lower() not in {
 from fastapi import Request
 from httpx import ASGITransport, AsyncClient, Request as HttpxRequest
 from itsdangerous import URLSafeSerializer
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import NullPool
 from financeops.core.security import create_access_token, decode_token, hash_password
 from financeops.db.base import Base
 from financeops.db.models.audit import AuditTrail  # noqa: F401
@@ -108,6 +106,12 @@ from financeops.db.models.governance_control import (  # noqa: F401
     CanonicalGovernanceEvent,
     GovernanceApprovalPolicy,
 )
+from financeops.db.models.ai_cfo_layer import (  # noqa: F401
+    AiCfoAnomaly,
+    AiCfoLedger,
+    AiCfoNarrativeBlock,
+    AiCfoRecommendation,
+)
 from financeops.db.models.control_plane_phase4 import (  # noqa: F401
     GovernanceSnapshot,
     GovernanceSnapshotInput,
@@ -124,6 +128,11 @@ from financeops.db.models.accounting_notifications import (  # noqa: F401
     AccountingAuditExportRun,
     AccountingNotificationEvent,
     ApprovalReminderRun,
+    ApprovalSLABreachRun,
+)
+from financeops.db.models.accounting_approvals import (  # noqa: F401
+    AccountingJVApproval,
+    ApprovalSLATimer,
 )
 from financeops.db.models.consolidation import (  # noqa: F401
     ConsolidationElimination,
@@ -207,7 +216,7 @@ from financeops.platform.db.models import (  # noqa: F401
     CpWorkflowTemplateVersion,
 )
 
-# Phase 1 models — must be imported before Base.metadata.create_all()
+# Phase 1 models â€” must be imported before Base.metadata.create_all()
 from financeops.db.models.mis_manager import MisTemplate, MisUpload  # noqa: F401
 from financeops.db.models.monthend import MonthEndChecklist, MonthEndTask  # noqa: F401
 from financeops.db.models.prompts import AiPromptVersion  # noqa: F401
@@ -215,6 +224,10 @@ from financeops.db.models.custom_report_builder import (  # noqa: F401
     ReportDefinition,
     ReportResult,
     ReportRun,
+)
+from financeops.db.models.scheduled_delivery import (  # noqa: F401
+    DeliveryLog,
+    DeliverySchedule,
 )
 from financeops.db.models.board_pack_generator import (  # noqa: F401
     BoardPackGeneratorArtifact,
@@ -412,6 +425,7 @@ from financeops.modules.expense_management.models import (  # noqa: F401
 from financeops.modules.budgeting.models import (  # noqa: F401
     BudgetLineItem,
     BudgetVersion,
+    BudgetVersionStatusEvent,
 )
 from financeops.modules.forecasting.models import (  # noqa: F401
     ForecastAssumption,
@@ -549,6 +563,7 @@ from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.models.working_capital import WorkingCapitalSnapshot  # noqa: F401
 from financeops.platform.services.enforcement.context_token import issue_context_token
+from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
 TEST_DATABASE_URL = os.getenv(
@@ -694,12 +709,19 @@ async def _create_database(
 ) -> None:
     if not _VALID_TEST_DB_NAME.fullmatch(database_name):
         raise RuntimeError(f"Invalid pytest database name: {database_name}")
-    if template_name is None:
-        await conn.execute(f'CREATE DATABASE "{database_name}"')
+    if await _database_exists(conn, database_name):
         return
-    if not _VALID_TEST_DB_NAME.fullmatch(template_name):
-        raise RuntimeError(f"Invalid pytest template database name: {template_name}")
-    await conn.execute(f'CREATE DATABASE "{database_name}" TEMPLATE "{template_name}"')
+    try:
+        if template_name is None:
+            await conn.execute(f'CREATE DATABASE "{database_name}"')
+            return
+        if not _VALID_TEST_DB_NAME.fullmatch(template_name):
+            raise RuntimeError(f"Invalid pytest template database name: {template_name}")
+        await conn.execute(f'CREATE DATABASE "{database_name}" TEMPLATE "{template_name}"')
+    except asyncpg.PostgresError:
+        if await _database_exists(conn, database_name):
+            return
+        raise
 
 
 def _current_alembic_head() -> str:
@@ -766,14 +788,79 @@ async def _ensure_pgvector_available(conn) -> None:
         )
 
 
+async def _table_has_column(conn, table_name: str, column_name: str) -> bool:
+    return bool(
+        await conn.scalar(
+            text(
+                """
+                SELECT 1
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = :table_name
+                   AND column_name = :column_name
+                 LIMIT 1
+                """
+            ),
+            {"table_name": table_name, "column_name": column_name},
+        )
+    )
+
+
 async def _ensure_shared_schema_bootstrapped(conn) -> None:
     iam_tenants_exists = await conn.scalar(
         text("SELECT to_regclass('public.iam_tenants')")
     )
-    if iam_tenants_exists is None:
+    delivery_schedules_exists = await conn.scalar(
+        text("SELECT to_regclass('public.delivery_schedules')")
+    )
+    approval_sla_timers_exists = await conn.scalar(
+        text("SELECT to_regclass('public.approval_sla_timers')")
+    )
+    ai_cfo_ledger_exists = await conn.scalar(
+        text("SELECT to_regclass('public.ai_cfo_ledger')")
+    )
+    budget_status_events_has_chain_hash = await _table_has_column(
+        conn, "budget_version_status_events", "chain_hash"
+    )
+    if (
+        iam_tenants_exists is None
+        or delivery_schedules_exists is None
+        or approval_sla_timers_exists is None
+        or ai_cfo_ledger_exists is None
+        or budget_status_events_has_chain_hash
+    ):
         await _ensure_pgvector_available(conn)
+        if budget_status_events_has_chain_hash:
+            await conn.execute(text("DROP TABLE IF EXISTS budget_version_status_events CASCADE"))
         await conn.run_sync(Base.metadata.create_all)
     await conn.execute(text(append_only_function_sql()))
+    await conn.execute(text("ALTER TABLE audit_trail ENABLE ROW LEVEL SECURITY"))
+    await conn.execute(text("ALTER TABLE audit_trail FORCE ROW LEVEL SECURITY"))
+    await conn.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1
+                  FROM pg_policies
+                 WHERE schemaname = 'public'
+                   AND tablename = 'audit_trail'
+                   AND policyname = 'audit_trail_tenant_isolation'
+              ) THEN
+                CREATE POLICY audit_trail_tenant_isolation
+                  ON audit_trail
+               USING (
+                    tenant_id = COALESCE(
+                        current_setting('app.tenant_id', true),
+                        current_setting('app.current_tenant_id', true)
+                    )::uuid
+               );
+              END IF;
+            END $$;
+            """
+        )
+    )
     alembic_table_exists = await conn.scalar(
         text("SELECT to_regclass('public.alembic_version')")
     )
@@ -799,18 +886,55 @@ async def _ensure_template_database(admin_url: str) -> None:
             template_exists = await _database_exists(conn, _TEMPLATE_DATABASE_NAME)
             if template_exists:
                 template_version = None
+                delivery_schedule_table = None
+                budget_status_events_has_chain_hash = True
                 verify_engine = create_async_engine(template_url, echo=False)
                 try:
                     async with verify_engine.connect() as verify_conn:
                         template_version = await verify_conn.scalar(
                             text("SELECT version_num FROM alembic_version LIMIT 1")
                         )
+                        delivery_schedule_table = await verify_conn.scalar(
+                            text("SELECT to_regclass('public.delivery_schedules')")
+                        )
+                        approval_sla_timers_table = await verify_conn.scalar(
+                            text("SELECT to_regclass('public.approval_sla_timers')")
+                        )
+                        ai_cfo_ledger_table = await verify_conn.scalar(
+                            text("SELECT to_regclass('public.ai_cfo_ledger')")
+                        )
+                        budget_status_events_has_chain_hash = await _table_has_column(
+                            verify_conn, "budget_version_status_events", "chain_hash"
+                        )
+                        audit_trail_policy = await verify_conn.scalar(
+                            text(
+                                """
+                                SELECT 1
+                                  FROM pg_policies
+                                 WHERE schemaname = 'public'
+                                   AND tablename = 'audit_trail'
+                                   AND policyname = 'audit_trail_tenant_isolation'
+                                """
+                            )
+                        )
                 except Exception:
                     template_version = None
+                    delivery_schedule_table = None
+                    approval_sla_timers_table = None
+                    ai_cfo_ledger_table = None
+                    budget_status_events_has_chain_hash = True
+                    audit_trail_policy = None
                 finally:
                     await verify_engine.dispose()
 
-                if template_version == _current_alembic_head():
+                if (
+                    template_version == _current_alembic_head()
+                    and delivery_schedule_table is not None
+                    and approval_sla_timers_table is not None
+                    and ai_cfo_ledger_table is not None
+                    and not budget_status_events_has_chain_hash
+                    and audit_trail_policy is not None
+                ):
                     return
                 await _terminate_database_connections(conn, _TEMPLATE_DATABASE_NAME)
                 await conn.execute(f'DROP DATABASE IF EXISTS "{_TEMPLATE_DATABASE_NAME}"')
@@ -845,7 +969,7 @@ async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
             api_deps._redis_pool = None
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def test_database_url() -> AsyncGenerator[str, None]:
     """
     Create a worker-isolated database so pytest-xdist can run without schema races.
@@ -869,6 +993,11 @@ async def test_database_url() -> AsyncGenerator[str, None]:
     try:
         yield database_url
     finally:
+        # Keep the serial-run master database in place for the rest of the
+        # process. Several legacy suites still assume ``finos_test_master``
+        # remains available for late-bound setup helpers.
+        if database_name == "finos_test_master":
+            return
         cleanup_conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
         try:
             await _terminate_database_connections(cleanup_conn, database_name)
@@ -877,13 +1006,21 @@ async def test_database_url() -> AsyncGenerator[str, None]:
             await cleanup_conn.close()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def engine(test_database_url: str):
     """
     Create a shared test engine once per session.
     The worker database is pre-bootstrapped once and cloned from a template.
     """
-    test_engine = create_async_engine(test_database_url, echo=False)
+    admin_url = _with_database(TEST_DATABASE_URL, TEST_DATABASE_ADMIN_DB)
+    database_name = _worker_test_database_name()
+    await _ensure_template_database(admin_url)
+    conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
+    try:
+        await _create_database(conn, database_name, template_name=_TEMPLATE_DATABASE_NAME)
+    finally:
+        await conn.close()
+    test_engine = create_async_engine(test_database_url, echo=False, poolclass=NullPool)
     yield test_engine
     await test_engine.dispose()
 
@@ -894,11 +1031,7 @@ async def _bind_worker_database_to_runtime_session_factories(engine) -> AsyncGen
     Rebind modules that manage their own sessions so xdist workers do not fall
     back to the process-startup ``finos_test_master`` database.
     """
-    from financeops.api.v1 import health as health_module
     from financeops.db import session as db_session_module
-    from financeops.modules.auto_trigger import pipeline as auto_trigger_pipeline
-    from financeops.modules.white_label.api import routes as white_label_routes
-    from financeops.seed import platform_owner as platform_owner_seed
 
     session_factory = async_sessionmaker(
         engine,
@@ -908,43 +1041,208 @@ async def _bind_worker_database_to_runtime_session_factories(engine) -> AsyncGen
         autoflush=False,
     )
 
-    originals = {
-        "db_engine": db_session_module.engine,
-        "db_session_factory": db_session_module.AsyncSessionLocal,
-        "health_engine": health_module.engine,
-        "health_session_factory": health_module.AsyncSessionLocal,
-        "auto_trigger_session_factory": auto_trigger_pipeline.AsyncSessionLocal,
-        "white_label_session_factory": white_label_routes.AsyncSessionLocal,
-        "platform_owner_session_factory": platform_owner_seed.AsyncSessionLocal,
-    }
+    original_engine = db_session_module.engine
+    original_session_factory = db_session_module.AsyncSessionLocal
+    patched_attrs: list[tuple[object, str, object]] = []
+
+    for module in list(sys.modules.values()):
+        if module is None:
+            continue
+        module_name = getattr(module, "__name__", "")
+        if not module_name.startswith("financeops"):
+            continue
+
+        if getattr(module, "engine", object()) is original_engine:
+            patched_attrs.append((module, "engine", original_engine))
+            setattr(module, "engine", engine)
+
+        if getattr(module, "AsyncSessionLocal", object()) is original_session_factory:
+            patched_attrs.append((module, "AsyncSessionLocal", original_session_factory))
+            setattr(module, "AsyncSessionLocal", session_factory)
 
     db_session_module.engine = engine
     db_session_module.AsyncSessionLocal = session_factory
-    health_module.engine = engine
-    health_module.AsyncSessionLocal = session_factory
-    auto_trigger_pipeline.AsyncSessionLocal = session_factory
-    white_label_routes.AsyncSessionLocal = session_factory
-    platform_owner_seed.AsyncSessionLocal = session_factory
     try:
         yield
     finally:
-        db_session_module.engine = originals["db_engine"]
-        db_session_module.AsyncSessionLocal = originals["db_session_factory"]
-        health_module.engine = originals["health_engine"]
-        health_module.AsyncSessionLocal = originals["health_session_factory"]
-        auto_trigger_pipeline.AsyncSessionLocal = originals["auto_trigger_session_factory"]
-        white_label_routes.AsyncSessionLocal = originals["white_label_session_factory"]
-        platform_owner_seed.AsyncSessionLocal = originals["platform_owner_session_factory"]
+        for module, attr_name, original_value in reversed(patched_attrs):
+            setattr(module, attr_name, original_value)
+        db_session_module.engine = original_engine
+        db_session_module.AsyncSessionLocal = original_session_factory
 
 
+
+
+@pytest.fixture
+def api_session_factory(engine):
+    """
+    Session factory for API-oriented tests.
+    Setup data written through these sessions must be committed for request
+    handlers to observe it through their own request-scoped sessions.
+    """
+    return async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
 
 
 @pytest_asyncio.fixture
-async def async_session(engine) -> AsyncGenerator[AsyncSession, None]:
+async def api_db_session(api_session_factory) -> AsyncGenerator[AsyncSession, None]:
     """
-    Provide per-test isolation using an outer connection transaction.
-    Any test-level commit remains contained and is discarded at teardown.
+    TYPE A â€” committed setup/assertion session for API tests.
+    Data seeded through this fixture is committed so request-scoped sessions can
+    observe it without sharing a live session object.
     """
+    async with api_session_factory() as session:
+        original_flush = session.flush
+
+        async def _flush_and_commit(*args, **kwargs):
+            await original_flush(*args, **kwargs)
+            await session.commit()
+
+        session.flush = _flush_and_commit  # type: ignore[method-assign]
+        try:
+            yield session
+        finally:
+            session.flush = original_flush  # type: ignore[method-assign]
+            if session.in_transaction():
+                await session.rollback()
+
+
+@pytest_asyncio.fixture
+async def async_session(
+    request: pytest.FixtureRequest,
+    engine,
+    api_session_factory,
+) -> AsyncGenerator[AsyncSession, None]:
+    """
+    TYPE B â€” direct DB tests:
+      rollback-isolated session bound to a single connection.
+
+    TYPE A â€” tests that also request ``async_client``:
+      committed setup/verification session so API requests can observe data
+      through their own fresh request-scoped sessions.
+    """
+    service_session_files = {
+        "tests/integration/payment/test_payment_retry_failed_task.py",
+        "tests/integration/platform/test_feature_flag_canary.py",
+        "tests/integration/platform/test_isolation_routing_paths.py",
+        "tests/integration/platform/test_module_enablement_enforcement.py",
+        "tests/integration/platform/test_parallel_approval_race_safety.py",
+        "tests/integration/platform/test_quota_enforcement_api_async.py",
+        "tests/integration/platform/test_rbac_denial_paths.py",
+        "tests/integration/platform/test_user_plane_rbac_enforcement.py",
+        "tests/integration/test_anomaly_ui_migration.py",
+        "tests/integration/test_bank_recon_matching.py",
+        "tests/integration/test_board_pack_api.py",
+        "tests/integration/test_board_pack_generate_service.py",
+        "tests/integration/test_board_pack_narrative_engine_api_phase1f7.py",
+        "tests/integration/test_consolidation_drill_flow.py",
+        "tests/integration/test_consolidation_endpoints.py",
+        "tests/integration/test_consolidation_group_endpoints.py",
+        "tests/integration/test_consolidation_phase2_4.py",
+        "tests/integration/test_control_plane_context_phase4_4.py",
+        "tests/integration/test_delivery_migration.py",
+        "tests/integration/test_financial_risk_engine_api_phase1f5.py",
+        "tests/integration/test_fixed_assets_depreciation.py",
+        "tests/integration/test_fixed_assets_endpoints.py",
+        "tests/integration/test_fx_endpoints.py",
+        "tests/integration/test_gst_endpoints.py",
+        "tests/integration/test_gst_recon.py",
+        "tests/integration/test_lease_endpoints.py",
+        "tests/integration/test_mis_manager_api_phase1f1.py",
+        "tests/integration/test_mis_manager_isolation_phase1f1.py",
+        "tests/integration/test_monthend_endpoints.py",
+        "tests/integration/test_observability_engine_determinism_phase3.py",
+        "tests/integration/test_ownership_consolidation_determinism_phase2_5.py",
+        "tests/integration/test_payroll_gl_reconciliation_api_phase1f3_1.py",
+        "tests/integration/test_phase5_cross_module.py",
+        "tests/integration/test_prepaid_endpoints.py",
+        "tests/integration/test_ratio_variance_engine_api_phase1f4.py",
+        "tests/integration/test_reconciliation_bridge_api_phase1f2.py",
+        "tests/integration/test_reconciliation_endpoints.py",
+        "tests/integration/test_report_api.py",
+        "tests/integration/test_report_migration.py",
+        "tests/integration/test_report_run_service.py",
+        "tests/integration/test_revenue_endpoints.py",
+        "tests/integration/test_rls_isolation.py",
+        "tests/integration/test_tenant_endpoints.py",
+        "tests/integration/test_user_management.py",
+        "tests/integration/test_working_capital.py",
+        "tests/integration/test_working_capital_endpoints.py",
+        "tests/test_auto_trigger_pipeline.py",
+        "tests/test_backup_dr.py",
+        "tests/test_budgeting.py",
+        "tests/test_coa.py",
+        "tests/test_coa_upload.py",
+        "tests/test_debt_covenants.py",
+        "tests/test_entity_isolation.py",
+        "tests/test_fdd.py",
+        "tests/test_fixed_assets.py",
+        "tests/test_forecasting.py",
+        "tests/test_gdpr_erasure.py",
+        "tests/test_invoice_classifier.py",
+        "tests/test_learning_engine.py",
+        "tests/test_ma_workspace.py",
+        "tests/test_marketplace.py",
+        "tests/test_multi_gaap.py",
+        "tests/test_notifications.py",
+        "tests/test_org_setup.py",
+        "tests/test_pagination.py",
+        "tests/test_partner_program.py",
+        "tests/test_placeholder_services.py",
+        "tests/test_platform_bootstrap.py",
+        "tests/test_ppa.py",
+        "tests/test_prepaid_expenses.py",
+        "tests/test_scenario_modelling.py",
+        "tests/test_secret_encryption_at_rest.py",
+        "tests/test_tax_provision.py",
+        "tests/test_user_offboarding.py",
+        "tests/test_white_label.py",
+        "tests/unit/intent/test_phase1_intent_pipeline.py",
+        "tests/unit/platform/test_control_plane_authorizer.py",
+        "tests/unit/platform/test_feature_flag_precedence.py",
+        "tests/unit/platform/test_isolation_routing.py",
+        "tests/unit/platform/test_quota_guard.py",
+        "tests/unit/platform/test_rbac_evaluator.py",
+        "tests/unit/platform/test_workflow_approval_idempotency.py",
+        "tests/unit/platform/test_workflow_template_versioning.py",
+        "tests/unit/test_append_only_enforcement.py",
+        "tests/unit/test_consolidation_append_only.py",
+        "tests/unit/test_consolidation_service.py",
+        "tests/unit/test_drilldown_endpoints.py",
+        "tests/unit/test_fixed_assets_append_only.py",
+        "tests/unit/test_lease_append_only.py",
+        "tests/unit/test_phase11d_operations.py",
+        "tests/unit/test_phase4_control_plane.py",
+        "tests/unit/test_prepaid_append_only.py",
+        "tests/unit/test_revenue_append_only.py",
+        "tests/unit/test_run_lifecycle_base.py",
+    }
+    request_path = str(getattr(request.node, "path", "")).replace("\\", "/")
+
+    if "async_client" in request.fixturenames or any(
+        request_path.endswith(path) for path in service_session_files
+    ):
+        async with api_session_factory() as session:
+            original_flush = session.flush
+
+            async def _flush_and_commit(*args, **kwargs):
+                await original_flush(*args, **kwargs)
+                await session.commit()
+
+            session.flush = _flush_and_commit  # type: ignore[method-assign]
+            try:
+                yield session
+            finally:
+                session.flush = original_flush  # type: ignore[method-assign]
+                if session.in_transaction():
+                    await session.rollback()
+        return
+
     async with engine.connect() as connection:
         if connection.in_transaction():
             await connection.rollback()
@@ -957,14 +1255,16 @@ async def async_session(engine) -> AsyncGenerator[AsyncSession, None]:
         try:
             yield session
         finally:
-            await session.close()
-            if outer_tx.is_active:
-                await outer_tx.rollback()
+            try:
+                if session.in_transaction():
+                    await session.rollback()
+            finally:
+                await session.close()
+                if outer_tx.is_active:
+                    await outer_tx.rollback()
 
 
-@pytest_asyncio.fixture
-async def test_tenant(async_session: AsyncSession) -> IamTenant:
-    """Create a test IamTenant for use in tests."""
+async def _seed_test_tenant(session: AsyncSession) -> IamTenant:
     tenant_id = uuid.uuid4()
     record_data = {
         "display_name": "Test Tenant",
@@ -986,33 +1286,59 @@ async def test_tenant(async_session: AsyncSession) -> IamTenant:
         org_setup_complete=True,
         org_setup_step=7,
     )
-    async_session.add(tenant)
-    await async_session.flush()
+    session.add(tenant)
+    await session.flush()
     return tenant
 
 
-@pytest_asyncio.fixture
-async def test_user(async_session: AsyncSession, test_tenant: IamTenant) -> IamUser:
-    """Create a test IamUser with finance_leader role."""
+async def _seed_test_user(session: AsyncSession, tenant: IamTenant) -> IamUser:
     user = IamUser(
-        tenant_id=test_tenant.id,
-        email="testuser@example.com",
+        tenant_id=tenant.id,
+        email=f"testuser_{uuid.uuid4().hex[:12]}@example.com",
         hashed_password=_CACHED_TEST_PASSWORD_HASH,
         full_name="Test User",
         role=UserRole.finance_leader,
         is_active=True,
         mfa_enabled=False,
     )
-    async_session.add(user)
-    await async_session.flush()
+    session.add(user)
+    await session.flush()
+
+    module = (
+        await session.execute(
+            select(CpModuleRegistry).where(CpModuleRegistry.module_code == "custom_report_builder")
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        module = CpModuleRegistry(
+            module_code="custom_report_builder",
+            module_name="Custom Report Builder",
+            engine_context="finance",
+            is_financial_impacting=True,
+            is_active=True,
+        )
+        session.add(module)
+        await session.flush()
+    await set_module_enablement(
+        session,
+        tenant_id=tenant.id,
+        module_id=module.id,
+        enabled=True,
+        enablement_source="test",
+        actor_user_id=user.id,
+        correlation_id=f"seed-custom-report-builder-{tenant.id}",
+        effective_from=datetime.now(UTC),
+        effective_to=None,
+    )
+    await session.flush()
 
     org_payload = {
-        "tenant_id": str(test_tenant.id),
+        "tenant_id": str(tenant.id),
         "organisation_code": "ORG_DEFAULT",
         "organisation_name": "Default Org",
     }
     org = CpOrganisation(
-        tenant_id=test_tenant.id,
+        tenant_id=tenant.id,
         organisation_code="ORG_DEFAULT",
         organisation_name="Default Org",
         parent_organisation_id=None,
@@ -1022,17 +1348,17 @@ async def test_user(async_session: AsyncSession, test_tenant: IamTenant) -> IamU
         chain_hash=compute_chain_hash(org_payload, GENESIS_HASH),
         previous_hash=GENESIS_HASH,
     )
-    async_session.add(org)
-    await async_session.flush()
+    session.add(org)
+    await session.flush()
 
     entity_payload = {
-        "tenant_id": str(test_tenant.id),
+        "tenant_id": str(tenant.id),
         "entity_code": "ENT_DEFAULT",
         "entity_name": "Default Entity",
         "organisation_id": str(org.id),
     }
     entity = CpEntity(
-        tenant_id=test_tenant.id,
+        tenant_id=tenant.id,
         organisation_id=org.id,
         group_id=None,
         entity_code="ENT_DEFAULT",
@@ -1045,10 +1371,45 @@ async def test_user(async_session: AsyncSession, test_tenant: IamTenant) -> IamU
         chain_hash=compute_chain_hash(entity_payload, GENESIS_HASH),
         previous_hash=GENESIS_HASH,
     )
-    async_session.add(entity)
-    await async_session.flush()
-
+    session.add(entity)
+    await session.flush()
     return user
+
+
+@pytest_asyncio.fixture
+async def test_tenant(api_session_factory) -> IamTenant:
+    """Create a committed test tenant in its own short-lived seed session."""
+    async with api_session_factory() as session:
+        tenant = await _seed_test_tenant(session)
+        await session.commit()
+        return tenant
+
+
+@pytest_asyncio.fixture
+async def test_user(
+    api_session_factory,
+    test_tenant: IamTenant,
+    request: pytest.FixtureRequest,
+) -> IamUser:
+    """Create a committed test user in its own short-lived seed session."""
+    _ = request
+    async with api_session_factory() as session:
+        user = await _seed_test_user(session, test_tenant)
+        await session.commit()
+        return user
+
+
+@pytest_asyncio.fixture
+async def api_test_tenant(api_db_session: AsyncSession) -> IamTenant:
+    return await _seed_test_tenant(api_db_session)
+
+
+@pytest_asyncio.fixture
+async def api_test_user(
+    api_db_session: AsyncSession,
+    api_test_tenant: IamTenant,
+) -> IamUser:
+    return await _seed_test_user(api_db_session, api_test_tenant)
 
 
 @pytest.fixture
@@ -1057,21 +1418,29 @@ def test_access_token(test_user: IamUser) -> str:
     return create_access_token(test_user.id, test_user.tenant_id, test_user.role.value)
 
 
+@pytest.fixture
+def api_test_access_token(api_test_user: IamUser) -> str:
+    """Return a valid JWT access token for the API-seeded test user."""
+    return create_access_token(
+        api_test_user.id,
+        api_test_user.tenant_id,
+        api_test_user.role.value,
+    )
+
+
 @pytest_asyncio.fixture
 async def async_client(
-    async_session: AsyncSession,
+    api_session_factory,
 ) -> AsyncGenerator[AsyncClient, None]:
     """
     Return an httpx AsyncClient configured against the test FastAPI app.
-    Overrides the DB session dependency to use the test session.
-
-    session.commit() is patched to session.flush() so that application code
-    calling commit() does not break the outer rollback-based test isolation.
-    loop_scope="session" ensures the AsyncClient teardown uses the same loop.
+    API requests always receive fresh request-scoped DB sessions and never
+    reuse the direct fixture session object.
     """
     from financeops.api.deps import get_async_session
     from financeops.config import settings
     from financeops.db.rls import clear_tenant_context, set_tenant_context
+    from financeops.db.session import finalize_session_success
     from financeops.main import app
 
     finance_prefix_modules = (
@@ -1176,10 +1545,10 @@ async def async_client(
     async def _consume_response(response) -> None:
         await response.aread()
 
-    # Redirect commit() to flush() — keeps data in the outer transaction so
+    # Redirect commit() to flush() â€” keeps data in the outer transaction so
     # session.rollback() in async_session can undo everything after the test.
-    original_commit = async_session.commit
-    async_session.commit = async_session.flush  # type: ignore[method-assign]
+    # Redirect commit() to flush() so application code calling commit() does
+    # not break the outer rollback-based test isolation.
     original_startup_errors = getattr(app.state, "startup_errors", [])
     original_migration_state = getattr(app.state, "migration_state", None)
     app.state.startup_errors = []
@@ -1201,16 +1570,28 @@ async def async_client(
                 except Exception:
                     payload = {}
                 tenant_id = str(payload.get("tenant_id", "") or "")
-        if tenant_id:
-            await set_tenant_context(async_session, tenant_id)
+        admin_url = _with_database(TEST_DATABASE_URL, TEST_DATABASE_ADMIN_DB)
+        await _ensure_template_database(admin_url)
+        conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
         try:
-            yield async_session
+            await _create_database(conn, _worker_test_database_name(), template_name=_TEMPLATE_DATABASE_NAME)
         finally:
+            await conn.close()
+        async with api_session_factory() as session:
             if tenant_id:
-                try:
-                    await clear_tenant_context(async_session)
-                except Exception:
-                    await async_session.rollback()
+                await set_tenant_context(session, tenant_id)
+            try:
+                yield session
+                await finalize_session_success(session)
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                if tenant_id and session.in_transaction():
+                    try:
+                        await clear_tenant_context(session)
+                    except Exception:
+                        await session.rollback()
 
     app.dependency_overrides[get_async_session] = override_session
     async with AsyncClient(
@@ -1225,10 +1606,9 @@ async def async_client(
     app.dependency_overrides.clear()
     app.state.startup_errors = original_startup_errors
     app.state.migration_state = original_migration_state
-    async_session.commit = original_commit  # restore original method
 
 
-@pytest_asyncio.fixture(loop_scope="session")
+@pytest_asyncio.fixture
 async def redis_client():
     """Return a test Redis connection."""
     import redis.asyncio as aioredis

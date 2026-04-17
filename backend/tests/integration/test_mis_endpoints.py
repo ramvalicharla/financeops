@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.platform.db.models.modules import CpModuleRegistry
@@ -25,10 +26,10 @@ from tests.integration.entitlement_helpers import grant_boolean_entitlement
 
 
 async def _seed_control_plane_for_mis(
-    async_session: AsyncSession, *, tenant_id, user_id
+    api_db_session: AsyncSession, *, tenant_id, user_id
 ) -> None:
     await AuditWriter.insert_financial_record(
-        async_session,
+        api_db_session,
         model_class=CpTenant,
         tenant_id=tenant_id,
         record_data={"tenant_code": f"TEN-{str(tenant_id)[:8]}", "status": "active"},
@@ -52,28 +53,34 @@ async def _seed_control_plane_for_mis(
         ),
     )
 
-    module = CpModuleRegistry(
-        module_code="mis_manager",
-        module_name="MIS Manager",
-        engine_context="finance",
-        is_financial_impacting=True,
-        is_active=True,
-    )
-    await AuditWriter.insert_record(
-        async_session,
-        record=module,
-        audit=AuditEvent(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            action="platform.test.module.seed",
-            resource_type="cp_module_registry",
-            resource_id=str(module.id),
-        ),
-    )
+    module = (
+        await api_db_session.execute(
+            select(CpModuleRegistry).where(CpModuleRegistry.module_code == "mis_manager")
+        )
+    ).scalar_one_or_none()
+    if module is None:
+        module = CpModuleRegistry(
+            module_code="mis_manager",
+            module_name="MIS Manager",
+            engine_context="finance",
+            is_financial_impacting=True,
+            is_active=True,
+        )
+        await AuditWriter.insert_record(
+            api_db_session,
+            record=module,
+            audit=AuditEvent(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                action="platform.test.module.seed",
+                resource_type="cp_module_registry",
+                resource_id=str(module.id),
+            ),
+        )
 
     now = datetime.now(UTC)
     await set_module_enablement(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         module_id=module.id,
         enabled=True,
@@ -84,13 +91,13 @@ async def _seed_control_plane_for_mis(
         effective_to=None,
     )
     await grant_boolean_entitlement(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         feature_name="mis_manager",
         actor_user_id=user_id,
     )
     await assign_quota_to_tenant(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         quota_type="api_requests",
         window_type="sliding",
@@ -103,7 +110,7 @@ async def _seed_control_plane_for_mis(
         correlation_id="mis-test",
     )
     await create_isolation_route(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         isolation_tier="tier1",
         db_cluster="shared-primary",
@@ -119,7 +126,7 @@ async def _seed_control_plane_for_mis(
     )
 
     role = await create_role(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         role_code=f"MIS_ROLE_{str(uuid4())[:8]}",
         role_scope="tenant",
@@ -143,7 +150,7 @@ async def _seed_control_plane_for_mis(
 
     for resource_type, action in permissions:
         permission = await create_permission(
-            async_session,
+            api_db_session,
             actor_tenant_id=tenant_id,
             actor_user_id=user_id,
             permission_code=f"{resource_type}.{action}.{str(uuid4())[:8]}",
@@ -152,7 +159,7 @@ async def _seed_control_plane_for_mis(
             description="mis endpoint test permission",
         )
         await grant_role_permission(
-            async_session,
+            api_db_session,
             tenant_id=tenant_id,
             role_id=role.id,
             permission_id=permission.id,
@@ -162,7 +169,7 @@ async def _seed_control_plane_for_mis(
         )
 
     await assign_user_role(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         user_id=user_id,
         role_id=role.id,
@@ -174,7 +181,7 @@ async def _seed_control_plane_for_mis(
         actor_user_id=user_id,
         correlation_id="mis-test",
     )
-    await async_session.flush()
+    await api_db_session.flush()
 
 
 def _csv_b64(text: str) -> str:
@@ -184,14 +191,14 @@ def _csv_b64(text: str) -> str:
 @pytest.mark.asyncio
 async def test_detect_commit_and_list_templates(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ):
     await _seed_control_plane_for_mis(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
     )
 
     csv_payload = _csv_b64(
@@ -200,9 +207,9 @@ async def test_detect_commit_and_list_templates(
 
     detect = await async_client.post(
         "/api/v1/mis/templates/detect",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "template_code": "pnl_monthly_test",
             "template_name": "Monthly PnL",
             "template_type": "pnl_monthly",
@@ -216,9 +223,9 @@ async def test_detect_commit_and_list_templates(
 
     commit = await async_client.post(
         "/api/v1/mis/templates/commit-version",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "template_code": "pnl_monthly_test",
             "template_name": "Monthly PnL",
             "template_type": "pnl_monthly",
@@ -236,7 +243,7 @@ async def test_detect_commit_and_list_templates(
 
     list_resp = await async_client.get(
         "/api/v1/mis/templates",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert list_resp.status_code == 200
     rows = list_resp.json()["data"]
@@ -246,14 +253,14 @@ async def test_detect_commit_and_list_templates(
 @pytest.mark.asyncio
 async def test_snapshot_upload_idempotent_on_duplicate(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_user,
-    test_access_token: str,
+    api_db_session: AsyncSession,
+    api_test_user,
+    api_test_access_token: str,
 ):
     await _seed_control_plane_for_mis(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
+        user_id=api_test_user.id,
     )
 
     csv_payload = _csv_b64(
@@ -262,9 +269,9 @@ async def test_snapshot_upload_idempotent_on_duplicate(
 
     detect = await async_client.post(
         "/api/v1/mis/templates/detect",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "template_code": "snapshot_template",
             "template_name": "Snapshot Template",
             "template_type": "pnl_monthly",
@@ -275,9 +282,9 @@ async def test_snapshot_upload_idempotent_on_duplicate(
     detection_payload = detect.json()["data"]
     commit = await async_client.post(
         "/api/v1/mis/templates/commit-version",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
-            "organisation_id": str(test_user.tenant_id),
+            "organisation_id": str(api_test_user.tenant_id),
             "template_code": "snapshot_template",
             "template_name": "Snapshot Template",
             "template_type": "pnl_monthly",
@@ -293,7 +300,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
     )
     commit_payload = commit.json()["data"]
     upload_body = {
-        "organisation_id": str(test_user.tenant_id),
+        "organisation_id": str(api_test_user.tenant_id),
         "template_id": commit_payload["template_id"],
         "template_version_id": commit_payload["template_version_id"],
         "reporting_period": "2026-01-31",
@@ -305,7 +312,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
 
     first = await async_client.post(
         "/api/v1/mis/snapshots/upload",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json=upload_body,
     )
     assert first.status_code == 201
@@ -314,7 +321,7 @@ async def test_snapshot_upload_idempotent_on_duplicate(
 
     second = await async_client.post(
         "/api/v1/mis/snapshots/upload",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json=upload_body,
     )
     assert second.status_code == 201

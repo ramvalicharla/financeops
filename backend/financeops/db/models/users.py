@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -69,6 +69,9 @@ class IamUser(UUIDBase):
         default=False,
         server_default=text("false"),
     )
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_login_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -103,6 +106,9 @@ class IamSession(UUIDBase):
     revoked_at is set when the session is invalidated (logout / rotation).
     """
     __tablename__ = "iam_sessions"
+    __table_args__ = (
+        Index("idx_iam_sessions_tenant_created", "tenant_id", "created_at"),
+    )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

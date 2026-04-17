@@ -18,6 +18,7 @@ from financeops.modules.budgeting.service import (
     approve_budget as _approve_budget,
     create_budget_version as _create_budget_version,
     get_budget_vs_actual,
+    submit_budget as _submit_budget,
     upsert_budget_line as _upsert_budget_line,
 )
 
@@ -49,6 +50,11 @@ async def upsert_budget_line(*args, **kwargs):
 async def approve_budget(*args, **kwargs):
     with governed_mutation_context(_governed_context("APPROVE_BUDGET_VERSION")):
         return await _approve_budget(*args, **kwargs)
+
+
+async def submit_budget(*args, **kwargs):
+    with governed_mutation_context(_governed_context("SUBMIT_BUDGET_VERSION")):
+        return await _submit_budget(*args, **kwargs)
 
 
 async def _create_budget_with_lines(
@@ -141,19 +147,21 @@ async def test_copy_from_version(async_session: AsyncSession, test_user: IamUser
 async def test_approve_supersedes_previous(async_session: AsyncSession, test_user: IamUser) -> None:
     version_1 = await create_budget_version(async_session, test_user.tenant_id, 2025, "v1", test_user.id)
     version_2 = await create_budget_version(async_session, test_user.tenant_id, 2025, "v2", test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version_1.id, test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version_2.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version_1.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version_2.id, test_user.id)
 
     first = await async_session.get(BudgetVersion, version_1.id)
     second = await async_session.get(BudgetVersion, version_2.id)
     assert first.status == "superseded"
-    assert second.status == "approved"
+    assert second.status == "board_approved"
     approved_count = (
         await async_session.execute(
             select(func.count()).select_from(BudgetVersion).where(
                 BudgetVersion.tenant_id == test_user.tenant_id,
                 BudgetVersion.fiscal_year == 2025,
-                BudgetVersion.status == "approved",
+                BudgetVersion.status == "board_approved",
             )
         )
     ).scalar_one()
@@ -288,6 +296,7 @@ async def test_budget_line_rls_enforced(async_session: AsyncSession, test_user: 
 @pytest.mark.asyncio
 async def test_budget_vs_actual_revenue_line(async_session: AsyncSession, test_user: IamUser, monkeypatch: pytest.MonkeyPatch) -> None:
     version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -306,6 +315,7 @@ async def test_budget_vs_actual_revenue_line(async_session: AsyncSession, test_u
 @pytest.mark.asyncio
 async def test_budget_vs_actual_ytd_aggregation(async_session: AsyncSession, test_user: IamUser, monkeypatch: pytest.MonkeyPatch) -> None:
     version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -336,6 +346,7 @@ async def test_variance_pct_zero_when_budget_zero(async_session: AsyncSession, t
         mis_category="Revenue",
         monthly_values=_months("0.00"),
     )
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -353,6 +364,7 @@ async def test_variance_pct_zero_when_budget_zero(async_session: AsyncSession, t
 @pytest.mark.asyncio
 async def test_all_variance_values_are_decimal(async_session: AsyncSession, test_user: IamUser) -> None:
     version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     payload = await get_budget_vs_actual(async_session, test_user.tenant_id, 2025, "2025-01")
     for row in payload["lines"]:
@@ -363,6 +375,7 @@ async def test_all_variance_values_are_decimal(async_session: AsyncSession, test
 @pytest.mark.asyncio
 async def test_on_budget_true_when_within_5pct(async_session: AsyncSession, test_user: IamUser, monkeypatch: pytest.MonkeyPatch) -> None:
     version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -379,6 +392,7 @@ async def test_on_budget_true_when_within_5pct(async_session: AsyncSession, test
 @pytest.mark.asyncio
 async def test_on_budget_false_when_over_5pct(async_session: AsyncSession, test_user: IamUser, monkeypatch: pytest.MonkeyPatch) -> None:
     version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -398,6 +412,7 @@ async def test_budget_vs_actual_uses_approved_version(async_session: AsyncSessio
     approved = await create_budget_version(async_session, test_user.tenant_id, 2025, "approved", test_user.id)
     await upsert_budget_line(async_session, test_user.tenant_id, draft.id, "Revenue", "Revenue", _months("2000000.00"))
     await upsert_budget_line(async_session, test_user.tenant_id, approved.id, "Revenue", "Revenue", _months("1000000.00"))
+    await submit_budget(async_session, test_user.tenant_id, approved.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, approved.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -434,6 +449,7 @@ async def test_budget_vs_actual_multi_entity(async_session: AsyncSession, test_u
         monthly_values=_months("500000.00"),
         entity_id=entity_b,
     )
+    await submit_budget(async_session, test_user.tenant_id, version.id, test_user.id)
     await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
 
     async def _fake_actuals(*args, **kwargs):
@@ -488,20 +504,26 @@ async def test_add_line_items_via_api(async_client: AsyncClient, test_access_tok
 
 
 @pytest.mark.asyncio
-async def test_approve_via_api_requires_finance_leader(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser) -> None:
-    version = await create_budget_version(async_session, test_user.tenant_id, 2025, "v1", test_user.id)
-    employee = IamUser(
-        tenant_id=test_user.tenant_id,
-        email=f"budget-emp-{uuid.uuid4().hex[:6]}@example.com",
-        hashed_password=hash_password("TestPass123!"),
-        full_name="Budget Emp",
-        role=UserRole.employee,
-        is_active=True,
-        mfa_enabled=False,
-    )
-    async_session.add(employee)
-    await async_session.flush()
-    employee_token = create_access_token(employee.id, employee.tenant_id, employee.role.value)
+async def test_approve_via_api_requires_finance_leader(
+    async_client: AsyncClient,
+    api_session_factory,
+    test_user: IamUser,
+) -> None:
+    async with api_session_factory() as session:
+        version = await create_budget_version(session, test_user.tenant_id, 2025, "v1", test_user.id)
+        employee = IamUser(
+            tenant_id=test_user.tenant_id,
+            email=f"budget-emp-{uuid.uuid4().hex[:6]}@example.com",
+            hashed_password=hash_password("TestPass123!"),
+            full_name="Budget Emp",
+            role=UserRole.employee,
+            is_active=True,
+            mfa_enabled=False,
+        )
+        session.add(employee)
+        await session.flush()
+        employee_token = create_access_token(employee.id, employee.tenant_id, employee.role.value)
+        await session.commit()
 
     response = await async_client.post(
         f"/api/v1/budget/versions/{version.id}/approve",
@@ -511,9 +533,17 @@ async def test_approve_via_api_requires_finance_leader(async_client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_vs_actual_endpoint_returns_structure(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser, test_access_token: str) -> None:
-    version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
-    await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
+async def test_vs_actual_endpoint_returns_structure(
+    async_client: AsyncClient,
+    api_session_factory,
+    test_user: IamUser,
+    test_access_token: str,
+) -> None:
+    async with api_session_factory() as session:
+        version = await _create_budget_with_lines(session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+        await submit_budget(session, test_user.tenant_id, version.id, test_user.id)
+        await approve_budget(session, test_user.tenant_id, version.id, test_user.id)
+        await session.commit()
     response = await async_client.get(
         "/api/v1/budget/vs-actual?fiscal_year=2025&period=2025-03",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -524,9 +554,17 @@ async def test_vs_actual_endpoint_returns_structure(async_client: AsyncClient, a
 
 
 @pytest.mark.asyncio
-async def test_vs_actual_export_returns_xlsx(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser, test_access_token: str) -> None:
-    version = await _create_budget_with_lines(async_session, tenant_id=test_user.tenant_id, user_id=test_user.id)
-    await approve_budget(async_session, test_user.tenant_id, version.id, test_user.id)
+async def test_vs_actual_export_returns_xlsx(
+    async_client: AsyncClient,
+    api_session_factory,
+    test_user: IamUser,
+    test_access_token: str,
+) -> None:
+    async with api_session_factory() as session:
+        version = await _create_budget_with_lines(session, tenant_id=test_user.tenant_id, user_id=test_user.id)
+        await submit_budget(session, test_user.tenant_id, version.id, test_user.id)
+        await approve_budget(session, test_user.tenant_id, version.id, test_user.id)
+        await session.commit()
     response = await async_client.get(
         "/api/v1/budget/vs-actual/export?fiscal_year=2025&period=2025-03",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -536,10 +574,17 @@ async def test_vs_actual_export_returns_xlsx(async_client: AsyncClient, async_se
 
 
 @pytest.mark.asyncio
-async def test_tenant_isolation_budget_versions(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser, test_access_token: str) -> None:
-    await create_budget_version(async_session, test_user.tenant_id, 2025, "tenant-a", test_user.id)
-    tenant_b = uuid.uuid4()
-    await create_budget_version(async_session, tenant_b, 2025, "tenant-b", test_user.id)
+async def test_tenant_isolation_budget_versions(
+    async_client: AsyncClient,
+    api_session_factory,
+    test_user: IamUser,
+    test_access_token: str,
+) -> None:
+    async with api_session_factory() as session:
+        await create_budget_version(session, test_user.tenant_id, 2025, "tenant-a", test_user.id)
+        tenant_b = uuid.uuid4()
+        await create_budget_version(session, tenant_b, 2025, "tenant-b", test_user.id)
+        await session.commit()
 
     response = await async_client.get(
         "/api/v1/budget/versions?fiscal_year=2025",

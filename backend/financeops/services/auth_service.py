@@ -20,6 +20,7 @@ from financeops.core.security import (
     encrypt_field,
     generate_totp_secret,
     get_totp_uri,
+    hash_password,
     verify_totp,
 )
 from financeops.db.models.users import IamSession, IamUser
@@ -36,6 +37,12 @@ _REFRESH_TOKEN_EXPIRE_DAYS = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
 def _hash_token(token: str) -> str:
     """SHA-256 hash a token for safe storage."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _password_changed_claim(user: IamUser) -> dict[str, str]:
+    if user.password_changed_at is None:
+        return {}
+    return {"pwd_at": user.password_changed_at.isoformat()}
 
 
 async def login(
@@ -105,6 +112,7 @@ async def _issue_session_tokens(
     token_claims = await build_billing_token_claims(
         session, tenant_id=user.tenant_id, user_id=user.id, user_role=user.role
     )
+    token_claims.update(_password_changed_claim(user))
     access_token = create_access_token(
         user.id,
         user.tenant_id,
@@ -408,6 +416,7 @@ async def refresh_tokens(
     token_claims = await build_billing_token_claims(
         session, tenant_id=user.tenant_id, user_id=user.id, user_role=user.role
     )
+    token_claims.update(_password_changed_claim(user))
     new_access = create_access_token(
         user.id,
         user.tenant_id,
@@ -561,6 +570,63 @@ async def revoke_all_sessions(
     return revoked_count
 
 
+async def change_password(
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    new_password: str,
+    ip_address: str | None = None,
+    device_info: str | None = None,
+) -> dict:
+    """
+    Update the password, revoke prior refresh sessions, and issue a fresh token pair.
+    """
+    now = datetime.now(UTC)
+    old_state = {
+        "force_password_change": user.force_password_change,
+        "password_changed_at": (
+            user.password_changed_at.isoformat()
+            if user.password_changed_at is not None
+            else None
+        ),
+    }
+    async with session.begin_nested():
+        user.hashed_password = hash_password(new_password)
+        user.force_password_change = False
+        user.password_changed_at = now
+        revoked_count = await revoke_all_sessions(
+            session,
+            tenant_id=user.tenant_id,
+            user_id=user.id,
+        )
+        tokens = await _issue_session_tokens(
+            session,
+            user=user,
+            ip_address=ip_address,
+            device_info=device_info,
+        )
+        await AuditWriter.flush_with_audit(
+            session,
+            audit=AuditEvent(
+                tenant_id=user.tenant_id,
+                user_id=user.id,
+                action="auth.password.changed",
+                resource_type="user",
+                resource_id=str(user.id),
+                resource_name=user.email,
+                old_value=old_state,
+                new_value={
+                    "force_password_change": user.force_password_change,
+                    "password_changed_at": now.isoformat(),
+                    "revoked_sessions": revoked_count,
+                },
+                ip_address=ip_address,
+                user_agent=device_info,
+            ),
+        )
+    return tokens
+
+
 async def setup_totp(user: IamUser, session: AsyncSession) -> dict:
     """
     Generate a new TOTP secret, encrypt and store it, return the setup info.
@@ -626,4 +692,3 @@ async def verify_totp_setup(user: IamUser, code: str, session: AsyncSession) -> 
         ),
     )
     return True
-

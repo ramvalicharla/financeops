@@ -108,60 +108,62 @@ async def test_run_endpoint_requires_rbac_permission(
 @pytest.mark.integration
 async def test_execute_endpoint_denies_wrong_tenant_access(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user,
     test_access_token: str,
 ) -> None:
     tenant_b = uuid.uuid4()
     user_b = uuid.uuid4()
-    await seed_identity_user(
-        async_session,
-        tenant_id=tenant_b,
-        user_id=user_b,
-        email="anomaly_b@example.com",
-    )
-    await seed_control_plane_for_anomaly(
-        async_session,
-        tenant_id=tenant_b,
-        user_id=user_b,
-        enable_module=True,
-        grant_permissions=True,
-    )
-    await ensure_tenant_context(async_session, tenant_b)
-    upstream = await seed_upstream_for_anomaly(
-        async_session,
-        tenant_id=tenant_b,
-        organisation_id=tenant_b,
-        created_by=user_b,
-        reporting_period=date(2026, 1, 31),
-    )
-    await seed_active_anomaly_configuration(
-        async_session,
-        tenant_id=tenant_b,
-        organisation_id=tenant_b,
-        created_by=user_b,
-        effective_from=date(2026, 1, 1),
-    )
-    service = build_anomaly_service(async_session)
-    created = await service.create_run(
-        tenant_id=tenant_b,
-        organisation_id=tenant_b,
-        reporting_period=date(2026, 1, 31),
-        source_metric_run_ids=[uuid.UUID(upstream["metric_run_id"])],
-        source_variance_run_ids=[uuid.UUID(upstream["metric_run_id"])],
-        source_trend_run_ids=[uuid.UUID(upstream["metric_run_id"])],
-        source_risk_run_ids=[uuid.UUID(upstream["risk_run_id"])],
-        source_reconciliation_session_ids=[],
-        created_by=user_b,
-    )
+    async with api_session_factory() as db:
+        await seed_identity_user(
+            db,
+            tenant_id=tenant_b,
+            user_id=user_b,
+            email="anomaly_b@example.com",
+        )
+        await seed_control_plane_for_anomaly(
+            db,
+            tenant_id=tenant_b,
+            user_id=user_b,
+            enable_module=True,
+            grant_permissions=True,
+        )
+        await ensure_tenant_context(db, tenant_b)
+        upstream = await seed_upstream_for_anomaly(
+            db,
+            tenant_id=tenant_b,
+            organisation_id=tenant_b,
+            created_by=user_b,
+            reporting_period=date(2026, 1, 31),
+        )
+        await seed_active_anomaly_configuration(
+            db,
+            tenant_id=tenant_b,
+            organisation_id=tenant_b,
+            created_by=user_b,
+            effective_from=date(2026, 1, 1),
+        )
+        service = build_anomaly_service(db)
+        created = await service.create_run(
+            tenant_id=tenant_b,
+            organisation_id=tenant_b,
+            reporting_period=date(2026, 1, 31),
+            source_metric_run_ids=[uuid.UUID(upstream["metric_run_id"])],
+            source_variance_run_ids=[uuid.UUID(upstream["metric_run_id"])],
+            source_trend_run_ids=[uuid.UUID(upstream["metric_run_id"])],
+            source_risk_run_ids=[uuid.UUID(upstream["risk_run_id"])],
+            source_reconciliation_session_ids=[],
+            created_by=user_b,
+        )
+        await seed_control_plane_for_anomaly(
+            db,
+            tenant_id=test_user.tenant_id,
+            user_id=test_user.id,
+            enable_module=True,
+            grant_permissions=True,
+        )
+        await db.commit()
 
-    await seed_control_plane_for_anomaly(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
-        enable_module=True,
-        grant_permissions=True,
-    )
     response = await async_client.post(
         f"/api/v1/anomaly-engine/runs/{created['run_id']}/execute",
         headers={"Authorization": f"Bearer {test_access_token}"},

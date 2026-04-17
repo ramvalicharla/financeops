@@ -28,6 +28,7 @@ from financeops.modules.coa.models import CoaIndustryTemplate, ErpAccountMapping
 from financeops.modules.org_setup.application.consolidation_method_service import (
     ConsolidationMethodService,
 )
+from financeops.modules.org_setup.domain.exceptions import CircularOwnershipError
 from financeops.modules.org_setup.models import (
     OrgEntity,
     OrgEntityErpConfig,
@@ -666,6 +667,13 @@ class OrgSetupService:
                     )
                 )
             ).scalar_one_or_none()
+            await self._assert_no_ownership_cycle(
+                tenant_id=tenant_id,
+                parent_entity_id=parent_entity_id,
+                child_entity_id=child_entity_id,
+                effective_from=effective_from,
+                existing_relationship_id=current.id if current is not None else None,
+            )
 
             if current is None:
                 current = OrgOwnership(
@@ -693,6 +701,45 @@ class OrgSetupService:
             {"relationship_count": len(rows)},
         )
         return rows
+
+    async def _assert_no_ownership_cycle(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        parent_entity_id: uuid.UUID,
+        child_entity_id: uuid.UUID,
+        effective_from: date,
+        existing_relationship_id: uuid.UUID | None,
+    ) -> None:
+        active_relationships = (
+            await self._session.execute(
+                select(OrgOwnership).where(
+                    OrgOwnership.tenant_id == tenant_id,
+                    OrgOwnership.effective_from <= effective_from,
+                    or_(
+                        OrgOwnership.effective_to.is_(None),
+                        OrgOwnership.effective_to >= effective_from,
+                    ),
+                )
+            )
+        ).scalars().all()
+
+        by_parent: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for row in active_relationships:
+            if existing_relationship_id is not None and row.id == existing_relationship_id:
+                continue
+            by_parent.setdefault(row.parent_entity_id, []).append(row.child_entity_id)
+
+        stack = [child_entity_id]
+        visited: set[uuid.UUID] = set()
+        while stack:
+            current_entity_id = stack.pop()
+            if current_entity_id == parent_entity_id:
+                raise CircularOwnershipError()
+            if current_entity_id in visited:
+                continue
+            visited.add(current_entity_id)
+            stack.extend(by_parent.get(current_entity_id, []))
 
     async def submit_step4(
         self,

@@ -269,6 +269,8 @@ class RunService:
         )
 
         high_risk_count = len([row for row in risk_rows if row.severity in ("high", "critical")])
+        medium_risk_count = len([row for row in risk_rows if row.severity == "medium"])
+        anomaly_count = len(anomaly_rows)
         elevated_anomaly_count = len(
             [
                 row
@@ -301,9 +303,13 @@ class RunService:
             reporting_period=completed.reporting_period.isoformat(),
         )
         board_pack = sorted(definitions, key=lambda item: (item.board_pack_code, item.id))[0]
-        executive_summary = self._narrative_service.executive_summary(
+        executive_summary = await self._narrative_service.executive_summary(
             sections=included_sections,
+            reporting_period=completed.reporting_period.isoformat(),
+            metric_count=len(metric_rows),
             high_risk_count=high_risk_count,
+            medium_risk_count=medium_risk_count,
+            anomaly_count=anomaly_count,
             elevated_anomaly_count=elevated_anomaly_count,
         )
         overall = self._overall_health(

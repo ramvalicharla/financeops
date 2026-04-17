@@ -5,7 +5,7 @@ from datetime import date
 
 import pytest
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.db.models.users import IamUser, UserRole
@@ -131,70 +131,88 @@ async def _run_board_pack_flow(session: AsyncSession, *, tenant_id: uuid.UUID) -
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_board_pack_run_does_not_modify_engine_or_journal_tables(
-    board_pack_phase1f7_session: AsyncSession,
+    board_pack_phase1f7_engine,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(board_pack_phase1f7_session, tenant_id)
-    before_engine = await _counts(board_pack_phase1f7_session, ENGINE_TABLES)
-    before_journal = await _counts(board_pack_phase1f7_session, JOURNAL_TABLES)
-    await _run_board_pack_flow(board_pack_phase1f7_session, tenant_id=tenant_id)
-    after_engine = await _counts(board_pack_phase1f7_session, ENGINE_TABLES)
-    after_journal = await _counts(board_pack_phase1f7_session, JOURNAL_TABLES)
-    assert before_engine == after_engine
-    assert before_journal == after_journal
+    session_factory = async_sessionmaker(board_pack_phase1f7_engine, expire_on_commit=False)
+    async with session_factory() as session:
+        await session.begin()
+        try:
+            tenant_id = uuid.uuid4()
+            await ensure_tenant_context(session, tenant_id)
+            before_engine = await _counts(session, ENGINE_TABLES)
+            before_journal = await _counts(session, JOURNAL_TABLES)
+            await _run_board_pack_flow(session, tenant_id=tenant_id)
+            after_engine = await _counts(session, ENGINE_TABLES)
+            after_journal = await _counts(session, JOURNAL_TABLES)
+            assert before_engine == after_engine
+            assert before_journal == after_journal
+        finally:
+            await session.rollback()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_board_pack_run_does_not_mutate_upstream_layers(
-    board_pack_phase1f7_session: AsyncSession,
+    board_pack_phase1f7_engine,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(board_pack_phase1f7_session, tenant_id)
-    upstream = await seed_upstream_for_board_pack(
-        board_pack_phase1f7_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        created_by=tenant_id,
-        reporting_period=date(2026, 1, 31),
-    )
-    await seed_active_board_pack_configuration(
-        board_pack_phase1f7_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        created_by=tenant_id,
-        effective_from=date(2026, 1, 1),
-    )
-    before_upstream = await _counts(board_pack_phase1f7_session, UPSTREAM_TABLES)
-    service = build_board_pack_service(board_pack_phase1f7_session)
-    with await _board_pack_mutation_context(board_pack_phase1f7_session, tenant_id):
-        created = await service.create_run(
-            tenant_id=tenant_id,
-            organisation_id=tenant_id,
-            reporting_period=date(2026, 1, 31),
-            source_metric_run_ids=[uuid.UUID(upstream["metric_run_id"])],
-            source_risk_run_ids=[uuid.UUID(upstream["risk_run_id"])],
-            source_anomaly_run_ids=[uuid.UUID(upstream["anomaly_run_id"])],
-            created_by=tenant_id,
-        )
-    with await _board_pack_mutation_context(board_pack_phase1f7_session, tenant_id):
-        await service.execute_run(
-            tenant_id=tenant_id,
-            run_id=uuid.UUID(created["run_id"]),
-            actor_user_id=tenant_id,
-        )
-    after_upstream = await _counts(board_pack_phase1f7_session, UPSTREAM_TABLES)
-    assert before_upstream == after_upstream
+    session_factory = async_sessionmaker(board_pack_phase1f7_engine, expire_on_commit=False)
+    async with session_factory() as session:
+        await session.begin()
+        try:
+            tenant_id = uuid.uuid4()
+            await ensure_tenant_context(session, tenant_id)
+            upstream = await seed_upstream_for_board_pack(
+                session,
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                created_by=tenant_id,
+                reporting_period=date(2026, 1, 31),
+            )
+            await seed_active_board_pack_configuration(
+                session,
+                tenant_id=tenant_id,
+                organisation_id=tenant_id,
+                created_by=tenant_id,
+                effective_from=date(2026, 1, 1),
+            )
+            before_upstream = await _counts(session, UPSTREAM_TABLES)
+            service = build_board_pack_service(session)
+            with await _board_pack_mutation_context(session, tenant_id):
+                created = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=tenant_id,
+                    reporting_period=date(2026, 1, 31),
+                    source_metric_run_ids=[uuid.UUID(upstream["metric_run_id"])],
+                    source_risk_run_ids=[uuid.UUID(upstream["risk_run_id"])],
+                    source_anomaly_run_ids=[uuid.UUID(upstream["anomaly_run_id"])],
+                    created_by=tenant_id,
+                )
+            with await _board_pack_mutation_context(session, tenant_id):
+                await service.execute_run(
+                    tenant_id=tenant_id,
+                    run_id=uuid.UUID(created["run_id"]),
+                    actor_user_id=tenant_id,
+                )
+            after_upstream = await _counts(session, UPSTREAM_TABLES)
+            assert before_upstream == after_upstream
+        finally:
+            await session.rollback()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_board_pack_run_does_not_invoke_fx_tables(
-    board_pack_phase1f7_session: AsyncSession,
+    board_pack_phase1f7_engine,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(board_pack_phase1f7_session, tenant_id)
-    before_fx = await _counts(board_pack_phase1f7_session, FX_TABLES)
-    await _run_board_pack_flow(board_pack_phase1f7_session, tenant_id=tenant_id)
-    after_fx = await _counts(board_pack_phase1f7_session, FX_TABLES)
-    assert before_fx == after_fx
+    session_factory = async_sessionmaker(board_pack_phase1f7_engine, expire_on_commit=False)
+    async with session_factory() as session:
+        await session.begin()
+        try:
+            tenant_id = uuid.uuid4()
+            await ensure_tenant_context(session, tenant_id)
+            before_fx = await _counts(session, FX_TABLES)
+            await _run_board_pack_flow(session, tenant_id=tenant_id)
+            after_fx = await _counts(session, FX_TABLES)
+            assert before_fx == after_fx
+        finally:
+            await session.rollback()

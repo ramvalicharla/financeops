@@ -112,6 +112,7 @@ async def _append_past_due_retry_revision(
     source: TenantSubscription,
     retry_count: int,
 ) -> TenantSubscription:
+    next_created_at = (source.created_at or datetime.now(UTC)) + timedelta(microseconds=1)
     return await AuditWriter.insert_financial_record(
         async_session,
         model_class=TenantSubscription,
@@ -143,6 +144,7 @@ async def _append_past_due_retry_revision(
             "billing_country": source.billing_country,
             "billing_currency": source.billing_currency,
             "metadata_json": {"payment_retry_count": retry_count},
+            "created_at": next_created_at,
         },
     )
 
@@ -150,35 +152,37 @@ async def _append_past_due_retry_revision(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_retry_failed_payments_reactivates_on_success(
-    async_session,
+    api_session_factory,
     test_user,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    plan = await create_plan(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_tier=PlanTier.PROFESSIONAL,
-        billing_cycle=BillingCycle.MONTHLY,
-        price="50.00",
-    )
-    subscription = await create_subscription(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_id=plan.id,
-        provider=PaymentProvider.STRIPE,
-        status=SubscriptionStatus.PAST_DUE,
-    )
-    await _insert_default_payment_method(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        provider=PaymentProvider.STRIPE,
-    )
-    invoice = await _create_open_invoice(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        subscription_id=subscription.id,
-        provider_invoice_id="inv_retry_success",
-    )
+    async with api_session_factory() as db:
+        plan = await create_plan(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_tier=PlanTier.PROFESSIONAL,
+            billing_cycle=BillingCycle.MONTHLY,
+            price="50.00",
+        )
+        subscription = await create_subscription(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_id=plan.id,
+            provider=PaymentProvider.STRIPE,
+            status=SubscriptionStatus.PAST_DUE,
+        )
+        await _insert_default_payment_method(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            provider=PaymentProvider.STRIPE,
+        )
+        invoice = await _create_open_invoice(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            subscription_id=subscription.id,
+            provider_invoice_id="inv_retry_success",
+        )
+        await db.commit()
     fake_provider = _FakeRetryProvider(
         {
             invoice.provider_invoice_id: PaymentProviderResult(
@@ -190,10 +194,13 @@ async def test_retry_failed_payments_reactivates_on_success(
     )
     monkeypatch.setattr(payment_tasks, "get_provider", lambda _provider: fake_provider)
 
-    result = await payment_tasks._retry_failed_payments_async(async_session)
+    async with api_session_factory() as db:
+        result = await payment_tasks._retry_failed_payments_async(db)
+        await db.commit()
 
-    latest_subscription = await _latest_subscription(async_session, subscription)
-    latest_invoice = await _latest_invoice(async_session, test_user.tenant_id, invoice.provider_invoice_id)
+    async with api_session_factory() as read_db:
+        latest_subscription = await _latest_subscription(read_db, subscription)
+        latest_invoice = await _latest_invoice(read_db, test_user.tenant_id, invoice.provider_invoice_id)
 
     assert result["reactivated"] == 1
     assert result["failed"] == 0
@@ -206,35 +213,37 @@ async def test_retry_failed_payments_reactivates_on_success(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_retry_failed_payments_keeps_subscription_past_due_on_failure(
-    async_session,
+    api_session_factory,
     test_user,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    plan = await create_plan(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_tier=PlanTier.PROFESSIONAL,
-        billing_cycle=BillingCycle.MONTHLY,
-        price="50.00",
-    )
-    subscription = await create_subscription(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_id=plan.id,
-        provider=PaymentProvider.STRIPE,
-        status=SubscriptionStatus.PAST_DUE,
-    )
-    await _insert_default_payment_method(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        provider=PaymentProvider.STRIPE,
-    )
-    invoice = await _create_open_invoice(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        subscription_id=subscription.id,
-        provider_invoice_id="inv_retry_fail",
-    )
+    async with api_session_factory() as db:
+        plan = await create_plan(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_tier=PlanTier.PROFESSIONAL,
+            billing_cycle=BillingCycle.MONTHLY,
+            price="50.00",
+        )
+        subscription = await create_subscription(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_id=plan.id,
+            provider=PaymentProvider.STRIPE,
+            status=SubscriptionStatus.PAST_DUE,
+        )
+        await _insert_default_payment_method(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            provider=PaymentProvider.STRIPE,
+        )
+        invoice = await _create_open_invoice(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            subscription_id=subscription.id,
+            provider_invoice_id="inv_retry_fail",
+        )
+        await db.commit()
     fake_provider = _FakeRetryProvider(
         {
             invoice.provider_invoice_id: PaymentProviderResult(
@@ -248,10 +257,13 @@ async def test_retry_failed_payments_keeps_subscription_past_due_on_failure(
     )
     monkeypatch.setattr(payment_tasks, "get_provider", lambda _provider: fake_provider)
 
-    result = await payment_tasks._retry_failed_payments_async(async_session)
+    async with api_session_factory() as db:
+        result = await payment_tasks._retry_failed_payments_async(db)
+        await db.commit()
 
-    latest_subscription = await _latest_subscription(async_session, subscription)
-    latest_invoice = await _latest_invoice(async_session, test_user.tenant_id, invoice.provider_invoice_id)
+    async with api_session_factory() as read_db:
+        latest_subscription = await _latest_subscription(read_db, subscription)
+        latest_invoice = await _latest_invoice(read_db, test_user.tenant_id, invoice.provider_invoice_id)
 
     assert result["reactivated"] == 0
     assert result["failed"] == 1
@@ -264,40 +276,42 @@ async def test_retry_failed_payments_keeps_subscription_past_due_on_failure(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_retry_failed_payments_cancels_after_third_failure(
-    async_session,
+    api_session_factory,
     test_user,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    plan = await create_plan(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_tier=PlanTier.PROFESSIONAL,
-        billing_cycle=BillingCycle.MONTHLY,
-        price="50.00",
-    )
-    original = await create_subscription(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_id=plan.id,
-        provider=PaymentProvider.STRIPE,
-        status=SubscriptionStatus.PAST_DUE,
-    )
-    subscription = await _append_past_due_retry_revision(
-        async_session=async_session,
-        source=original,
-        retry_count=2,
-    )
-    await _insert_default_payment_method(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        provider=PaymentProvider.STRIPE,
-    )
-    invoice = await _create_open_invoice(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        subscription_id=subscription.id,
-        provider_invoice_id="inv_retry_cancel",
-    )
+    async with api_session_factory() as db:
+        plan = await create_plan(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_tier=PlanTier.PROFESSIONAL,
+            billing_cycle=BillingCycle.MONTHLY,
+            price="50.00",
+        )
+        original = await create_subscription(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_id=plan.id,
+            provider=PaymentProvider.STRIPE,
+            status=SubscriptionStatus.PAST_DUE,
+        )
+        subscription = await _append_past_due_retry_revision(
+            async_session=db,
+            source=original,
+            retry_count=2,
+        )
+        await _insert_default_payment_method(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            provider=PaymentProvider.STRIPE,
+        )
+        invoice = await _create_open_invoice(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            subscription_id=subscription.id,
+            provider_invoice_id="inv_retry_cancel",
+        )
+        await db.commit()
     fake_provider = _FakeRetryProvider(
         {
             invoice.provider_invoice_id: PaymentProviderResult(
@@ -311,20 +325,23 @@ async def test_retry_failed_payments_cancels_after_third_failure(
     )
     monkeypatch.setattr(payment_tasks, "get_provider", lambda _provider: fake_provider)
 
-    result = await payment_tasks._retry_failed_payments_async(async_session)
+    async with api_session_factory() as db:
+        result = await payment_tasks._retry_failed_payments_async(db)
+        await db.commit()
 
-    latest_subscription = await _latest_subscription(async_session, subscription)
-    events = list(
-        (
-            await async_session.execute(
-                select(SubscriptionEvent)
-                .where(
-                    SubscriptionEvent.tenant_id == test_user.tenant_id,
-                    SubscriptionEvent.subscription_id == latest_subscription.id,
+    async with api_session_factory() as read_db:
+        latest_subscription = await _latest_subscription(read_db, subscription)
+        events = list(
+            (
+                await read_db.execute(
+                    select(SubscriptionEvent)
+                    .where(
+                        SubscriptionEvent.tenant_id == test_user.tenant_id,
+                        SubscriptionEvent.subscription_id == latest_subscription.id,
+                    )
                 )
-            )
-        ).scalars()
-    )
+            ).scalars()
+        )
 
     assert result["cancelled"] == 1
     assert latest_subscription.status == SubscriptionStatus.CANCELLED.value
@@ -337,48 +354,50 @@ async def test_retry_failed_payments_cancels_after_third_failure(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_retry_failed_payments_continues_after_provider_exception(
-    async_session,
+    api_session_factory,
     test_user,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    plan = await create_plan(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_tier=PlanTier.PROFESSIONAL,
-        billing_cycle=BillingCycle.MONTHLY,
-        price="50.00",
-    )
-    failing_subscription = await create_subscription(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_id=plan.id,
-        provider=PaymentProvider.STRIPE,
-        status=SubscriptionStatus.PAST_DUE,
-    )
-    succeeding_subscription = await create_subscription(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        plan_id=plan.id,
-        provider=PaymentProvider.STRIPE,
-        status=SubscriptionStatus.PAST_DUE,
-    )
-    await _insert_default_payment_method(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        provider=PaymentProvider.STRIPE,
-    )
-    failing_invoice = await _create_open_invoice(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        subscription_id=failing_subscription.id,
-        provider_invoice_id="inv_retry_exception",
-    )
-    succeeding_invoice = await _create_open_invoice(
-        async_session=async_session,
-        tenant_id=test_user.tenant_id,
-        subscription_id=succeeding_subscription.id,
-        provider_invoice_id="inv_retry_success_after_exception",
-    )
+    async with api_session_factory() as db:
+        plan = await create_plan(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_tier=PlanTier.PROFESSIONAL,
+            billing_cycle=BillingCycle.MONTHLY,
+            price="50.00",
+        )
+        failing_subscription = await create_subscription(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_id=plan.id,
+            provider=PaymentProvider.STRIPE,
+            status=SubscriptionStatus.PAST_DUE,
+        )
+        succeeding_subscription = await create_subscription(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            plan_id=plan.id,
+            provider=PaymentProvider.STRIPE,
+            status=SubscriptionStatus.PAST_DUE,
+        )
+        await _insert_default_payment_method(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            provider=PaymentProvider.STRIPE,
+        )
+        failing_invoice = await _create_open_invoice(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            subscription_id=failing_subscription.id,
+            provider_invoice_id="inv_retry_exception",
+        )
+        succeeding_invoice = await _create_open_invoice(
+            async_session=db,
+            tenant_id=test_user.tenant_id,
+            subscription_id=succeeding_subscription.id,
+            provider_invoice_id="inv_retry_success_after_exception",
+        )
+        await db.commit()
     fake_provider = _FakeRetryProvider(
         {
             failing_invoice.provider_invoice_id: RuntimeError("gateway down"),
@@ -391,10 +410,13 @@ async def test_retry_failed_payments_continues_after_provider_exception(
     )
     monkeypatch.setattr(payment_tasks, "get_provider", lambda _provider: fake_provider)
 
-    result = await payment_tasks._retry_failed_payments_async(async_session)
+    async with api_session_factory() as db:
+        result = await payment_tasks._retry_failed_payments_async(db)
+        await db.commit()
 
-    latest_failing = await _latest_subscription(async_session, failing_subscription)
-    latest_succeeding = await _latest_subscription(async_session, succeeding_subscription)
+    async with api_session_factory() as read_db:
+        latest_failing = await _latest_subscription(read_db, failing_subscription)
+        latest_succeeding = await _latest_subscription(read_db, succeeding_subscription)
 
     assert result["failed"] == 1
     assert result["reactivated"] == 1

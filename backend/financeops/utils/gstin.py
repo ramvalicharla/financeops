@@ -48,6 +48,7 @@ INDIA_STATE_CODES: dict[str, str] = {
 _PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 _TAN_RE = re.compile(r"^[A-Z]{4}[0-9]{5}[A-Z]$")
 _GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][A-Z0-9]Z[A-Z0-9]$")
+VALID_STATE_CODES = {f"{i:02d}" for i in range(1, 39)}
 _BASE36 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _VALUE_BY_CHAR = {char: idx for idx, char in enumerate(_BASE36)}
 
@@ -85,10 +86,7 @@ def validate_gstin(gstin: str) -> bool:
         return False
 
     state_code = value[:2]
-    if state_code not in INDIA_STATE_CODES:
-        return False
-    # Restrict to normal business registrations for entity onboarding.
-    if state_code in {"97", "99"}:
+    if state_code not in VALID_STATE_CODES:
         return False
 
     pan_part = value[2:12]
@@ -111,9 +109,9 @@ def validate_tan(tan: str) -> bool:
 
 __all__ = [
     "INDIA_STATE_CODES",
+    "VALID_STATE_CODES",
     "extract_state_code",
     "validate_gstin",
     "validate_pan",
     "validate_tan",
 ]
-

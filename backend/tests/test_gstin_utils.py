@@ -48,3 +48,18 @@ def test_gstin_pan_embedded_correctly() -> None:
     gstin = _build_gstin("27", pan="AABCF1234A")
     assert validate_pan(gstin[2:12]) is True
 
+
+def test_gstin_state_code_00_rejected() -> None:
+    assert validate_gstin("00AAAAA0000A1Z5") is False
+
+
+def test_gstin_state_code_29_karnataka_valid() -> None:
+    assert validate_gstin(_build_gstin("29")) is True
+
+
+def test_gstin_state_code_38_ladakh_valid() -> None:
+    assert validate_gstin(_build_gstin("38")) is True
+
+
+def test_gstin_state_code_39_invalid() -> None:
+    assert validate_gstin(_build_gstin("39")) is False

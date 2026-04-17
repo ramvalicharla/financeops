@@ -17,6 +17,30 @@ from financeops.db.rls import set_tenant_context
 pytest_plugins: tuple[str, ...] = ()
 
 
+class _FakeStorage:
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, str | bytes]] = []
+
+    def upload_file(
+        self,
+        file_bytes: bytes,
+        key: str,
+        content_type: str,
+        tenant_id: str,
+        uploaded_by: str | None = None,
+    ) -> str:
+        self.uploads.append(
+            {
+                "file_bytes": file_bytes,
+                "key": key,
+                "content_type": content_type,
+                "tenant_id": tenant_id,
+                "uploaded_by": uploaded_by or "",
+            }
+        )
+        return key
+
+
 class _StubExportService:
     def export_pdf(self, pack, pack_name: str, generated_at):
         return (b"%PDF-1.4\nboard-pack\n", f"board_pack_{pack.period_start}_{pack.period_end}.pdf")
@@ -36,6 +60,15 @@ def _contains_float(value: Any) -> bool:
     if isinstance(value, list):
         return any(_contains_float(v) for v in value)
     return False
+
+
+def _install_fake_storage(monkeypatch: pytest.MonkeyPatch) -> _FakeStorage:
+    fake_storage = _FakeStorage()
+    monkeypatch.setattr(
+        "financeops.modules.board_pack_generator.application.generate_service.get_storage",
+        lambda: fake_storage,
+    )
+    return fake_storage
 
 
 async def _seed_definition_and_run(
@@ -463,7 +496,10 @@ async def _relax_board_pack_schema(async_session: AsyncSession) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_028_generate_full_lifecycle_creates_three_run_rows(async_session: AsyncSession) -> None:
+async def test_t_028_generate_full_lifecycle_creates_three_run_rows(
+    async_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from financeops.db.models.board_pack_generator import BoardPackGeneratorRun
     from financeops.modules.board_pack_generator.application.generate_service import BoardPackGenerateService
 
@@ -476,6 +512,7 @@ async def test_t_028_generate_full_lifecycle_creates_three_run_rows(async_sessio
     )
 
     service = BoardPackGenerateService(export_service=_StubExportService())
+    _install_fake_storage(monkeypatch)
 
     async def _fake_fetch(*, db, context, section_type):  # noqa: ANN001
         return {
@@ -579,7 +616,10 @@ async def test_t_032_generate_appends_failed_row_when_renderer_throws(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_033_generate_persists_expected_section_count(async_session: AsyncSession) -> None:
+async def test_t_033_generate_persists_expected_section_count(
+    async_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from financeops.db.models.board_pack_generator import BoardPackGeneratorSection
     from financeops.modules.board_pack_generator.application.generate_service import BoardPackGenerateService
 
@@ -592,6 +632,7 @@ async def test_t_033_generate_persists_expected_section_count(async_session: Asy
     )
 
     service = BoardPackGenerateService(export_service=_StubExportService())
+    _install_fake_storage(monkeypatch)
 
     async def _fake_fetch(*, db, context, section_type):  # noqa: ANN001
         return {"section": section_type.value, "amount": Decimal("10.00")}
@@ -609,7 +650,10 @@ async def test_t_033_generate_persists_expected_section_count(async_session: Asy
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_034_generate_persists_two_artifacts_with_expected_path(async_session: AsyncSession) -> None:
+async def test_t_034_generate_persists_two_artifacts_with_expected_path(
+    async_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from financeops.db.models.board_pack_generator import BoardPackGeneratorArtifact
     from financeops.modules.board_pack_generator.application.generate_service import BoardPackGenerateService
 
@@ -622,6 +666,7 @@ async def test_t_034_generate_persists_two_artifacts_with_expected_path(async_se
     )
 
     service = BoardPackGenerateService(export_service=_StubExportService())
+    _install_fake_storage(monkeypatch)
 
     async def _fake_fetch(*, db, context, section_type):  # noqa: ANN001
         return {"section": section_type.value, "amount": Decimal("10.00")}
@@ -647,7 +692,10 @@ async def test_t_034_generate_persists_two_artifacts_with_expected_path(async_se
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_035_complete_run_chain_hash_matches_assembled_pack(async_session: AsyncSession) -> None:
+async def test_t_035_complete_run_chain_hash_matches_assembled_pack(
+    async_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from financeops.db.models.board_pack_generator import BoardPackGeneratorRun
     from financeops.modules.board_pack_generator.application.generate_service import BoardPackGenerateService
 
@@ -660,6 +708,7 @@ async def test_t_035_complete_run_chain_hash_matches_assembled_pack(async_sessio
     )
 
     service = BoardPackGenerateService(export_service=_StubExportService())
+    _install_fake_storage(monkeypatch)
 
     async def _fake_fetch(*, db, context, section_type):  # noqa: ANN001
         return {"section": section_type.value, "amount": Decimal("500.00")}
@@ -684,7 +733,10 @@ async def test_t_035_complete_run_chain_hash_matches_assembled_pack(async_sessio
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_036_all_run_rows_share_origin_run_id(async_session: AsyncSession) -> None:
+async def test_t_036_all_run_rows_share_origin_run_id(
+    async_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from financeops.db.models.board_pack_generator import BoardPackGeneratorRun
     from financeops.modules.board_pack_generator.application.generate_service import BoardPackGenerateService
 
@@ -697,6 +749,7 @@ async def test_t_036_all_run_rows_share_origin_run_id(async_session: AsyncSessio
     )
 
     service = BoardPackGenerateService(export_service=_StubExportService())
+    _install_fake_storage(monkeypatch)
 
     async def _fake_fetch(*, db, context, section_type):  # noqa: ANN001
         return {"section": section_type.value, "amount": Decimal("20.00")}
@@ -720,7 +773,10 @@ async def test_t_036_all_run_rows_share_origin_run_id(async_session: AsyncSessio
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_t_037_section_snapshots_have_no_float_values(async_session: AsyncSession) -> None:
+async def test_t_037_section_snapshots_have_no_float_values(
+    async_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from financeops.db.models.board_pack_generator import BoardPackGeneratorSection
     from financeops.modules.board_pack_generator.application.generate_service import BoardPackGenerateService
 
@@ -733,6 +789,7 @@ async def test_t_037_section_snapshots_have_no_float_values(async_session: Async
     )
 
     service = BoardPackGenerateService(export_service=_StubExportService())
+    _install_fake_storage(monkeypatch)
 
     async def _fake_fetch(*, db, context, section_type):  # noqa: ANN001
         return {

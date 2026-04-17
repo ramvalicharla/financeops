@@ -6,7 +6,8 @@ from datetime import date
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from financeops.db.append_only import APPEND_ONLY_TABLES
 from tests.integration.ratio_variance_phase1f4_helpers import (
@@ -54,111 +55,127 @@ async def _seed_executed_run(session: AsyncSession, *, tenant_id: uuid.UUID) -> 
     return executed
 
 
+async def _local_ratio_session(ratio_phase1f4_db_url: str):
+    engine = create_async_engine(ratio_phase1f4_db_url, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            yield session
+            await session.rollback()
+    finally:
+        await engine.dispose()
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_append_only_rejects_update_on_metric_definitions(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    await ensure_tenant_context(ratio_phase1f4_session, tenant_id)
-    await seed_active_definition_set(
-        ratio_phase1f4_session,
-        tenant_id=tenant_id,
-        organisation_id=tenant_id,
-        created_by=tenant_id,
-        effective_from=date(2026, 1, 1),
-    )
-    definition_id = (
-        await ratio_phase1f4_session.execute(text("SELECT id FROM metric_definitions LIMIT 1"))
-    ).scalar_one()
-    with pytest.raises(DBAPIError):
-        await ratio_phase1f4_session.execute(
-            text("UPDATE metric_definitions SET definition_name='changed' WHERE id=:id"),
-            {"id": str(definition_id)},
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        await ensure_tenant_context(session, tenant_id)
+        await seed_active_definition_set(
+            session,
+            tenant_id=tenant_id,
+            organisation_id=tenant_id,
+            created_by=tenant_id,
+            effective_from=date(2026, 1, 1),
         )
-        await ratio_phase1f4_session.flush()
+        definition_id = (
+            await session.execute(text("SELECT id FROM metric_definitions LIMIT 1"))
+        ).scalar_one()
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                text("UPDATE metric_definitions SET definition_name='changed' WHERE id=:id"),
+                {"id": str(definition_id)},
+            )
+            await session.flush()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_append_only_rejects_update_on_metric_runs(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    executed = await _seed_executed_run(ratio_phase1f4_session, tenant_id=tenant_id)
-    with pytest.raises(DBAPIError):
-        await ratio_phase1f4_session.execute(
-            text("UPDATE metric_runs SET status='failed' WHERE id=:id"),
-            {"id": executed["run_id"]},
-        )
-        await ratio_phase1f4_session.flush()
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        executed = await _seed_executed_run(session, tenant_id=tenant_id)
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                text("UPDATE metric_runs SET status='failed' WHERE id=:id"),
+                {"id": executed["run_id"]},
+            )
+            await session.flush()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_append_only_rejects_update_on_metric_results(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    executed = await _seed_executed_run(ratio_phase1f4_session, tenant_id=tenant_id)
-    result_id = (
-        await ratio_phase1f4_session.execute(
-            text("SELECT id FROM metric_results WHERE run_id=:run_id LIMIT 1"),
-            {"run_id": executed["run_id"]},
-        )
-    ).scalar_one()
-    with pytest.raises(DBAPIError):
-        await ratio_phase1f4_session.execute(
-            text("UPDATE metric_results SET metric_value=0 WHERE id=:id"),
-            {"id": str(result_id)},
-        )
-        await ratio_phase1f4_session.flush()
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        executed = await _seed_executed_run(session, tenant_id=tenant_id)
+        result_id = (
+            await session.execute(
+                text("SELECT id FROM metric_results WHERE run_id=:run_id LIMIT 1"),
+                {"run_id": executed["run_id"]},
+            )
+        ).scalar_one()
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                text("UPDATE metric_results SET metric_value=0 WHERE id=:id"),
+                {"id": str(result_id)},
+            )
+            await session.flush()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_append_only_rejects_update_on_variance_and_trend_and_evidence(
-    ratio_phase1f4_session: AsyncSession,
+    ratio_phase1f4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    executed = await _seed_executed_run(ratio_phase1f4_session, tenant_id=tenant_id)
-    variance_id = (
-        await ratio_phase1f4_session.execute(
-            text("SELECT id FROM variance_results WHERE run_id=:run_id LIMIT 1"),
-            {"run_id": executed["run_id"]},
-        )
-    ).scalar_one()
-    trend_id = (
-        await ratio_phase1f4_session.execute(
-            text("SELECT id FROM trend_results WHERE run_id=:run_id LIMIT 1"),
-            {"run_id": executed["run_id"]},
-        )
-    ).scalar_one()
-    evidence_id = (
-        await ratio_phase1f4_session.execute(
-            text("SELECT id FROM metric_evidence_links WHERE run_id=:run_id LIMIT 1"),
-            {"run_id": executed["run_id"]},
-        )
-    ).scalar_one()
+    async for session in _local_ratio_session(ratio_phase1f4_db_url):
+        tenant_id = uuid.uuid4()
+        executed = await _seed_executed_run(session, tenant_id=tenant_id)
+        variance_id = (
+            await session.execute(
+                text("SELECT id FROM variance_results WHERE run_id=:run_id LIMIT 1"),
+                {"run_id": executed["run_id"]},
+            )
+        ).scalar_one()
+        trend_id = (
+            await session.execute(
+                text("SELECT id FROM trend_results WHERE run_id=:run_id LIMIT 1"),
+                {"run_id": executed["run_id"]},
+            )
+        ).scalar_one()
+        evidence_id = (
+            await session.execute(
+                text("SELECT id FROM metric_evidence_links WHERE run_id=:run_id LIMIT 1"),
+                {"run_id": executed["run_id"]},
+            )
+        ).scalar_one()
 
-    with pytest.raises(DBAPIError):
-        await ratio_phase1f4_session.execute(
-            text("UPDATE variance_results SET variance_abs=0 WHERE id=:id"),
-            {"id": str(variance_id)},
-        )
-        await ratio_phase1f4_session.flush()
-    with pytest.raises(DBAPIError):
-        await ratio_phase1f4_session.execute(
-            text("UPDATE trend_results SET trend_value=0 WHERE id=:id"),
-            {"id": str(trend_id)},
-        )
-        await ratio_phase1f4_session.flush()
-    with pytest.raises(DBAPIError):
-        await ratio_phase1f4_session.execute(
-            text("UPDATE metric_evidence_links SET evidence_label='x' WHERE id=:id"),
-            {"id": str(evidence_id)},
-        )
-        await ratio_phase1f4_session.flush()
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                text("UPDATE variance_results SET variance_abs=0 WHERE id=:id"),
+                {"id": str(variance_id)},
+            )
+            await session.flush()
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                text("UPDATE trend_results SET trend_value=0 WHERE id=:id"),
+                {"id": str(trend_id)},
+            )
+            await session.flush()
+        with pytest.raises(DBAPIError):
+            await session.execute(
+                text("UPDATE metric_evidence_links SET evidence_label='x' WHERE id=:id"),
+                {"id": str(evidence_id)},
+            )
+            await session.flush()
 
 
 @pytest.mark.asyncio

@@ -11,8 +11,10 @@ from alembic.config import Config
 from alembic.script import ScriptDirectory
 from httpx import AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
+from financeops.config import settings
 from financeops.core.security import hash_password
 from financeops.db.models.anomaly_pattern_engine import AnomalyResult, AnomalyRun
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
@@ -43,6 +45,12 @@ def _current_alembic_head() -> str:
     cfg.set_main_option("script_location", str(backend_root / "migrations"))
     script_dir = ScriptDirectory.from_config(cfg)
     return script_dir.get_current_head() or ""
+
+
+def _build_local_session_factory() -> tuple[object, async_sessionmaker[AsyncSession]]:
+    engine = create_async_engine(str(settings.DATABASE_URL), echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    return engine, session_factory
 
 
 async def _insert_board_pack_definition(
@@ -521,7 +529,6 @@ async def test_t_403_board_pack_generate_storage_path_convention(
 @pytest.mark.asyncio
 async def test_t_404_report_result_hash_is_deterministic_across_two_runs(
     async_client: AsyncClient,
-    async_session: AsyncSession,
     test_access_token: str,
     test_user,
     monkeypatch: pytest.MonkeyPatch,
@@ -550,62 +557,75 @@ async def test_t_404_report_result_hash_is_deterministic_across_two_runs(
     pending_run_1 = uuid.UUID(run_response_1.json()["data"]["id"])
     pending_run_2 = uuid.UUID(run_response_2.json()["data"]["id"])
 
-    await set_tenant_context(async_session, test_user.tenant_id)
-    service = ReportRunService()
+    engine, session_factory = _build_local_session_factory()
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            await set_tenant_context(session, test_user.tenant_id)
+            service = ReportRunService()
 
-    async def _fake_get_table_columns(*, db: AsyncSession, table_name: str) -> set[str]:
-        del db, table_name
-        return {"tenant_id", "metric_code", "metric_value", "reporting_period"}
+            async def _fake_get_table_columns(*, db: AsyncSession, table_name: str) -> set[str]:
+                del db, table_name
+                return {"tenant_id", "metric_code", "metric_value", "reporting_period"}
 
-    async def _fake_query_metric_rows(
-        *,
-        db: AsyncSession,
-        tenant_id: uuid.UUID,
-        metric_key: str,
-        table_name: str,
-        source_column: str,
-        table_columns: set[str],
-        filters: FilterConfig,
-        group_by: list[str],
-    ) -> list[dict[str, object]]:
-        del db, tenant_id, metric_key, table_name, source_column, table_columns, filters, group_by
-        return [{"metric_value": "1000.00", "metric_code": "revenue", "reporting_period": date(2026, 1, 31)}]
+            async def _fake_query_metric_rows(
+                *,
+                db: AsyncSession,
+                tenant_id: uuid.UUID,
+                metric_key: str,
+                table_name: str,
+                source_column: str,
+                table_columns: set[str],
+                filters: FilterConfig,
+                group_by: list[str],
+            ) -> list[dict[str, object]]:
+                del db, tenant_id, metric_key, table_name, source_column, table_columns, filters, group_by
+                return [
+                    {
+                        "metric_value": "1000.00",
+                        "metric_code": "revenue",
+                        "reporting_period": date(2026, 1, 31),
+                    }
+                ]
 
-    async def _fake_export_rows(
-        *,
-        tenant_id: uuid.UUID,
-        run_id: uuid.UUID,
-        rows: list[dict[str, object]],
-        report_name: str,
-        export_formats: list[object],
-    ) -> dict[str, str]:
-        del tenant_id, run_id, rows, report_name, export_formats
-        return {}
+            async def _fake_export_rows(
+                *,
+                tenant_id: uuid.UUID,
+                run_id: uuid.UUID,
+                rows: list[dict[str, object]],
+                report_name: str,
+                export_formats: list[object],
+            ) -> dict[str, str]:
+                del tenant_id, run_id, rows, report_name, export_formats
+                return {}
 
-    monkeypatch.setattr(service, "_get_table_columns", _fake_get_table_columns)
-    monkeypatch.setattr(service, "_query_metric_rows", _fake_query_metric_rows)
-    monkeypatch.setattr(service, "_export_rows", _fake_export_rows)
+            monkeypatch.setattr(service, "_get_table_columns", _fake_get_table_columns)
+            monkeypatch.setattr(service, "_query_metric_rows", _fake_query_metric_rows)
+            monkeypatch.setattr(service, "_export_rows", _fake_export_rows)
 
-    await service.run(db=async_session, run_id=pending_run_1, tenant_id=test_user.tenant_id)
-    await service.run(db=async_session, run_id=pending_run_2, tenant_id=test_user.tenant_id)
+            await service.run(db=session, run_id=pending_run_1, tenant_id=test_user.tenant_id)
+            await service.run(db=session, run_id=pending_run_2, tenant_id=test_user.tenant_id)
 
-    hashes = (
-        await async_session.execute(
-            text(
-                """
-                SELECT result_hash
-                FROM report_results
-                WHERE tenant_id = CAST(:tenant_id AS uuid)
-                ORDER BY created_at DESC, id DESC
-                LIMIT 2
-                """
-            ),
-            {"tenant_id": str(test_user.tenant_id)},
-        )
-    ).scalars().all()
+            hashes = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT result_hash
+                        FROM report_results
+                        WHERE tenant_id = CAST(:tenant_id AS uuid)
+                        ORDER BY created_at DESC, id DESC
+                        LIMIT 2
+                        """
+                    ),
+                    {"tenant_id": str(test_user.tenant_id)},
+                )
+            ).scalars().all()
 
-    assert len(hashes) == 2
-    assert hashes[0] == hashes[1]
+            assert len(hashes) == 2
+            assert hashes[0] == hashes[1]
+            await session.rollback()
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.integration
@@ -651,7 +671,6 @@ async def test_t_405_anomaly_alert_status_flow_open_to_resolved(
 @pytest.mark.asyncio
 async def test_t_406_delivery_schedule_deactivation_blocks_trigger(
     async_client: AsyncClient,
-    async_session: AsyncSession,
     test_access_token: str,
     test_user,
 ) -> None:
@@ -668,13 +687,20 @@ async def test_t_406_delivery_schedule_deactivation_blocks_trigger(
     )
     assert delete_response.status_code == 204
 
-    await set_tenant_context(async_session, test_user.tenant_id)
-    is_active = (
-        await async_session.execute(
-            text("SELECT is_active FROM delivery_schedules WHERE id = CAST(:id AS uuid)"),
-            {"id": schedule["id"]},
-        )
-    ).scalar_one()
+    engine, session_factory = _build_local_session_factory()
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            await set_tenant_context(session, test_user.tenant_id)
+            is_active = (
+                await session.execute(
+                    text("SELECT is_active FROM delivery_schedules WHERE id = CAST(:id AS uuid)"),
+                    {"id": schedule["id"]},
+                )
+            ).scalar_one()
+            await session.rollback()
+    finally:
+        await engine.dispose()
     assert is_active is False
 
     trigger_response = await async_client.post(
@@ -687,223 +713,233 @@ async def test_t_406_delivery_schedule_deactivation_blocks_trigger(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_407_alembic_chain_and_phase5_tables_present(
-    async_session: AsyncSession,
 ) -> None:
-    head = (await async_session.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
-    assert head == _current_alembic_head()
+    engine, session_factory = _build_local_session_factory()
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            head = (await session.execute(text("SELECT version_num FROM alembic_version"))).scalar_one()
+            assert head == _current_alembic_head()
 
-    table_rows = await async_session.execute(
-        text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-    )
-    existing_tables = {str(row[0]) for row in table_rows.all()}
-    required_phase5_tables = {
-        "board_pack_definitions",
-        "board_pack_runs",
-        "report_definitions",
-        "report_runs",
-        "report_results",
-        "delivery_schedules",
-        "delivery_logs",
-    }
-    assert required_phase5_tables.issubset(existing_tables)
-
-    # Board-pack implementation differs by module family: generator tables
-    # (board_pack_sections/artifacts) or narrative-engine result tables.
-    generator_tables = {"board_pack_sections", "board_pack_artifacts"}
-    narrative_tables = {"board_pack_section_results", "board_pack_narrative_blocks"}
-    assert generator_tables.issubset(existing_tables) or narrative_tables.issubset(existing_tables)
-
-    has_alert_status = (
-        await async_session.execute(
-            text(
-                """
-                SELECT 1
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = 'anomaly_results'
-                  AND column_name = 'alert_status'
-                """
+            table_rows = await session.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
             )
-        )
-    ).first()
-    assert has_alert_status is not None
+            existing_tables = {str(row[0]) for row in table_rows.all()}
+            required_phase5_tables = {
+                "board_pack_definitions",
+                "board_pack_runs",
+                "report_definitions",
+                "report_runs",
+                "report_results",
+                "delivery_schedules",
+                "delivery_logs",
+            }
+            assert required_phase5_tables.issubset(existing_tables)
+
+            generator_tables = {"board_pack_sections", "board_pack_artifacts"}
+            narrative_tables = {"board_pack_section_results", "board_pack_narrative_blocks"}
+            assert generator_tables.issubset(existing_tables) or narrative_tables.issubset(existing_tables)
+
+            has_alert_status = (
+                await session.execute(
+                    text(
+                        """
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = 'public'
+                          AND table_name = 'anomaly_results'
+                          AND column_name = 'alert_status'
+                        """
+                    )
+                )
+            ).first()
+            assert has_alert_status is not None
+            await session.rollback()
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_408_rls_cross_module_isolation(
-    async_session: AsyncSession,
     test_user,
 ) -> None:
-    tenant_b_id, tenant_b_user_id = await _create_secondary_tenant_user(async_session)
+    engine, session_factory = _build_local_session_factory()
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            tenant_b_id, tenant_b_user_id = await _create_secondary_tenant_user(session)
 
-    board_code_a = f"bp_a_{uuid.uuid4().hex[:8]}"
-    board_code_b = f"bp_b_{uuid.uuid4().hex[:8]}"
+            board_code_a = f"bp_a_{uuid.uuid4().hex[:8]}"
+            board_code_b = f"bp_b_{uuid.uuid4().hex[:8]}"
 
-    board_id_a = await _insert_board_pack_definition(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        user_id=test_user.id,
-        board_pack_code=board_code_a,
-        board_pack_name="Board A",
-    )
-    board_id_b = await _insert_board_pack_definition(
-        async_session,
-        tenant_id=tenant_b_id,
-        user_id=tenant_b_user_id,
-        board_pack_code=board_code_b,
-        board_pack_name="Board B",
-    )
+            board_id_a = await _insert_board_pack_definition(
+                session,
+                tenant_id=test_user.tenant_id,
+                user_id=test_user.id,
+                board_pack_code=board_code_a,
+                board_pack_name="Board A",
+            )
+            board_id_b = await _insert_board_pack_definition(
+                session,
+                tenant_id=tenant_b_id,
+                user_id=tenant_b_user_id,
+                board_pack_code=board_code_b,
+                board_pack_name="Board B",
+            )
 
-    report_repo = ReportRepository()
-    delivery_repo = DeliveryRepository()
+            report_repo = ReportRepository()
+            delivery_repo = DeliveryRepository()
 
-    report_name_a = f"report-a-{uuid.uuid4().hex[:8]}"
-    report_name_b = f"report-b-{uuid.uuid4().hex[:8]}"
-    schedule_name_a = f"schedule-a-{uuid.uuid4().hex[:8]}"
-    schedule_name_b = f"schedule-b-{uuid.uuid4().hex[:8]}"
+            report_name_a = f"report-a-{uuid.uuid4().hex[:8]}"
+            report_name_b = f"report-b-{uuid.uuid4().hex[:8]}"
+            schedule_name_a = f"schedule-a-{uuid.uuid4().hex[:8]}"
+            schedule_name_b = f"schedule-b-{uuid.uuid4().hex[:8]}"
 
-    await set_tenant_context(async_session, test_user.tenant_id)
-    report_a = await report_repo.create_definition(
-        db=async_session,
-        tenant_id=test_user.tenant_id,
-        schema=ReportDefinitionSchema(
-            name=report_name_a,
-            metric_keys=["mis.kpi.revenue"],
-            filter_config=FilterConfig(),
-            group_by=[],
-            config={},
-        ),
-        created_by=test_user.id,
-    )
-    delivery_a = await delivery_repo.create_schedule(
-        db=async_session,
-        tenant_id=test_user.tenant_id,
-        schema=ScheduleDefinitionSchema(
-            name=schedule_name_a,
-            description=None,
-            schedule_type=ScheduleType.REPORT,
-            source_definition_id=report_a.id,
-            cron_expression="0 8 * * 1",
-            timezone="UTC",
-            recipients=[Recipient(type=ChannelType.EMAIL, address="ops-a@example.com")],
-            export_format=DeliveryExportFormat.PDF,
-            config={},
-        ),
-        created_by=test_user.id,
-    )
+            await set_tenant_context(session, test_user.tenant_id)
+            report_a = await report_repo.create_definition(
+                db=session,
+                tenant_id=test_user.tenant_id,
+                schema=ReportDefinitionSchema(
+                    name=report_name_a,
+                    metric_keys=["mis.kpi.revenue"],
+                    filter_config=FilterConfig(),
+                    group_by=[],
+                    config={},
+                ),
+                created_by=test_user.id,
+            )
+            delivery_a = await delivery_repo.create_schedule(
+                db=session,
+                tenant_id=test_user.tenant_id,
+                schema=ScheduleDefinitionSchema(
+                    name=schedule_name_a,
+                    description=None,
+                    schedule_type=ScheduleType.REPORT,
+                    source_definition_id=report_a.id,
+                    cron_expression="0 8 * * 1",
+                    timezone="UTC",
+                    recipients=[Recipient(type=ChannelType.EMAIL, address="ops-a@example.com")],
+                    export_format=DeliveryExportFormat.PDF,
+                    config={},
+                ),
+                created_by=test_user.id,
+            )
 
-    await set_tenant_context(async_session, tenant_b_id)
-    report_b = await report_repo.create_definition(
-        db=async_session,
-        tenant_id=tenant_b_id,
-        schema=ReportDefinitionSchema(
-            name=report_name_b,
-            metric_keys=["mis.kpi.revenue"],
-            filter_config=FilterConfig(),
-            group_by=[],
-            config={},
-        ),
-        created_by=tenant_b_user_id,
-    )
-    delivery_b = await delivery_repo.create_schedule(
-        db=async_session,
-        tenant_id=tenant_b_id,
-        schema=ScheduleDefinitionSchema(
-            name=schedule_name_b,
-            description=None,
-            schedule_type=ScheduleType.REPORT,
-            source_definition_id=report_b.id,
-            cron_expression="0 9 * * 1",
-            timezone="UTC",
-            recipients=[Recipient(type=ChannelType.EMAIL, address="ops-b@example.com")],
-            export_format=DeliveryExportFormat.PDF,
-            config={},
-        ),
-        created_by=tenant_b_user_id,
-    )
-    await async_session.flush()
+            await set_tenant_context(session, tenant_b_id)
+            report_b = await report_repo.create_definition(
+                db=session,
+                tenant_id=tenant_b_id,
+                schema=ReportDefinitionSchema(
+                    name=report_name_b,
+                    metric_keys=["mis.kpi.revenue"],
+                    filter_config=FilterConfig(),
+                    group_by=[],
+                    config={},
+                ),
+                created_by=tenant_b_user_id,
+            )
+            delivery_b = await delivery_repo.create_schedule(
+                db=session,
+                tenant_id=tenant_b_id,
+                schema=ScheduleDefinitionSchema(
+                    name=schedule_name_b,
+                    description=None,
+                    schedule_type=ScheduleType.REPORT,
+                    source_definition_id=report_b.id,
+                    cron_expression="0 9 * * 1",
+                    timezone="UTC",
+                    recipients=[Recipient(type=ChannelType.EMAIL, address="ops-b@example.com")],
+                    export_format=DeliveryExportFormat.PDF,
+                    config={},
+                ),
+                created_by=tenant_b_user_id,
+            )
+            await session.flush()
 
-    await set_tenant_context(async_session, test_user.tenant_id)
-    board_rows_a = await async_session.execute(
-        text(
-            """
-            SELECT id
-            FROM board_pack_definitions
-            WHERE board_pack_code IN (:code_a, :code_b)
-              AND tenant_id = CAST(:tenant_id AS uuid)
-            ORDER BY board_pack_code ASC
-            """
-        ),
-        {"code_a": board_code_a, "code_b": board_code_b, "tenant_id": str(test_user.tenant_id)},
-    )
-    report_rows_a = await async_session.execute(
-        text(
-            """
-            SELECT id
-            FROM report_definitions
-            WHERE name IN (:name_a, :name_b)
-              AND tenant_id = CAST(:tenant_id AS uuid)
-            ORDER BY name ASC
-            """
-        ),
-        {"name_a": report_name_a, "name_b": report_name_b, "tenant_id": str(test_user.tenant_id)},
-    )
-    schedule_rows_a = await async_session.execute(
-        text(
-            """
-            SELECT id
-            FROM delivery_schedules
-            WHERE name IN (:name_a, :name_b)
-              AND tenant_id = CAST(:tenant_id AS uuid)
-            ORDER BY name ASC
-            """
-        ),
-        {"name_a": schedule_name_a, "name_b": schedule_name_b, "tenant_id": str(test_user.tenant_id)},
-    )
+            await set_tenant_context(session, test_user.tenant_id)
+            board_rows_a = await session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM board_pack_definitions
+                    WHERE board_pack_code IN (:code_a, :code_b)
+                      AND tenant_id = CAST(:tenant_id AS uuid)
+                    ORDER BY board_pack_code ASC
+                    """
+                ),
+                {"code_a": board_code_a, "code_b": board_code_b, "tenant_id": str(test_user.tenant_id)},
+            )
+            report_rows_a = await session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM report_definitions
+                    WHERE name IN (:name_a, :name_b)
+                      AND tenant_id = CAST(:tenant_id AS uuid)
+                    ORDER BY name ASC
+                    """
+                ),
+                {"name_a": report_name_a, "name_b": report_name_b, "tenant_id": str(test_user.tenant_id)},
+            )
+            schedule_rows_a = await session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM delivery_schedules
+                    WHERE name IN (:name_a, :name_b)
+                      AND tenant_id = CAST(:tenant_id AS uuid)
+                    ORDER BY name ASC
+                    """
+                ),
+                {"name_a": schedule_name_a, "name_b": schedule_name_b, "tenant_id": str(test_user.tenant_id)},
+            )
 
-    assert {row[0] for row in board_rows_a.all()} == {board_id_a}
-    assert {row[0] for row in report_rows_a.all()} == {report_a.id}
-    assert {row[0] for row in schedule_rows_a.all()} == {delivery_a.id}
+            assert {row[0] for row in board_rows_a.all()} == {board_id_a}
+            assert {row[0] for row in report_rows_a.all()} == {report_a.id}
+            assert {row[0] for row in schedule_rows_a.all()} == {delivery_a.id}
 
-    await set_tenant_context(async_session, tenant_b_id)
-    board_rows_b = await async_session.execute(
-        text(
-            """
-            SELECT id
-            FROM board_pack_definitions
-            WHERE board_pack_code IN (:code_a, :code_b)
-              AND tenant_id = CAST(:tenant_id AS uuid)
-            ORDER BY board_pack_code ASC
-            """
-        ),
-        {"code_a": board_code_a, "code_b": board_code_b, "tenant_id": str(tenant_b_id)},
-    )
-    report_rows_b = await async_session.execute(
-        text(
-            """
-            SELECT id
-            FROM report_definitions
-            WHERE name IN (:name_a, :name_b)
-              AND tenant_id = CAST(:tenant_id AS uuid)
-            ORDER BY name ASC
-            """
-        ),
-        {"name_a": report_name_a, "name_b": report_name_b, "tenant_id": str(tenant_b_id)},
-    )
-    schedule_rows_b = await async_session.execute(
-        text(
-            """
-            SELECT id
-            FROM delivery_schedules
-            WHERE name IN (:name_a, :name_b)
-              AND tenant_id = CAST(:tenant_id AS uuid)
-            ORDER BY name ASC
-            """
-        ),
-        {"name_a": schedule_name_a, "name_b": schedule_name_b, "tenant_id": str(tenant_b_id)},
-    )
+            await set_tenant_context(session, tenant_b_id)
+            board_rows_b = await session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM board_pack_definitions
+                    WHERE board_pack_code IN (:code_a, :code_b)
+                      AND tenant_id = CAST(:tenant_id AS uuid)
+                    ORDER BY board_pack_code ASC
+                    """
+                ),
+                {"code_a": board_code_a, "code_b": board_code_b, "tenant_id": str(tenant_b_id)},
+            )
+            report_rows_b = await session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM report_definitions
+                    WHERE name IN (:name_a, :name_b)
+                      AND tenant_id = CAST(:tenant_id AS uuid)
+                    ORDER BY name ASC
+                    """
+                ),
+                {"name_a": report_name_a, "name_b": report_name_b, "tenant_id": str(tenant_b_id)},
+            )
+            schedule_rows_b = await session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM delivery_schedules
+                    WHERE name IN (:name_a, :name_b)
+                      AND tenant_id = CAST(:tenant_id AS uuid)
+                    ORDER BY name ASC
+                    """
+                ),
+                {"name_a": schedule_name_a, "name_b": schedule_name_b, "tenant_id": str(tenant_b_id)},
+            )
 
-    assert {row[0] for row in board_rows_b.all()} == {board_id_b}
-    assert {row[0] for row in report_rows_b.all()} == {report_b.id}
-    assert {row[0] for row in schedule_rows_b.all()} == {delivery_b.id}
+            assert {row[0] for row in board_rows_b.all()} == {board_id_b}
+            assert {row[0] for row in report_rows_b.all()} == {report_b.id}
+            assert {row[0] for row in schedule_rows_b.all()} == {delivery_b.id}
+            await session.rollback()
+    finally:
+        await engine.dispose()

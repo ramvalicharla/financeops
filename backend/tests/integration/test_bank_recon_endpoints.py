@@ -8,22 +8,22 @@ from tests.integration.entitlement_helpers import grant_boolean_entitlement
 
 
 @pytest_asyncio.fixture(autouse=True)
-async def _grant_bank_reconciliation_entitlement(async_session, test_user) -> None:
+async def _grant_bank_reconciliation_entitlement(api_db_session, api_test_user) -> None:
     await grant_boolean_entitlement(
-        async_session,
-        tenant_id=test_user.tenant_id,
+        api_db_session,
+        tenant_id=api_test_user.tenant_id,
         feature_name="bank_reconciliation",
-        actor_user_id=test_user.id,
+        actor_user_id=api_test_user.id,
     )
 
 
 @pytest.mark.asyncio
 async def test_create_bank_statement(
-    async_client: AsyncClient, test_user, test_access_token: str
+    async_client: AsyncClient, api_test_user, api_test_access_token: str
 ):
     response = await async_client.post(
         "/api/v1/bank-recon/statements",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={
             "bank_name": "HDFC Bank",
             "account_number_masked": "XXXX1234",
@@ -48,9 +48,9 @@ async def test_create_bank_statement(
 
 @pytest.mark.asyncio
 async def test_add_bank_transaction(
-    async_client: AsyncClient, test_user, test_access_token: str
+    async_client: AsyncClient, api_test_user, api_test_access_token: str
 ):
-    headers = {"Authorization": f"Bearer {test_access_token}"}
+    headers = {"Authorization": f"Bearer {api_test_access_token}"}
 
     # First create a statement
     stmt_resp = await async_client.post(
@@ -94,9 +94,9 @@ async def test_add_bank_transaction(
 
 @pytest.mark.asyncio
 async def test_run_bank_reconciliation(
-    async_client: AsyncClient, test_user, test_access_token: str
+    async_client: AsyncClient, api_test_user, api_test_access_token: str
 ):
-    headers = {"Authorization": f"Bearer {test_access_token}"}
+    headers = {"Authorization": f"Bearer {api_test_access_token}"}
 
     stmt_resp = await async_client.post(
         "/api/v1/bank-recon/statements",
@@ -143,11 +143,11 @@ async def test_run_bank_reconciliation(
 
 @pytest.mark.asyncio
 async def test_list_bank_statements(
-    async_client: AsyncClient, test_user, test_access_token: str
+    async_client: AsyncClient, api_test_user, api_test_access_token: str
 ):
     response = await async_client.get(
         "/api/v1/bank-recon/statements",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code == 200
     data = response.json()["data"]
@@ -157,9 +157,9 @@ async def test_list_bank_statements(
 @pytest.mark.asyncio
 async def test_bank_reconciliation_list_respects_limit(
     async_client: AsyncClient,
-    test_access_token: str,
+    api_test_access_token: str,
 ) -> None:
-    headers = {"Authorization": f"Bearer {test_access_token}"}
+    headers = {"Authorization": f"Bearer {api_test_access_token}"}
     for idx in range(5):
         resp = await async_client.post(
             "/api/v1/bank-recon/statements",
@@ -192,9 +192,9 @@ async def test_bank_reconciliation_list_respects_limit(
 @pytest.mark.asyncio
 async def test_bank_reconciliation_list_respects_skip(
     async_client: AsyncClient,
-    test_access_token: str,
+    api_test_access_token: str,
 ) -> None:
-    headers = {"Authorization": f"Bearer {test_access_token}"}
+    headers = {"Authorization": f"Bearer {api_test_access_token}"}
     for idx in range(5):
         resp = await async_client.post(
             "/api/v1/bank-recon/statements",

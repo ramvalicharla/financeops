@@ -59,7 +59,7 @@ async def _insert_gl_entry(
             "debit_amount": Decimal(debit),
             "credit_amount": Decimal(credit),
             "description": "consolidation test",
-            "source_ref": "test-consolidation",
+            "source_ref": f"test-consolidation-{entity_id}-{account_code}",
             "currency": "INR",
             "uploaded_by": uploaded_by,
         },
@@ -285,6 +285,7 @@ async def test_group_consolidation_endpoints(
         credit="900",
         uploaded_by=test_user.id,
     )
+    await async_session.commit()
 
     summary_response = await async_client.get(
         f"/api/v1/consolidation/summary?org_group_id={group.id}&as_of_date=2026-03-31",

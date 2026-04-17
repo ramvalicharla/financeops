@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from croniter import croniter
 from pydantic import BaseModel, Field, field_validator
 
 from financeops.modules.scheduled_delivery.domain.enums import (
@@ -57,9 +58,8 @@ class ScheduleDefinitionSchema(BaseModel):
     @field_validator("cron_expression")
     @classmethod
     def _validate_cron_expression_fields(cls, value: str) -> str:
-        fields = value.split()
-        if len(fields) != 5:
-            raise ValueError("cron_expression must contain exactly 5 fields")
+        if not croniter.is_valid(value):
+            raise ValueError("cron_expression must be a valid 5-field cron expression")
         return value
 
 

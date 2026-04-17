@@ -6,7 +6,8 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from financeops.db.models.cash_flow_engine import (
     CashFlowBridgeRuleDefinition,
@@ -437,245 +438,277 @@ async def _seed_fx_and_ownership_runs(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_cash_flow_run_is_deterministic_and_no_upstream_mutation(
-    async_session: AsyncSession,
+    cash_flow_phase2_6_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    organisation_id = uuid.uuid4()
-    user_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
-    await _seed_active_cash_flow_definitions(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-    )
-    source_run_id, _ = await _seed_consolidation_source_run(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-    )
-    await async_session.flush()
+    engine = create_async_engine(cash_flow_phase2_6_db_url, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            try:
+                tenant_id = uuid.uuid4()
+                organisation_id = uuid.uuid4()
+                user_id = uuid.uuid4()
+                await set_tenant_context(session, tenant_id)
+                await _seed_active_cash_flow_definitions(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                )
+                source_run_id, _ = await _seed_consolidation_source_run(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                )
+                await session.flush()
 
-    source_metric_count_before = await async_session.scalar(
-        select(func.count()).select_from(MultiEntityConsolidationMetricResult)
-    )
-    revenue_journal_before = await async_session.scalar(
-        select(func.count()).select_from(RevenueJournalEntry)
-    )
-    lease_journal_before = await async_session.scalar(
-        select(func.count()).select_from(LeaseJournalEntry)
-    )
+                source_metric_count_before = await session.scalar(
+                    select(func.count()).select_from(MultiEntityConsolidationMetricResult)
+                )
+                revenue_journal_before = await session.scalar(
+                    select(func.count()).select_from(RevenueJournalEntry)
+                )
+                lease_journal_before = await session.scalar(
+                    select(func.count()).select_from(LeaseJournalEntry)
+                )
 
-    service = _build_service(async_session)
-    run_a = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        reporting_period=date(2026, 1, 31),
-        source_consolidation_run_ref=source_run_id,
-        source_fx_translation_run_ref_nullable=None,
-        source_ownership_consolidation_run_ref_nullable=None,
-        created_by=user_id,
-    )
-    run_b = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        reporting_period=date(2026, 1, 31),
-        source_consolidation_run_ref=source_run_id,
-        source_fx_translation_run_ref_nullable=None,
-        source_ownership_consolidation_run_ref_nullable=None,
-        created_by=user_id,
-    )
-    assert run_a["run_token"] == run_b["run_token"]
-    assert run_b["idempotent"] is True
+                service = _build_service(session)
+                run_a = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    reporting_period=date(2026, 1, 31),
+                    source_consolidation_run_ref=source_run_id,
+                    source_fx_translation_run_ref_nullable=None,
+                    source_ownership_consolidation_run_ref_nullable=None,
+                    created_by=user_id,
+                )
+                run_b = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    reporting_period=date(2026, 1, 31),
+                    source_consolidation_run_ref=source_run_id,
+                    source_fx_translation_run_ref_nullable=None,
+                    source_ownership_consolidation_run_ref_nullable=None,
+                    created_by=user_id,
+                )
+                assert run_a["run_token"] == run_b["run_token"]
+                assert run_b["idempotent"] is True
 
-    execute_a = await service.execute_run(
-        tenant_id=tenant_id,
-        run_id=uuid.UUID(run_a["run_id"]),
-        created_by=user_id,
-    )
-    execute_b = await service.execute_run(
-        tenant_id=tenant_id,
-        run_id=uuid.UUID(run_a["run_id"]),
-        created_by=user_id,
-    )
-    assert execute_a["line_count"] >= 4
-    assert execute_b["idempotent"] is True
+                execute_a = await service.execute_run(
+                    tenant_id=tenant_id,
+                    run_id=uuid.UUID(run_a["run_id"]),
+                    created_by=user_id,
+                )
+                execute_b = await service.execute_run(
+                    tenant_id=tenant_id,
+                    run_id=uuid.UUID(run_a["run_id"]),
+                    created_by=user_id,
+                )
+                assert execute_a["line_count"] >= 4
+                assert execute_b["idempotent"] is True
 
-    source_metric_count_after = await async_session.scalar(
-        select(func.count()).select_from(MultiEntityConsolidationMetricResult)
-    )
-    revenue_journal_after = await async_session.scalar(
-        select(func.count()).select_from(RevenueJournalEntry)
-    )
-    lease_journal_after = await async_session.scalar(
-        select(func.count()).select_from(LeaseJournalEntry)
-    )
-    assert source_metric_count_before == source_metric_count_after
-    assert revenue_journal_before == revenue_journal_after
-    assert lease_journal_before == lease_journal_after
+                source_metric_count_after = await session.scalar(
+                    select(func.count()).select_from(MultiEntityConsolidationMetricResult)
+                )
+                revenue_journal_after = await session.scalar(
+                    select(func.count()).select_from(RevenueJournalEntry)
+                )
+                lease_journal_after = await session.scalar(
+                    select(func.count()).select_from(LeaseJournalEntry)
+                )
+                assert source_metric_count_before == source_metric_count_after
+                assert revenue_journal_before == revenue_journal_after
+                assert lease_journal_before == lease_journal_after
 
-    rows = (
-        await async_session.execute(
-            select(CashFlowLineResult)
-            .where(CashFlowLineResult.run_id == uuid.UUID(run_a["run_id"]))
-            .order_by(CashFlowLineResult.line_no.asc())
-        )
-    ).scalars().all()
-    assert [row.line_no for row in rows] == sorted(row.line_no for row in rows)
+                rows = (
+                    await session.execute(
+                        select(CashFlowLineResult)
+                        .where(CashFlowLineResult.run_id == uuid.UUID(run_a["run_id"]))
+                        .order_by(CashFlowLineResult.line_no.asc())
+                    )
+                ).scalars().all()
+                assert [row.line_no for row in rows] == sorted(row.line_no for row in rows)
+            finally:
+                if session.in_transaction():
+                    await session.rollback()
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_cash_flow_run_ownership_and_fx_paths_are_explicit_and_deterministic(
-    async_session: AsyncSession,
+    cash_flow_phase2_6_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    organisation_id = uuid.uuid4()
-    user_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
-    await _seed_active_cash_flow_definitions(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-    )
-    source_run_id, source_metric_ids = await _seed_consolidation_source_run(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-    )
-    fx_run_id, ownership_run_id = await _seed_fx_and_ownership_runs(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-        source_metric_ids=source_metric_ids,
-    )
-    await async_session.flush()
+    engine = create_async_engine(cash_flow_phase2_6_db_url, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            try:
+                tenant_id = uuid.uuid4()
+                organisation_id = uuid.uuid4()
+                user_id = uuid.uuid4()
+                await set_tenant_context(session, tenant_id)
+                await _seed_active_cash_flow_definitions(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                )
+                source_run_id, source_metric_ids = await _seed_consolidation_source_run(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                )
+                fx_run_id, ownership_run_id = await _seed_fx_and_ownership_runs(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                    source_metric_ids=source_metric_ids,
+                )
+                await session.flush()
 
-    service = _build_service(async_session)
-    fx_run = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        reporting_period=date(2026, 1, 31),
-        source_consolidation_run_ref=source_run_id,
-        source_fx_translation_run_ref_nullable=fx_run_id,
-        source_ownership_consolidation_run_ref_nullable=None,
-        created_by=user_id,
-    )
-    await service.execute_run(
-        tenant_id=tenant_id, run_id=uuid.UUID(fx_run["run_id"]), created_by=user_id
-    )
-    fx_rows = (
-        await async_session.execute(
-            select(CashFlowLineResult).where(
-                CashFlowLineResult.run_id == uuid.UUID(fx_run["run_id"])
-            )
-        )
-    ).scalars().all()
-    assert fx_rows
-    assert all(bool(row.fx_basis_applied) for row in fx_rows)
+                service = _build_service(session)
+                fx_run = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    reporting_period=date(2026, 1, 31),
+                    source_consolidation_run_ref=source_run_id,
+                    source_fx_translation_run_ref_nullable=fx_run_id,
+                    source_ownership_consolidation_run_ref_nullable=None,
+                    created_by=user_id,
+                )
+                await service.execute_run(
+                    tenant_id=tenant_id, run_id=uuid.UUID(fx_run["run_id"]), created_by=user_id
+                )
+                fx_rows = (
+                    await session.execute(
+                        select(CashFlowLineResult).where(
+                            CashFlowLineResult.run_id == uuid.UUID(fx_run["run_id"])
+                        )
+                    )
+                ).scalars().all()
+                assert fx_rows
+                assert all(bool(row.fx_basis_applied) for row in fx_rows)
 
-    ownership_run = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        reporting_period=date(2026, 1, 31),
-        source_consolidation_run_ref=source_run_id,
-        source_fx_translation_run_ref_nullable=fx_run_id,
-        source_ownership_consolidation_run_ref_nullable=ownership_run_id,
-        created_by=user_id,
-    )
-    await service.execute_run(
-        tenant_id=tenant_id, run_id=uuid.UUID(ownership_run["run_id"]), created_by=user_id
-    )
-    own_rows = (
-        await async_session.execute(
-            select(CashFlowLineResult).where(
-                CashFlowLineResult.run_id == uuid.UUID(ownership_run["run_id"])
-            )
-        )
-    ).scalars().all()
-    assert own_rows
-    assert all(bool(row.ownership_basis_applied) for row in own_rows)
+                ownership_run = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    reporting_period=date(2026, 1, 31),
+                    source_consolidation_run_ref=source_run_id,
+                    source_fx_translation_run_ref_nullable=fx_run_id,
+                    source_ownership_consolidation_run_ref_nullable=ownership_run_id,
+                    created_by=user_id,
+                )
+                await service.execute_run(
+                    tenant_id=tenant_id,
+                    run_id=uuid.UUID(ownership_run["run_id"]),
+                    created_by=user_id,
+                )
+                own_rows = (
+                    await session.execute(
+                        select(CashFlowLineResult).where(
+                            CashFlowLineResult.run_id == uuid.UUID(ownership_run["run_id"])
+                        )
+                    )
+                ).scalars().all()
+                assert own_rows
+                assert all(bool(row.ownership_basis_applied) for row in own_rows)
+            finally:
+                if session.in_transaction():
+                    await session.rollback()
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_cash_flow_run_fails_closed_when_source_metric_missing(
-    async_session: AsyncSession,
+    cash_flow_phase2_6_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    organisation_id = uuid.uuid4()
-    user_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
-    await _seed_active_cash_flow_definitions(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-    )
-    source_run_id, _ = await _seed_consolidation_source_run(
-        async_session,
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        created_by=user_id,
-    )
-    await async_session.execute(
-        select(CashFlowLineMapping)
-    )
-    # Introduce one active mapping expecting a metric that does not exist in source rows.
-    await AuditWriter.insert_financial_record(
-        async_session,
-        model_class=CashFlowLineMapping,
-        tenant_id=tenant_id,
-        record_data={"mapping_code": "CF_EXTRA", "line_code": "L_MISSING"},
-        values={
-            "organisation_id": organisation_id,
-            "mapping_code": "CF_EXTRA",
-            "line_code": "L_MISSING",
-            "line_name": "Missing",
-            "section_code": "operating",
-            "line_order": 100,
-            "method_type": "indirect",
-            "source_metric_code": "metric_missing_in_source",
-            "sign_multiplier": Decimal("1.000000"),
-            "aggregation_type": "sum",
-            "ownership_applicability": "any",
-            "fx_applicability": "any",
-            "version_token": build_definition_version_token(
-                DefinitionVersionTokenInput(rows=[{"line_code": "L_MISSING"}])
-            ),
-            "effective_from": date(2026, 1, 1),
-            "effective_to": None,
-            "supersedes_id": None,
-            "status": "active",
-            "created_by": user_id,
-        },
-        audit=AuditEvent(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            action="test.seed",
-            resource_type="cash_flow_line_mapping",
-            resource_name="L_MISSING",
-        ),
-    )
-    await async_session.flush()
+    engine = create_async_engine(cash_flow_phase2_6_db_url, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            try:
+                tenant_id = uuid.uuid4()
+                organisation_id = uuid.uuid4()
+                user_id = uuid.uuid4()
+                await set_tenant_context(session, tenant_id)
+                await _seed_active_cash_flow_definitions(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                )
+                source_run_id, _ = await _seed_consolidation_source_run(
+                    session,
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    created_by=user_id,
+                )
+                await session.execute(select(CashFlowLineMapping))
+                await AuditWriter.insert_financial_record(
+                    session,
+                    model_class=CashFlowLineMapping,
+                    tenant_id=tenant_id,
+                    record_data={"mapping_code": "CF_EXTRA", "line_code": "L_MISSING"},
+                    values={
+                        "organisation_id": organisation_id,
+                        "mapping_code": "CF_EXTRA",
+                        "line_code": "L_MISSING",
+                        "line_name": "Missing",
+                        "section_code": "operating",
+                        "line_order": 100,
+                        "method_type": "indirect",
+                        "source_metric_code": "metric_missing_in_source",
+                        "sign_multiplier": Decimal("1.000000"),
+                        "aggregation_type": "sum",
+                        "ownership_applicability": "any",
+                        "fx_applicability": "any",
+                        "version_token": build_definition_version_token(
+                            DefinitionVersionTokenInput(rows=[{"line_code": "L_MISSING"}])
+                        ),
+                        "effective_from": date(2026, 1, 1),
+                        "effective_to": None,
+                        "supersedes_id": None,
+                        "status": "active",
+                        "created_by": user_id,
+                    },
+                    audit=AuditEvent(
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        action="test.seed",
+                        resource_type="cash_flow_line_mapping",
+                        resource_name="L_MISSING",
+                    ),
+                )
+                await session.flush()
 
-    service = _build_service(async_session)
-    run = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=organisation_id,
-        reporting_period=date(2026, 1, 31),
-        source_consolidation_run_ref=source_run_id,
-        source_fx_translation_run_ref_nullable=None,
-        source_ownership_consolidation_run_ref_nullable=None,
-        created_by=user_id,
-    )
-    with pytest.raises(ValueError, match="Missing source metrics"):
-        await service.execute_run(
-            tenant_id=tenant_id,
-            run_id=uuid.UUID(run["run_id"]),
-            created_by=user_id,
-        )
+                service = _build_service(session)
+                run = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=organisation_id,
+                    reporting_period=date(2026, 1, 31),
+                    source_consolidation_run_ref=source_run_id,
+                    source_fx_translation_run_ref_nullable=None,
+                    source_ownership_consolidation_run_ref_nullable=None,
+                    created_by=user_id,
+                )
+                with pytest.raises(ValueError, match="Missing source metrics"):
+                    await service.execute_run(
+                        tenant_id=tenant_id,
+                        run_id=uuid.UUID(run["run_id"]),
+                        created_by=user_id,
+                    )
+            finally:
+                if session.in_transaction():
+                    await session.rollback()
+    finally:
+        await engine.dispose()

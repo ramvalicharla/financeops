@@ -75,6 +75,11 @@ class AccountingJVAggregate(FinancialBase):
     __tablename__ = "accounting_jv_aggregates"
     __table_args__ = (
         UniqueConstraint("tenant_id", "jv_number", name="uq_jv_number_per_tenant"),
+        UniqueConstraint(
+            "tenant_id",
+            "external_reference_id",
+            name="uq_accounting_jv_external_ref_per_tenant",
+        ),
     )
 
     entity_id: Mapped[uuid.UUID] = mapped_column(

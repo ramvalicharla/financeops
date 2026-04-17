@@ -7,10 +7,34 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.security import encrypt_field
 from financeops.db.models.scheduled_delivery import DeliveryLog, DeliverySchedule
+from financeops.modules.scheduled_delivery.domain.enums import DeliveryStatus
 from financeops.modules.scheduled_delivery.domain.schedule_definition import (
     ScheduleDefinitionSchema,
 )
+
+
+def _normalize_schedule_secret(
+    config: dict[str, Any] | None,
+    *,
+    current_secret: str | None = None,
+) -> tuple[str | None, dict[str, Any]]:
+    normalized = dict(config or {})
+    encrypted_secret = current_secret
+    encrypted_candidate = str(normalized.get("webhook_secret_enc") or "").strip()
+    plaintext_candidate = str(normalized.get("webhook_secret") or "").strip()
+    if encrypted_candidate:
+        encrypted_secret = encrypted_candidate
+    elif "webhook_secret" in normalized:
+        encrypted_secret = encrypt_field(plaintext_candidate) if plaintext_candidate else None
+
+    normalized.pop("webhook_secret", None)
+    if encrypted_secret:
+        normalized["webhook_secret_enc"] = encrypted_secret
+    else:
+        normalized.pop("webhook_secret_enc", None)
+    return encrypted_secret, normalized
 
 
 class DeliveryRepository:
@@ -24,6 +48,7 @@ class DeliveryRepository:
         next_run_at: datetime | None = None,
     ) -> DeliverySchedule:
         now = datetime.now(UTC)
+        webhook_secret, normalized_config = _normalize_schedule_secret(dict(schema.config or {}))
         row = DeliverySchedule(
             tenant_id=tenant_id,
             name=schema.name,
@@ -36,7 +61,8 @@ class DeliveryRepository:
             export_format=schema.export_format.value,
             is_active=True,
             next_run_at=next_run_at,
-            config=dict(schema.config or {}),
+            webhook_secret=webhook_secret,
+            config=normalized_config,
             created_by=created_by,
             created_at=now,
             updated_at=now,
@@ -107,7 +133,10 @@ class DeliveryRepository:
         if "next_run_at" in updates:
             row.next_run_at = updates["next_run_at"]
         if "config" in updates and updates["config"] is not None:
-            row.config = dict(updates["config"])
+            row.webhook_secret, row.config = _normalize_schedule_secret(
+                dict(updates["config"]),
+                current_secret=row.webhook_secret,
+            )
         row.updated_at = datetime.now(UTC)
         await db.flush()
         return row
@@ -138,6 +167,7 @@ class DeliveryRepository:
         completed_at: datetime | None = None,
         error_message: str | None = None,
         retry_count: int = 0,
+        idempotency_key: str | None = None,
         response_metadata: dict[str, Any] | None = None,
     ) -> DeliveryLog:
         row = DeliveryLog(
@@ -150,12 +180,33 @@ class DeliveryRepository:
             completed_at=completed_at,
             error_message=error_message,
             retry_count=retry_count,
+            idempotency_key=idempotency_key,
             response_metadata=dict(response_metadata or {}),
             created_at=datetime.now(UTC),
         )
         db.add(row)
         await db.flush()
         return row
+
+    async def get_delivered_log_by_idempotency_key(
+        self,
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        schedule_id: uuid.UUID,
+        idempotency_key: str,
+    ) -> DeliveryLog | None:
+        result = await db.execute(
+            select(DeliveryLog)
+            .where(
+                DeliveryLog.tenant_id == tenant_id,
+                DeliveryLog.schedule_id == schedule_id,
+                DeliveryLog.idempotency_key == idempotency_key,
+                DeliveryLog.status == DeliveryStatus.DELIVERED.value,
+            )
+            .order_by(DeliveryLog.created_at.desc(), DeliveryLog.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def get_log(
         self,

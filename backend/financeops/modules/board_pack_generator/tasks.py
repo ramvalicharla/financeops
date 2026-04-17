@@ -6,6 +6,7 @@ from typing import Any
 
 import sentry_sdk
 from celery import chord
+from celery.result import AsyncResult
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError, InterfaceError, OperationalError
 
@@ -183,6 +184,51 @@ def generate_board_pack_task(
                         tenant_id=parsed_tenant_id,
                     )
                 return {"run_id": str(parsed_run_id), "status": "COMPLETE"}
+            finally:
+                await clear_tenant_context(session)
+
+    try:
+        return run_async(_run())
+    except (InvalidRunStateError, BoardPackGenerationError):
+        raise
+    except (OperationalError, InterfaceError, DBAPIError, ConnectionError, TimeoutError, OSError) as exc:
+        raise self.retry(exc=exc)
+    except Exception as exc:
+        sentry_sdk.capture_exception(exc)
+        raise
+
+
+@celery_app.task(
+    name="board_pack_generator.export",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=30,
+    acks_late=True,
+)
+def export_board_pack_artifacts_task(
+    self,
+    run_id: str,
+    tenant_id: str,
+) -> dict[str, Any]:
+    async def _run() -> dict[str, Any]:
+        parsed_run_id = uuid.UUID(str(run_id))
+        parsed_tenant_id = uuid.UUID(str(tenant_id))
+        service = BoardPackGenerateService()
+
+        async with AsyncSessionLocal() as session:
+            try:
+                await set_tenant_context(session, str(parsed_tenant_id))
+                artifacts = await service.export_run_artifacts(
+                    db=session,
+                    run_id=parsed_run_id,
+                    tenant_id=parsed_tenant_id,
+                )
+                await session.commit()
+                return {
+                    "run_id": str(parsed_run_id),
+                    "artifact_ids": [str(artifact.id) for artifact in artifacts],
+                    "status": "COMPLETE",
+                }
             finally:
                 await clear_tenant_context(session)
 

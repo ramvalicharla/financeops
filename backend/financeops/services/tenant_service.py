@@ -32,7 +32,7 @@ async def create_tenant(
     display_name: str,
     tenant_type: TenantType,
     country: str,
-    timezone_str: str = "UTC",
+    timezone_str: str = "Asia/Kolkata",
     parent_tenant_id: uuid.UUID | None = None,
 ) -> IamTenant:
     """Create a new tenant with genesis chain hash."""

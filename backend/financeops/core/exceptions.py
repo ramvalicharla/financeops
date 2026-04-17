@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import sentry_sdk
 from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -167,6 +168,9 @@ async def financeops_error_handler(request: Request, exc: FinanceOpsError) -> JS
 
 
 async def unhandled_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    if not getattr(exc, "_sentry_reported", False):
+        sentry_sdk.capture_exception(exc)
+        setattr(exc, "_sentry_reported", True)
     log.exception(
         "unhandled_exception",
         extra={

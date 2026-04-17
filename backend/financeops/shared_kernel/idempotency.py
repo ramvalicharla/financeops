@@ -23,6 +23,7 @@ REQUIRED_ERP_SYNC_ENDPOINT_PATTERNS: tuple[re.Pattern[str], ...] = (
 )
 
 _OPTIONAL_FINANCIAL_POST_PREFIXES: tuple[str, ...] = (
+    "/api/v1/coa",
     "/api/v1/billing",
     "/api/v1/mis",
     "/api/v1/normalization",
@@ -50,6 +51,11 @@ _OPTIONAL_FINANCIAL_POST_PREFIXES: tuple[str, ...] = (
     "/api/v1/gst",
     "/api/v1/monthend",
     "/api/v1/auditor",
+    "/api/v1/delivery",
+)
+
+_OPTIONAL_IDEMPOTENT_POST_PATHS: tuple[str, ...] = (
+    "/api/v1/auth/change-password",
 )
 
 
@@ -93,7 +99,9 @@ async def require_erp_sync_idempotency_key(request: Request) -> str:
 
 
 def _is_financial_post_path(path: str) -> bool:
-    return any(path.startswith(prefix) for prefix in _OPTIONAL_FINANCIAL_POST_PREFIXES)
+    return path in _OPTIONAL_IDEMPOTENT_POST_PATHS or any(
+        path.startswith(prefix) for prefix in _OPTIONAL_FINANCIAL_POST_PREFIXES
+    )
 
 
 def _extract_tenant_id(request: Request) -> str:
@@ -209,7 +217,7 @@ def _rebuild_response(response: Response, body: bytes) -> Response:
     )
     for key, value in response.raw_headers:
         key_name = key.decode("latin-1").lower()
-        if key_name in {"content-length", "content-type"}:
+        if key_name == "content-length":
             continue
         rebuilt.raw_headers.append((key, value))
     return rebuilt

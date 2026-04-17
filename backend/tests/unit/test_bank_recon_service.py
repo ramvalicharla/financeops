@@ -149,16 +149,17 @@ async def test_run_bank_reconciliation_creates_items(
             balance=Decimal("3000"),
         )
     with governed_mutation_context(_governed_context("RUN_BANK_RECONCILIATION")):
-        items = await run_bank_reconciliation(
+        result = await run_bank_reconciliation(
             async_session,
             tenant_id=test_tenant.id,
             statement_id=stmt.id,
             run_by=test_tenant.id,
         )
-    assert len(items) == 2
-    assert all(i.item_type == "bank_only" for i in items)
-    assert all(i.status == "open" for i in items)
-    assert all(len(i.chain_hash) == 64 for i in items)
+    assert len(result.items) == 2
+    assert result.summary.bank_only == 2
+    assert all(i.item_type == "bank_only" for i in result.items)
+    assert all(i.status == "open" for i in result.items)
+    assert all(len(i.chain_hash) == 64 for i in result.items)
 
 
 @pytest.mark.asyncio
@@ -183,13 +184,15 @@ async def test_run_bank_reconciliation_no_transactions(
             uploaded_by=test_tenant.id,
         )
     with governed_mutation_context(_governed_context("RUN_BANK_RECONCILIATION")):
-        items = await run_bank_reconciliation(
+        result = await run_bank_reconciliation(
             async_session,
             tenant_id=test_tenant.id,
             statement_id=stmt.id,
             run_by=test_tenant.id,
         )
-    assert items == []
+    assert result.items == []
+    assert result.summary.bank_only == 0
+    assert result.summary.gl_only == 0
 
 
 @pytest.mark.asyncio

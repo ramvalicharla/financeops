@@ -92,21 +92,24 @@ def _load_seed_module():
 
 
 @pytest.mark.asyncio
-async def test_platform_tenant_exists_after_migration(async_client, async_session: AsyncSession) -> None:
-    _ = async_client
-    await _ensure_platform_tenant(async_session)
-    row = (
-        await async_session.execute(
-            text(
-                """
-                SELECT is_platform_tenant
-                FROM iam_tenants
-                WHERE id = CAST(:tenant_id AS uuid)
-                """
-            ),
-            {"tenant_id": str(PLATFORM_TENANT_ID)},
-        )
-    ).first()
+async def test_platform_tenant_exists_after_migration(api_session_factory) -> None:
+    async with api_session_factory() as db:
+        await _ensure_platform_tenant(db)
+        await db.commit()
+
+    async with api_session_factory() as db:
+        row = (
+            await db.execute(
+                text(
+                    """
+                    SELECT is_platform_tenant
+                    FROM iam_tenants
+                    WHERE id = CAST(:tenant_id AS uuid)
+                    """
+                ),
+                {"tenant_id": str(PLATFORM_TENANT_ID)},
+            )
+        ).first()
     assert row is not None
     assert bool(row[0]) is True
 
@@ -166,8 +169,10 @@ async def test_seed_script_idempotent(async_session: AsyncSession, monkeypatch: 
                     SELECT COUNT(*)
                     FROM iam_users
                     WHERE role = 'platform_owner'
+                      AND email = :email
                     """
-                )
+                ),
+                {"email": "seed.owner@example.com"},
             )
         ).scalar_one()
         assert int(count) == 1
@@ -255,10 +260,12 @@ async def test_create_platform_admin(async_client, async_session: AsyncSession) 
 @pytest.mark.asyncio
 async def test_create_platform_user_requires_platform_owner(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
-    await _ensure_platform_tenant(async_session)
+    async with api_session_factory() as db:
+        await _ensure_platform_tenant(db)
+        await db.commit()
     response = await async_client.post(
         "/api/v1/platform/users",
         headers=_auth_headers(test_user),
@@ -480,18 +487,25 @@ async def test_login_normal_when_mfa_setup_not_forced(
 
 
 @pytest.mark.asyncio
-async def test_force_mfa_setup_cleared_after_setup(async_session: AsyncSession) -> None:
-    user = await _create_platform_user(
-        async_session,
-        email="mfa.clear@example.com",
-        role=UserRole.platform_admin,
-        force_mfa_setup=True,
-        mfa_enabled=False,
-    )
-    setup_payload = await setup_totp(user, async_session)
-    totp_code = pyotp.TOTP(setup_payload["totp_secret"]).now()
-    confirmed = await verify_totp_setup(user, totp_code, async_session)
+async def test_force_mfa_setup_cleared_after_setup(api_session_factory) -> None:
+    async with api_session_factory() as db:
+        user = await _create_platform_user(
+            db,
+            email="mfa.clear@example.com",
+            role=UserRole.platform_admin,
+            force_mfa_setup=True,
+            mfa_enabled=False,
+        )
+        setup_payload = await setup_totp(user, db)
+        totp_code = pyotp.TOTP(setup_payload["totp_secret"]).now()
+        confirmed = await verify_totp_setup(user, totp_code, db)
+        user_id = user.id
+        await db.commit()
+
+    async with api_session_factory() as db:
+        persisted = await db.get(IamUser, user_id)
 
     assert confirmed is True
-    assert user.mfa_enabled is True
-    assert user.force_mfa_setup is False
+    assert persisted is not None
+    assert persisted.mfa_enabled is True
+    assert persisted.force_mfa_setup is False

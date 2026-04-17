@@ -18,12 +18,12 @@ from tests.integration.payroll_gl_reconciliation_phase1f3_1_helpers import seed_
 @pytest.mark.integration
 async def test_cash_flow_definition_endpoint_requires_context_token(
     async_client: AsyncClient,
-    test_access_token: str,
+    api_test_access_token: str,
 ) -> None:
     response = await async_client.post(
         "/api/v1/cash-flow/definitions",
         headers={
-            "Authorization": f"Bearer {test_access_token}",
+            "Authorization": f"Bearer {api_test_access_token}",
             "X-Control-Plane-Token": "",
         },
         json={
@@ -43,25 +43,25 @@ async def test_cash_flow_definition_endpoint_requires_context_token(
 @pytest.mark.integration
 async def test_cash_flow_run_endpoint_requires_rbac_permission(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_db_session: AsyncSession,
 ) -> None:
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
+    await set_tenant_context(api_db_session, tenant_id)
     user = await seed_identity_user(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         user_id=user_id,
         email=f"cashflow-{uuid.uuid4().hex[:8]}@example.com",
         role=UserRole.finance_leader,
     )
     await seed_control_plane_for_cash_flow(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         user_id=user_id,
         grant_permissions=False,
     )
-    await async_session.flush()
+    await api_db_session.flush()
     token = create_access_token(user.id, tenant_id, user.role.value)
 
     response = await async_client.post(
@@ -82,25 +82,25 @@ async def test_cash_flow_run_endpoint_requires_rbac_permission(
 @pytest.mark.integration
 async def test_cash_flow_list_definitions_allows_authorized_tenant(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_db_session: AsyncSession,
 ) -> None:
     tenant_id = uuid.uuid4()
     user_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
+    await set_tenant_context(api_db_session, tenant_id)
     user = await seed_identity_user(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         user_id=user_id,
         email=f"cashflow-ok-{uuid.uuid4().hex[:8]}@example.com",
         role=UserRole.finance_leader,
     )
     await seed_control_plane_for_cash_flow(
-        async_session,
+        api_db_session,
         tenant_id=tenant_id,
         user_id=user_id,
         grant_permissions=True,
     )
-    await async_session.flush()
+    await api_db_session.flush()
     token = create_access_token(user.id, tenant_id, user.role.value)
 
     create_response = await async_client.post(

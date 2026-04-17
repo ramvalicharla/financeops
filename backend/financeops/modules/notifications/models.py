@@ -103,6 +103,18 @@ class NotificationReadState(Base):
         server_default=text("false"),
         default=False,
     )
+    channels_sent: Mapped[list[str]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=text("'[]'::jsonb"),
+        default=list,
+    )
+    delivery_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        server_default=text("'queued'"),
+        default="queued",
+    )
     dismissed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -180,4 +192,3 @@ __all__ = [
     "NotificationReadState",
     "NotificationPreferences",
 ]
-

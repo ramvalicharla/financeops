@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, get_current_user
@@ -10,6 +12,7 @@ from financeops.core.intent.api import build_idempotency_key, build_intent_actor
 from financeops.core.intent.enums import IntentType
 from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
+from financeops.shared_kernel.response import err
 from financeops.modules.multi_entity_consolidation.api.schemas import (
     ConsolidationAdjustmentCreateRequest,
     ConsolidationRuleCreateRequest,
@@ -36,6 +39,11 @@ from financeops.modules.multi_entity_consolidation.application.run_service impor
 from financeops.modules.multi_entity_consolidation.application.validation_service import (
     ValidationService,
 )
+from financeops.modules.multi_entity_consolidation.domain.exceptions import (
+    ConsolidationError,
+    ConsolidationRunNotFoundError,
+    MissingSourceEntityError,
+)
 from financeops.modules.multi_entity_consolidation.domain.value_objects import (
     DefinitionVersionTokenInput,
 )
@@ -50,6 +58,166 @@ from financeops.modules.multi_entity_consolidation.policies.control_plane_policy
 )
 
 router = APIRouter()
+
+
+def _raise_run_http_error(exc: ValueError | ConsolidationError) -> HTTPException:
+    if isinstance(exc, ConsolidationRunNotFoundError):
+        return HTTPException(status_code=404, detail="Consolidation run not found")
+    message = str(exc) or "internal_error"
+    status_code = 404 if "not found" in message.lower() else 422
+    return HTTPException(status_code=status_code, detail=message)
+
+
+def _missing_source_entity_response(exc: MissingSourceEntityError) -> JSONResponse:
+    return JSONResponse(
+        status_code=422,
+        content=err(
+            "http_422",
+            str(exc),
+            details={"missing_ids": list(exc.missing_ids)},
+        ).model_dump(mode="json"),
+    )
+
+
+async def _load_run_bundle(
+    service: RunService,
+    *,
+    tenant_id: uuid.UUID,
+    run_id: uuid.UUID,
+) -> tuple[dict, dict, list[dict], list[dict], list[dict]]:
+    run = await service.get_run(tenant_id=tenant_id, run_id=run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Consolidation run not found")
+    try:
+        summary = await service.summary(tenant_id=tenant_id, run_id=run_id)
+    except ConsolidationError as exc:
+        raise _raise_run_http_error(exc) from exc
+    except ValueError as exc:
+        raise _raise_run_http_error(exc) from exc
+    metrics = await service.list_metrics(tenant_id=tenant_id, run_id=run_id)
+    variances = await service.list_variances(tenant_id=tenant_id, run_id=run_id)
+    evidence = await service.list_evidence(tenant_id=tenant_id, run_id=run_id)
+    return run, summary, metrics, variances, evidence
+
+
+def _decimal_or_zero(value: object) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return Decimal("0")
+
+
+def _derive_risk_rows(*, summary: dict, evidence: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+
+    for item in evidence:
+        payload = dict(item.get("evidence_payload_json") or {})
+        if item.get("evidence_type") == "validation_report":
+            reports = payload.get("reports") if isinstance(payload.get("reports"), list) else []
+            for report in reports:
+                if not isinstance(report, dict):
+                    continue
+                if str(report.get("status", "")).upper() == "FAIL":
+                    rows.append(
+                        {
+                            "risk_type": "validation_report",
+                            "severity": "high",
+                            "evidence_ref": item.get("evidence_ref"),
+                            "message": str(report.get("reason") or "Validation failure detected"),
+                        }
+                    )
+        elif item.get("evidence_type") == "intercompany_decision":
+            validation_report = payload.get("validation_report")
+            unmatched_count = int(payload.get("unmatched_count") or 0)
+            if isinstance(validation_report, dict) and str(validation_report.get("status", "")).upper() == "FAIL":
+                rows.append(
+                    {
+                        "risk_type": "intercompany_validation",
+                        "severity": "high",
+                        "evidence_ref": item.get("evidence_ref"),
+                        "message": str(validation_report.get("reason") or "Intercompany validation failed"),
+                    }
+                )
+            elif unmatched_count > 0:
+                rows.append(
+                    {
+                        "risk_type": "intercompany_unmatched",
+                        "severity": "medium",
+                        "evidence_ref": item.get("evidence_ref"),
+                        "message": f"{unmatched_count} unmatched intercompany items remain",
+                    }
+                )
+
+    if not rows and int(summary.get("variance_count") or 0) > 0:
+        rows.append(
+            {
+                "risk_type": "variance_review",
+                "severity": "low",
+                "evidence_ref": "summary",
+                "message": f"{int(summary.get('variance_count') or 0)} variance rows require review",
+            }
+        )
+    return rows
+
+
+def _derive_anomaly_rows(*, variances: list[dict]) -> list[dict]:
+    rows: list[dict] = []
+    for item in variances:
+        variance_value = _decimal_or_zero(item.get("variance_value"))
+        if variance_value == Decimal("0"):
+            continue
+        rows.append(
+            {
+                "anomaly_type": "variance",
+                "metric_code": item.get("metric_code"),
+                "comparison_type": item.get("comparison_type"),
+                "variance_value": item.get("variance_value"),
+                "variance_pct": item.get("variance_pct"),
+                "materiality_flag": bool(item.get("materiality_flag")),
+            }
+        )
+    return rows
+
+
+def _build_board_pack_payload(
+    *,
+    run: dict,
+    summary: dict,
+    metrics: list[dict],
+    variances: list[dict],
+    evidence: list[dict],
+) -> dict:
+    sections = [
+        {
+            "section": "summary",
+            "title": "Executive Summary",
+            "payload": summary,
+        },
+        {
+            "section": "metrics",
+            "title": "Metrics",
+            "count": len(metrics),
+            "items": metrics[:10],
+        },
+        {
+            "section": "variances",
+            "title": "Variance Review",
+            "count": len(variances),
+            "items": variances[:10],
+        },
+        {
+            "section": "evidence",
+            "title": "Evidence Trail",
+            "count": len(evidence),
+            "items": evidence[:10],
+        },
+    ]
+    return {
+        "status": "ready" if any(section.get("count", 1) or section["section"] == "summary" for section in sections) else "empty",
+        "run_id": run["id"],
+        "run_status": run["run_status"],
+        "sections": sections,
+    }
 
 
 async def _submit_intent(
@@ -676,8 +844,10 @@ async def create_run(
             },
         )
         response = dict(result.record_refs or {})
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="internal_error") from exc
+    except ConsolidationError as exc:
+        raise _raise_run_http_error(exc) from exc
+    except ValueError as exc:
+        raise _raise_run_http_error(exc) from exc
     return ConsolidationRunCreateResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
@@ -718,8 +888,12 @@ async def execute_run(
             target_id=id,
         )
         response = dict(result.record_refs or {})
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="internal_error") from exc
+    except MissingSourceEntityError as exc:
+        return _missing_source_entity_response(exc)  # type: ignore[return-value]
+    except ConsolidationError as exc:
+        raise _raise_run_http_error(exc) from exc
+    except ValueError as exc:
+        raise _raise_run_http_error(exc) from exc
     return ConsolidationRunExecuteResponse(
         run_id=uuid.UUID(response["run_id"]),
         run_token=response["run_token"],
@@ -776,8 +950,10 @@ async def get_run_summary(
 ) -> dict:
     try:
         return await _build_service(session).summary(tenant_id=user.tenant_id, run_id=id)
+    except ConsolidationError as exc:
+        raise _raise_run_http_error(exc) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail="internal_error") from exc
+        raise _raise_run_http_error(exc) from exc
 
 
 @router.get(
@@ -829,8 +1005,18 @@ async def list_variances(
         )
     ],
 )
-async def list_group_risks(_: uuid.UUID) -> list[dict]:
-    return []
+async def list_group_risks(
+    id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> list[dict]:
+    service = _build_service(session)
+    _, summary, _, _, evidence = await _load_run_bundle(
+        service,
+        tenant_id=user.tenant_id,
+        run_id=id,
+    )
+    return _derive_risk_rows(summary=summary, evidence=evidence)
 
 
 @router.get(
@@ -844,8 +1030,18 @@ async def list_group_risks(_: uuid.UUID) -> list[dict]:
         )
     ],
 )
-async def list_group_anomalies(_: uuid.UUID) -> list[dict]:
-    return []
+async def list_group_anomalies(
+    id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> list[dict]:
+    service = _build_service(session)
+    _, _, _, variances, _ = await _load_run_bundle(
+        service,
+        tenant_id=user.tenant_id,
+        run_id=id,
+    )
+    return _derive_anomaly_rows(variances=variances)
 
 
 @router.get(
@@ -859,8 +1055,24 @@ async def list_group_anomalies(_: uuid.UUID) -> list[dict]:
         )
     ],
 )
-async def get_group_board_pack(_: uuid.UUID) -> dict:
-    return {"status": "not_generated", "sections": []}
+async def get_group_board_pack(
+    id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    service = _build_service(session)
+    run, summary, metrics, variances, evidence = await _load_run_bundle(
+        service,
+        tenant_id=user.tenant_id,
+        run_id=id,
+    )
+    return _build_board_pack_payload(
+        run=run,
+        summary=summary,
+        metrics=metrics,
+        variances=variances,
+        evidence=evidence,
+    )
 
 
 @router.get(

@@ -21,7 +21,7 @@ from financeops.core.security import decode_token
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import clear_tenant_context, set_tenant_context
-from financeops.db.session import AsyncSessionLocal
+from financeops.db.session import AsyncSessionLocal, finalize_session_success
 from financeops.modules.payment.application.entitlement_service import EntitlementService
 from financeops.platform.db.models.modules import CpModuleRegistry
 from financeops.platform.services.enforcement.auth_modes import (
@@ -88,6 +88,38 @@ _DYNAMIC_PERMISSION_FALLBACK_REASONS = {
 }
 
 
+def _token_issued_at(payload: dict) -> datetime | None:
+    raw_issued_at = payload.get("iat")
+    if raw_issued_at is None:
+        return None
+    if isinstance(raw_issued_at, datetime):
+        return (
+            raw_issued_at
+            if raw_issued_at.tzinfo is not None
+            else raw_issued_at.replace(tzinfo=UTC)
+        )
+    try:
+        return datetime.fromtimestamp(float(raw_issued_at), tz=UTC)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _password_changed_claim(payload: dict) -> datetime | None:
+    raw_password_changed_at = payload.get("pwd_at")
+    if raw_password_changed_at is None:
+        return None
+    if isinstance(raw_password_changed_at, datetime):
+        return (
+            raw_password_changed_at
+            if raw_password_changed_at.tzinfo is not None
+            else raw_password_changed_at.replace(tzinfo=UTC)
+        )
+    try:
+        return datetime.fromisoformat(str(raw_password_changed_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
     """
     Yield an async DB session with RLS context set from request middleware.
@@ -103,7 +135,7 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
             try:
                 request.state.auth_mode = AuthMode.PUBLIC.value
                 yield session
-                await session.flush()
+                await finalize_session_success(session)
             except Exception:
                 await session.rollback()
                 raise
@@ -126,12 +158,13 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
         try:
             await set_tenant_context(session, tenant_id)
             yield session
-            await session.flush()
+            await finalize_session_success(session)
         except Exception:
             await session.rollback()
             raise
         finally:
-            await clear_tenant_context(session)
+            if session.in_transaction():
+                await clear_tenant_context(session)
             await session.close()
 
 
@@ -155,12 +188,13 @@ async def get_session_with_rls(
         try:
             await set_tenant_context(session, tenant_id)
             yield session
-            await session.flush()
+            await finalize_session_success(session)
         except Exception:
             await session.rollback()
             raise
         finally:
-            await clear_tenant_context(session)
+            if session.in_transaction():
+                await clear_tenant_context(session)
             await session.close()
 
 
@@ -198,6 +232,17 @@ async def get_current_user(
         raise AuthenticationError("User missing tenant_id")
     if user.tenant_id != jwt_tenant_id:
         raise AuthenticationError("Token tenant mismatch")
+    if (
+        user.password_changed_at is not None
+    ):
+        token_password_changed_at = _password_changed_claim(payload)
+        if token_password_changed_at is not None:
+            if token_password_changed_at < user.password_changed_at:
+                raise AuthenticationError("Access token is no longer valid after password change")
+        else:
+            token_issued_at = _token_issued_at(payload)
+            if token_issued_at is not None and token_issued_at < user.password_changed_at:
+                raise AuthenticationError("Access token is no longer valid after password change")
 
     # Keep tenant identity consistent across downstream dependencies/session context.
     request.state.tenant_id = str(jwt_tenant_id)

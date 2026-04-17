@@ -143,6 +143,13 @@ async def test_create_engagement_insufficient_credits(async_session: AsyncSessio
 @pytest.mark.asyncio
 async def test_run_engagement_completes_all_sections(async_session: AsyncSession, test_user: IamUser) -> None:
     await _fund(async_session, test_user.tenant_id)
+    for month in range(1, 13):
+        await _seed_wc_snapshot(
+            async_session,
+            tenant_id=test_user.tenant_id,
+            period=f"2024-{month:02d}",
+            nwc=Decimal("100.00"),
+        )
     engagement = await _create_default_engagement(async_session, test_user)
     updated = await run_engagement(async_session, test_user.tenant_id, engagement.id)
     assert updated.status == "completed"

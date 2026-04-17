@@ -7,7 +7,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr
 import redis.asyncio as aioredis
@@ -53,6 +53,7 @@ from financeops.observability.beta_monitoring import record_auth_event
 from financeops.services.audit_service import log_action
 from financeops.services.auth_service import (
     _issue_session_tokens,
+    change_password as change_user_password,
     create_mfa_challenge,
     login,
     logout,
@@ -64,10 +65,56 @@ from financeops.services.auth_service import (
 from financeops.services.credit_service import add_credits
 from financeops.services.tenant_service import create_default_workspace, create_tenant
 from financeops.services.user_service import create_user, get_user_by_email, normalize_email
+from financeops.tasks.auth_tasks import send_password_reset_email_task
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _token_issued_at(payload: dict) -> datetime | None:
+    raw_issued_at = payload.get("iat")
+    if raw_issued_at is None:
+        return None
+    if isinstance(raw_issued_at, datetime):
+        return (
+            raw_issued_at
+            if raw_issued_at.tzinfo is not None
+            else raw_issued_at.replace(tzinfo=UTC)
+        )
+    try:
+        return datetime.fromtimestamp(float(raw_issued_at), tz=UTC)
+    except (TypeError, ValueError, OSError):
+        return None
+
+
+def _password_changed_claim(payload: dict) -> datetime | None:
+    raw_password_changed_at = payload.get("pwd_at")
+    if raw_password_changed_at is None:
+        return None
+    if isinstance(raw_password_changed_at, datetime):
+        return (
+            raw_password_changed_at
+            if raw_password_changed_at.tzinfo is not None
+            else raw_password_changed_at.replace(tzinfo=UTC)
+        )
+    try:
+        return datetime.fromisoformat(str(raw_password_changed_at).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _ensure_token_is_current(user: IamUser, payload: dict) -> None:
+    if user.password_changed_at is None:
+        return
+    token_password_changed_at = _password_changed_claim(payload)
+    if token_password_changed_at is not None:
+        if token_password_changed_at < user.password_changed_at:
+            raise HTTPException(status_code=401, detail="Access token is no longer valid")
+        return
+    token_issued_at = _token_issued_at(payload)
+    if token_issued_at is not None and token_issued_at < user.password_changed_at:
+        raise HTTPException(status_code=401, detail="Access token is no longer valid")
 
 
 class RegisterRequest(BaseModel):
@@ -190,6 +237,7 @@ async def get_current_user_or_setup_token(
     ).scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
+    _ensure_token_is_current(user, payload)
     if payload.get("scope") == "mfa_setup_only":
         return user
     if user.force_mfa_setup and not user.mfa_enabled:
@@ -225,6 +273,7 @@ async def get_current_user_for_password_change(
     ).scalar_one_or_none()
     if user is None or not user.is_active:
         raise HTTPException(status_code=401, detail="User not found")
+    _ensure_token_is_current(user, payload)
     return user
 
 
@@ -522,44 +571,61 @@ async def user_login(
 
 @router.post("/change-password", response_model=ChangePasswordResponse)
 async def change_password(
+    request: Request,
     body: ChangePasswordRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user_for_password_change),
 ) -> ChangePasswordResponse:
+    _ = idempotency_key
     validate_strong_password(body.new_password)
-    user.hashed_password = hash_password(body.new_password)
-    user.force_password_change = False
-    await session.flush()
+    tokens = await change_user_password(
+        session,
+        user=user,
+        new_password=body.new_password,
+        ip_address=get_real_ip(request),
+        device_info=request.headers.get("user-agent"),
+    )
     await commit_session(session)
-    if user.force_mfa_setup and not user.mfa_enabled:
-        setup_token = generate_mfa_setup_token(user)
-        return LoginMfaSetupResponse(
-            status="requires_mfa_setup",
-            requires_mfa_setup=True,
-            setup_token=setup_token,
-        )
-    return ChangePasswordSuccessResponse(status="password_changed")
+    return ChangePasswordSuccessResponse(
+        status="password_changed",
+        access_token=tokens["access_token"],
+        refresh_token=tokens["refresh_token"],
+        token_type=tokens["token_type"],
+    )
 
 
-@limiter.limit(settings.AUTH_LOGIN_RATE_LIMIT)
+@limiter.limit("3/15minutes")
 @router.post("/forgot-password", response_model=MessageResponse)
 async def forgot_password(
     request: Request,
+    response: Response,
     body: ForgotPasswordRequest,
     session: AsyncSession = Depends(get_async_session),
 ) -> MessageResponse:
+    _ = response
     user = await get_user_by_email(session, body.email)
     if user is not None:
         token = secrets.token_urlsafe(32)
         token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-        session.add(
-            PasswordResetToken(
-                user_id=user.id,
-                token_hash=token_hash,
-                expires_at=datetime.now(UTC) + timedelta(minutes=15),
-            )
+        reset_token = PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            reset_attempt_count=0,
+            expires_at=datetime.now(UTC) + timedelta(minutes=15),
         )
+        session.add(reset_token)
         await session.flush()
+        await commit_session(session)
+        try:
+            send_password_reset_email_task.delay(str(reset_token.id), token)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "forgot_password_enqueue_failed user_id=%s email=%s error=%s",
+                user.id,
+                body.email,
+                exc,
+            )
     return MessageResponse(message="If that email exists, a reset link has been sent.")
 
 

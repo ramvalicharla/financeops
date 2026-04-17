@@ -36,37 +36,41 @@ async def test_payment_tables_registered_as_append_only() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_append_only_rejects_update_for_billing_plan(async_session) -> None:
-    await async_session.execute(text(append_only_function_sql()))
-    await async_session.execute(text(drop_trigger_sql("billing_plans")))
-    await async_session.execute(text(create_trigger_sql("billing_plans")))
-    tenant_id = uuid.uuid4()
-    row = await AuditWriter.insert_financial_record(
-        async_session,
-        model_class=BillingPlan,
-        tenant_id=tenant_id,
-        record_data={"plan_tier": PlanTier.STARTER.value, "billing_cycle": BillingCycle.MONTHLY.value},
-        values={
-            "plan_tier": PlanTier.STARTER.value,
-            "billing_cycle": BillingCycle.MONTHLY.value,
-            "base_price_inr": Decimal("99.00"),
-            "base_price_usd": Decimal("99.00"),
-            "included_credits": 100,
-            "max_entities": 3,
-            "max_connectors": 3,
-            "max_users": 3,
-            "modules_enabled": {"payment": True},
-            "trial_days": 14,
-            "annual_discount_pct": Decimal("10.00"),
-            "is_active": True,
-            "valid_from": datetime.now(UTC).date(),
-            "valid_until": None,
-        },
-    )
+async def test_append_only_rejects_update_for_billing_plan(api_session_factory) -> None:
+    async with api_session_factory() as db:
+        await db.execute(text(append_only_function_sql()))
+        await db.execute(text(drop_trigger_sql("billing_plans")))
+        await db.execute(text(create_trigger_sql("billing_plans")))
+        await db.commit()
 
-    with pytest.raises(DBAPIError):
-        await async_session.execute(
-            text("UPDATE billing_plans SET is_active = false WHERE id = :id"),
-            {"id": str(row.id)},
+        tenant_id = uuid.uuid4()
+        row = await AuditWriter.insert_financial_record(
+            db,
+            model_class=BillingPlan,
+            tenant_id=tenant_id,
+            record_data={"plan_tier": PlanTier.STARTER.value, "billing_cycle": BillingCycle.MONTHLY.value},
+            values={
+                "plan_tier": PlanTier.STARTER.value,
+                "billing_cycle": BillingCycle.MONTHLY.value,
+                "base_price_inr": Decimal("99.00"),
+                "base_price_usd": Decimal("99.00"),
+                "included_credits": 100,
+                "max_entities": 3,
+                "max_connectors": 3,
+                "max_users": 3,
+                "modules_enabled": {"payment": True},
+                "trial_days": 14,
+                "annual_discount_pct": Decimal("10.00"),
+                "is_active": True,
+                "valid_from": datetime.now(UTC).date(),
+                "valid_until": None,
+            },
         )
-        await async_session.flush()
+        await db.commit()
+
+        with pytest.raises(DBAPIError):
+            await db.execute(
+                text("UPDATE billing_plans SET is_active = false WHERE id = :id"),
+                {"id": str(row.id)},
+            )
+            await db.flush()

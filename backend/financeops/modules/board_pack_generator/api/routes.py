@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path as ApiPath, Query, Request, Response, status
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,7 +30,11 @@ from financeops.modules.board_pack_generator.infrastructure.repository import (
     BoardPackRepository,
 )
 from financeops.platform.services.control_plane.phase4_service import Phase4ControlPlaneService
-from financeops.modules.board_pack_generator.tasks import generate_board_pack_task  # compatibility import
+from financeops.modules.board_pack_generator.tasks import (
+    export_board_pack_artifacts_task,
+    generate_board_pack_task,  # compatibility import
+)
+from financeops.storage.provider import get_storage
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/board-packs", tags=["board-packs"])
@@ -153,6 +155,17 @@ class ArtifactResponse(BaseModel):
     file_size_bytes: int | None = None
     generated_at: datetime
     checksum: str | None = None
+
+
+class ExportTaskResponse(BaseModel):
+    task_id: str
+    status: str
+
+
+class ArtifactDownloadResponse(BaseModel):
+    artifact_id: uuid.UUID
+    signed_url: str
+    expires_in_seconds: int
 
 
 def _build_definition_schema(body: CreateDefinitionRequest) -> PackDefinitionSchema:
@@ -555,7 +568,7 @@ async def download_artifact(
     format: str = ApiPath(..., pattern="(?i)^(pdf|excel)$"),
     db: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(get_current_user),
-) -> FileResponse:
+) -> ArtifactDownloadResponse:
     repo = BoardPackRepository()
     run = await repo.get_run(db=db, tenant_id=user.tenant_id, run_id=run_id)
     if run is None:
@@ -567,19 +580,53 @@ async def download_artifact(
     if artifact is None:
         raise HTTPException(status_code=404, detail=f"{requested_format} artifact not found for run")
 
-    base_dir = Path(str(getattr(settings, "ARTIFACTS_BASE_DIR", "artifacts")))
-    file_path = base_dir / artifact.storage_path
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Artifact file not found in storage")
-
-    media_type = (
-        "application/pdf"
-        if requested_format == "PDF"
-        else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    return ArtifactDownloadResponse(
+        artifact_id=artifact.id,
+        signed_url=get_storage().generate_signed_url(artifact.storage_path, expires_in=900),
+        expires_in_seconds=900,
     )
-    download_name = f"board_pack_{run.period_start.isoformat()}_{run.period_end.isoformat()}.{ 'pdf' if requested_format == 'PDF' else 'xlsx' }"
-    return FileResponse(
-        path=file_path,
-        media_type=media_type,
-        filename=download_name,
+
+
+@router.post(
+    "/runs/{run_id}/export",
+    response_model=ExportTaskResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def export_run_artifacts(
+    run_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> ExportTaskResponse:
+    repo = BoardPackRepository()
+    run = await repo.get_run(db=db, tenant_id=user.tenant_id, run_id=run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    task = export_board_pack_artifacts_task.delay(str(run_id), str(user.tenant_id))
+    return ExportTaskResponse(task_id=str(task.id), status="queued")
+
+
+@router.get(
+    "/runs/{run_id}/export/{artifact_id}",
+    response_model=ArtifactDownloadResponse,
+)
+async def get_export_artifact_signed_url(
+    run_id: uuid.UUID,
+    artifact_id: uuid.UUID,
+    db: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> ArtifactDownloadResponse:
+    repo = BoardPackRepository()
+    run = await repo.get_run(db=db, tenant_id=user.tenant_id, run_id=run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    artifact = await repo.get_artifact(db=db, tenant_id=user.tenant_id, artifact_id=artifact_id)
+    if artifact is None or artifact.run_id != run_id:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    return ArtifactDownloadResponse(
+        artifact_id=artifact.id,
+        signed_url=get_storage().generate_signed_url(artifact.storage_path, expires_in=900),
+        expires_in_seconds=900,
     )

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.intent.context import MutationContext, governed_mutation_context
 from financeops.core.security import create_access_token, hash_password
+from financeops.db.rls import set_tenant_context
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.closing_checklist.models import (
@@ -29,6 +30,14 @@ from financeops.modules.closing_checklist.service import (
 )
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
+_API_SESSION_FACTORY = None
+
+
+@pytest.fixture(autouse=True)
+def _bind_api_session_factory(api_session_factory):
+    global _API_SESSION_FACTORY
+    _API_SESSION_FACTORY = api_session_factory
+
 
 def _governed_context(intent_type: str) -> MutationContext:
     return MutationContext(
@@ -40,97 +49,139 @@ def _governed_context(intent_type: str) -> MutationContext:
     )
 
 
-async def get_or_create_run(*args, **kwargs):
-    with governed_mutation_context(_governed_context("ENSURE_CHECKLIST_RUN")):
-        return await _get_or_create_run(*args, **kwargs)
+async def get_or_create_run(tenant_id: uuid.UUID, period: str, created_by: uuid.UUID):
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        with governed_mutation_context(_governed_context("ENSURE_CHECKLIST_RUN")):
+            run = await _get_or_create_run(session, tenant_id, period, created_by)
+        await session.commit()
+        return run
 
 
 async def update_task_status(*args, **kwargs):
-    with governed_mutation_context(_governed_context("UPDATE_CHECKLIST_TASK_STATUS")):
-        return await _update_task_status(*args, **kwargs)
+    assert _API_SESSION_FACTORY is not None
+    if args and isinstance(args[0], AsyncSession):
+        args = args[1:]
+    async with _API_SESSION_FACTORY() as session:
+        with governed_mutation_context(_governed_context("UPDATE_CHECKLIST_TASK_STATUS")):
+            result = await _update_task_status(session, *args, **kwargs)
+        await session.commit()
+        return result
 
 
-async def auto_complete_task(*args, **kwargs):
-    with governed_mutation_context(_governed_context("AUTO_COMPLETE_CHECKLIST_TASKS")):
-        return await _auto_complete_task(*args, **kwargs)
+async def auto_complete_task(tenant_id: uuid.UUID, period: str, event_name: str):
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        with governed_mutation_context(_governed_context("AUTO_COMPLETE_CHECKLIST_TASKS")):
+            rows = await _auto_complete_task(session, tenant_id, period, event_name)
+        await session.commit()
+        return rows
 
 
 async def _seed_default_template(
-    session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
     created_by: uuid.UUID,
 ) -> ChecklistTemplate:
-    existing = (
-        await session.execute(
-            select(ChecklistTemplate).where(
-                ChecklistTemplate.tenant_id == tenant_id,
-                ChecklistTemplate.is_default.is_(True),
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        existing = (
+            await session.execute(
+                select(ChecklistTemplate).where(
+                    ChecklistTemplate.tenant_id == tenant_id,
+                    ChecklistTemplate.is_default.is_(True),
+                )
             )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return existing
+
+        template = ChecklistTemplate(
+            tenant_id=tenant_id,
+            name="Default Month-End Close Checklist",
+            description="seeded",
+            is_default=True,
+            created_by=created_by,
         )
-    ).scalar_one_or_none()
-    if existing is not None:
-        return existing
+        session.add(template)
+        await session.flush()
 
-    template = ChecklistTemplate(
-        tenant_id=tenant_id,
-        name="Default Month-End Close Checklist",
-        description="seeded",
-        is_default=True,
-        created_by=created_by,
-    )
-    session.add(template)
-    await session.flush()
+        task_defs = [
+            ("ERP data sync complete", -3, None, "erp_sync_complete", []),
+            ("GL/TB reconciliation", -2, None, "recon_complete", [1]),
+            ("Intercompany reconciliation", -2, None, None, [2]),
+            ("Payroll upload and reconciliation", -1, "data_entry_payroll", None, []),
+            ("Prepaid and accrual adjustments", 0, "manager", None, [2]),
+            ("Fixed asset depreciation run", 0, None, None, [2]),
+            ("Multi-entity consolidation", 1, None, "consolidation_complete", [3, 5, 6]),
+            ("FX rate confirmation", 0, None, None, []),
+            ("MIS review and approval", 2, "finance_leader", None, [7]),
+            ("Anomaly detection review", 2, None, "anomaly_detection_complete", [7]),
+            ("Board pack generation", 3, None, "board_pack_generated", [9, 10]),
+            ("Finance Leader sign-off", 4, "finance_leader", None, [11]),
+        ]
 
-    task_defs = [
-        ("ERP data sync complete", -3, None, "erp_sync_complete", []),
-        ("GL/TB reconciliation", -2, None, "recon_complete", [1]),
-        ("Intercompany reconciliation", -2, None, None, [2]),
-        ("Payroll upload and reconciliation", -1, "data_entry_payroll", None, []),
-        ("Prepaid and accrual adjustments", 0, "manager", None, [2]),
-        ("Fixed asset depreciation run", 0, None, None, [2]),
-        ("Multi-entity consolidation", 1, None, "consolidation_complete", [3, 5, 6]),
-        ("FX rate confirmation", 0, None, None, []),
-        ("MIS review and approval", 2, "finance_leader", None, [7]),
-        ("Anomaly detection review", 2, None, "anomaly_detection_complete", [7]),
-        ("Board pack generation", 3, None, "board_pack_generated", [9, 10]),
-        ("Finance Leader sign-off", 4, "finance_leader", None, [11]),
-    ]
-
-    ids = [uuid.uuid4() for _ in task_defs]
-    for index, (name, days_relative, role, event, depends) in enumerate(task_defs, start=1):
-        session.add(
-            ChecklistTemplateTask(
-                id=ids[index - 1],
-                template_id=template.id,
-                tenant_id=tenant_id,
-                task_name=name,
-                assigned_role=role,
-                days_relative_to_period_end=days_relative,
-                depends_on_task_ids=[str(ids[item - 1]) for item in depends],
-                auto_trigger_event=event,
-                order_index=index,
+        ids = [uuid.uuid4() for _ in task_defs]
+        for index, (name, days_relative, role, event, depends) in enumerate(task_defs, start=1):
+            session.add(
+                ChecklistTemplateTask(
+                    id=ids[index - 1],
+                    template_id=template.id,
+                    tenant_id=tenant_id,
+                    task_name=name,
+                    assigned_role=role,
+                    days_relative_to_period_end=days_relative,
+                    depends_on_task_ids=[str(ids[item - 1]) for item in depends],
+                    auto_trigger_event=event,
+                    order_index=index,
+                )
             )
-        )
 
-    await session.flush()
-    return template
+        await session.commit()
+        return template
 
 
-async def _get_tasks(session: AsyncSession, run_id: uuid.UUID) -> list[ChecklistRunTask]:
-    return (
-        await session.execute(
-            select(ChecklistRunTask)
-            .where(ChecklistRunTask.run_id == run_id)
-            .order_by(ChecklistRunTask.order_index.asc())
-        )
-    ).scalars().all()
+async def _get_tasks(run_id: uuid.UUID, tenant_id: uuid.UUID) -> list[ChecklistRunTask]:
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        await set_tenant_context(session, tenant_id)
+        return (
+            await session.execute(
+                select(ChecklistRunTask)
+                .where(
+                    ChecklistRunTask.run_id == run_id,
+                    ChecklistRunTask.tenant_id == tenant_id,
+                )
+                .order_by(ChecklistRunTask.order_index.asc())
+            )
+        ).scalars().all()
+
+
+async def _get_run(run_id: uuid.UUID, tenant_id: uuid.UUID) -> ChecklistRun | None:
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        await set_tenant_context(session, tenant_id)
+        return await session.get(ChecklistRun, run_id)
+
+
+async def _count_runs(tenant_id: uuid.UUID, period: str) -> int:
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        await set_tenant_context(session, tenant_id)
+        return (
+            await session.execute(
+                select(func.count()).select_from(ChecklistRun).where(
+                    ChecklistRun.tenant_id == tenant_id,
+                    ChecklistRun.period == period,
+                )
+            )
+        ).scalar_one()
 
 
 @pytest.mark.asyncio
 async def test_default_template_seeded_for_tenant(async_session: AsyncSession, test_user: IamUser) -> None:
     """Assert default template with 12 tasks exists after migration."""
-    template = await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
+    template = await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
     tasks = (
         await async_session.execute(
             select(ChecklistTemplateTask).where(ChecklistTemplateTask.template_id == template.id)
@@ -143,9 +194,9 @@ async def test_default_template_seeded_for_tenant(async_session: AsyncSession, t
 @pytest.mark.asyncio
 async def test_get_or_create_run_creates_new(async_session: AsyncSession, test_user: IamUser) -> None:
     """Call get_or_create_run for a new period and ensure 12 not_started tasks."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     assert len(tasks) == 12
     assert all(task.status == "not_started" for task in tasks)
 
@@ -153,9 +204,9 @@ async def test_get_or_create_run_creates_new(async_session: AsyncSession, test_u
 @pytest.mark.asyncio
 async def test_get_or_create_run_idempotent(async_session: AsyncSession, test_user: IamUser) -> None:
     """Calling get_or_create_run twice returns the same run."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    first = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    second = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    first = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    second = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
     count = (
         await async_session.execute(
             select(func.count()).select_from(ChecklistRun).where(
@@ -174,8 +225,8 @@ from sqlalchemy import func
 @pytest.mark.asyncio
 async def test_run_unique_constraint_per_tenant_per_period(async_session: AsyncSession, test_user: IamUser) -> None:
     """Two tenants same period create independent runs without leakage."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run_a = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run_a = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
 
     tenant_b = uuid.uuid4()
     tenant_b_chain = compute_chain_hash(
@@ -213,9 +264,9 @@ async def test_run_unique_constraint_per_tenant_per_period(async_session: AsyncS
     )
     async_session.add(user_b)
     await async_session.flush()
-    await _seed_default_template(async_session, tenant_id=tenant_b, created_by=user_b.id)
+    await _seed_default_template(tenant_id=tenant_b, created_by=user_b.id)
 
-    run_b = await get_or_create_run(async_session, tenant_b, "2025-03", user_b.id)
+    run_b = await get_or_create_run(tenant_b, "2025-03", user_b.id)
 
     assert run_a.tenant_id != run_b.tenant_id
     assert run_a.id != run_b.id
@@ -224,9 +275,9 @@ async def test_run_unique_constraint_per_tenant_per_period(async_session: AsyncS
 @pytest.mark.asyncio
 async def test_task_due_dates_computed_from_period(async_session: AsyncSession, test_user: IamUser) -> None:
     """Task due_date uses period-end convention for days_relative offsets."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     task1 = tasks[0]
     assert task1.due_date == date(2025, 3, 28)
 
@@ -234,17 +285,17 @@ async def test_task_due_dates_computed_from_period(async_session: AsyncSession, 
 @pytest.mark.asyncio
 async def test_progress_starts_at_zero(async_session: AsyncSession, test_user: IamUser) -> None:
     """New run has progress_pct == Decimal('0.00')."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
     assert run.progress_pct == Decimal("0.00")
 
 
 @pytest.mark.asyncio
 async def test_update_task_to_in_progress(async_session: AsyncSession, test_user: IamUser) -> None:
     """Setting one task to in_progress updates run status to in_progress."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    task = (await _get_tasks(async_session, run.id))[0]
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    task = (await _get_tasks(run.id, test_user.tenant_id))[0]
 
     await update_task_status(async_session, test_user.tenant_id, run.id, task.id, "in_progress", test_user.id)
     refreshed = await async_session.get(ChecklistRun, run.id)
@@ -255,9 +306,9 @@ async def test_update_task_to_in_progress(async_session: AsyncSession, test_user
 @pytest.mark.asyncio
 async def test_complete_task_without_dependency(async_session: AsyncSession, test_user: IamUser) -> None:
     """Task without dependencies can be completed directly."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    task = (await _get_tasks(async_session, run.id))[0]
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    task = (await _get_tasks(run.id, test_user.tenant_id))[0]
 
     updated = await update_task_status(async_session, test_user.tenant_id, run.id, task.id, "completed", test_user.id)
     refreshed = await async_session.get(ChecklistRun, run.id)
@@ -270,9 +321,9 @@ async def test_complete_task_without_dependency(async_session: AsyncSession, tes
 @pytest.mark.asyncio
 async def test_dependency_blocks_completion(async_session: AsyncSession, test_user: IamUser) -> None:
     """Task with unmet dependency cannot be completed."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     task_b = tasks[1]
 
     with pytest.raises(DependencyNotMetError):
@@ -286,9 +337,9 @@ async def test_dependency_blocks_completion(async_session: AsyncSession, test_us
 @pytest.mark.asyncio
 async def test_dependency_unblocks_after_prerequisite(async_session: AsyncSession, test_user: IamUser) -> None:
     """Task B can complete after dependent Task A is completed first."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     task_a = tasks[0]
     task_b = tasks[1]
 
@@ -301,17 +352,17 @@ async def test_dependency_unblocks_after_prerequisite(async_session: AsyncSessio
 @pytest.mark.asyncio
 async def test_all_tasks_complete_sets_run_completed(async_session: AsyncSession, test_user: IamUser) -> None:
     """Completing all tasks sets run.status=completed and progress=100."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
 
-    ordered = await _get_tasks(async_session, run.id)
+    ordered = await _get_tasks(run.id, test_user.tenant_id)
     for task in ordered:
         try:
             await update_task_status(async_session, test_user.tenant_id, run.id, task.id, "completed", test_user.id)
         except DependencyNotMetError:
             continue
     # second pass clears forward dependencies
-    ordered = await _get_tasks(async_session, run.id)
+    ordered = await _get_tasks(run.id, test_user.tenant_id)
     for task in ordered:
         if task.status != "completed":
             await update_task_status(async_session, test_user.tenant_id, run.id, task.id, "completed", test_user.id)
@@ -326,10 +377,10 @@ async def test_all_tasks_complete_sets_run_completed(async_session: AsyncSession
 @pytest.mark.asyncio
 async def test_progress_recomputed_after_each_task(async_session: AsyncSession, test_user: IamUser) -> None:
     """Three completed tasks out of 12 yields 25% progress."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
 
-    tasks = await _get_tasks(async_session, run.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     await update_task_status(async_session, test_user.tenant_id, run.id, tasks[0].id, "completed", test_user.id)
     await update_task_status(async_session, test_user.tenant_id, run.id, tasks[1].id, "completed", test_user.id)
     await update_task_status(async_session, test_user.tenant_id, run.id, tasks[2].id, "completed", test_user.id)
@@ -342,9 +393,9 @@ async def test_progress_recomputed_after_each_task(async_session: AsyncSession, 
 @pytest.mark.asyncio
 async def test_skipped_task_counts_as_complete_for_progress(async_session: AsyncSession, test_user: IamUser) -> None:
     """Skipped task contributes to progress as complete."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
 
     await update_task_status(async_session, test_user.tenant_id, run.id, tasks[0].id, "skipped", test_user.id)
     for task in tasks[1:]:
@@ -352,7 +403,7 @@ async def test_skipped_task_counts_as_complete_for_progress(async_session: Async
             await update_task_status(async_session, test_user.tenant_id, run.id, task.id, "completed", test_user.id)
         except DependencyNotMetError:
             continue
-    for task in await _get_tasks(async_session, run.id):
+    for task in await _get_tasks(run.id, test_user.tenant_id):
         if task.status not in {"completed", "skipped"}:
             await update_task_status(async_session, test_user.tenant_id, run.id, task.id, "completed", test_user.id)
 
@@ -364,9 +415,9 @@ async def test_skipped_task_counts_as_complete_for_progress(async_session: Async
 @pytest.mark.asyncio
 async def test_role_restriction_enforced(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser, test_access_token: str) -> None:
     """Assigned-role mismatch returns 403 while Finance Leader override works."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    task = (await _get_tasks(async_session, run.id))[3]
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    task = (await _get_tasks(run.id, test_user.tenant_id))[3]
 
     reviewer = IamUser(
         tenant_id=test_user.tenant_id,
@@ -399,11 +450,11 @@ async def test_role_restriction_enforced(async_client: AsyncClient, async_sessio
 @pytest.mark.asyncio
 async def test_auto_complete_on_erp_sync_event(async_session: AsyncSession, test_user: IamUser) -> None:
     """ERP sync event auto-completes task 1."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
 
-    updated = await auto_complete_task(async_session, test_user.tenant_id, "2025-03", "erp_sync_complete")
-    task1 = (await _get_tasks(async_session, run.id))[0]
+    updated = await auto_complete_task(test_user.tenant_id, "2025-03", "erp_sync_complete")
+    task1 = (await _get_tasks(run.id, test_user.tenant_id))[0]
 
     assert updated
     assert task1.status == "completed"
@@ -414,29 +465,22 @@ async def test_auto_complete_on_erp_sync_event(async_session: AsyncSession, test
 @pytest.mark.asyncio
 async def test_auto_complete_on_recon_event(async_session: AsyncSession, test_user: IamUser) -> None:
     """Recon event auto-completes GL/TB task when dependencies are met."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     await update_task_status(async_session, test_user.tenant_id, run.id, tasks[0].id, "completed", test_user.id)
 
-    await auto_complete_task(async_session, test_user.tenant_id, "2025-03", "recon_complete")
-    refreshed = await _get_tasks(async_session, run.id)
+    await auto_complete_task(test_user.tenant_id, "2025-03", "recon_complete")
+    refreshed = await _get_tasks(run.id, test_user.tenant_id)
     assert refreshed[1].status == "completed"
 
 
 @pytest.mark.asyncio
 async def test_auto_complete_does_not_fire_without_run(async_session: AsyncSession, test_user: IamUser) -> None:
     """Auto-complete on missing period is a no-op and creates no run."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    updated = await auto_complete_task(async_session, test_user.tenant_id, "2025-04", "erp_sync_complete")
-    count = (
-        await async_session.execute(
-            select(func.count()).select_from(ChecklistRun).where(
-                ChecklistRun.tenant_id == test_user.tenant_id,
-                ChecklistRun.period == "2025-04",
-            )
-        )
-    ).scalar_one()
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    updated = await auto_complete_task(test_user.tenant_id, "2025-04", "erp_sync_complete")
+    count = await _count_runs(test_user.tenant_id, "2025-04")
     assert updated == []
     assert count == 0
 
@@ -444,13 +488,13 @@ async def test_auto_complete_does_not_fire_without_run(async_session: AsyncSessi
 @pytest.mark.asyncio
 async def test_auto_complete_progress_recomputed(async_session: AsyncSession, test_user: IamUser) -> None:
     """Auto-completing two tasks updates run progress percentage."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
-    tasks = await _get_tasks(async_session, run.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
+    tasks = await _get_tasks(run.id, test_user.tenant_id)
     await update_task_status(async_session, test_user.tenant_id, run.id, tasks[0].id, "completed", test_user.id)
-    await auto_complete_task(async_session, test_user.tenant_id, "2025-03", "recon_complete")
+    await auto_complete_task(test_user.tenant_id, "2025-03", "recon_complete")
 
-    refreshed = await async_session.get(ChecklistRun, run.id)
+    refreshed = await _get_run(run.id, test_user.tenant_id)
     assert refreshed is not None
     assert refreshed.progress_pct == Decimal("16.67")
 
@@ -458,13 +502,13 @@ async def test_auto_complete_progress_recomputed(async_session: AsyncSession, te
 @pytest.mark.asyncio
 async def test_auto_complete_only_for_current_period(async_session: AsyncSession, test_user: IamUser) -> None:
     """Event auto-complete applies only to the target period run."""
-    await _seed_default_template(async_session, tenant_id=test_user.tenant_id, created_by=test_user.id)
-    run_feb = await get_or_create_run(async_session, test_user.tenant_id, "2025-02", test_user.id)
-    run_mar = await get_or_create_run(async_session, test_user.tenant_id, "2025-03", test_user.id)
+    await _seed_default_template(tenant_id=test_user.tenant_id, created_by=test_user.id)
+    run_feb = await get_or_create_run(test_user.tenant_id, "2025-02", test_user.id)
+    run_mar = await get_or_create_run(test_user.tenant_id, "2025-03", test_user.id)
 
-    await auto_complete_task(async_session, test_user.tenant_id, "2025-03", "erp_sync_complete")
-    feb_task = (await _get_tasks(async_session, run_feb.id))[0]
-    mar_task = (await _get_tasks(async_session, run_mar.id))[0]
+    await auto_complete_task(test_user.tenant_id, "2025-03", "erp_sync_complete")
+    feb_task = (await _get_tasks(run_feb.id, test_user.tenant_id))[0]
+    mar_task = (await _get_tasks(run_mar.id, test_user.tenant_id))[0]
 
     assert feb_task.status == "not_started"
     assert mar_task.status == "completed"

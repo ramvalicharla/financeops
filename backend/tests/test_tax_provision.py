@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 import uuid
 
@@ -55,8 +56,10 @@ async def _seed_budget(async_session: AsyncSession, test_user: IamUser, fiscal_y
         fiscal_year=fiscal_year,
         version_name="Tax Base",
         version_number=1,
-        status="approved",
+        status="board_approved",
         is_board_approved=True,
+        board_approved_at=datetime.now(UTC),
+        board_approved_by=test_user.id,
         created_by=test_user.id,
     )
     async_session.add(version)

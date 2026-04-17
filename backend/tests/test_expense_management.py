@@ -27,6 +27,14 @@ from financeops.modules.expense_management.service import (
 )
 from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
 
+_API_SESSION_FACTORY = None
+
+
+@pytest.fixture(autouse=True)
+def _bind_api_session_factory(api_session_factory):
+    global _API_SESSION_FACTORY
+    _API_SESSION_FACTORY = api_session_factory
+
 
 def _make_engine(policy: ExpensePolicy) -> ExpensePolicyEngine:
     return ExpensePolicyEngine(policy)
@@ -42,11 +50,13 @@ def _governed_context(intent_type: str) -> MutationContext:
     )
 
 
-async def _ensure_policy(async_session: AsyncSession, tenant_id: uuid.UUID) -> ExpensePolicy:
-    with governed_mutation_context(_governed_context("ENSURE_EXPENSE_POLICY")):
-        policy = await _ensure_policy_service(async_session, tenant_id)
-    await async_session.flush()
-    return policy
+async def _ensure_policy(tenant_id: uuid.UUID) -> ExpensePolicy:
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        async with session.begin():
+            with governed_mutation_context(_governed_context("ENSURE_EXPENSE_POLICY")):
+                policy = await _ensure_policy_service(session, tenant_id)
+        return policy
 
 
 async def _create_tenant_user(
@@ -93,7 +103,6 @@ async def _create_tenant_user(
 
 
 async def _submit_claim_for_user(
-    async_session: AsyncSession,
     *,
     tenant_id: uuid.UUID,
     user_id: uuid.UUID,
@@ -104,21 +113,30 @@ async def _submit_claim_for_user(
     has_receipt: bool = True,
     justification: str | None = None,
 ) -> ExpenseClaim:
-    with governed_mutation_context(_governed_context("SUBMIT_EXPENSE_CLAIM")):
-        return await _submit_claim(
-            async_session,
-            tenant_id=tenant_id,
-            submitted_by=user_id,
-            vendor_name=vendor_name,
-            description="Test expense",
-            category=category,
-            amount=amount,
-            currency="INR",
-            claim_date=claim_date,
-            has_receipt=has_receipt,
-            receipt_url="https://example.com/receipt.png" if has_receipt else None,
-            justification=justification,
-        )
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        async with session.begin():
+            with governed_mutation_context(_governed_context("SUBMIT_EXPENSE_CLAIM")):
+                return await _submit_claim(
+                    session,
+                    tenant_id=tenant_id,
+                    submitted_by=user_id,
+                    vendor_name=vendor_name,
+                    description="Test expense",
+                    category=category,
+                    amount=amount,
+                    currency="INR",
+                    claim_date=claim_date,
+                    has_receipt=has_receipt,
+                    receipt_url="https://example.com/receipt.png" if has_receipt else None,
+                    justification=justification,
+                )
+
+
+async def _get_analytics(tenant_id: uuid.UUID, period: str):
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        return await get_expense_analytics(session, tenant_id, period)
 
 
 async def _approve_claim_for_user(
@@ -146,7 +164,7 @@ async def _approve_claim_for_user(
 # Policy engine (8)
 @pytest.mark.asyncio
 async def test_personal_merchant_hard_block(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("500"), "INR", date(2025, 3, 17), "swiggy order", True
     )
@@ -156,7 +174,7 @@ async def test_personal_merchant_hard_block(async_session: AsyncSession, test_us
 
 @pytest.mark.asyncio
 async def test_personal_merchant_case_insensitive(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("500"), "INR", date(2025, 3, 17), "Swiggy Restaurant", True
     )
@@ -166,7 +184,7 @@ async def test_personal_merchant_case_insensitive(async_session: AsyncSession, t
 
 @pytest.mark.asyncio
 async def test_receipt_missing_soft_violation(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("600"), "INR", date(2025, 3, 17), "Hotel Restaurant", False
     )
@@ -178,7 +196,7 @@ async def test_receipt_missing_soft_violation(async_session: AsyncSession, test_
 
 @pytest.mark.asyncio
 async def test_meal_limit_soft_violation(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("2001"), "INR", date(2025, 3, 17), "Some Restaurant", True
     )
@@ -188,7 +206,7 @@ async def test_meal_limit_soft_violation(async_session: AsyncSession, test_user:
 
 @pytest.mark.asyncio
 async def test_meal_hard_block_at_150_pct(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("3200"), "INR", date(2025, 3, 17), "Some Restaurant", True
     )
@@ -198,7 +216,7 @@ async def test_meal_hard_block_at_150_pct(async_session: AsyncSession, test_user
 
 @pytest.mark.asyncio
 async def test_round_number_flagged(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "other", Decimal("5000"), "INR", date(2025, 3, 17), "Some Restaurant", True
     )
@@ -208,7 +226,7 @@ async def test_round_number_flagged(async_session: AsyncSession, test_user: IamU
 
 @pytest.mark.asyncio
 async def test_weekend_claim_flagged(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("500"), "INR", date(2025, 3, 22), "Some Restaurant", True
     )
@@ -218,7 +236,7 @@ async def test_weekend_claim_flagged(async_session: AsyncSession, test_user: Iam
 
 @pytest.mark.asyncio
 async def test_clean_claim_passes_all_checks(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
+    policy = await _ensure_policy(test_user.tenant_id)
     result = _make_engine(policy).check(
         "meals", Decimal("499"), "INR", date(2025, 3, 17), "Hotel Restaurant", True
     )
@@ -229,9 +247,8 @@ async def test_clean_claim_passes_all_checks(async_session: AsyncSession, test_u
 # Claim lifecycle (9)
 @pytest.mark.asyncio
 async def test_submit_claim_creates_append_only_record(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Office Store",
@@ -245,10 +262,9 @@ async def test_submit_claim_creates_append_only_record(async_session: AsyncSessi
 
 @pytest.mark.asyncio
 async def test_hard_violation_blocks_submission(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     with pytest.raises(PolicyViolationError):
         await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name="Swiggy Delivery",
@@ -269,10 +285,9 @@ async def test_hard_violation_blocks_submission(async_session: AsyncSession, tes
 
 @pytest.mark.asyncio
 async def test_soft_violation_without_justification_raises(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     with pytest.raises(JustificationRequiredError):
         await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name="Some Restaurant",
@@ -285,9 +300,8 @@ async def test_soft_violation_without_justification_raises(async_session: AsyncS
 
 @pytest.mark.asyncio
 async def test_soft_violation_with_justification_succeeds(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Some Restaurant",
@@ -302,12 +316,15 @@ async def test_soft_violation_with_justification_succeeds(async_session: AsyncSe
 
 @pytest.mark.asyncio
 async def test_auto_approve_below_threshold(async_session: AsyncSession, test_user: IamUser) -> None:
-    policy = await _ensure_policy(async_session, test_user.tenant_id)
-    policy.auto_approve_below = Decimal("100.00")
-    await async_session.flush()
+    policy = await _ensure_policy(test_user.tenant_id)
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        persisted_policy = await session.get(ExpensePolicy, policy.id)
+        assert persisted_policy is not None
+        persisted_policy.auto_approve_below = Decimal("100.00")
+        await session.commit()
 
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Tea Stall",
@@ -320,9 +337,8 @@ async def test_auto_approve_below_threshold(async_session: AsyncSession, test_us
 
 @pytest.mark.asyncio
 async def test_approval_creates_audit_record(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Office Store",
@@ -350,9 +366,8 @@ async def test_approval_creates_audit_record(async_session: AsyncSession, test_u
 
 @pytest.mark.asyncio
 async def test_rejection_creates_audit_record(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Office Store",
@@ -379,9 +394,8 @@ async def test_rejection_creates_audit_record(async_session: AsyncSession, test_
 
 @pytest.mark.asyncio
 async def test_claim_amount_stored_as_decimal(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Office Store",
@@ -396,9 +410,8 @@ async def test_claim_amount_stored_as_decimal(async_session: AsyncSession, test_
 
 @pytest.mark.asyncio
 async def test_expense_claim_is_append_only(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Office Store",
@@ -465,9 +478,8 @@ async def test_employee_sees_only_own_claims(async_client: AsyncClient, async_se
     async_session.add_all([user_a, user_b])
     await async_session.flush()
 
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=user_a.id,
         vendor_name="Store A",
@@ -476,7 +488,6 @@ async def test_employee_sees_only_own_claims(async_client: AsyncClient, async_se
         claim_date=date(2025, 3, 17),
     )
     await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=user_b.id,
         vendor_name="Store B",
@@ -500,7 +511,7 @@ async def test_employee_sees_only_own_claims(async_client: AsyncClient, async_se
 
 @pytest.mark.asyncio
 async def test_finance_leader_sees_all_claims(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser, test_access_token: str) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
 
     user_b = IamUser(
         tenant_id=test_user.tenant_id,
@@ -515,7 +526,6 @@ async def test_finance_leader_sees_all_claims(async_client: AsyncClient, async_s
     await async_session.flush()
 
     await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Store A",
@@ -524,7 +534,6 @@ async def test_finance_leader_sees_all_claims(async_client: AsyncClient, async_s
         claim_date=date(2025, 3, 17),
     )
     await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=user_b.id,
         vendor_name="Store B",
@@ -546,9 +555,8 @@ async def test_finance_leader_sees_all_claims(async_client: AsyncClient, async_s
 
 @pytest.mark.asyncio
 async def test_approve_requires_manager_role(async_client: AsyncClient, async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     claim = await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Store A",
@@ -615,10 +623,9 @@ async def test_expense_management_list_respects_limit(
     test_user: IamUser,
     test_access_token: str,
 ) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     for idx in range(5):
         await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name=f"Limit Vendor {idx}",
@@ -644,10 +651,9 @@ async def test_expense_management_list_respects_skip(
     test_user: IamUser,
     test_access_token: str,
 ) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
     for idx in range(5):
         await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name=f"Skip Vendor {idx}",
@@ -668,10 +674,9 @@ async def test_expense_management_list_respects_skip(
 # Analytics (3)
 @pytest.mark.asyncio
 async def test_analytics_spend_by_category(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
 
     await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Meals",
@@ -680,7 +685,6 @@ async def test_analytics_spend_by_category(async_session: AsyncSession, test_use
         claim_date=date(2025, 3, 17),
     )
     await _submit_claim_for_user(
-        async_session,
         tenant_id=test_user.tenant_id,
         user_id=test_user.id,
         vendor_name="Travel",
@@ -689,18 +693,17 @@ async def test_analytics_spend_by_category(async_session: AsyncSession, test_use
         claim_date=date(2025, 3, 18),
     )
 
-    payload = await get_expense_analytics(async_session, test_user.tenant_id, "2025-03")
+    payload = await _get_analytics(test_user.tenant_id, "2025-03")
     assert payload["spend_by_category"]["meals"] == Decimal("100.00")
     assert payload["spend_by_category"]["travel"] == Decimal("200.00")
 
 
 @pytest.mark.asyncio
 async def test_analytics_violation_rate(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
 
     for i in range(7):
         await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name=f"Store {i}",
@@ -710,7 +713,6 @@ async def test_analytics_violation_rate(async_session: AsyncSession, test_user: 
         )
     for i in range(3):
         await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name=f"Rounded {i}",
@@ -720,18 +722,17 @@ async def test_analytics_violation_rate(async_session: AsyncSession, test_user: 
             justification="Business purchase",
         )
 
-    payload = await get_expense_analytics(async_session, test_user.tenant_id, "2025-03")
+    payload = await _get_analytics(test_user.tenant_id, "2025-03")
     assert payload["policy_violation_rate"] == Decimal("0.3000")
 
 
 @pytest.mark.asyncio
 async def test_analytics_itc_recovered(async_session: AsyncSession, test_user: IamUser) -> None:
-    await _ensure_policy(async_session, test_user.tenant_id)
+    await _ensure_policy(test_user.tenant_id)
 
     claims: list[ExpenseClaim] = []
     for i in range(5):
         claim = await _submit_claim_for_user(
-            async_session,
             tenant_id=test_user.tenant_id,
             user_id=test_user.id,
             vendor_name=f"GST {i}",
@@ -741,10 +742,14 @@ async def test_analytics_itc_recovered(async_session: AsyncSession, test_user: I
         )
         claims.append(claim)
 
-    for claim in claims[:3]:
-        claim.itc_eligible = True
-        claim.gst_amount = Decimal("180.00")
-    await async_session.flush()
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        async with session.begin():
+            for claim in claims[:3]:
+                persisted_claim = await session.get(ExpenseClaim, claim.id)
+                assert persisted_claim is not None
+                persisted_claim.itc_eligible = True
+                persisted_claim.gst_amount = Decimal("180.00")
 
-    payload = await get_expense_analytics(async_session, test_user.tenant_id, "2025-03")
+    payload = await _get_analytics(test_user.tenant_id, "2025-03")
     assert payload["itc_recovered"] == Decimal("540.00")

@@ -124,13 +124,13 @@ class MfaVerifySetupResponse(TokenPairResponse):
     recovery_codes: list[str]
 
 
-class ChangePasswordSuccessResponse(BaseModel):
+class ChangePasswordSuccessResponse(TokenPairResponse):
     model_config = ConfigDict(extra="ignore")
 
     status: str
 
 
-ChangePasswordResponse = ChangePasswordSuccessResponse | LoginMfaSetupResponse
+ChangePasswordResponse = ChangePasswordSuccessResponse
 
 
 class MessageResponse(BaseModel):

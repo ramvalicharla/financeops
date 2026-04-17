@@ -34,6 +34,7 @@ from financeops.core.middleware import (
     RequestLoggingMiddleware,
     RLSMiddleware,
 )
+from financeops.middleware import AuditMiddleware
 from financeops.observability.logging import configure_logging
 from financeops.observability.middleware import LoggingMiddleware
 from financeops.observability.sentry import configure_sentry
@@ -50,6 +51,9 @@ from financeops.db.session import AsyncSessionLocal, engine
 from financeops.migrations.run import run_migrations_to_head
 from financeops.seed.coa import seed_coa_industry_templates
 from financeops.seed.platform_owner import seed_platform_users_from_env
+from financeops.platform.services.rbac.permission_matrix import (
+    validate_permission_matrix,
+)
 
 log = logging.getLogger(__name__)
 configure_logging(log_level=settings.LOG_LEVEL)
@@ -187,11 +191,38 @@ def _check_ai_provider_keys() -> None:
             )
 
 
+def _has_valid_ai_provider_key(value: str | None) -> bool:
+    if not value:
+        return False
+    return "PLACEHOLDER" not in value.upper()
+
+
+def _validate_ai_cfo_configuration() -> None:
+    if not settings.AI_CFO_ENABLED:
+        return
+
+    valid_providers = (
+        _has_valid_ai_provider_key(settings.ANTHROPIC_API_KEY),
+        _has_valid_ai_provider_key(settings.OPENAI_API_KEY),
+        _has_valid_ai_provider_key(settings.DEEPSEEK_API_KEY),
+    )
+    if not any(valid_providers):
+        raise ValueError(
+            "AI_CFO_ENABLED is True but no valid AI provider key is configured"
+        )
+
+
+def _validate_permission_matrix_configuration() -> None:
+    validate_permission_matrix()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application startup and shutdown lifecycle."""
     log.info("FinanceOps starting up (env=%s)", settings.APP_ENV)
     log.info("DATABASE_URL in use: %s", _masked_database_url(str(settings.DATABASE_URL)))
+    _validate_permission_matrix_configuration()
+    _validate_ai_cfo_configuration()
     _check_ai_provider_keys()
     startup_errors: list[str] = []
     app.state.startup_errors = startup_errors
@@ -399,6 +430,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     app.add_middleware(RequestTimeoutMiddleware, timeout_seconds=30.0)
     app.add_middleware(RLSMiddleware)
+    app.add_middleware(AuditMiddleware)
     app.add_middleware(CorrelationIdMiddleware)
     app.add_middleware(RequestSizeLimitMiddleware)
     app.add_middleware(IdempotencyMiddleware)

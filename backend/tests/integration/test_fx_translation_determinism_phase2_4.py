@@ -6,7 +6,8 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from financeops.db.models.fx_rates import FxManualMonthlyRate
 from financeops.db.models.multi_entity_consolidation import (
@@ -301,79 +302,90 @@ async def _seed_locked_rate(
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_fx_translation_run_is_deterministic_and_source_is_unchanged(
-    async_session: AsyncSession,
+    fx_translation_phase2_4_db_url: str,
 ) -> None:
-    tenant_id = uuid.uuid4()
-    org_id = uuid.uuid4()
-    user_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
-    await _seed_active_fx_config(
-        async_session, tenant_id=tenant_id, organisation_id=org_id, created_by=user_id
-    )
-    source_run_id = await _seed_source_consolidation_rows(
-        async_session, tenant_id=tenant_id, organisation_id=org_id, created_by=user_id
-    )
-    await _seed_locked_rate(async_session, tenant_id=tenant_id, created_by=user_id)
-    await async_session.flush()
+    engine = create_async_engine(fx_translation_phase2_4_db_url, echo=False, poolclass=NullPool)
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with session_factory() as session:
+            await session.begin()
+            try:
+                tenant_id = uuid.uuid4()
+                org_id = uuid.uuid4()
+                user_id = uuid.uuid4()
+                await set_tenant_context(session, tenant_id)
+                await _seed_active_fx_config(
+                    session, tenant_id=tenant_id, organisation_id=org_id, created_by=user_id
+                )
+                source_run_id = await _seed_source_consolidation_rows(
+                    session, tenant_id=tenant_id, organisation_id=org_id, created_by=user_id
+                )
+                await _seed_locked_rate(session, tenant_id=tenant_id, created_by=user_id)
+                await session.flush()
 
-    source_metric_count_before = await async_session.scalar(
-        select(func.count()).select_from(MultiEntityConsolidationMetricResult)
-    )
-    source_variance_count_before = await async_session.scalar(
-        select(func.count()).select_from(MultiEntityConsolidationVarianceResult)
-    )
+                source_metric_count_before = await session.scalar(
+                    select(func.count()).select_from(MultiEntityConsolidationMetricResult)
+                )
+                source_variance_count_before = await session.scalar(
+                    select(func.count()).select_from(MultiEntityConsolidationVarianceResult)
+                )
 
-    service = _build_service(async_session)
-    run_a = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=org_id,
-        reporting_period=date(2026, 1, 31),
-        reporting_currency_code="USD",
-        source_consolidation_run_refs=[
-            {"source_type": "consolidation_run", "run_id": str(source_run_id)}
-        ],
-        created_by=user_id,
-    )
-    run_b = await service.create_run(
-        tenant_id=tenant_id,
-        organisation_id=org_id,
-        reporting_period=date(2026, 1, 31),
-        reporting_currency_code="USD",
-        source_consolidation_run_refs=[
-            {"source_type": "consolidation_run", "run_id": str(source_run_id)}
-        ],
-        created_by=user_id,
-    )
-    assert run_a["run_token"] == run_b["run_token"]
-    assert run_b["idempotent"] is True
+                service = _build_service(session)
+                run_a = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=org_id,
+                    reporting_period=date(2026, 1, 31),
+                    reporting_currency_code="USD",
+                    source_consolidation_run_refs=[
+                        {"source_type": "consolidation_run", "run_id": str(source_run_id)}
+                    ],
+                    created_by=user_id,
+                )
+                run_b = await service.create_run(
+                    tenant_id=tenant_id,
+                    organisation_id=org_id,
+                    reporting_period=date(2026, 1, 31),
+                    reporting_currency_code="USD",
+                    source_consolidation_run_refs=[
+                        {"source_type": "consolidation_run", "run_id": str(source_run_id)}
+                    ],
+                    created_by=user_id,
+                )
+                assert run_a["run_token"] == run_b["run_token"]
+                assert run_b["idempotent"] is True
 
-    execute_a = await service.execute_run(
-        tenant_id=tenant_id,
-        run_id=uuid.UUID(run_a["run_id"]),
-        created_by=user_id,
-    )
-    execute_b = await service.execute_run(
-        tenant_id=tenant_id,
-        run_id=uuid.UUID(run_a["run_id"]),
-        created_by=user_id,
-    )
-    assert execute_a["metric_count"] == 1
-    assert execute_a["variance_count"] == 1
-    assert execute_b["idempotent"] is True
+                execute_a = await service.execute_run(
+                    tenant_id=tenant_id,
+                    run_id=uuid.UUID(run_a["run_id"]),
+                    created_by=user_id,
+                )
+                execute_b = await service.execute_run(
+                    tenant_id=tenant_id,
+                    run_id=uuid.UUID(run_a["run_id"]),
+                    created_by=user_id,
+                )
+                assert execute_a["metric_count"] == 1
+                assert execute_a["variance_count"] == 1
+                assert execute_b["idempotent"] is True
 
-    metrics = await service.list_metrics(tenant_id=tenant_id, run_id=uuid.UUID(run_a["run_id"]))
-    variances = await service.list_variances(tenant_id=tenant_id, run_id=uuid.UUID(run_a["run_id"]))
-    assert [row["line_no"] for row in metrics] == [1]
-    assert [row["line_no"] for row in variances] == [1]
-    assert metrics[0]["translated_value"] == "120.000000"
-    assert variances[0]["translated_variance_value"] == "12.000000"
+                metrics = await service.list_metrics(tenant_id=tenant_id, run_id=uuid.UUID(run_a["run_id"]))
+                variances = await service.list_variances(tenant_id=tenant_id, run_id=uuid.UUID(run_a["run_id"]))
+                assert [row["line_no"] for row in metrics] == [1]
+                assert [row["line_no"] for row in variances] == [1]
+                assert metrics[0]["translated_value"] == "120.000000"
+                assert variances[0]["translated_variance_value"] == "12.000000"
 
-    source_metric_count_after = await async_session.scalar(
-        select(func.count()).select_from(MultiEntityConsolidationMetricResult)
-    )
-    source_variance_count_after = await async_session.scalar(
-        select(func.count()).select_from(MultiEntityConsolidationVarianceResult)
-    )
-    assert source_metric_count_after == source_metric_count_before
-    assert source_variance_count_after == source_variance_count_before
+                source_metric_count_after = await session.scalar(
+                    select(func.count()).select_from(MultiEntityConsolidationMetricResult)
+                )
+                source_variance_count_after = await session.scalar(
+                    select(func.count()).select_from(MultiEntityConsolidationVarianceResult)
+                )
+                assert source_metric_count_after == source_metric_count_before
+                assert source_variance_count_after == source_variance_count_before
+            finally:
+                if session.in_transaction():
+                    await session.rollback()
+    finally:
+        await engine.dispose()
 

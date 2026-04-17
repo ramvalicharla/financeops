@@ -273,9 +273,13 @@ async def _create_definition(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_t_040_create_definition_returns_201(
-    async_client: AsyncClient, async_session: AsyncSession, test_access_token: str, test_user
+    async_client: AsyncClient,
+    api_session_factory,
+    test_access_token: str,
+    test_user,
 ) -> None:
-    await _relax_board_pack_schema(async_session)
+    async with api_session_factory() as db:
+        await _relax_board_pack_schema(db)
     response = await async_client.post(
         "/api/v1/board-packs/definitions",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -287,8 +291,9 @@ async def test_t_040_create_definition_returns_201(
     assert payload["id"]
     assert payload["intent_id"]
     assert payload["job_id"]
-    await set_tenant_context(async_session, test_user.tenant_id)
-    row = await async_session.get(BoardPackGeneratorDefinition, uuid.UUID(payload["id"]))
+    async with api_session_factory() as db:
+        await set_tenant_context(db, test_user.tenant_id)
+        row = await db.get(BoardPackGeneratorDefinition, uuid.UUID(payload["id"]))
     assert row is not None
     assert row.created_by_intent_id is not None
     assert row.recorded_by_job_id is not None
@@ -546,25 +551,16 @@ async def test_t_044_download_pdf_artifact_returns_file(
     async_session: AsyncSession,
     test_access_token: str,
     test_user,
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await _relax_board_pack_schema(async_session)
     from financeops.db.models.board_pack_generator import BoardPackGeneratorArtifact
     import financeops.modules.board_pack_generator.api.routes as board_pack_api_routes_module
-    import financeops.modules.board_pack_generator.infrastructure.repository as board_pack_repository_module
     from financeops.modules.board_pack_generator.infrastructure.repository import BoardPackRepository
+    from tests.integration.test_board_pack_export import _FakeStorage
 
-    monkeypatch.setattr(
-        board_pack_api_routes_module,
-        "settings",
-        SimpleNamespace(ARTIFACTS_BASE_DIR=str(tmp_path)),
-    )
-    monkeypatch.setattr(
-        board_pack_repository_module,
-        "settings",
-        SimpleNamespace(ARTIFACTS_BASE_DIR=str(tmp_path)),
-    )
+    fake_storage = _FakeStorage()
+    monkeypatch.setattr(board_pack_api_routes_module, "get_storage", lambda: fake_storage)
 
     await set_tenant_context(async_session, test_user.tenant_id)
     definition = await _create_definition(async_client, test_access_token, test_user.tenant_id)
@@ -578,9 +574,6 @@ async def test_t_044_download_pdf_artifact_returns_file(
         triggered_by=test_user.id,
     )
     storage_path = f"artifacts/board_packs/{test_user.tenant_id}/{run.id}/board_pack.pdf"
-    file_path = tmp_path / storage_path
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_bytes(b"%PDF-1.4\ncontent\n")
 
     async_session.add(
         BoardPackGeneratorArtifact(
@@ -588,7 +581,7 @@ async def test_t_044_download_pdf_artifact_returns_file(
             tenant_id=test_user.tenant_id,
             format="PDF",
             storage_path=storage_path,
-            file_size_bytes=file_path.stat().st_size,
+            file_size_bytes=17,
             checksum="d" * 64,
         )
     )
@@ -600,8 +593,11 @@ async def test_t_044_download_pdf_artifact_returns_file(
     )
 
     assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/pdf")
-    assert response.content.startswith(b"%PDF")
+    payload = response.json()["data"]
+    assert payload["artifact_id"]
+    assert payload["expires_in_seconds"] == 900
+    assert payload["signed_url"] == f"https://signed.example.com/{storage_path}?exp=900&sig=test"
+    assert fake_storage.signed == [(storage_path, 900)]
 
 
 @pytest.mark.integration
@@ -632,11 +628,12 @@ async def test_t_045_deactivate_definition_then_active_only_list_returns_404(
 @pytest.mark.asyncio
 async def test_t_045b_update_definition_uses_governed_pipeline(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_session_factory,
     test_access_token: str,
     test_user,
 ) -> None:
-    await _relax_board_pack_schema(async_session)
+    async with api_session_factory() as db:
+        await _relax_board_pack_schema(db)
     definition = await _create_definition(async_client, test_access_token, test_user.tenant_id)
 
     response = await async_client.patch(
@@ -649,8 +646,9 @@ async def test_t_045b_update_definition_uses_governed_pipeline(
     assert payload["intent_id"]
     assert payload["job_id"]
     assert payload["description"] == "updated via intent"
-    await set_tenant_context(async_session, test_user.tenant_id)
-    row = await async_session.get(BoardPackGeneratorDefinition, uuid.UUID(definition["id"]))
+    async with api_session_factory() as db:
+        await set_tenant_context(db, test_user.tenant_id)
+        row = await db.get(BoardPackGeneratorDefinition, uuid.UUID(definition["id"]))
     assert row is not None
     assert row.recorded_by_job_id is not None
 

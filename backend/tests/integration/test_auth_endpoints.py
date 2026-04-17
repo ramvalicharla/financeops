@@ -4,27 +4,210 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
+from fastapi import Request
 from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from httpx import ASGITransport
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from financeops.core.security import hash_password
-from financeops.db.models.users import IamUser
+from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
+from financeops.db.models.users import IamUser, UserRole
+from financeops.db.rls import clear_tenant_context, set_tenant_context
+from financeops.platform.db.models import CpEntity, CpOrganisation
+from financeops.utils.chain_hash import GENESIS_HASH, compute_chain_hash
+
+
+def _unique_registration_payload(*, full_name: str, tenant_name_prefix: str) -> dict[str, object]:
+    token = uuid.uuid4().hex[:8]
+    return {
+        "email": f"register-{token}@example.com",
+        "password": "SecurePass123!",
+        "full_name": full_name,
+        "tenant_name": f"{tenant_name_prefix} {token}",
+        "tenant_type": "direct",
+        "country": "US",
+    }
+
+
+@pytest_asyncio.fixture(scope="session")
+async def engine(test_database_url: str):
+    test_engine = create_async_engine(test_database_url, echo=False, poolclass=NullPool)
+    yield test_engine
+    await test_engine.dispose()
+
+
+@pytest.fixture
+def auth_session_factory(engine):
+    return async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+
+@pytest_asyncio.fixture
+async def test_tenant(auth_session_factory) -> IamTenant:
+    tenant_id = uuid.uuid4()
+    record_data = {
+        "display_name": "Test Tenant",
+        "tenant_type": TenantType.direct.value,
+        "country": "US",
+        "timezone": "UTC",
+    }
+    tenant = IamTenant(
+        id=tenant_id,
+        tenant_id=tenant_id,
+        display_name="Test Tenant",
+        tenant_type=TenantType.direct,
+        country="US",
+        timezone="UTC",
+        status=TenantStatus.active,
+        chain_hash=compute_chain_hash(record_data, GENESIS_HASH),
+        previous_hash=GENESIS_HASH,
+        org_setup_complete=True,
+        org_setup_step=7,
+    )
+    async with auth_session_factory() as session:
+        session.add(tenant)
+        await session.commit()
+    return tenant
+
+
+@pytest_asyncio.fixture
+async def test_user(auth_session_factory, test_tenant: IamTenant) -> IamUser:
+    user = IamUser(
+        tenant_id=test_tenant.id,
+        email="testuser@example.com",
+        hashed_password=hash_password("TestPass123!"),
+        full_name="Test User",
+        role=UserRole.finance_leader,
+        is_active=True,
+        mfa_enabled=False,
+    )
+    org_payload = {
+        "tenant_id": str(test_tenant.id),
+        "organisation_code": "ORG_DEFAULT",
+        "organisation_name": "Default Org",
+    }
+    org = CpOrganisation(
+        tenant_id=test_tenant.id,
+        organisation_code="ORG_DEFAULT",
+        organisation_name="Default Org",
+        parent_organisation_id=None,
+        supersedes_id=None,
+        is_active=True,
+        correlation_id="test-default-org",
+        chain_hash=compute_chain_hash(org_payload, GENESIS_HASH),
+        previous_hash=GENESIS_HASH,
+    )
+    async with auth_session_factory() as session:
+        await session.execute(
+            delete(IamUser).where(func.lower(IamUser.email) == "testuser@example.com")
+        )
+        session.add(user)
+        session.add(org)
+        await session.flush()
+        entity_payload = {
+            "tenant_id": str(test_tenant.id),
+            "entity_code": "ENT_DEFAULT",
+            "entity_name": "Default Entity",
+            "organisation_id": str(org.id),
+        }
+        entity = CpEntity(
+            tenant_id=test_tenant.id,
+            organisation_id=org.id,
+            group_id=None,
+            entity_code="ENT_DEFAULT",
+            entity_name="Default Entity",
+            base_currency="INR",
+            country_code="IN",
+            status="active",
+            deactivated_at=None,
+            correlation_id="test-default-entity",
+            chain_hash=compute_chain_hash(entity_payload, GENESIS_HASH),
+            previous_hash=GENESIS_HASH,
+        )
+        session.add(entity)
+        await session.commit()
+
+    return user
+
+
+@pytest_asyncio.fixture
+async def async_client(engine) -> AsyncClient:
+    from financeops.api.deps import get_async_session
+    from financeops.main import app
+
+    session_factory = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+
+    original_startup_errors = getattr(app.state, "startup_errors", [])
+    original_migration_state = getattr(app.state, "migration_state", None)
+    app.state.startup_errors = []
+    app.state.migration_state = {
+        "status": "ok",
+        "current_revision": "test",
+        "head_revision": "test",
+        "detail": None,
+    }
+
+    async def override_session(request: Request):
+        tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+        if not tenant_id:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                from financeops.core.security import decode_token
+
+                token = auth_header[7:]
+                try:
+                    payload = decode_token(token)
+                except Exception:
+                    payload = {}
+                tenant_id = str(payload.get("tenant_id", "") or "")
+
+        async with session_factory() as session:
+            if tenant_id:
+                await set_tenant_context(session, tenant_id)
+            try:
+                yield session
+            finally:
+                if tenant_id:
+                    try:
+                        await clear_tenant_context(session)
+                    except Exception:
+                        await session.rollback()
+
+    app.dependency_overrides[get_async_session] = override_session
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        yield client
+    app.dependency_overrides.clear()
+    app.state.startup_errors = original_startup_errors
+    app.state.migration_state = original_migration_state
 
 
 @pytest.mark.asyncio
 async def test_register_creates_tenant_and_user(async_client: AsyncClient):
+    payload = _unique_registration_payload(
+        full_name="New User",
+        tenant_name_prefix="New Corp",
+    )
+    payload["terms_accepted"] = True
     response = await async_client.post(
         "/api/v1/auth/register",
-        json={
-            "email": "newuser@example.com",
-            "password": "SecurePass123!",
-            "full_name": "New User",
-            "tenant_name": "New Corp",
-            "tenant_type": "direct",
-            "country": "US",
-            "terms_accepted": True,
-        },
+        json=payload,
     )
     assert response.status_code == 201
     data = response.json()["data"]
@@ -36,43 +219,38 @@ async def test_register_creates_tenant_and_user(async_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_registration_stores_terms_accepted_at(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
 ) -> None:
+    payload = _unique_registration_payload(
+        full_name="Terms User",
+        tenant_name_prefix="Terms Corp",
+    )
+    payload["terms_accepted"] = True
     response = await async_client.post(
         "/api/v1/auth/register",
-        json={
-            "email": "terms-user@example.com",
-            "password": "SecurePass123!",
-            "full_name": "Terms User",
-            "tenant_name": "Terms Corp",
-            "tenant_type": "direct",
-            "country": "US",
-            "terms_accepted": True,
-        },
+        json=payload,
     )
     assert response.status_code == 201
     user_id = uuid.UUID(response.json()["data"]["user_id"])
-    user = (
-        await async_session.execute(
-            select(IamUser).where(IamUser.id == user_id)
-        )
-    ).scalar_one()
+    async with auth_session_factory() as session:
+        user = (
+            await session.execute(
+                select(IamUser).where(IamUser.id == user_id)
+            )
+        ).scalar_one()
     assert user.terms_accepted_at is not None
     assert user.terms_version_accepted == "2026-03-01"
 
 
 @pytest.mark.asyncio
 async def test_registration_requires_terms_acceptance(async_client: AsyncClient) -> None:
+    payload = _unique_registration_payload(
+        full_name="No Terms User",
+        tenant_name_prefix="No Terms Corp",
+    )
     response = await async_client.post(
         "/api/v1/auth/register",
-        json={
-            "email": "no-terms-user@example.com",
-            "password": "SecurePass123!",
-            "full_name": "No Terms User",
-            "tenant_name": "No Terms Corp",
-            "tenant_type": "direct",
-            "country": "US",
-        },
+        json=payload,
     )
     assert response.status_code == 422
 
@@ -124,20 +302,21 @@ async def test_login_with_wrong_password_returns_401(
 @pytest.mark.asyncio
 async def test_login_with_malformed_hash_returns_401(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
     test_user,
 ) -> None:
-    malformed_user = IamUser(
-        tenant_id=test_user.tenant_id,
-        email=f"bad-hash-{uuid.uuid4().hex[:8]}@example.com",
-        hashed_password="not-a-valid-bcrypt-hash",
-        full_name="Bad Hash User",
-        role=test_user.role,
-        is_active=True,
-        mfa_enabled=False,
-    )
-    async_session.add(malformed_user)
-    await async_session.flush()
+    async with auth_session_factory() as session:
+        malformed_user = IamUser(
+            tenant_id=test_user.tenant_id,
+            email=f"bad-hash-{uuid.uuid4().hex[:8]}@example.com",
+            hashed_password="not-a-valid-bcrypt-hash",
+            full_name="Bad Hash User",
+            role=test_user.role,
+            is_active=True,
+            mfa_enabled=False,
+        )
+        session.add(malformed_user)
+        await session.commit()
 
     response = await async_client.post(
         "/api/v1/auth/login",
@@ -150,21 +329,22 @@ async def test_login_with_malformed_hash_returns_401(
 @pytest.mark.asyncio
 async def test_login_is_case_insensitive_for_existing_user_rows(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    auth_session_factory,
     test_user,
 ) -> None:
     mixed_case_email = f"Invited.User.{uuid.uuid4().hex[:8]}@Example.COM"
-    invited_user = IamUser(
-        tenant_id=test_user.tenant_id,
-        email=mixed_case_email,
-        hashed_password=hash_password("InvitePass123!"),
-        full_name="Invited User",
-        role=test_user.role,
-        is_active=True,
-        mfa_enabled=False,
-    )
-    async_session.add(invited_user)
-    await async_session.flush()
+    async with auth_session_factory() as session:
+        invited_user = IamUser(
+            tenant_id=test_user.tenant_id,
+            email=mixed_case_email,
+            hashed_password=hash_password("InvitePass123!"),
+            full_name="Invited User",
+            role=test_user.role,
+            is_active=True,
+            mfa_enabled=False,
+        )
+        session.add(invited_user)
+        await session.commit()
 
     response = await async_client.post(
         "/api/v1/auth/login",
@@ -343,4 +523,3 @@ async def test_logout_sets_tenant_context_from_refresh_token(
         )
     assert logout_resp.status_code == 200
     assert set_ctx.await_count == 1
-

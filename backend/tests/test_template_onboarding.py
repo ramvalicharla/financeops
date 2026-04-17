@@ -175,19 +175,20 @@ async def test_get_state_creates_if_missing(
 @pytest.mark.asyncio
 async def test_get_state_returns_existing(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_access_token: str,
-    test_user,
+    api_session_factory,
+    api_test_access_token: str,
+    api_test_user,
 ) -> None:
     """GET state returns previously created state for tenant."""
-    await set_tenant_context(async_session, test_user.tenant_id)
-    state = await get_or_create_onboarding_state(async_session, test_user.tenant_id)
-    state.current_step = 4
-    await async_session.flush()
+    async with api_session_factory() as db:
+        await set_tenant_context(db, api_test_user.tenant_id)
+        state = await get_or_create_onboarding_state(db, api_test_user.tenant_id)
+        state.current_step = 4
+        await db.commit()
 
     response = await async_client.get(
         "/api/v1/onboarding/state",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
     )
     assert response.status_code == 200
     assert response.json()["data"]["current_step"] == 4
@@ -252,14 +253,14 @@ async def test_get_template_detail_404(async_client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_apply_endpoint(
     async_client: AsyncClient,
-    async_session: AsyncSession,
-    test_access_token: str,
-    test_user,
+    api_session_factory,
+    api_test_access_token: str,
+    api_test_user,
 ) -> None:
     """Apply endpoint creates linked resources and returns their IDs."""
     response = await async_client.post(
         "/api/v1/onboarding/apply",
-        headers={"Authorization": f"Bearer {test_access_token}"},
+        headers={"Authorization": f"Bearer {api_test_access_token}"},
         json={"template_id": "saas"},
     )
     assert response.status_code == 200
@@ -268,24 +269,25 @@ async def test_apply_endpoint(
     assert payload["report_definition_ids"]
     assert uuid.UUID(payload["delivery_schedule_id"])
 
-    await set_tenant_context(async_session, test_user.tenant_id)
-    board_row = (
-        await async_session.execute(
-            select(BoardPackGeneratorDefinition).where(
-                BoardPackGeneratorDefinition.id == uuid.UUID(payload["board_pack_definition_id"])
+    async with api_session_factory() as db:
+        await set_tenant_context(db, api_test_user.tenant_id)
+        board_row = (
+            await db.execute(
+                select(BoardPackGeneratorDefinition).where(
+                    BoardPackGeneratorDefinition.id == uuid.UUID(payload["board_pack_definition_id"])
+                )
             )
-        )
-    ).scalar_one_or_none()
-    report_row = (
-        await async_session.execute(
-            select(ReportDefinition).where(ReportDefinition.id == uuid.UUID(payload["report_definition_ids"][0]))
-        )
-    ).scalar_one_or_none()
-    schedule_row = (
-        await async_session.execute(
-            select(DeliverySchedule).where(DeliverySchedule.id == uuid.UUID(payload["delivery_schedule_id"]))
-        )
-    ).scalar_one_or_none()
+        ).scalar_one_or_none()
+        report_row = (
+            await db.execute(
+                select(ReportDefinition).where(ReportDefinition.id == uuid.UUID(payload["report_definition_ids"][0]))
+            )
+        ).scalar_one_or_none()
+        schedule_row = (
+            await db.execute(
+                select(DeliverySchedule).where(DeliverySchedule.id == uuid.UUID(payload["delivery_schedule_id"]))
+            )
+        ).scalar_one_or_none()
     assert board_row is not None
     assert report_row is not None
     assert schedule_row is not None

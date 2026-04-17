@@ -118,6 +118,7 @@ __all__ = [
     "VendorPortalSubmission",
     "AccountingNotificationEvent",
     "ApprovalReminderRun",
+    "ApprovalSLABreachRun",
     "AccountingAPAgeingSnapshot",
     "AccountingAuditExportRun",
     "FxRate",
@@ -142,6 +143,8 @@ __all__ = [
     "Budget",
     "AnalyticsAlert",
     "AiCfoAnomaly",
+    "AiCfoLedger",
+    "AiCfoNarrativeBlock",
     "AiCfoRecommendation",
     "ErpConnector",
     "ErpSyncJob",
@@ -312,6 +315,10 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
         "financeops.db.models.accounting_notifications",
         "ApprovalReminderRun",
     ),
+    "ApprovalSLABreachRun": (
+        "financeops.db.models.accounting_notifications",
+        "ApprovalSLABreachRun",
+    ),
     "AccountingAPAgeingSnapshot": (
         "financeops.db.models.accounting_notifications",
         "AccountingAPAgeingSnapshot",
@@ -398,6 +405,14 @@ _MODEL_IMPORTS: dict[str, tuple[str, str]] = {
     "AiCfoAnomaly": (
         "financeops.db.models.ai_cfo_layer",
         "AiCfoAnomaly",
+    ),
+    "AiCfoLedger": (
+        "financeops.db.models.ai_cfo_layer",
+        "AiCfoLedger",
+    ),
+    "AiCfoNarrativeBlock": (
+        "financeops.db.models.ai_cfo_layer",
+        "AiCfoNarrativeBlock",
     ),
     "AiCfoRecommendation": (
         "financeops.db.models.ai_cfo_layer",

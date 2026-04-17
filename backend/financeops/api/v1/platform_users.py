@@ -1,11 +1,8 @@
 ﻿from __future__ import annotations
 
-import asyncio
 import logging
 import secrets
-import smtplib
 import uuid
-from email.message import EmailMessage
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr
@@ -16,6 +13,7 @@ from financeops.api.deps import get_async_session, get_current_user
 from financeops.config import get_real_ip, settings
 from financeops.core.security import hash_password
 from financeops.db.models.users import IamUser, UserRole
+from financeops.modules.notifications.service import send_notification
 from financeops.services.audit_service import log_action
 from financeops.services.platform_identity import (
     PLATFORM_TENANT_ID,
@@ -62,46 +60,6 @@ class CreatePlatformUserRequest(BaseModel):
 
 class UpdatePlatformRoleRequest(BaseModel):
     role: UserRole
-
-
-def _smtp_configured() -> bool:
-    host = str(settings.SMTP_HOST or "").strip()
-    user = str(settings.SMTP_USER or "").strip()
-    password = str(settings.SMTP_PASSWORD or "").strip()
-    if not settings.SMTP_REQUIRED:
-        return False
-    if not host or host.lower() == "localhost":
-        return False
-    return bool(user and password)
-
-
-def _send_invite_email_sync(email: str, full_name: str, temp_password: str) -> None:
-    message = EmailMessage()
-    message["From"] = settings.SMTP_USER or "no-reply@financeops.local"
-    message["To"] = email
-    message["Subject"] = "FinanceOps Platform Access"
-    message.set_content(
-        "\n".join(
-            [
-                f"Hi {full_name},",
-                "",
-                "Your platform account has been created.",
-                f"Temporary password: {temp_password}",
-                "You must set up MFA on first login.",
-            ]
-        )
-    )
-    with smtplib.SMTP(
-        host=settings.SMTP_HOST,
-        port=int(settings.SMTP_PORT),
-        timeout=30,
-    ) as smtp:
-        smtp.ehlo()
-        smtp.starttls()
-        smtp.ehlo()
-        smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-        smtp.send_message(message)
-
 
 def _serialize_user(row: IamUser) -> dict[str, str | bool]:
     return {
@@ -159,6 +117,12 @@ async def create_platform_user(
     _: IamUser = Depends(platform_user_create_guard),
 ) -> dict:
     require_platform_owner(current_user)
+    if body.role in {UserRole.platform_owner, UserRole.platform_admin}:
+        if current_user.role != UserRole.platform_owner:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only platform_owner can assign this role",
+            )
     normalized_email = normalize_email(body.email)
     if _role_value(body.role) not in {
         UserRole.platform_admin.value,
@@ -190,20 +154,25 @@ async def create_platform_user(
 
     response = _serialize_user(user)
     if body.send_invite:
-        if _smtp_configured():
-            try:
-                await asyncio.to_thread(
-                    _send_invite_email_sync,
-                    user.email,
-                    user.full_name,
-                    temp_password,
-                )
-            except Exception:
-                log.warning("platform invite email failed for %s", user.email, exc_info=True)
-                response["temp_password"] = temp_password
-        else:
-            log.warning("SMTP not configured; returning temporary password for platform user invite")
-            response["temp_password"] = temp_password
+        frontend_base = str(getattr(settings, "FRONTEND_URL", "http://localhost:3000")).rstrip("/")
+        await send_notification(
+            session,
+            tenant_id=PLATFORM_TENANT_ID,
+            recipient_user_id=user.id,
+            notification_type="platform_user_invited",
+            title="FinanceOps Platform Access",
+            body=(
+                "Your platform account has been created. "
+                f"Temporary password: {temp_password}. "
+                "You must set up MFA on first login."
+            ),
+            action_url=f"{frontend_base}/login",
+            metadata={
+                "recipient_name": user.full_name,
+                "temp_password": temp_password,
+                "unsubscribe_url": f"{frontend_base}/settings/privacy",
+            },
+        )
     await log_action(
         session,
         tenant_id=current_user.tenant_id,

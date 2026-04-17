@@ -8,6 +8,7 @@ from sentry_sdk.integrations.fastapi import FastApiIntegration
 from sentry_sdk.integrations.redis import RedisIntegration
 from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
 
+_SENTRY_CONFIGURED = False
 _SENSITIVE_FIELD_NAMES = {
     "password",
     "token",
@@ -46,8 +47,11 @@ def _scrub_sensitive_data(event: dict[str, Any], hint: dict[str, Any]) -> dict[s
 
 
 def configure_sentry(dsn: str, environment: str, release: str) -> None:
+    global _SENTRY_CONFIGURED
     if not dsn:
         return  # Sentry disabled if no DSN configured.
+    if _SENTRY_CONFIGURED:
+        return
 
     sentry_sdk.init(
         dsn=dsn,
@@ -64,4 +68,4 @@ def configure_sentry(dsn: str, environment: str, release: str) -> None:
         send_default_pii=False,
         before_send=_scrub_sensitive_data,
     )
-
+    _SENTRY_CONFIGURED = True

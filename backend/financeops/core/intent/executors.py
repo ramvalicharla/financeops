@@ -450,17 +450,24 @@ class RunBankReconciliationExecutor(BaseIntentExecutor):
 
         payload = dict(intent.payload_json or {})
         statement_id = _uuid_value(payload, "statement_id")
-        items = await run_bank_reconciliation(
+        result = await run_bank_reconciliation(
             db,
             tenant_id=intent.tenant_id,
             statement_id=statement_id,
             run_by=intent.requested_by_user_id,
+            force_rerun=bool(payload.get("force_rerun", False)),
         )
         return ExecutorResult(
             record_refs={
                 "statement_id": str(statement_id),
-                "item_ids": [str(item.id) for item in items],
-                "open_items_created": len(items),
+                "item_ids": [str(item.id) for item in result.items],
+                "open_items_created": len(result.items),
+                "matched": result.summary.matched,
+                "near_match": result.summary.near_match,
+                "fuzzy": result.summary.fuzzy,
+                "bank_only": result.summary.bank_only,
+                "gl_only": result.summary.gl_only,
+                "net_difference": str(result.summary.net_difference),
             }
         )
 
@@ -1761,6 +1768,25 @@ class UpsertBudgetLineExecutor(BaseIntentExecutor):
         )
 
 
+class SubmitBudgetVersionExecutor(BaseIntentExecutor):
+    async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
+        from financeops.modules.budgeting.service import submit_budget
+
+        payload = dict(intent.payload_json or {})
+        row = await submit_budget(
+            db,
+            tenant_id=intent.tenant_id,
+            budget_version_id=_uuid_value(payload, "budget_version_id"),
+            submitted_by=intent.requested_by_user_id,
+        )
+        return ExecutorResult(
+            record_refs={
+                "version_id": str(row.id),
+                "status": row.status,
+            }
+        )
+
+
 class ApproveBudgetVersionExecutor(BaseIntentExecutor):
     async def execute(self, db: AsyncSession, *, intent: CanonicalIntent) -> ExecutorResult:
         from financeops.modules.budgeting.service import approve_budget
@@ -1771,6 +1797,7 @@ class ApproveBudgetVersionExecutor(BaseIntentExecutor):
             tenant_id=intent.tenant_id,
             budget_version_id=_uuid_value(payload, "budget_version_id"),
             approved_by=intent.requested_by_user_id,
+            approval_level=str(payload.get("approval_level") or "board"),
         )
         return ExecutorResult(
             record_refs={
@@ -2639,6 +2666,7 @@ class MutationExecutorRegistry:
             IntentType.CREATE_WORKING_CAPITAL_SNAPSHOT.value: CreateWorkingCapitalSnapshotExecutor(),
             IntentType.CREATE_BUDGET_VERSION.value: CreateBudgetVersionExecutor(),
             IntentType.UPSERT_BUDGET_LINE.value: UpsertBudgetLineExecutor(),
+            IntentType.SUBMIT_BUDGET_VERSION.value: SubmitBudgetVersionExecutor(),
             IntentType.APPROVE_BUDGET_VERSION.value: ApproveBudgetVersionExecutor(),
             IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT.value: ComputeWorkingCapitalSnapshotExecutor(),
             IntentType.CREATE_CHECKLIST_TEMPLATE.value: CreateChecklistTemplateExecutor(),

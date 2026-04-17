@@ -78,10 +78,10 @@ async def test_t_214_trigger_schedule_returns_202_and_enqueues_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     schedule = await _create_schedule(async_client, test_access_token, uuid.uuid4())
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, str]] = []
 
-    def _fake_delay(schedule_id: str, tenant_id: str) -> None:
-        calls.append((schedule_id, tenant_id))
+    def _fake_delay(schedule_id: str, tenant_id: str, idempotency_key: str) -> None:
+        calls.append((schedule_id, tenant_id, idempotency_key))
 
     monkeypatch.setattr(
         "financeops.modules.scheduled_delivery.api.routes.deliver_schedule_task.delay",
@@ -94,7 +94,10 @@ async def test_t_214_trigger_schedule_returns_202_and_enqueues_task(
     )
     assert response.status_code == 202
     assert response.json()["data"] == {"schedule_id": schedule["id"], "status": "triggered"}
-    assert calls == [(schedule["id"], str(test_user.tenant_id))]
+    assert len(calls) == 1
+    assert calls[0][0] == schedule["id"]
+    assert calls[0][1] == str(test_user.tenant_id)
+    assert calls[0][2].startswith(f"manual-trigger:{schedule['id']}:")
 
 
 @pytest.mark.integration

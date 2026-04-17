@@ -25,10 +25,12 @@ from financeops.modules.budgeting.service import (
     get_budget_vs_actual,
     upsert_budget_line,
 )
+from financeops.platform.services.rbac.permission_engine import require_permission
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(prefix="/budget", tags=["budgeting"])
+budget_approve_guard = require_permission("budget.approve")
 
 
 async def _submit_intent(
@@ -64,6 +66,10 @@ class AddLineRequest(BaseModel):
     monthly_values: list[str]
     basis: str | None = None
     entity_id: uuid.UUID | None = None
+
+
+class ApproveBudgetRequest(BaseModel):
+    approval_level: str = "board"
 
 
 def _to_decimal(value: str, field: str) -> Decimal:
@@ -281,6 +287,43 @@ async def add_line(
 async def approve(
     request: Request,
     version_id: uuid.UUID,
+    body: ApproveBudgetRequest | None = None,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(budget_approve_guard),
+) -> dict:
+    try:
+        result = await _submit_intent(
+            request,
+            session,
+            user=user,
+            intent_type=IntentType.APPROVE_BUDGET_VERSION,
+            payload={
+                "budget_version_id": str(version_id),
+                "approval_level": str((body.approval_level if body else "board") or "board"),
+            },
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=exc.message) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
+    version = (
+        await session.execute(
+            select(BudgetVersion).where(
+                BudgetVersion.id == uuid.UUID(str((result.record_refs or {})["version_id"])),
+                BudgetVersion.tenant_id == user.tenant_id,
+            )
+        )
+    ).scalar_one()
+    payload = _serialize_version(version)
+    payload["intent_id"] = str(result.intent_id)
+    payload["job_id"] = str(result.job_id) if result.job_id else None
+    return payload
+
+
+@router.post("/versions/{version_id}/submit")
+async def submit_version(
+    request: Request,
+    version_id: uuid.UUID,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_leader),
 ) -> dict:
@@ -289,11 +332,13 @@ async def approve(
             request,
             session,
             user=user,
-            intent_type=IntentType.APPROVE_BUDGET_VERSION,
+            intent_type=IntentType.SUBMIT_BUDGET_VERSION,
             payload={"budget_version_id": str(version_id)},
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=exc.message) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.message) from exc
     version = (
         await session.execute(
             select(BudgetVersion).where(

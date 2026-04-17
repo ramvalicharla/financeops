@@ -227,124 +227,150 @@ async def test_enable_white_label_requires_platform_admin(async_client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_enable_creates_audit_log_entry(async_session: AsyncSession, test_user: IamUser) -> None:
-    await get_or_create_config(async_session, test_user.tenant_id)
-    await enable_white_label(async_session, test_user.tenant_id, test_user.id)
-    logs = (
-        await async_session.execute(
-            select(WhiteLabelAuditLog).where(
-                WhiteLabelAuditLog.tenant_id == test_user.tenant_id,
-                WhiteLabelAuditLog.field_changed == "is_enabled",
+async def test_enable_creates_audit_log_entry(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as db:
+        await get_or_create_config(db, test_user.tenant_id)
+        await enable_white_label(db, test_user.tenant_id, test_user.id)
+        await db.commit()
+
+    async with api_session_factory() as db:
+        logs = (
+            await db.execute(
+                select(WhiteLabelAuditLog).where(
+                    WhiteLabelAuditLog.tenant_id == test_user.tenant_id,
+                    WhiteLabelAuditLog.field_changed == "is_enabled",
+                )
             )
-        )
-    ).scalars().all()
+        ).scalars().all()
     assert logs
 
 
 @pytest.mark.asyncio
-async def test_disabled_config_not_returned_by_domain_lookup(async_session: AsyncSession, test_user: IamUser) -> None:
-    config = await get_or_create_config(async_session, test_user.tenant_id)
-    config.custom_domain = "disabled.com"
-    config.domain_verified = True
-    config.is_enabled = False
-    await async_session.flush()
-    resolved = await get_branding_for_domain(async_session, "disabled.com")
+async def test_disabled_config_not_returned_by_domain_lookup(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as db:
+        config = await get_or_create_config(db, test_user.tenant_id)
+        config.custom_domain = "disabled.com"
+        config.domain_verified = True
+        config.is_enabled = False
+        await db.commit()
+
+    async with api_session_factory() as db:
+        resolved = await get_branding_for_domain(db, "disabled.com")
     assert resolved is None
 
 
 # Audit log (4)
 @pytest.mark.asyncio
-async def test_audit_log_captures_all_field_changes(async_session: AsyncSession, test_user: IamUser) -> None:
-    await get_or_create_config(async_session, test_user.tenant_id)
-    await update_branding(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        updated_by=test_user.id,
-        updates={
-            "brand_name": "Brand A",
-            "primary_colour": "#123456",
-            "secondary_colour": "#654321",
-        },
-    )
-    logs = (
-        await async_session.execute(
-            select(WhiteLabelAuditLog).where(WhiteLabelAuditLog.tenant_id == test_user.tenant_id)
+async def test_audit_log_captures_all_field_changes(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as db:
+        await get_or_create_config(db, test_user.tenant_id)
+        await update_branding(
+            db,
+            tenant_id=test_user.tenant_id,
+            updated_by=test_user.id,
+            updates={
+                "brand_name": "Brand A",
+                "primary_colour": "#123456",
+                "secondary_colour": "#654321",
+            },
         )
-    ).scalars().all()
+        await db.commit()
+
+    async with api_session_factory() as db:
+        logs = (
+            await db.execute(
+                select(WhiteLabelAuditLog).where(WhiteLabelAuditLog.tenant_id == test_user.tenant_id)
+            )
+        ).scalars().all()
     assert len(logs) >= 3
 
 
 @pytest.mark.asyncio
-async def test_audit_log_stores_old_and_new_values(async_session: AsyncSession, test_user: IamUser) -> None:
-    config = await get_or_create_config(async_session, test_user.tenant_id)
-    config.brand_name = "Old Brand"
-    await async_session.flush()
-    await update_branding(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        updated_by=test_user.id,
-        updates={"brand_name": "New Brand"},
-    )
-    log = (
-        await async_session.execute(
-            select(WhiteLabelAuditLog)
-            .where(
-                WhiteLabelAuditLog.tenant_id == test_user.tenant_id,
-                WhiteLabelAuditLog.field_changed == "brand_name",
-            )
-            .order_by(WhiteLabelAuditLog.created_at.desc())
-            .limit(1)
+async def test_audit_log_stores_old_and_new_values(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as db:
+        config = await get_or_create_config(db, test_user.tenant_id)
+        config.brand_name = "Old Brand"
+        await db.flush()
+        await update_branding(
+            db,
+            tenant_id=test_user.tenant_id,
+            updated_by=test_user.id,
+            updates={"brand_name": "New Brand"},
         )
-    ).scalar_one()
+        await db.commit()
+
+    async with api_session_factory() as db:
+        log = (
+            await db.execute(
+                select(WhiteLabelAuditLog)
+                .where(
+                    WhiteLabelAuditLog.tenant_id == test_user.tenant_id,
+                    WhiteLabelAuditLog.field_changed == "brand_name",
+                )
+                .order_by(WhiteLabelAuditLog.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one()
     assert log.old_value == "Old Brand"
     assert log.new_value == "New Brand"
 
 
 @pytest.mark.asyncio
-async def test_audit_log_rls(async_session: AsyncSession, test_user: IamUser) -> None:
+async def test_audit_log_rls(api_session_factory, test_user: IamUser) -> None:
     tenant_b = uuid.uuid4()
-    await _create_tenant(async_session, tenant_b, "Tenant B")
-    log_a = WhiteLabelAuditLog(
-        tenant_id=test_user.tenant_id,
-        changed_by=test_user.id,
-        field_changed="brand_name",
-        old_value="a",
-        new_value="b",
-    )
-    log_b = WhiteLabelAuditLog(
-        tenant_id=tenant_b,
-        changed_by=test_user.id,
-        field_changed="brand_name",
-        old_value="x",
-        new_value="y",
-    )
-    async_session.add(log_a)
-    async_session.add(log_b)
-    await async_session.flush()
-    rows = (
-        await async_session.execute(
-            select(WhiteLabelAuditLog).where(WhiteLabelAuditLog.tenant_id == test_user.tenant_id)
+    async with api_session_factory() as db:
+        await _create_tenant(db, tenant_b, "Tenant B")
+        log_a = WhiteLabelAuditLog(
+            tenant_id=test_user.tenant_id,
+            changed_by=test_user.id,
+            field_changed="brand_name",
+            old_value="a",
+            new_value="b",
         )
-    ).scalars().all()
+        log_b = WhiteLabelAuditLog(
+            tenant_id=tenant_b,
+            changed_by=test_user.id,
+            field_changed="brand_name",
+            old_value="x",
+            new_value="y",
+        )
+        db.add(log_a)
+        db.add(log_b)
+        await db.commit()
+        log_a_id = log_a.id
+        log_b_id = log_b.id
+
+    async with api_session_factory() as db:
+        rows = (
+            await db.execute(
+                select(WhiteLabelAuditLog).where(WhiteLabelAuditLog.tenant_id == test_user.tenant_id)
+            )
+        ).scalars().all()
     ids = {row.id for row in rows}
-    assert log_a.id in ids
-    assert log_b.id not in ids
+    assert log_a_id in ids
+    assert log_b_id not in ids
 
 
 @pytest.mark.asyncio
-async def test_config_rls_isolation(async_session: AsyncSession, test_user: IamUser) -> None:
-    config_a = await get_or_create_config(async_session, test_user.tenant_id)
+async def test_config_rls_isolation(api_session_factory, test_user: IamUser) -> None:
     tenant_b = uuid.uuid4()
-    await _create_tenant(async_session, tenant_b, "Tenant B")
-    config_b = await get_or_create_config(async_session, tenant_b)
-    rows = (
-        await async_session.execute(
-            select(WhiteLabelConfig).where(WhiteLabelConfig.tenant_id == test_user.tenant_id)
-        )
-    ).scalars().all()
+    async with api_session_factory() as db:
+        config_a = await get_or_create_config(db, test_user.tenant_id)
+        await _create_tenant(db, tenant_b, "Tenant B")
+        config_b = await get_or_create_config(db, tenant_b)
+        await db.commit()
+        config_a_id = config_a.id
+        config_b_id = config_b.id
+
+    async with api_session_factory() as db:
+        rows = (
+            await db.execute(
+                select(WhiteLabelConfig).where(WhiteLabelConfig.tenant_id == test_user.tenant_id)
+            )
+        ).scalars().all()
     ids = {row.id for row in rows}
-    assert config_a.id in ids
-    assert config_b.id not in ids
+    assert config_a_id in ids
+    assert config_b_id not in ids
 
 
 # API (3)
@@ -386,4 +412,3 @@ async def test_admin_list_requires_platform_admin(
 async def test_domain_resolve_endpoint_public(async_client: AsyncClient) -> None:
     response = await async_client.get("/api/v1/white-label/resolve/non-existent-domain.com")
     assert response.status_code in {404, 422}
-

@@ -4,13 +4,17 @@ import uuid
 from datetime import UTC, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
-from sqlalchemy import desc, func, select, update
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.core.intent.context import apply_mutation_linkage, require_mutation_context
 from financeops.db.models.mis_manager import MisUpload
-from financeops.modules.budgeting.models import BudgetLineItem, BudgetVersion
+from financeops.modules.budgeting.models import (
+    BudgetLineItem,
+    BudgetVersion,
+    BudgetVersionStatusEvent,
+)
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 
 MONTH_COLUMNS = (
@@ -27,6 +31,8 @@ MONTH_COLUMNS = (
     "month_11",
     "month_12",
 )
+
+APPROVED_BUDGET_STATUSES = ("cfo_approved", "board_approved")
 
 
 def _q2(value: Decimal) -> Decimal:
@@ -186,6 +192,29 @@ async def create_budget_version(
     return version
 
 
+async def _append_status_event(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    budget_version_id: uuid.UUID,
+    from_status: str | None,
+    to_status: str,
+    acted_by: uuid.UUID | None,
+    notes: str | None = None,
+) -> BudgetVersionStatusEvent:
+    event = BudgetVersionStatusEvent(
+        tenant_id=tenant_id,
+        budget_version_id=budget_version_id,
+        from_status=from_status,
+        to_status=to_status,
+        acted_by=acted_by,
+        notes=notes,
+    )
+    session.add(event)
+    await session.flush()
+    return event
+
+
 async def upsert_budget_line(
     session: AsyncSession,
     tenant_id: uuid.UUID,
@@ -258,9 +287,10 @@ async def approve_budget(
     tenant_id: uuid.UUID,
     budget_version_id: uuid.UUID,
     approved_by: uuid.UUID,
+    approval_level: str = "board",
 ) -> BudgetVersion:
     """
-    Mark budget as board-approved and supersede prior approved version.
+    Mark budget as approved and supersede prior approved version.
     """
     require_mutation_context("Budget approval")
     target = await _load_budget_version(
@@ -269,24 +299,93 @@ async def approve_budget(
         budget_version_id=budget_version_id,
     )
     now = datetime.now(UTC)
+    normalized_level = str(approval_level or "board").strip().lower()
+    if normalized_level not in {"cfo", "board"}:
+        raise ValidationError("approval_level must be 'cfo' or 'board'")
 
-    await session.execute(
-        update(BudgetVersion)
-        .where(
-            BudgetVersion.tenant_id == tenant_id,
-            BudgetVersion.fiscal_year == target.fiscal_year,
-            BudgetVersion.id != target.id,
-            BudgetVersion.status == "approved",
+    if normalized_level == "cfo":
+        if target.status != "submitted":
+            raise ValidationError("Only submitted budget versions can be CFO approved")
+        next_status = "cfo_approved"
+        target.is_board_approved = False
+    else:
+        if target.status not in {"submitted", "cfo_approved"}:
+            raise ValidationError("Only submitted or CFO-approved budget versions can be board approved")
+        next_status = "board_approved"
+        target.is_board_approved = True
+        target.board_approved_by = approved_by
+        target.board_approved_at = now
+
+    prior_rows = (
+        await session.execute(
+            select(BudgetVersion).where(
+                BudgetVersion.tenant_id == tenant_id,
+                BudgetVersion.fiscal_year == target.fiscal_year,
+                BudgetVersion.id != target.id,
+                BudgetVersion.status.in_(APPROVED_BUDGET_STATUSES),
+            )
         )
-        .values(status="superseded", updated_at=now)
-    )
+    ).scalars().all()
+    for row in prior_rows:
+        previous_status = row.status
+        row.status = "superseded"
+        row.updated_at = now
+        row.is_board_approved = False
+        apply_mutation_linkage(row)
+        await _append_status_event(
+            session,
+            tenant_id=tenant_id,
+            budget_version_id=row.id,
+            from_status=previous_status,
+            to_status="superseded",
+            acted_by=approved_by,
+            notes=f"Superseded by budget version {target.id}",
+        )
 
-    target.status = "approved"
-    target.is_board_approved = True
-    target.board_approved_by = approved_by
-    target.board_approved_at = now
+    previous_status = target.status
+    target.status = next_status
     target.updated_at = now
     apply_mutation_linkage(target)
+    await _append_status_event(
+        session,
+        tenant_id=tenant_id,
+        budget_version_id=target.id,
+        from_status=previous_status,
+        to_status=next_status,
+        acted_by=approved_by,
+        notes=f"{normalized_level.upper()} approval",
+    )
+    await session.flush()
+    return target
+
+
+async def submit_budget(
+    session: AsyncSession,
+    tenant_id: uuid.UUID,
+    budget_version_id: uuid.UUID,
+    submitted_by: uuid.UUID,
+) -> BudgetVersion:
+    require_mutation_context("Budget submission")
+    target = await _load_budget_version(
+        session,
+        tenant_id=tenant_id,
+        budget_version_id=budget_version_id,
+    )
+    if target.status != "draft":
+        raise ValidationError("Only draft budget versions can be submitted")
+
+    previous_status = target.status
+    target.status = "submitted"
+    target.updated_at = datetime.now(UTC)
+    apply_mutation_linkage(target)
+    await _append_status_event(
+        session,
+        tenant_id=tenant_id,
+        budget_version_id=target.id,
+        from_status=previous_status,
+        to_status="submitted",
+        acted_by=submitted_by,
+    )
     await session.flush()
     return target
 
@@ -324,12 +423,12 @@ async def get_budget_vs_actual(
             await session.execute(
                 select(BudgetVersion)
                 .where(
-                    BudgetVersion.tenant_id == tenant_id,
-                    BudgetVersion.fiscal_year == fiscal_year,
-                    BudgetVersion.status == "approved",
-                )
-                .order_by(desc(BudgetVersion.version_number))
-                .limit(1)
+                BudgetVersion.tenant_id == tenant_id,
+                BudgetVersion.fiscal_year == fiscal_year,
+                BudgetVersion.status.in_(APPROVED_BUDGET_STATUSES),
+            )
+            .order_by(desc(BudgetVersion.version_number))
+            .limit(1)
             )
         ).scalar_one_or_none()
         if version is None:

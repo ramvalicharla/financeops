@@ -15,7 +15,7 @@ class BudgetVersion(Base):
     __tablename__ = "budget_versions"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('draft','submitted','approved','superseded')",
+            "status IN ('draft','submitted','cfo_approved','board_approved','superseded')",
             name="ck_budget_versions_status",
         ),
         UniqueConstraint(
@@ -134,4 +134,40 @@ class BudgetLineItem(Base):
     )
 
 
-__all__ = ["BudgetVersion", "BudgetLineItem"]
+class BudgetVersionStatusEvent(Base):
+    __tablename__ = "budget_version_status_events"
+    __table_args__ = (
+        Index("idx_budget_status_events_version", "tenant_id", "budget_version_id", "created_at"),
+        Index("idx_budget_status_events_status", "tenant_id", "to_status", "created_at"),
+        {"extend_existing": True},
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        nullable=False,
+        server_default=text("gen_random_uuid()"),
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    budget_version_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("budget_versions.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    to_status: Mapped[str] = mapped_column(String(20), nullable=False)
+    acted_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+__all__ = ["BudgetVersion", "BudgetLineItem", "BudgetVersionStatusEvent"]

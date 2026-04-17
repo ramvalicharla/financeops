@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +39,6 @@ class PasswordResetToken(UUIDBase):
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    reset_attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-

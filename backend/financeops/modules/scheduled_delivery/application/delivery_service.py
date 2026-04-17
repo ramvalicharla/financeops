@@ -11,6 +11,7 @@ from hashlib import sha256
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
+from croniter import croniter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.config import settings
@@ -22,6 +23,8 @@ from financeops.modules.scheduled_delivery.domain.enums import (
     DeliveryStatus,
     ScheduleType,
 )
+from financeops.modules.scheduled_delivery.domain.exceptions import DeliveryConfigError
+from financeops.modules.scheduled_delivery.domain.exceptions import InvalidCronExpressionError
 from financeops.modules.scheduled_delivery.infrastructure.repository import (
     DeliveryRepository,
 )
@@ -38,8 +41,42 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
-class DeliveryConfigurationError(ValueError):
-    pass
+DeliveryConfigurationError = DeliveryConfigError
+
+
+def normalize_delivery_idempotency_key(idempotency_key: str | None) -> str | None:
+    if idempotency_key is None:
+        return None
+    key = idempotency_key.strip()
+    if not key:
+        return None
+    if len(key) <= 64:
+        return key
+    return sha256(key.encode("utf-8")).hexdigest()
+
+
+def validate_cron_expression(expression: str) -> str:
+    if not croniter.is_valid(expression):
+        raise InvalidCronExpressionError(expression)
+    return expression
+
+
+def compute_next_run_at(
+    *,
+    cron_expression: str,
+    timezone: str,
+    from_time: datetime,
+) -> datetime:
+    validate_cron_expression(cron_expression)
+    try:
+        tz = ZoneInfo(timezone or "UTC")
+    except Exception:
+        tz = ZoneInfo("UTC")
+    current = from_time.astimezone(tz).replace(second=0, microsecond=0)
+    next_run = croniter(cron_expression, current).get_next(datetime)
+    if next_run.tzinfo is None:
+        next_run = next_run.replace(tzinfo=tz)
+    return next_run.astimezone(UTC)
 
 
 def _assert_smtp_configured() -> None:
@@ -87,6 +124,7 @@ class DeliveryService:
         db: AsyncSession,
         schedule_id: uuid.UUID,
         tenant_id: uuid.UUID,
+        idempotency_key: str | None = None,
     ) -> list[DeliveryLog]:
         """
         1. Load schedule from DB
@@ -110,6 +148,7 @@ class DeliveryService:
             raise DeliveryConfigurationError("Delivery schedule not found")
         if not schedule.is_active:
             raise DeliveryConfigurationError("Delivery schedule is inactive")
+        normalized_idempotency_key = normalize_delivery_idempotency_key(idempotency_key)
 
         source_run = await self._trigger_source_run(
             db=db,
@@ -139,6 +178,7 @@ class DeliveryService:
                 recipient_address=recipient_address,
                 source_run_id=source_run.source_run_id,
                 status=DeliveryStatus.PENDING.value,
+                idempotency_key=normalized_idempotency_key,
                 response_metadata={
                     "schedule_type": source_run.source_type.value,
                     "schedule_name": schedule.name,
@@ -155,9 +195,15 @@ class DeliveryService:
                         filename=self._build_attachment_filename(schedule, source_run),
                     )
                 else:
+                    webhook_payload = self._build_webhook_payload(schedule, source_run, pending_log)
+                    webhook_signature = None
                     await self._dispatch_webhook(
                         url=recipient_address,
-                        payload=self._build_webhook_payload(schedule, source_run, pending_log),
+                        payload=webhook_payload,
+                        secret=self._webhook_secret(schedule),
+                    )
+                    webhook_signature = self._sign_webhook_payload(
+                        payload=webhook_payload,
                         secret=self._webhook_secret(schedule),
                     )
 
@@ -171,9 +217,15 @@ class DeliveryService:
                     status=DeliveryStatus.DELIVERED.value,
                     completed_at=datetime.now(UTC),
                     retry_count=pending_log.retry_count,
+                    idempotency_key=normalized_idempotency_key,
                     response_metadata={
                         "previous_log_id": str(pending_log.id),
                         "delivery": "ok",
+                        **(
+                            {"signature": webhook_signature}
+                            if channel_type == ChannelType.WEBHOOK and webhook_signature
+                            else {}
+                        ),
                     },
                 )
                 final_logs.append(delivered_log)
@@ -189,9 +241,21 @@ class DeliveryService:
                     completed_at=datetime.now(UTC),
                     error_message=str(exc)[:2000],
                     retry_count=pending_log.retry_count + 1,
+                    idempotency_key=normalized_idempotency_key,
                     response_metadata={
                         "previous_log_id": str(pending_log.id),
                         "delivery": "failed",
+                        **(
+                            {
+                                "signature": self._signature_for_failed_webhook(
+                                    schedule=schedule,
+                                    source_run=source_run,
+                                    pending_log=pending_log,
+                                )
+                            }
+                            if channel_type == ChannelType.WEBHOOK
+                            else {}
+                        ),
                     },
                 )
                 final_logs.append(failed_log)
@@ -331,7 +395,7 @@ class DeliveryService:
         url: str,
         payload: dict,
         secret: str | None = None,
-    ) -> None:
+    ) -> str:
         """
         POST payload as JSON to url.
         If secret provided: add X-Signature-256 header
@@ -341,9 +405,8 @@ class DeliveryService:
         """
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
         headers = {"Content-Type": "application/json"}
-        if secret:
-            digest = hmac.new(secret.encode("utf-8"), body, sha256).hexdigest()
-            headers["X-Signature-256"] = f"sha256={digest}"
+        signature = self._sign_webhook_payload(payload=payload, secret=secret)
+        headers["X-Finqor-Signature"] = signature
 
         response = await post_bytes(
             url=url,
@@ -352,6 +415,7 @@ class DeliveryService:
             timeout=30.0,
         )
         response.raise_for_status()
+        return signature
 
     def _current_month_period(self) -> tuple[date, date]:
         now = datetime.now(UTC).date()
@@ -370,27 +434,11 @@ class DeliveryService:
         timezone: str,
         from_time: datetime,
     ) -> datetime:
-        fields = cron_expression.split()
-        if len(fields) != 5:
-            return from_time + timedelta(minutes=1)
-
-        minute_field, hour_field, day_field, month_field, weekday_field = fields
-        try:
-            tz = ZoneInfo(timezone or "UTC")
-        except Exception:
-            tz = ZoneInfo("UTC")
-        current = from_time.astimezone(tz).replace(second=0, microsecond=0) + timedelta(minutes=1)
-        for _ in range(0, 60 * 24 * 370):
-            if (
-                self._cron_match(minute_field, current.minute)
-                and self._cron_match(hour_field, current.hour)
-                and self._cron_match(day_field, current.day)
-                and self._cron_match(month_field, current.month)
-                and self._cron_match(weekday_field, (current.weekday() + 1) % 7)
-            ):
-                return current.astimezone(UTC)
-            current += timedelta(minutes=1)
-        return from_time + timedelta(minutes=1)
+        return compute_next_run_at(
+            cron_expression=cron_expression,
+            timezone=timezone,
+            from_time=from_time,
+        )
 
     def _cron_match(self, field: str, value: int) -> bool:
         if field == "*":
@@ -448,6 +496,12 @@ class DeliveryService:
         }
 
     def _webhook_secret(self, schedule: DeliverySchedule) -> str | None:
+        encrypted_column = str(getattr(schedule, "webhook_secret", "") or "").strip()
+        if encrypted_column:
+            try:
+                return decrypt_field(encrypted_column)
+            except Exception:
+                log.warning("Failed to decrypt webhook secret column; falling back to config")
         config = schedule.config if isinstance(schedule.config, dict) else {}
         encrypted = str(config.get("webhook_secret_enc") or "").strip()
         if encrypted:
@@ -458,5 +512,32 @@ class DeliveryService:
         secret = config.get("webhook_secret")
         return str(secret) if secret else None
 
+    def _sign_webhook_payload(self, *, payload: dict, secret: str | None) -> str:
+        if not secret:
+            raise DeliveryConfigError("Webhook secret not configured. Cannot send unsigned webhook.")
+        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        digest = hmac.new(secret.encode("utf-8"), body, sha256).hexdigest()
+        return f"sha256={digest}"
 
-__all__ = ["DeliveryConfigurationError", "DeliveryService", "_assert_smtp_configured"]
+    def _signature_for_failed_webhook(
+        self,
+        *,
+        schedule: DeliverySchedule,
+        source_run: SourceRunInfo,
+        pending_log: DeliveryLog,
+    ) -> str | None:
+        secret = self._webhook_secret(schedule)
+        if not secret:
+            return None
+        payload = self._build_webhook_payload(schedule, source_run, pending_log)
+        return self._sign_webhook_payload(payload=payload, secret=secret)
+
+
+__all__ = [
+    "DeliveryConfigurationError",
+    "DeliveryService",
+    "_assert_smtp_configured",
+    "compute_next_run_at",
+    "normalize_delivery_idempotency_key",
+    "validate_cron_expression",
+]

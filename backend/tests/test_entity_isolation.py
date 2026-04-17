@@ -342,49 +342,54 @@ async def test_entity_isolation_rls_not_bypassed(
 @pytest.mark.asyncio
 async def test_assert_entity_access_helper(
     async_client,
-    async_session: AsyncSession,
+    api_session_factory,
     test_user: IamUser,
 ) -> None:
     entity_id = await _create_entity(async_client, test_user, code="E601", name="Entity A")
 
-    team_user = IamUser(
-        tenant_id=test_user.tenant_id,
-        email=f"fin-team-{uuid.uuid4()}@example.com",
-        hashed_password=hash_password("TestPass123!"),
-        full_name="Finance Team",
-        role=UserRole.finance_team,
-        is_active=True,
-    )
-    async_session.add(team_user)
-    await async_session.flush()
-
-    with pytest.raises(HTTPException):
-        await assert_entity_access(
-            session=async_session,
+    async with api_session_factory() as db:
+        team_user = IamUser(
             tenant_id=test_user.tenant_id,
-            entity_id=uuid.UUID(entity_id),
-            user_id=team_user.id,
-            user_role=team_user.role,
+            email=f"fin-team-{uuid.uuid4()}@example.com",
+            hashed_password=hash_password("TestPass123!"),
+            full_name="Finance Team",
+            role=UserRole.finance_team,
+            is_active=True,
         )
+        db.add(team_user)
+        await db.commit()
+        team_user_id = team_user.id
+        team_user_role = team_user.role
+
+    async with api_session_factory() as db:
+        with pytest.raises(HTTPException):
+            await assert_entity_access(
+                session=db,
+                tenant_id=test_user.tenant_id,
+                entity_id=uuid.UUID(entity_id),
+                user_id=team_user_id,
+                user_role=team_user_role,
+            )
 
     await async_client.post(
         "/api/v1/platform/org/assignments/entity",
         headers=_auth_headers(test_user),
         json={
-            "user_id": str(team_user.id),
+            "user_id": str(team_user_id),
             "entity_id": entity_id,
             "effective_from": datetime.now(UTC).isoformat(),
             "effective_to": None,
         },
     )
 
-    await assert_entity_access(
-        session=async_session,
-        tenant_id=test_user.tenant_id,
-        entity_id=uuid.UUID(entity_id),
-        user_id=team_user.id,
-        user_role=team_user.role,
-    )
+    async with api_session_factory() as db:
+        await assert_entity_access(
+            session=db,
+            tenant_id=test_user.tenant_id,
+            entity_id=uuid.UUID(entity_id),
+            user_id=team_user_id,
+            user_role=team_user_role,
+        )
 
 
 @pytest.mark.asyncio

@@ -4,16 +4,19 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.db.models.erp_sync import (
     ExternalSyncDriftReport,
+    ExternalSyncError,
     ExternalSyncPublishEvent,
     ExternalSyncRun,
 )
+from financeops.db.models.reconciliation import GlEntry
 from financeops.modules.erp_sync.application.period_lock_service import PeriodLockService
+from financeops.modules.erp_sync.domain.exceptions import DuplicateGLEntryError
 from financeops.services.audit_writer import AuditWriter
 
 
@@ -143,44 +146,62 @@ class PublishService:
         if has_critical_backdated:
             raise ValidationError("Publish blocked: critical backdated modification alert is unacknowledged")
 
+        duplicate_ref = await self._existing_gl_external_ref(tenant_id=tenant_id, run=run)
         target_table = DATASET_CONSUMPTION_MAP.get(run.dataset_type, "mis_manager_ingest")
-        row = await AuditWriter.insert_financial_record(
-            self._session,
-            model_class=ExternalSyncPublishEvent,
-            tenant_id=tenant_id,
-            record_data={
-                "sync_run_id": str(sync_run_id),
-                "idempotency_key": idempotency_key,
-                "event_status": "approved",
-                "target_table": target_table,
-            },
-            values={
-                "sync_run_id": sync_run_id,
-                "idempotency_key": idempotency_key,
-                "event_status": "approved",
-                "approved_by": actor_user_id,
-                "approved_at": datetime.now(UTC),
-                "rejection_reason": None,
-                "created_by": actor_user_id,
-            },
-        )
+        try:
+            async with self._session.begin_nested():
+                row = await AuditWriter.insert_financial_record(
+                    self._session,
+                    model_class=ExternalSyncPublishEvent,
+                    tenant_id=tenant_id,
+                    record_data={
+                        "sync_run_id": str(sync_run_id),
+                        "idempotency_key": idempotency_key,
+                        "event_status": "approved",
+                        "target_table": target_table,
+                    },
+                    values={
+                        "sync_run_id": sync_run_id,
+                        "idempotency_key": idempotency_key,
+                        "event_status": "approved",
+                        "approved_by": actor_user_id,
+                        "approved_at": datetime.now(UTC),
+                        "rejection_reason": None,
+                        "created_by": actor_user_id,
+                    },
+                )
 
-        await self._period_lock_service.auto_lock_on_publish(
-            tenant_id=tenant_id,
-            sync_run_id=sync_run_id,
-            created_by=actor_user_id,
-        )
-        await self._period_lock_service.detect_backdated_modifications(
-            tenant_id=tenant_id,
-            sync_run_id=sync_run_id,
-            created_by=actor_user_id,
-        )
+                await self._period_lock_service.auto_lock_on_publish(
+                    tenant_id=tenant_id,
+                    sync_run_id=sync_run_id,
+                    created_by=actor_user_id,
+                )
+                await self._period_lock_service.detect_backdated_modifications(
+                    tenant_id=tenant_id,
+                    sync_run_id=sync_run_id,
+                    created_by=actor_user_id,
+                )
+        except Exception as exc:
+            await self._record_publish_failure(
+                tenant_id=tenant_id,
+                sync_run_id=sync_run_id,
+                created_by=actor_user_id,
+                error_code="PUBLISH_TRANSACTION_FAILED",
+                message=str(exc),
+                details_json={
+                    "idempotency_key": idempotency_key,
+                    "target_table": target_table,
+                },
+            )
+            raise
 
         return {
             "publish_event_id": str(row.id),
             "sync_run_id": str(sync_run_id),
             "status": row.event_status,
             "target_table": target_table,
+            "gl_posting_skipped": duplicate_ref is not None,
+            "skipped_external_ref": duplicate_ref,
             "idempotent_replay": False,
         }
 
@@ -232,3 +253,73 @@ class PublishService:
                 reason=str(kwargs.get("reason", "rejected")),
             )
         raise ValidationError("Unsupported publish service action")
+
+    async def _existing_gl_external_ref(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        run: ExternalSyncRun,
+    ) -> str | None:
+        if run.dataset_type != "general_ledger":
+            return None
+
+        external_ref = str(run.source_external_ref or run.run_token).strip()
+        if not external_ref:
+            return None
+
+        existing = await self._session.scalar(
+            select(func.count())
+            .select_from(GlEntry)
+            .where(
+                GlEntry.tenant_id == tenant_id,
+                GlEntry.source_ref == external_ref,
+            )
+        )
+        if int(existing or 0) <= 0:
+            return None
+        return external_ref
+
+    async def assert_gl_ref_not_already_posted(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        external_ref: str,
+    ) -> None:
+        existing = await self._session.scalar(
+            select(func.count())
+            .select_from(GlEntry)
+            .where(
+                GlEntry.tenant_id == tenant_id,
+                GlEntry.source_ref == external_ref,
+            )
+        )
+        if int(existing or 0) > 0:
+            raise DuplicateGLEntryError(external_ref)
+
+    async def _record_publish_failure(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        sync_run_id: uuid.UUID,
+        created_by: uuid.UUID,
+        error_code: str,
+        message: str,
+        details_json: dict[str, Any],
+    ) -> None:
+        await AuditWriter.insert_financial_record(
+            self._session,
+            model_class=ExternalSyncError,
+            tenant_id=tenant_id,
+            record_data={
+                "sync_run_id": str(sync_run_id),
+                "error_code": error_code,
+            },
+            values={
+                "sync_run_id": sync_run_id,
+                "error_code": error_code,
+                "severity": "error",
+                "message": message[:2000],
+                "details_json": details_json,
+                "created_by": created_by,
+            },
+        )

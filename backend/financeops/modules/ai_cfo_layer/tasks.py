@@ -5,7 +5,9 @@ import uuid
 from datetime import date
 from typing import Any
 
+from financeops.config import settings
 from financeops.modules.ai_cfo_layer.application.narrative_service import generate_narrative
+from financeops.modules.ai_cfo_layer.infrastructure.ai_client import AIClient
 from financeops.observability.business_metrics import ai_narrative_duration_ms
 from financeops.db.session import AsyncSessionLocal
 from financeops.tasks.async_runner import run_async
@@ -36,6 +38,7 @@ def generate_narrative_async_task(
                     from_date=date.fromisoformat(from_date),
                     to_date=date.fromisoformat(to_date),
                     comparison=comparison,
+                    ai_client=AIClient(settings),
                 )
                 await session.commit()
                 ai_narrative_duration_ms.labels(status="success").observe(

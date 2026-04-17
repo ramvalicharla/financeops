@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import asyncio
-import smtplib
 from email.message import EmailMessage
 from typing import Any
 
+import aiosmtplib
 import httpx
 
 
@@ -23,19 +22,15 @@ async def send_smtp_message(
     password: str,
     timeout: int = 30,
 ) -> None:
-    def _send() -> None:
-        with smtplib.SMTP(host=host, port=port, timeout=timeout) as smtp:
-            smtp.ehlo()
-            try:
-                smtp.starttls()
-                smtp.ehlo()
-            except smtplib.SMTPException:
-                pass
-            if user and password:
-                smtp.login(user, password)
-            smtp.send_message(message)
-
-    await asyncio.to_thread(_send)
+    await aiosmtplib.send(
+        message,
+        hostname=host,
+        port=port,
+        start_tls=True,
+        username=user or None,
+        password=password or None,
+        timeout=timeout,
+    )
 
 
 async def post_bytes(
@@ -90,14 +85,15 @@ async def probe_smtp_connection(
     password: str,
     timeout: int = 15,
 ) -> None:
-    def _probe() -> None:
-        with smtplib.SMTP(host=host, port=port, timeout=timeout) as smtp:
-            smtp.ehlo()
-            try:
-                smtp.starttls()
-                smtp.ehlo()
-            except smtplib.SMTPException:
-                pass
-            smtp.login(user, password)
-
-    await asyncio.to_thread(_probe)
+    client = aiosmtplib.SMTP(
+        hostname=host,
+        port=port,
+        timeout=timeout,
+        start_tls=True,
+    )
+    await client.connect()
+    try:
+        if user and password:
+            await client.login(user, password)
+    finally:
+        await client.quit()

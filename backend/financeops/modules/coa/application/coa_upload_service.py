@@ -23,6 +23,7 @@ from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.modules.coa.models import (
     CoaAccountGroup,
     CoaAccountSubgroup,
+    CoaBatchConfirmationStatus,
     CoaIndustryTemplate,
     CoaLedgerAccount,
     CoaSourceType,
@@ -56,6 +57,28 @@ log = logging.getLogger(__name__)
 class CoaUploadService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    @staticmethod
+    def _confirmation_result_from_metadata(
+        batch: CoaUploadBatch,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        stored = dict(metadata.get("confirmation_result") or {})
+        if stored:
+            return {
+                "batch_id": str(stored.get("batch_id") or batch.id),
+                "applied_rows": int(stored.get("applied_rows", 0) or 0),
+                "template_id": str(stored.get("template_id") or batch.template_id),
+                "source_type": str(stored.get("source_type") or batch.source_type.value),
+                "idempotent_replay": True,
+            }
+        return {
+            "batch_id": str(batch.id),
+            "applied_rows": int(metadata.get("applied_rows", 0) or 0),
+            "template_id": str(batch.template_id),
+            "source_type": batch.source_type.value,
+            "idempotent_replay": True,
+        }
 
     @staticmethod
     def _normalise_header(value: Any) -> str:
@@ -929,11 +952,17 @@ class CoaUploadService:
     ) -> dict[str, Any]:
         batch = (
             await self._session.execute(
-                select(CoaUploadBatch).where(CoaUploadBatch.id == batch_id)
+                select(CoaUploadBatch)
+                .where(CoaUploadBatch.id == batch_id)
+                .with_for_update()
             )
         ).scalar_one_or_none()
         if batch is None:
             raise NotFoundError("CoA upload batch not found")
+
+        metadata = dict(batch.error_log or {})
+        if batch.confirmation_status == CoaBatchConfirmationStatus.CONFIRMED:
+            return self._confirmation_result_from_metadata(batch, metadata)
 
         if batch.upload_mode == CoaUploadMode.VALIDATE_ONLY:
             raise ValidationError("VALIDATE_ONLY batch cannot be applied")
@@ -949,12 +978,24 @@ class CoaUploadService:
             if batch.tenant_id != actor_tenant_id:
                 raise AuthorizationError("Cannot apply another tenant's CoA batch")
 
-        metadata = dict(batch.error_log or {})
         if metadata.get("upload_kind") == _FLEXIBLE_UPLOAD_KIND:
-            return await self._apply_flexible_batch(
+            result = await self._apply_flexible_batch(
                 batch=batch,
                 actor_tenant_id=actor_tenant_id,
             )
+            metadata = dict(batch.error_log or {})
+            metadata["confirmation_result"] = {
+                "batch_id": result["batch_id"],
+                "applied_rows": int(result["applied_rows"]),
+                "template_id": result["template_id"],
+                "source_type": result["source_type"],
+                "idempotent_replay": False,
+            }
+            batch.error_log = self._json_safe_value(metadata)
+            batch.confirmation_status = CoaBatchConfirmationStatus.CONFIRMED
+            await self._session.flush()
+            result["idempotent_replay"] = False
+            return result
 
         rows = (
             await self._session.execute(
@@ -1036,6 +1077,17 @@ class CoaUploadService:
 
         batch.processed_at = datetime.now(UTC)
         batch.upload_status = CoaUploadStatus.SUCCESS
+        metadata = dict(batch.error_log or {})
+        metadata["applied_rows"] = inserted
+        metadata["confirmation_result"] = {
+            "batch_id": str(batch.id),
+            "applied_rows": inserted,
+            "template_id": str(batch.template_id),
+            "source_type": batch.source_type.value,
+            "idempotent_replay": False,
+        }
+        batch.error_log = self._json_safe_value(metadata)
+        batch.confirmation_status = CoaBatchConfirmationStatus.CONFIRMED
         await self._session.flush()
 
         return {
@@ -1043,4 +1095,5 @@ class CoaUploadService:
             "applied_rows": inserted,
             "template_id": str(batch.template_id),
             "source_type": batch.source_type.value,
+            "idempotent_replay": False,
         }

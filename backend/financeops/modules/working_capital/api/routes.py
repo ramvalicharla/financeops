@@ -13,6 +13,7 @@ from financeops.core.intent.enums import IntentType
 from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
 from financeops.modules.working_capital.models import APLineItem, ARLineItem, WCSnapshot
+from financeops.modules.working_capital.domain.exceptions import InsufficientGLDataError
 from financeops.modules.working_capital.service import get_wc_dashboard
 from financeops.platform.services.tenancy.entity_access import assert_entity_access
 from financeops.shared_kernel.pagination import Paginated
@@ -46,20 +47,23 @@ async def _ensure_snapshot(
     ).scalar_one_or_none()
     if existing is not None:
         return existing
-    result = await IntentService(session).submit_intent(
-        intent_type=IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT,
-        actor=build_intent_actor(request, user),
-        payload={
-            "period": period,
-            "entity_id": str(entity_id) if entity_id else None,
-        },
-        idempotency_key=build_idempotency_key(
-            request,
+    try:
+        result = await IntentService(session).submit_intent(
             intent_type=IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT,
-            actor=user,
-            body={"period": period, "entity_id": str(entity_id) if entity_id else None},
-        ),
-    )
+            actor=build_intent_actor(request, user),
+            payload={
+                "period": period,
+                "entity_id": str(entity_id) if entity_id else None,
+            },
+            idempotency_key=build_idempotency_key(
+                request,
+                intent_type=IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT,
+                actor=user,
+                body={"period": period, "entity_id": str(entity_id) if entity_id else None},
+            ),
+        )
+    except InsufficientGLDataError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     snapshot_id = uuid.UUID(str((result.record_refs or {})["snapshot_id"]))
     return (
         await session.execute(

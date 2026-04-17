@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from financeops.core.exceptions import ValidationError
 from financeops.platform.db.models.tenants import CpTenant
@@ -43,11 +43,14 @@ async def _seed_cp_tenant(async_session: AsyncSession, *, tenant_id, actor_user_
 @pytest.mark.integration
 async def test_isolation_routing_endpoint_and_fail_closed(
     async_client: AsyncClient,
-    async_session: AsyncSession,
+    api_session_factory: async_sessionmaker[AsyncSession],
     test_access_token: str,
     test_user,
 ) -> None:
-    await _seed_cp_tenant(async_session, tenant_id=test_user.tenant_id, actor_user_id=test_user.id)
+    async with api_session_factory() as session:
+        await _seed_cp_tenant(session, tenant_id=test_user.tenant_id, actor_user_id=test_user.id)
+        await session.commit()
+
     create_resp = await async_client.post(
         f"/api/v1/platform/isolation/tenants/{test_user.tenant_id}",
         headers={"Authorization": f"Bearer {test_access_token}"},
@@ -72,24 +75,28 @@ async def test_isolation_routing_endpoint_and_fail_closed(
     assert resolve_resp.json()["data"]["db_cluster"] == "shared-primary"
 
     now = datetime.now(UTC)
-    await create_isolation_route(
-        async_session,
-        tenant_id=test_user.tenant_id,
-        isolation_tier="tier1",
-        db_cluster="",
-        schema_name="public",
-        worker_pool="shared-workers",
-        region="us-east-1",
-        migration_state="active",
-        route_version=2,
-        effective_from=now + timedelta(minutes=1),
-        effective_to=None,
-        actor_user_id=test_user.id,
-        correlation_id="corr-int-iso",
-    )
-    with pytest.raises(ValidationError):
-        await resolve_isolation_route(
-            async_session,
+    async with api_session_factory() as session:
+        await create_isolation_route(
+            session,
             tenant_id=test_user.tenant_id,
-            as_of=now + timedelta(minutes=2),
+            isolation_tier="tier1",
+            db_cluster="",
+            schema_name="public",
+            worker_pool="shared-workers",
+            region="us-east-1",
+            migration_state="active",
+            route_version=2,
+            effective_from=now + timedelta(minutes=1),
+            effective_to=None,
+            actor_user_id=test_user.id,
+            correlation_id="corr-int-iso",
         )
+        await session.commit()
+
+    async with api_session_factory() as session:
+        with pytest.raises(ValidationError):
+            await resolve_isolation_route(
+                session,
+                tenant_id=test_user.tenant_id,
+                as_of=now + timedelta(minutes=2),
+            )

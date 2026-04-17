@@ -105,10 +105,25 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 
+async def finalize_session_success(session: AsyncSession) -> None:
+    """
+    Flush pending writes and commit when the session implementation supports it.
+
+    Some lightweight test doubles only implement ``flush()``/``rollback()``/``close()``.
+    Keeping the commit step behind this helper lets the API dependency remain
+    framework-agnostic while still persisting real request-scoped sessions.
+    """
+    await session.flush()
+    commit = getattr(session, "commit", None)
+    if callable(commit):
+        await commit()
+
+
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            await finalize_session_success(session)
         except Exception:
             await session.rollback()
             raise
@@ -141,6 +156,7 @@ async def tenant_session(tenant_id: UUID | str) -> AsyncGenerator[AsyncSession, 
         try:
             await set_tenant_context(session, str(tenant_id))
             yield session
+            await finalize_session_success(session)
         except Exception:
             await session.rollback()
             raise

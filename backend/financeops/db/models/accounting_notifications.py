@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -116,6 +116,35 @@ class ApprovalReminderRun(FinancialBase):
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
+class ApprovalSLABreachRun(FinancialBase):
+    __tablename__ = "approval_sla_breach_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "jv_id",
+            "breach_type",
+            name="uq_approval_sla_breach_runs_tenant_jv_type",
+        ),
+        Index("ix_approval_sla_breach_runs_tenant", "tenant_id"),
+        Index("ix_approval_sla_breach_runs_jv_id", "jv_id"),
+        Index("ix_approval_sla_breach_runs_type", "tenant_id", "breach_type"),
+        Index("ix_approval_sla_breach_runs_breached_at", "tenant_id", "breached_at"),
+    )
+
+    jv_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("accounting_jv_aggregates.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    breach_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    sent_to_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    breached_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class AccountingAPAgeingSnapshot(FinancialBase):
     __tablename__ = "accounting_ap_ageing_snapshots"
     __table_args__ = (
@@ -187,3 +216,13 @@ class AccountingAuditExportRun(FinancialBase):
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+
+__all__ = [
+    "AccountingNotificationEvent",
+    "ApprovalReminderRun",
+    "ApprovalSLABreachRun",
+    "AccountingAPAgeingSnapshot",
+    "AccountingAuditExportRun",
+    "NotificationChannel",
+    "NotificationType",
+]

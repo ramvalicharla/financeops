@@ -32,7 +32,7 @@ async def _create_super_admin(
 ) -> IamUser:
     user = IamUser(
         tenant_id=tenant_id,
-        email="backup-admin@example.com",
+        email=f"backup-admin-{uuid.uuid4().hex[:12]}@example.com",
         hashed_password=hash_password("TestPass123!"),
         full_name="Backup Admin",
         role=UserRole.super_admin,

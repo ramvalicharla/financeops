@@ -70,6 +70,7 @@ class CoaApplyResponse(BaseModel):
     applied_rows: int
     template_id: uuid.UUID
     source_type: str
+    idempotent_replay: bool = False
 
 
 class CoaSkipResponse(BaseModel):
@@ -90,6 +91,7 @@ class CoaUploadBatchResponse(BaseModel):
     upload_mode: str
     file_name: str
     upload_status: str
+    confirmation_status: str
     error_log: dict[str, Any] | None = None
     created_by: uuid.UUID | None = None
     created_at: datetime

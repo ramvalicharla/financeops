@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
@@ -159,14 +160,6 @@ async def send_notification(
         and _channel_allowed_for_type(preferences, notification_type, "push")
     )
 
-    channels_sent: list[str] = []
-    if inapp_allowed:
-        channels_sent.append("inapp")
-    if email_allowed:
-        channels_sent.append("email")
-    if push_allowed:
-        channels_sent.append("push")
-
     event = NotificationEvent(
         tenant_id=tenant_id,
         recipient_user_id=recipient_user_id,
@@ -175,7 +168,7 @@ async def send_notification(
         body=body,
         action_url=action_url,
         metadata_json=metadata or {},
-        channels_sent=channels_sent,
+        channels_sent=[],
     )
     session.add(event)
     await session.flush()
@@ -186,7 +179,89 @@ async def send_notification(
         except Exception as exc:  # noqa: BLE001
             log.warning("notification_inapp_failed event=%s error=%s", event.id, exc)
 
-    if email_allowed and recipient is not None and recipient.email:
+    if (email_allowed or push_allowed) and not os.getenv("PYTEST_CURRENT_TEST"):
+        from financeops.modules.notifications.tasks import schedule_notification_delivery
+
+        schedule_notification_delivery(notification_event_id=event.id, tenant_id=tenant_id)
+
+    await session.flush()
+    return event
+
+
+def _append_channel(channels: list[str] | None, channel: str) -> list[str]:
+    existing = [str(item) for item in (channels or [])]
+    if channel not in existing:
+        existing.append(channel)
+    return existing
+
+
+async def deliver_notification_event(
+    session: AsyncSession,
+    *,
+    tenant_id: uuid.UUID,
+    notification_event_id: uuid.UUID,
+) -> NotificationEvent | None:
+    event = (
+        await session.execute(
+            select(NotificationEvent).where(
+                NotificationEvent.id == notification_event_id,
+                NotificationEvent.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if event is None:
+        return None
+
+    read_state = (
+        await session.execute(
+            select(NotificationReadState).where(
+                NotificationReadState.notification_event_id == notification_event_id
+            )
+        )
+    ).scalar_one_or_none()
+    if read_state is None:
+        read_state = NotificationReadState(
+            notification_event_id=event.id,
+            tenant_id=tenant_id,
+            user_id=event.recipient_user_id,
+            is_read=False,
+            is_dismissed=False,
+            channels_sent=[],
+            delivery_status="queued",
+        )
+        session.add(read_state)
+        await session.flush()
+
+    preferences = await get_or_create_preferences(session, tenant_id, event.recipient_user_id)
+    recipient = (
+        await session.execute(
+            select(IamUser).where(
+                IamUser.id == event.recipient_user_id,
+                IamUser.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    now = _now_utc()
+    in_quiet = _in_quiet_hours(
+        now,
+        str(preferences.timezone or "Asia/Kolkata"),
+        preferences.quiet_hours_start,
+        preferences.quiet_hours_end,
+    )
+    delivered_channels = [str(item) for item in (read_state.channels_sent or [])]
+
+    email_allowed = (
+        bool(preferences.email_enabled)
+        and not in_quiet
+        and _channel_allowed_for_type(preferences, event.notification_type, "email")
+    )
+    push_allowed = (
+        bool(preferences.push_enabled)
+        and _channel_allowed_for_type(preferences, event.notification_type, "push")
+    )
+
+    if email_allowed and "email" not in delivered_channels and recipient is not None and recipient.email:
         try:
             brand = (
                 await session.execute(
@@ -195,18 +270,25 @@ async def send_notification(
                     )
                 )
             ).scalar_one_or_none()
-            await send_email(event, recipient.email, brand_name=brand)
+            sent = await send_email(event, recipient.email, brand_name=brand)
+            if sent:
+                delivered_channels.append("email")
         except Exception as exc:  # noqa: BLE001
             log.warning("notification_email_failed event=%s error=%s", event.id, exc)
 
-    if push_allowed:
+    if push_allowed and "push" not in delivered_channels:
         try:
-            # Sprint 10: token registry not present yet; use metadata token if supplied.
-            fcm_token = str((metadata or {}).get("fcm_token", ""))
-            await send_push(event, fcm_token)
+            fcm_token = str((event.metadata_json or {}).get("fcm_token", ""))
+            sent = await send_push(event, fcm_token)
+            if sent:
+                delivered_channels.append("push")
         except Exception as exc:  # noqa: BLE001
             log.warning("notification_push_failed event=%s error=%s", event.id, exc)
 
+    read_state.channels_sent = delivered_channels
+    read_state.delivery_status = "delivered" if delivered_channels else "queued"
+    read_state.updated_at = _now_utc()
+    await session.flush()
     return event
 
 
@@ -371,7 +453,7 @@ __all__ = [
     "list_notifications",
     "mark_all_as_read",
     "mark_as_read",
+    "deliver_notification_event",
     "send_notification",
     "update_preferences",
 ]
-

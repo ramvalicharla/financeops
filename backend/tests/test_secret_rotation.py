@@ -46,7 +46,7 @@ def _read_api_key(snapshot: dict | None) -> str:
         return value
 
 
-@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def ensure_secret_rotation_schema(engine) -> None:
     """Ensure secret_rotation_log table, append-only trigger, and RLS policy exist for tests."""
     async with engine.begin() as conn:

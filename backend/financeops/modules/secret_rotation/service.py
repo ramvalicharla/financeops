@@ -3,7 +3,7 @@ from __future__ import annotations
 """
 Secret storage audit findings (pre-implementation):
 1) Scheduled delivery webhook signing secret storage:
-   - Stored in delivery_schedules.config JSONB under key "webhook_secret".
+   - Stored in delivery_schedules.webhook_secret and mirrored in config JSONB.
    - Used by DeliveryService._dispatch_webhook() to compute HMAC-SHA256
      header X-Signature-256.
 2) ERP connector credential storage:
@@ -147,7 +147,7 @@ async def rotate_webhook_secret(
 
     existing_config = dict(row.config or {})
     old_secret = _decrypt_maybe_ciphertext(
-        str(existing_config.get("webhook_secret_enc") or existing_config.get("webhook_secret") or "")
+        str(row.webhook_secret or existing_config.get("webhook_secret_enc") or existing_config.get("webhook_secret") or "")
     )
     new_secret = secrets.token_urlsafe(32)
     if old_secret and secrets.compare_digest(old_secret, new_secret):
@@ -170,7 +170,8 @@ async def rotate_webhook_secret(
 
     try:
         updated_config = dict(existing_config)
-        updated_config["webhook_secret_enc"] = encrypt_field(new_secret)
+        row.webhook_secret = encrypt_field(new_secret)
+        updated_config["webhook_secret_enc"] = str(row.webhook_secret)
         updated_config.pop("webhook_secret", None)
         row.config = updated_config
         row.updated_at = datetime.now(UTC)
@@ -186,7 +187,7 @@ async def rotate_webhook_secret(
         ).scalar_one()
         verified_config = dict(verified.config or {})
         verified_secret = _decrypt_maybe_ciphertext(
-            str(verified_config.get("webhook_secret_enc") or verified_config.get("webhook_secret") or "")
+            str(verified.webhook_secret or verified_config.get("webhook_secret_enc") or verified_config.get("webhook_secret") or "")
         )
         if verified_secret != new_secret:
             raise RuntimeError("Webhook secret verification failed after write")

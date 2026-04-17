@@ -65,6 +65,7 @@ class BankTransaction(FinancialBase):
         Index("idx_bank_txns_statement", "tenant_id", "statement_id"),
         Index("idx_bank_txns_entity_id", "tenant_id", "entity_id"),
         Index("idx_bank_txns_match", "tenant_id", "match_status"),
+        Index("idx_bank_txns_tenant_created", "tenant_id", "created_at"),
     )
 
     statement_id: Mapped[uuid.UUID] = mapped_column(

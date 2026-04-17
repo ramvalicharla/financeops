@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from financeops.db.models.custom_report_builder import ReportRun
 from financeops.db.rls import set_tenant_context
@@ -72,75 +72,80 @@ async def _seed_definition_and_run(
 
 @pytest.mark.asyncio
 async def test_reconciliation_warning_does_not_block(
-    async_session: AsyncSession,
+    api_session_factory: async_sessionmaker[AsyncSession],
     test_tenant,
 ) -> None:
     entity = "DQ_Recon_Warn"
-    await create_gl_entry(
-        async_session,
-        tenant_id=test_tenant.id,
-        period_year=2026,
-        period_month=2,
-        entity_name=entity,
-        account_code="1000",
-        account_name="Cash",
-        debit_amount=Decimal("100.00"),
-        credit_amount=Decimal("0.00"),
-        uploaded_by=test_tenant.id,
-        currency="USD",
-    )
-    await create_gl_entry(
-        async_session,
-        tenant_id=test_tenant.id,
-        period_year=2026,
-        period_month=2,
-        entity_name=entity,
-        account_code="2000",
-        account_name="Bank",
-        debit_amount=Decimal("50.00"),
-        credit_amount=Decimal("0.00"),
-        uploaded_by=test_tenant.id,
-        currency="INR",
-    )
-    await create_tb_row(
-        async_session,
-        tenant_id=test_tenant.id,
-        period_year=2026,
-        period_month=2,
-        entity_name=entity,
-        account_code="1000",
-        account_name="Cash",
-        opening_balance=Decimal("0.00"),
-        period_debit=Decimal("100.00"),
-        period_credit=Decimal("0.00"),
-        closing_balance=Decimal("100.00"),
-        uploaded_by=test_tenant.id,
-        currency="USD",
-    )
-    await create_tb_row(
-        async_session,
-        tenant_id=test_tenant.id,
-        period_year=2026,
-        period_month=2,
-        entity_name=entity,
-        account_code="2000",
-        account_name="Bank",
-        opening_balance=Decimal("0.00"),
-        period_debit=Decimal("50.00"),
-        period_credit=Decimal("0.00"),
-        closing_balance=Decimal("50.00"),
-        uploaded_by=test_tenant.id,
-        currency="USD",
-    )
+    async with api_session_factory() as session:
+        await set_tenant_context(session, test_tenant.id)
+        await create_gl_entry(
+            session,
+            tenant_id=test_tenant.id,
+            period_year=2026,
+            period_month=2,
+            entity_name=entity,
+            account_code="1000",
+            account_name="Cash",
+            debit_amount=Decimal("100.00"),
+            credit_amount=Decimal("0.00"),
+            uploaded_by=test_tenant.id,
+            currency="USD",
+        )
+        await create_gl_entry(
+            session,
+            tenant_id=test_tenant.id,
+            period_year=2026,
+            period_month=2,
+            entity_name=entity,
+            account_code="2000",
+            account_name="Bank",
+            debit_amount=Decimal("50.00"),
+            credit_amount=Decimal("0.00"),
+            uploaded_by=test_tenant.id,
+            currency="INR",
+        )
+        await create_tb_row(
+            session,
+            tenant_id=test_tenant.id,
+            period_year=2026,
+            period_month=2,
+            entity_name=entity,
+            account_code="1000",
+            account_name="Cash",
+            opening_balance=Decimal("0.00"),
+            period_debit=Decimal("100.00"),
+            period_credit=Decimal("0.00"),
+            closing_balance=Decimal("100.00"),
+            uploaded_by=test_tenant.id,
+            currency="USD",
+        )
+        await create_tb_row(
+            session,
+            tenant_id=test_tenant.id,
+            period_year=2026,
+            period_month=2,
+            entity_name=entity,
+            account_code="2000",
+            account_name="Bank",
+            opening_balance=Decimal("0.00"),
+            period_debit=Decimal("50.00"),
+            period_credit=Decimal("0.00"),
+            closing_balance=Decimal("50.00"),
+            uploaded_by=test_tenant.id,
+            currency="USD",
+        )
+        await session.commit()
 
-    items = await run_gl_tb_reconciliation(
-        async_session,
-        tenant_id=test_tenant.id,
-        period_year=2026,
-        period_month=2,
-        entity_name=entity,
-        run_by=test_tenant.id,
-    )
+    async with api_session_factory() as session:
+        await set_tenant_context(session, test_tenant.id)
+        items = await run_gl_tb_reconciliation(
+            session,
+            tenant_id=test_tenant.id,
+            period_year=2026,
+            period_month=2,
+            entity_name=entity,
+            run_by=test_tenant.id,
+        )
 
     assert items == []
 
@@ -148,13 +153,14 @@ async def test_reconciliation_warning_does_not_block(
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_report_run_persists_data_quality_reports(
-    async_session: AsyncSession,
+    api_session_factory: async_sessionmaker[AsyncSession],
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tenant_id = uuid.uuid4()
-    await set_tenant_context(async_session, tenant_id)
-    run_id = await _seed_definition_and_run(async_session, tenant_id=tenant_id)
+    async with api_session_factory() as session:
+        await set_tenant_context(session, tenant_id)
+        run_id = await _seed_definition_and_run(session, tenant_id=tenant_id)
     service = ReportRunService(export_service=_StubExportService())
     monkeypatch.setattr(
         "financeops.modules.custom_report_builder.application.run_service.settings",
@@ -169,17 +175,22 @@ async def test_report_run_persists_data_quality_reports(
 
     monkeypatch.setattr(service, "_query_metric_rows", _fake_query_metric_rows)
 
-    result = await service.run(db=async_session, run_id=run_id, tenant_id=tenant_id)
+    async with api_session_factory() as session:
+        await set_tenant_context(session, tenant_id)
+        result = await service.run(db=session, run_id=run_id, tenant_id=tenant_id)
+        await session.commit()
     assert result["status"] == "COMPLETE"
 
-    latest_complete = (
-        await async_session.execute(
-            select(ReportRun)
-            .where(ReportRun.tenant_id == tenant_id, ReportRun.status == "COMPLETE")
-            .order_by(ReportRun.created_at.desc(), ReportRun.id.desc())
-            .limit(1)
-        )
-    ).scalar_one()
+    async with api_session_factory() as session:
+        await set_tenant_context(session, tenant_id)
+        latest_complete = (
+            await session.execute(
+                select(ReportRun)
+                .where(ReportRun.tenant_id == tenant_id, ReportRun.status == "COMPLETE")
+                .order_by(ReportRun.created_at.desc(), ReportRun.id.desc())
+                .limit(1)
+            )
+        ).scalar_one()
     reports = list((latest_complete.run_metadata or {}).get("data_quality_validation_reports", []))
     assert reports
     assert reports[0]["status"] == "WARN"

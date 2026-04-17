@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.security import create_access_token, hash_password
@@ -16,6 +17,35 @@ from financeops.platform.db.models.modules import CpModuleRegistry
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement
 
 
+async def _get_or_create_module(
+    session: AsyncSession,
+    *,
+    module_code: str,
+    module_name: str,
+    engine_context: str = "finance",
+    is_financial_impacting: bool = True,
+    is_active: bool = True,
+) -> CpModuleRegistry:
+    existing = (
+        await session.execute(
+            select(CpModuleRegistry).where(CpModuleRegistry.module_code == module_code)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    module = CpModuleRegistry(
+        module_code=module_code,
+        module_name=module_name,
+        engine_context=engine_context,
+        is_financial_impacting=is_financial_impacting,
+        is_active=is_active,
+    )
+    session.add(module)
+    await session.flush()
+    return module
+
+
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_control_plane_context_endpoint_returns_backend_modules_and_period(
@@ -24,15 +54,11 @@ async def test_control_plane_context_endpoint_returns_backend_modules_and_period
     test_user,
     test_access_token: str,
 ) -> None:
-    module = CpModuleRegistry(
+    module = await _get_or_create_module(
+        async_session,
         module_code="erp_sync",
         module_name="ERP Sync",
-        engine_context="finance",
-        is_financial_impacting=True,
-        is_active=True,
     )
-    async_session.add(module)
-    await async_session.flush()
     await set_module_enablement(
         async_session,
         tenant_id=test_user.tenant_id,
@@ -77,15 +103,11 @@ async def test_control_plane_context_endpoint_returns_current_entity_and_workspa
     test_user,
     test_access_token: str,
     ) -> None:
-    module = CpModuleRegistry(
+    module = await _get_or_create_module(
+        async_session,
         module_code="custom_report_builder",
         module_name="Custom Reports",
-        engine_context="finance",
-        is_financial_impacting=True,
-        is_active=True,
     )
-    async_session.add(module)
-    await async_session.flush()
     await set_module_enablement(
         async_session,
         tenant_id=test_user.tenant_id,
@@ -164,15 +186,11 @@ async def test_control_plane_context_endpoint_confirms_requested_module(
     test_user,
     test_access_token: str,
 ) -> None:
-    module = CpModuleRegistry(
+    module = await _get_or_create_module(
+        async_session,
         module_code="custom_report_builder",
         module_name="Custom Reports",
-        engine_context="finance",
-        is_financial_impacting=True,
-        is_active=True,
     )
-    async_session.add(module)
-    await async_session.flush()
     await set_module_enablement(
         async_session,
         tenant_id=test_user.tenant_id,

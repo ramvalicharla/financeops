@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -58,42 +59,65 @@ TASK_SEED = [
     ("backup.backup_postgres_daily", "backup", "default", True),
 ]
 
+_API_SESSION_FACTORY = None
+
 
 def _auth_headers(user: IamUser) -> dict[str, str]:
     token = create_access_token(user.id, user.tenant_id, user.role.value)
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _ensure_registry_seeded(session: AsyncSession) -> None:
-    existing_modules = (
-        await session.execute(select(ModuleRegistry.id).limit(1))
-    ).scalar_one_or_none()
-    if existing_modules is None:
-        for module_name, route_prefix, depends_on in MODULE_SEED:
-            session.add(
-                ModuleRegistry(
-                    module_name=module_name,
-                    description=f"{module_name} description",
-                    route_prefix=route_prefix,
-                    depends_on=depends_on,
-                )
-            )
+@pytest.fixture(autouse=True)
+def _bind_api_session_factory(api_session_factory):
+    global _API_SESSION_FACTORY
+    _API_SESSION_FACTORY = api_session_factory
 
-    existing_tasks = (
-        await session.execute(select(TaskRegistry.id).limit(1))
-    ).scalar_one_or_none()
-    if existing_tasks is None:
-        for task_name, module_name, queue_name, is_scheduled in TASK_SEED:
-            session.add(
-                TaskRegistry(
-                    task_name=task_name,
-                    module_name=module_name,
-                    queue_name=queue_name,
-                    description=f"{task_name} description",
-                    is_scheduled=is_scheduled,
+
+@asynccontextmanager
+async def _registry_session_scope():
+    assert _API_SESSION_FACTORY is not None
+    async with _API_SESSION_FACTORY() as session:
+        try:
+            yield session
+            if session.in_transaction():
+                await session.commit()
+        except Exception:
+            if session.in_transaction():
+                await session.rollback()
+            raise
+
+
+async def _ensure_registry_seeded() -> None:
+    async with _registry_session_scope() as session:
+        existing_modules = (
+            await session.execute(select(ModuleRegistry.id).limit(1))
+        ).scalar_one_or_none()
+        if existing_modules is None:
+            for module_name, route_prefix, depends_on in MODULE_SEED:
+                session.add(
+                    ModuleRegistry(
+                        module_name=module_name,
+                        description=f"{module_name} description",
+                        route_prefix=route_prefix,
+                        depends_on=depends_on,
+                    )
                 )
-            )
-    await session.flush()
+
+        existing_tasks = (
+            await session.execute(select(TaskRegistry.id).limit(1))
+        ).scalar_one_or_none()
+        if existing_tasks is None:
+            for task_name, module_name, queue_name, is_scheduled in TASK_SEED:
+                session.add(
+                    TaskRegistry(
+                        task_name=task_name,
+                        module_name=module_name,
+                        queue_name=queue_name,
+                        description=f"{task_name} description",
+                        is_scheduled=is_scheduled,
+                    )
+                )
+        await session.flush()
 
 
 async def _create_platform_user(
@@ -160,7 +184,7 @@ async def test_task_registry_seeded(async_session: AsyncSession) -> None:
 
 @pytest.mark.asyncio
 async def test_module_names_unique(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     names = (await async_session.execute(select(ModuleRegistry.module_name))).scalars().all()
     assert len(names) == len(set(names))
 
@@ -192,41 +216,41 @@ async def test_modules_endpoint_auto_seeds_registry(async_client, async_session:
 
 
 @pytest.mark.asyncio
-async def test_overall_status_healthy_when_all_healthy(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
-    rows = (await async_session.execute(select(ModuleRegistry))).scalars().all()
-    for row in rows:
-        row.health_status = "healthy"
-    await async_session.flush()
-
-    payload = await get_service_dashboard(async_session)
+async def test_overall_status_healthy_when_all_healthy() -> None:
+    await _ensure_registry_seeded()
+    async with _registry_session_scope() as session:
+        rows = (await session.execute(select(ModuleRegistry))).scalars().all()
+        for row in rows:
+            row.health_status = "healthy"
+        await session.flush()
+        payload = await get_service_dashboard(session)
     assert payload["overall_status"] == "healthy"
 
 
 @pytest.mark.asyncio
-async def test_overall_status_degraded_when_one_unhealthy(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
-    rows = (await async_session.execute(select(ModuleRegistry))).scalars().all()
-    for row in rows:
-        row.health_status = "healthy"
-    rows[0].health_status = "unhealthy"
-    await async_session.flush()
-
-    payload = await get_service_dashboard(async_session)
+async def test_overall_status_degraded_when_one_unhealthy() -> None:
+    await _ensure_registry_seeded()
+    async with _registry_session_scope() as session:
+        rows = (await session.execute(select(ModuleRegistry))).scalars().all()
+        for row in rows:
+            row.health_status = "healthy"
+        rows[0].health_status = "unhealthy"
+        await session.flush()
+        payload = await get_service_dashboard(session)
     assert payload["overall_status"] == "degraded"
 
 
 @pytest.mark.asyncio
-async def test_unhealthy_modules_list(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
-    rows = (await async_session.execute(select(ModuleRegistry))).scalars().all()
-    for row in rows:
-        row.health_status = "healthy"
-    rows[0].health_status = "degraded"
-    rows[1].health_status = "unhealthy"
-    await async_session.flush()
-
-    payload = await get_service_dashboard(async_session)
+async def test_unhealthy_modules_list() -> None:
+    await _ensure_registry_seeded()
+    async with _registry_session_scope() as session:
+        rows = (await session.execute(select(ModuleRegistry))).scalars().all()
+        for row in rows:
+            row.health_status = "healthy"
+        rows[0].health_status = "degraded"
+        rows[1].health_status = "unhealthy"
+        await session.flush()
+        payload = await get_service_dashboard(session)
     names = {row["module_name"] for row in payload["unhealthy_modules"]}
     assert rows[0].module_name in names
     assert rows[1].module_name in names
@@ -234,47 +258,51 @@ async def test_unhealthy_modules_list(async_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_task_stats_success(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+async def test_update_task_stats_success() -> None:
+    await _ensure_registry_seeded()
     task_name = TASK_SEED[0][0]
-    await update_task_stats(async_session, task_name, Decimal("12.34"), success=True)
-    row = (
-        await async_session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
-    ).scalar_one()
+    async with _registry_session_scope() as session:
+        await update_task_stats(session, task_name, Decimal("12.34"), success=True)
+        row = (
+            await session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
+        ).scalar_one()
     assert row.last_run_status == "success"
 
 
 @pytest.mark.asyncio
-async def test_update_task_stats_failure(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+async def test_update_task_stats_failure() -> None:
+    await _ensure_registry_seeded()
     task_name = TASK_SEED[0][0]
-    await update_task_stats(async_session, task_name, Decimal("12.34"), success=False)
-    row = (
-        await async_session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
-    ).scalar_one()
+    async with _registry_session_scope() as session:
+        await update_task_stats(session, task_name, Decimal("12.34"), success=False)
+        row = (
+            await session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
+        ).scalar_one()
     assert row.last_run_status == "failure"
 
 
 @pytest.mark.asyncio
-async def test_avg_duration_updated(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+async def test_avg_duration_updated() -> None:
+    await _ensure_registry_seeded()
     task_name = TASK_SEED[0][0]
-    await update_task_stats(async_session, task_name, Decimal("10.00"), success=True)
-    await update_task_stats(async_session, task_name, Decimal("20.00"), success=True)
-    row = (
-        await async_session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
-    ).scalar_one()
+    async with _registry_session_scope() as session:
+        await update_task_stats(session, task_name, Decimal("10.00"), success=True)
+        await update_task_stats(session, task_name, Decimal("20.00"), success=True)
+        row = (
+            await session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
+        ).scalar_one()
     assert Decimal(str(row.avg_duration_seconds)) > Decimal("0")
 
 
 @pytest.mark.asyncio
-async def test_task_stats_duration_is_decimal(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+async def test_task_stats_duration_is_decimal() -> None:
+    await _ensure_registry_seeded()
     task_name = TASK_SEED[0][0]
-    await update_task_stats(async_session, task_name, Decimal("8.50"), success=True)
-    row = (
-        await async_session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
-    ).scalar_one()
+    async with _registry_session_scope() as session:
+        await update_task_stats(session, task_name, Decimal("8.50"), success=True)
+        row = (
+            await session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
+        ).scalar_one()
     assert isinstance(row.avg_duration_seconds, Decimal)
 
 
@@ -284,7 +312,7 @@ async def test_dashboard_endpoint_requires_platform_admin(
     async_session: AsyncSession,
     test_user: IamUser,
 ) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     response = await async_client.get(
         "/api/v1/platform/services/dashboard",
         headers=_auth_headers(test_user),
@@ -297,7 +325,7 @@ async def test_toggle_module_requires_platform_owner(
     async_client,
     async_session: AsyncSession,
 ) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     admin = await _create_platform_user(
         async_session,
         email="services.admin@example.com",
@@ -313,7 +341,7 @@ async def test_toggle_module_requires_platform_owner(
 
 @pytest.mark.asyncio
 async def test_modules_list_paginated(async_client, async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.owner@example.com",
@@ -332,7 +360,7 @@ async def test_modules_list_paginated(async_client, async_session: AsyncSession)
 
 @pytest.mark.asyncio
 async def test_tasks_filtered_by_queue(async_client, async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.queue.owner@example.com",
@@ -349,16 +377,17 @@ async def test_tasks_filtered_by_queue(async_client, async_session: AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_health_check_updates_last_health_check(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
-    await run_health_checks(async_session)
-    rows = (await async_session.execute(select(ModuleRegistry))).scalars().all()
+async def test_health_check_updates_last_health_check() -> None:
+    await _ensure_registry_seeded()
+    async with _registry_session_scope() as session:
+        await run_health_checks(session)
+        rows = (await session.execute(select(ModuleRegistry))).scalars().all()
     assert all(row.last_health_check is not None for row in rows)
 
 
 @pytest.mark.asyncio
 async def test_toggle_module_changes_flag(async_client, async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.toggle.owner@example.com",
@@ -378,7 +407,7 @@ async def test_toggle_module_validation_requires_active_entity_for_enable(
     async_client,
     async_session: AsyncSession,
 ) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.validate.owner@example.com",
@@ -403,7 +432,7 @@ async def test_toggle_module_validation_succeeds_for_disable_without_entity(
     async_client,
     async_session: AsyncSession,
 ) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.validate.disable.owner@example.com",
@@ -428,7 +457,7 @@ async def test_toggle_module_validation_blocks_dependency_cycles(
     async_client,
     async_session: AsyncSession,
 ) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.validate.cycle.owner@example.com",
@@ -464,7 +493,7 @@ async def test_toggle_module_validation_blocks_dependency_cycles(
 
 @pytest.mark.asyncio
 async def test_tasks_filter_by_scheduled(async_client, async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     owner = await _create_platform_user(
         async_session,
         email="services.scheduled.owner@example.com",
@@ -481,9 +510,10 @@ async def test_tasks_filter_by_scheduled(async_client, async_session: AsyncSessi
 
 
 @pytest.mark.asyncio
-async def test_dashboard_includes_queue_depth_defaults(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
-    payload = await get_service_dashboard(async_session)
+async def test_dashboard_includes_queue_depth_defaults() -> None:
+    await _ensure_registry_seeded()
+    async with _registry_session_scope() as session:
+        payload = await get_service_dashboard(session)
     for queue_name in (
         "file_scan",
         "parse",
@@ -499,7 +529,7 @@ async def test_dashboard_includes_queue_depth_defaults(async_session: AsyncSessi
 
 @pytest.mark.asyncio
 async def test_health_check_endpoint_runs(async_client, async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+    await _ensure_registry_seeded()
     admin = await _create_platform_user(
         async_session,
         email="services.health.admin@example.com",
@@ -516,13 +546,14 @@ async def test_health_check_endpoint_runs(async_client, async_session: AsyncSess
 
 
 @pytest.mark.asyncio
-async def test_update_task_stats_sets_last_run_at(async_session: AsyncSession) -> None:
-    await _ensure_registry_seeded(async_session)
+async def test_update_task_stats_sets_last_run_at() -> None:
+    await _ensure_registry_seeded()
     task_name = TASK_SEED[0][0]
     before = datetime.now(UTC)
-    await update_task_stats(async_session, task_name, Decimal("1.50"), success=True)
-    row = (
-        await async_session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
-    ).scalar_one()
+    async with _registry_session_scope() as session:
+        await update_task_stats(session, task_name, Decimal("1.50"), success=True)
+        row = (
+            await session.execute(select(TaskRegistry).where(TaskRegistry.task_name == task_name))
+        ).scalar_one()
     assert row.last_run_at is not None
     assert row.last_run_at >= before

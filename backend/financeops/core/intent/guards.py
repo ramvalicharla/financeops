@@ -133,6 +133,7 @@ class IntentGuardAdapter:
             IntentType.RETRY_BATCH_MUTATION.value,
             IntentType.CREATE_BUDGET_VERSION.value,
             IntentType.UPSERT_BUDGET_LINE.value,
+            IntentType.SUBMIT_BUDGET_VERSION.value,
             IntentType.APPROVE_BUDGET_VERSION.value,
             IntentType.COMPUTE_WORKING_CAPITAL_SNAPSHOT.value,
             IntentType.CREATE_CHECKLIST_TEMPLATE.value,

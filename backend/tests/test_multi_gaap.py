@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from decimal import Decimal
 import uuid
 
@@ -57,8 +58,10 @@ async def _seed_budget(async_session: AsyncSession, test_user: IamUser, annual_t
         fiscal_year=2026,
         version_name="GAAP Base",
         version_number=1,
-        status="approved",
+        status="board_approved",
         is_board_approved=True,
+        board_approved_at=datetime.now(UTC),
+        board_approved_by=test_user.id,
         created_by=test_user.id,
     )
     async_session.add(version)
@@ -179,14 +182,16 @@ async def test_api_comparison_endpoint(async_client, test_user: IamUser) -> None
 
 
 @pytest.mark.asyncio
-async def test_config_policy_elections_stored(async_session: AsyncSession, test_user: IamUser) -> None:
-    await update_config(async_session, test_user.tenant_id, {"secondary_gaaps": ["IFRS", "USGAAP"]})
-    cfg = await get_or_create_config(async_session, test_user.tenant_id)
+async def test_config_policy_elections_stored(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as db:
+        await update_config(db, test_user.tenant_id, {"secondary_gaaps": ["IFRS", "USGAAP"]})
+        cfg = await get_or_create_config(db, test_user.tenant_id)
     assert "IFRS" in (cfg.secondary_gaaps or [])
 
 
 @pytest.mark.asyncio
-async def test_zero_adjustment_when_same_framework(async_session: AsyncSession, test_user: IamUser) -> None:
-    await compute_gaap_view(async_session, test_user.tenant_id, "2026-03", "INDAS", test_user.id)
-    payload = await get_gaap_comparison(async_session, test_user.tenant_id, "2026-03")
+async def test_zero_adjustment_when_same_framework(api_session_factory, test_user: IamUser) -> None:
+    async with api_session_factory() as db:
+        await compute_gaap_view(db, test_user.tenant_id, "2026-03", "INDAS", test_user.id)
+        payload = await get_gaap_comparison(db, test_user.tenant_id, "2026-03")
     assert payload["differences"]["revenue_vs_indas"] == {}

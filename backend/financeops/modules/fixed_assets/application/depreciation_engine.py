@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
+from financeops.modules.fixed_assets.domain.exceptions import DepreciationCalculationError
 from financeops.modules.fixed_assets.models import FaAsset
 
 _QUANT = Decimal("0.0001")
+IT_ACT_S32_THRESHOLD = Decimal("5000")
+
+
+class DepreciationMethod(StrEnum):
+    SLM = "SLM"
+    WDV = "WDV"
+    DOUBLE_DECLINING = "DOUBLE_DECLINING"
+    UOP = "UOP"
+    BLOCK_IT_ACT_S32 = "BLOCK_IT_ACT_S32"
 
 
 def _q4(value: Decimal) -> Decimal:
@@ -71,6 +82,31 @@ def calculate_it_act_wdv(
     return _q4(full_year_dep + half_year_dep)
 
 
+def calculate_it_act_section_32(
+    *,
+    asset_id: object,
+    asset_cost: Decimal | None,
+    acquisition_date: date | None,
+    period_year: int | None,
+) -> Decimal:
+    if acquisition_date is None:
+        raise DepreciationCalculationError(asset_id, "missing acquisition_date")
+    if asset_cost is None or Decimal(str(asset_cost)) <= Decimal("0"):
+        raise DepreciationCalculationError(asset_id, "invalid asset_cost")
+    if period_year is None:
+        raise DepreciationCalculationError(asset_id, "missing period_year")
+    if acquisition_date.year != period_year:
+        return Decimal("0.0000")
+
+    year_end = date(period_year, 3, 31)
+    if acquisition_date > year_end:
+        return Decimal("0.0000")
+
+    days_in_service = (year_end - acquisition_date).days + 1
+    depreciation = (Decimal(days_in_service) / Decimal("365")) * Decimal(str(asset_cost))
+    return _q4(depreciation)
+
+
 def _days_in_period(period_start: date, period_end: date) -> int:
     return max((period_end - period_start).days + 1, 0)
 
@@ -94,6 +130,19 @@ def get_depreciation(
     if period_days <= 0:
         return Decimal("0.0000")
 
+    if dep_method == DepreciationMethod.BLOCK_IT_ACT_S32:
+        acquisition_date = asset.capitalisation_date or asset.purchase_date
+        asset_cost = Decimal(str(asset.original_cost)) if asset.original_cost is not None else None
+        section_32_dep = calculate_it_act_section_32(
+            asset_id=getattr(asset, "id", "unknown"),
+            asset_cost=asset_cost,
+            acquisition_date=acquisition_date,
+            period_year=period_end.year if period_end is not None else None,
+        )
+        if asset_cost is not None and asset_cost <= IT_ACT_S32_THRESHOLD:
+            return section_32_dep
+        return section_32_dep
+
     if gaap_key == "IT_ACT":
         rate_value = override_values.get("depreciation_rate")
         if rate_value is None:
@@ -110,28 +159,28 @@ def get_depreciation(
             half_year_additions=half_year_additions,
         )
 
-    if dep_method == "SLM":
+    if dep_method == DepreciationMethod.SLM:
         return calculate_slm(
             original_cost=Decimal(str(asset.original_cost)),
             residual_value=residual_value,
             useful_life_years=useful_life_years,
             period_days=period_days,
         )
-    if dep_method == "WDV":
+    if dep_method == DepreciationMethod.WDV:
         rate = Decimal(str(override_values.get("depreciation_rate", Decimal("0"))))
         return calculate_wdv(
             opening_nbv=Decimal(str(opening_nbv)),
             rate=rate,
             period_days=period_days,
         )
-    if dep_method == "DOUBLE_DECLINING":
+    if dep_method == DepreciationMethod.DOUBLE_DECLINING:
         return calculate_double_declining(
             opening_nbv=Decimal(str(opening_nbv)),
             useful_life_years=useful_life_years,
             residual_value=residual_value,
             period_days=period_days,
         )
-    if dep_method == "UOP":
+    if dep_method == DepreciationMethod.UOP:
         total_units = Decimal(str(override_values.get("total_units", Decimal("1"))))
         units_this_period = Decimal(str(override_values.get("units_this_period", Decimal("0"))))
         return calculate_uop(
@@ -145,10 +194,13 @@ def get_depreciation(
 
 
 __all__ = [
+    "DepreciationMethod",
+    "IT_ACT_S32_THRESHOLD",
     "calculate_slm",
     "calculate_wdv",
     "calculate_double_declining",
     "calculate_uop",
     "calculate_it_act_wdv",
+    "calculate_it_act_section_32",
     "get_depreciation",
 ]

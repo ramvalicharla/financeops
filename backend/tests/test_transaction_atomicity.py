@@ -16,10 +16,12 @@ async def test_audit_log_and_record_committed_atomically(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If audit log write fails, auth session write is rolled back."""
+    user_id = str(test_user.id)
+    user_email = str(test_user.email)
     before_count = (
         await async_session.execute(
             text("SELECT COUNT(*) FROM iam_sessions WHERE user_id = CAST(:id AS uuid)"),
-            {"id": str(test_user.id)},
+            {"id": user_id},
         )
     ).scalar_one()
 
@@ -29,7 +31,7 @@ async def test_audit_log_and_record_committed_atomically(
     monkeypatch.setattr("financeops.api.v1.auth.log_action", _boom)
     response = await async_client.post(
         "/api/v1/auth/login",
-        json={"email": test_user.email, "password": "TestPass123!"},
+        json={"email": user_email, "password": "TestPass123!"},
     )
     assert response.status_code == 500
 
@@ -37,7 +39,7 @@ async def test_audit_log_and_record_committed_atomically(
     after_count = (
         await async_session.execute(
             text("SELECT COUNT(*) FROM iam_sessions WHERE user_id = CAST(:id AS uuid)"),
-            {"id": str(test_user.id)},
+            {"id": user_id},
         )
     ).scalar_one()
     assert after_count == before_count

@@ -28,6 +28,7 @@ from financeops.core.exceptions import ValidationError
 from financeops.core.governance.airlock import AirlockActor, AirlockAdmissionService
 from financeops.db.models.users import IamUser
 from financeops.db.transaction import commit_session
+from financeops.shared_kernel.idempotency import optional_idempotency_key
 from financeops.modules.coa.api.schemas import (
     CoaHierarchyResponse,
     CoaLedgerAccountResponse,
@@ -421,6 +422,7 @@ async def apply_coa(
     body: CoaApplyRequest,
     session: AsyncSession = Depends(get_async_session),
     user: IamUser = Depends(require_finance_team),
+    _: str | None = Depends(optional_idempotency_key),
 ) -> CoaApplyResponse:
     del request
     service = CoaUploadService(session)
@@ -435,6 +437,7 @@ async def apply_coa(
         applied_rows=int(result["applied_rows"]),
         template_id=uuid.UUID(result["template_id"]),
         source_type=str(result["source_type"]),
+        idempotent_replay=bool(result.get("idempotent_replay", False)),
     )
 
 
