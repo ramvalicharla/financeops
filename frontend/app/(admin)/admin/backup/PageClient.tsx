@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { getBackupStatus, listBackupRuns, verifyBackupIntegrity } from "@/lib/api/backup"
 import type { BackupRun, BackupStatus } from "@/lib/types/backup"
 import { BackupStatusCard } from "@/components/backup/BackupStatusCard"
@@ -13,18 +13,18 @@ export default function AdminBackupPage() {
   const [runs, setRuns] = useState<BackupRun[]>([])
   const [integrity, setIntegrity] = useState<{ passed: boolean; checks: Record<string, boolean> } | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const [statusData, runsData] = await Promise.all([
       getBackupStatus(),
       listBackupRuns({ limit: 10, offset: 0 }),
     ])
     setStatus(statusData)
     setRuns(runsData.data)
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const verify = async () => {
     const result = await verifyBackupIntegrity()

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { ScenarioComparison } from "@/components/scenarios/ScenarioComparison"
 import { ScenarioSlider } from "@/components/scenarios/ScenarioSlider"
@@ -23,7 +23,7 @@ export default function ScenarioDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -40,13 +40,11 @@ export default function ScenarioDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [setId])
 
   useEffect(() => {
-    if (setId) {
-      void load()
-    }
-  }, [setId])
+    if (setId) void load()
+  }, [setId, load])
 
   const optimisticDefinition = useMemo(
     () => definitions.find((row) => row.scenario_name === "optimistic") ?? definitions[0],

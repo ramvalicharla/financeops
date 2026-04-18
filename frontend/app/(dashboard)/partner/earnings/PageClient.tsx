@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { listPartnerCommissions } from "@/lib/api/partner"
 import type { PartnerCommissionRow } from "@/lib/types/partner"
 import { CommissionTable } from "@/components/partner/CommissionTable"
@@ -9,7 +9,7 @@ export default function PartnerEarningsPage() {
   const [commissions, setCommissions] = useState<PartnerCommissionRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await listPartnerCommissions({ limit: 100, offset: 0 })
@@ -17,11 +17,11 @@ export default function PartnerEarningsPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load commissions")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const totals = useMemo(() => {
     let earned = 0

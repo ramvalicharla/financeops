@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { listOwnConsent, recordConsent } from "@/lib/api/compliance"
 import { ConsentToggle } from "@/components/settings/ConsentToggle"
 

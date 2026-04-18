@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   evaluateSoc2,
   getSoc2Dashboard,
@@ -24,7 +24,7 @@ export default function AdminSoc2Page() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const [dashboardData, controlsData] = await Promise.all([
@@ -38,11 +38,11 @@ export default function AdminSoc2Page() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const visible = useMemo(() => {
     if (filter === "all") return controls

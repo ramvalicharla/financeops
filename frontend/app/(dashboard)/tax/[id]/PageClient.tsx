@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { DeferredTaxSchedule } from "@/components/tax/DeferredTaxSchedule"
 import { TaxProvisionTable } from "@/components/tax/TaxProvisionTable"

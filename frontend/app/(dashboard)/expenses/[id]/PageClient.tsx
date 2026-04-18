@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import { PolicyViolationBadge } from "@/components/expenses/PolicyViolationBadge"
@@ -24,7 +24,7 @@ export default function ExpenseDetailPage({ params }: ExpenseDetailPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       setError(null)
       const payload = await getExpenseClaim(params.id)
@@ -33,11 +33,11 @@ export default function ExpenseDetailPage({ params }: ExpenseDetailPageProps) {
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load expense claim")
     }
-  }
+  }, [params.id])
 
   useEffect(() => {
     void load()
-  }, [params.id])
+  }, [params.id, load])
 
   const performApproval = async (action: "approved" | "rejected") => {
     setBusy(true)

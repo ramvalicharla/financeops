@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { FormField } from "@/components/ui/FormField"
 import {
   getNotificationPreferences,
@@ -39,15 +39,15 @@ export function PreferencesForm() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setMessage(null)
     const payload = await getNotificationPreferences()
     setPreferences(payload)
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const typePreferences = useMemo(
     () => preferences?.type_preferences ?? {},

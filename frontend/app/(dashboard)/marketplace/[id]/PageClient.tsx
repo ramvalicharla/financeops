@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import {
   getMarketplaceTemplate,
@@ -24,7 +24,7 @@ export default function MarketplaceTemplateDetailPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!templateId) {
       return
     }
@@ -36,11 +36,11 @@ export default function MarketplaceTemplateDetailPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load template")
     }
-  }
+  }, [templateId])
 
   useEffect(() => {
     void load()
-  }, [templateId])
+  }, [templateId, load])
 
   const submitRating = async () => {
     setMessage(null)

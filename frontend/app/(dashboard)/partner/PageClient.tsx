@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { getPartnerDashboard, registerPartner } from "@/lib/api/partner"
 import type { PartnerDashboard as PartnerDashboardPayload } from "@/lib/types/partner"
 import { PartnerDashboard } from "@/components/partner/PartnerDashboard"
@@ -17,18 +17,18 @@ export default function PartnerHubPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const payload = await getPartnerDashboard()
       setDashboard(payload)
     } catch {
       setDashboard(null)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const submitRegistration = async () => {
     setError(null)

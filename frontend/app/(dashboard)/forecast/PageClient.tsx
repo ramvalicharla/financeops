@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { createForecastRun, listForecastRuns } from "@/lib/api/forecast"
 import type { ForecastRun } from "@/lib/types/forecast"
@@ -12,7 +12,7 @@ export default function ForecastHomePage() {
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -23,11 +23,11 @@ export default function ForecastHomePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const createRun = async () => {
     setCreating(true)

@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { listMarketplaceTemplates } from "@/lib/api/marketplace"
 import type { MarketplaceTemplate } from "@/lib/types/marketplace"
 import { TemplateCard } from "@/components/marketplace/TemplateCard"
@@ -25,7 +25,7 @@ export default function MarketplacePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -45,11 +45,11 @@ export default function MarketplacePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeFilter, sortBy])
 
   useEffect(() => {
     void load()
-  }, [activeFilter, sortBy])
+  }, [activeFilter, sortBy, load])
 
   const visibleTemplates = useMemo(() => {
     const needle = search.trim().toLowerCase()

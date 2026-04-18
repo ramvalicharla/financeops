@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { DDTracker } from "@/components/advisory/ma/DDTracker"
 import { getMADDTracker, getMAWorkspace, updateMADDItem } from "@/lib/api/ma"
@@ -16,7 +16,7 @@ export default function MAWorkspaceDetailPage() {
   const [items, setItems] = useState<MADDItem[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const detail = await getMAWorkspace(workspaceId)
       const dd = await getMADDTracker(workspaceId)
@@ -27,13 +27,13 @@ export default function MAWorkspaceDetailPage() {
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load workspace")
     }
-  }
+  }, [workspaceId])
 
   useEffect(() => {
     if (workspaceId) {
       void load()
     }
-  }, [workspaceId])
+  }, [workspaceId, load])
 
   const handleStatusChange = async (itemId: string, status: string) => {
     await updateMADDItem(workspaceId, itemId, { status })

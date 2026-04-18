@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { APAgingTable } from "@/components/working-capital/APAgingTable"
 import { ARAgingTable } from "@/components/working-capital/ARAgingTable"
 import { CashCycleChart } from "@/components/working-capital/CashCycleChart"

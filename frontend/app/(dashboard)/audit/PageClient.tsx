@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { AuditorAccessPanel } from "@/components/audit/AuditorAccessPanel"
 import { FormField } from "@/components/ui/FormField"
@@ -41,7 +41,7 @@ export default function AuditPage() {
     validUntil?: string
   }>({})
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -52,11 +52,11 @@ export default function AuditPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const grant = async (): Promise<void> => {
     const nextFieldErrors: typeof fieldErrors = {}

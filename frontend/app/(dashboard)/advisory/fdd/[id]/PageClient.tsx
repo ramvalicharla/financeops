@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { FindingsTable } from "@/components/advisory/fdd/FindingsTable"
 import { getFDDEngagement, runFDDEngagement } from "@/lib/api/fdd"
@@ -16,7 +16,7 @@ export default function FDDEngagementDetailPage() {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (!engagementId) return
     try {
       const payload = await getFDDEngagement(engagementId)
@@ -26,11 +26,11 @@ export default function FDDEngagementDetailPage() {
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load engagement")
     }
-  }
+  }, [engagementId])
 
   useEffect(() => {
     void load()
-  }, [engagementId])
+  }, [engagementId, load])
 
   const severityCounts = useMemo(() => {
     const counts: Record<string, number> = {

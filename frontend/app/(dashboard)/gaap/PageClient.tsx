@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
@@ -25,7 +25,7 @@ export default function GaapPage() {
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setError(null)
     try {
       const [configPayload, comparisonPayload] = await Promise.all([
@@ -37,11 +37,11 @@ export default function GaapPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load GAAP data")
     }
-  }
+  }, [period])
 
   useEffect(() => {
     void load()
-  }, [period])
+  }, [period, load])
 
   const availableFrameworks = useMemo(
     () => (comparison ? comparison.frameworks.map((row) => row.gaap_framework.toUpperCase()) : []),

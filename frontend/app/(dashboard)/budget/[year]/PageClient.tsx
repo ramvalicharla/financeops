@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { BudgetTable } from "@/components/budget/BudgetTable"
 import { BudgetVsActualChart } from "@/components/budget/BudgetVsActualChart"

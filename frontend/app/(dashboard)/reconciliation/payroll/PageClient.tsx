@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Button } from "@/components/ui/button"
@@ -23,7 +23,10 @@ const varianceTone = (value: string) =>
 
 export default function PayrollReconciliationPage() {
   const { data: session } = useSession()
-  const entityRoles = session?.user?.entity_roles ?? []
+  const entityRoles = useMemo(
+    () => session?.user?.entity_roles ?? [],
+    [session?.user?.entity_roles]
+  )
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
   const { activePeriod, setActivePeriod } = useUIStore()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)

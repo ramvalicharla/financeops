@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import {
   getServiceDashboard,
@@ -28,7 +28,7 @@ export default function AdminServicesPage() {
 
   const isOwner = session?.user?.role === "platform_owner" || session?.user?.role === "super_admin"
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await getServiceDashboard()
@@ -38,11 +38,11 @@ export default function AdminServicesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const runChecks = async () => {
     setRunning(true)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { DataTable } from "@/components/admin/DataTable"
 import { FormField } from "@/components/ui/FormField"
@@ -51,7 +51,7 @@ export default function AdminRbacPage() {
     userRoleRole?: string
   }>({})
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const [rolesData, permissionData, rolePermissionData, assignmentData, usersData] =
@@ -74,12 +74,12 @@ export default function AdminRbacPage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load RBAC data")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   const roleMap = useMemo(
     () => new Map(roles.map((role) => [role.id, role.role_code])),

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { ComplianceCalendar } from "@/components/statutory/ComplianceCalendar"
 import { RegisterTable } from "@/components/statutory/RegisterTable"
 import {
@@ -53,7 +53,7 @@ export default function StatutoryPage() {
     setEntries(payload.data)
   }
 
-  const loadAll = async (): Promise<void> => {
+  const loadAll = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -63,11 +63,11 @@ export default function StatutoryPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void loadAll()
-  }, [])
+  }, [loadAll])
 
   useEffect(() => {
     void loadRegister(activeRegister)

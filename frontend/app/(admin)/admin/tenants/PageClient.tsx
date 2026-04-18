@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { DataTable } from "@/components/admin/DataTable"
 import { ToggleSwitch } from "@/components/admin/ToggleSwitch"
 import {
@@ -15,7 +15,7 @@ export default function AdminTenantsPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -26,11 +26,11 @@ export default function AdminTenantsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const onToggle = async (tenant: PlatformTenant, enabled: boolean) => {
     setMessage(null)

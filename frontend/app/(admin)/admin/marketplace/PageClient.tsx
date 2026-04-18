@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   getMarketplaceStats,
   listMarketplacePending,
@@ -23,7 +23,7 @@ export default function AdminMarketplacePage() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const [pendingPayload, statsPayload] = await Promise.all([
@@ -35,11 +35,11 @@ export default function AdminMarketplacePage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load marketplace admin data")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const review = async (templateId: string, action: "approve" | "reject") => {
     setMessage(null)

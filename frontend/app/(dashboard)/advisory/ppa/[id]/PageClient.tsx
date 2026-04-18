@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { AllocationWaterfall } from "@/components/advisory/ppa/AllocationWaterfall"
 import { PPAReportViewer } from "@/components/advisory/ppa/PPAReportViewer"
@@ -22,7 +22,7 @@ export default function PPADetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const detail = await getPPAEngagement(engagementId)
       setStatus(detail.engagement.status)
@@ -34,13 +34,13 @@ export default function PPADetailPage() {
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load engagement")
     }
-  }
+  }, [engagementId])
 
   useEffect(() => {
     if (engagementId) {
       void load()
     }
-  }, [engagementId])
+  }, [engagementId, load])
 
   const identify = async () => {
     setError(null)

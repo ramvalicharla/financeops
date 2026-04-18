@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Plus } from "lucide-react"
 import { createScenarioSet, getScenarioSet, listScenarioSets } from "@/lib/api/scenarios"
 import type { ScenarioSet } from "@/lib/types/scenario"
@@ -13,7 +13,7 @@ export default function ScenariosPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -33,11 +33,11 @@ export default function ScenariosPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const createSet = async () => {
     try {

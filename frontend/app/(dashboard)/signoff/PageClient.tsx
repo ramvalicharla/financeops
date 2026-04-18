@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { SignoffCertificate } from "@/components/signoff/SignoffCertificate"
 import { SignoffRequest } from "@/components/signoff/SignoffRequest"
 import {
@@ -17,7 +17,7 @@ export default function SignoffPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -28,11 +28,11 @@ export default function SignoffPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const pending = useMemo(() => rows.filter((row) => row.status === "pending"), [rows])
   const completed = useMemo(() => rows.filter((row) => row.status === "signed"), [rows])

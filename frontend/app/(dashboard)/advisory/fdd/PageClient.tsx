@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { EngagementCard } from "@/components/advisory/fdd/EngagementCard"
 import { createFDDEngagement, listFDDEngagements } from "@/lib/api/fdd"
@@ -21,7 +21,7 @@ export default function FDDPage() {
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -32,11 +32,11 @@ export default function FDDPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const createNew = async () => {
     setCreating(true)

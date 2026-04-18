@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { getConsentSummary, getSoc2Dashboard, listBreaches } from "@/lib/api/compliance"
 import type { ComplianceDashboard, ConsentSummary } from "@/lib/types/compliance"
 import type { GDPRBreach } from "@/lib/types/compliance"

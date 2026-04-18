@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { getConsentSummary, listBreaches } from "@/lib/api/compliance"
 import type { ConsentSummary, GDPRBreach } from "@/lib/types/compliance"
 import { ConsentCoverageTable } from "@/components/trust/ConsentCoverageTable"

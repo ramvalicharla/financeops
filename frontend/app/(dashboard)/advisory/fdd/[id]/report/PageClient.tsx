@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { FDDReportViewer } from "@/components/advisory/fdd/FDDReportViewer"
 import { FindingsTable } from "@/components/advisory/fdd/FindingsTable"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
 import { createPPAEngagement, listPPAEngagements } from "@/lib/api/ppa"
 import type { PPAEngagement } from "@/lib/types/ppa"
@@ -10,18 +10,18 @@ export default function PPAPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const payload = await listPPAEngagements({ limit: 50, offset: 0 })
       setRows(payload.data)
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load PPA engagements")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const createNew = async () => {
     setCreating(true)

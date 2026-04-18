@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { getConsentSummary } from "@/lib/api/compliance"
 import type { ConsentSummary } from "@/lib/types/compliance"
 import { ConsentCoverageTable } from "@/components/trust/ConsentCoverageTable"

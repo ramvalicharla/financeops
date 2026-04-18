@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { listPartnerReferrals } from "@/lib/api/partner"
 import type { ReferralTrackingRow } from "@/lib/types/partner"
 import { ReferralCard } from "@/components/partner/ReferralCard"
@@ -9,7 +9,7 @@ export default function PartnerReferralsPage() {
   const [rows, setRows] = useState<ReferralTrackingRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await listPartnerReferrals({ limit: 100, offset: 0 })
@@ -17,11 +17,11 @@ export default function PartnerReferralsPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load referrals")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const funnel = useMemo(() => {
     return {

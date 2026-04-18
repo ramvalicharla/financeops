@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { Button } from "@/components/ui/button"
 import { CovenantCard } from "@/components/covenants/CovenantCard"
@@ -19,7 +19,7 @@ export default function CovenantsPage() {
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -30,11 +30,11 @@ export default function CovenantsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const runCheck = async (): Promise<void> => {
     setRunningCheck(true)

@@ -23,7 +23,10 @@ type StatusFilter = "ALL" | "MATCHED" | "VARIANCE" | "MISSING_GL" | "MISSING_TB"
 
 export default function GLTBReconciliationPage() {
   const { data: session } = useSession()
-  const entityRoles = session?.user?.entity_roles ?? []
+  const entityRoles = useMemo(
+    () => session?.user?.entity_roles ?? [],
+    [session?.user?.entity_roles]
+  )
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
   const { activePeriod, setActivePeriod } = useUIStore()
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)

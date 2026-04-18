@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { getWhiteLabelConfig, listWhiteLabelAuditLog } from "@/lib/api/white-label"
 import type { WhiteLabelAuditLogRow, WhiteLabelConfig } from "@/lib/types/white-label"
 import { BrandingEditor } from "@/components/white_label/BrandingEditor"
@@ -11,7 +11,7 @@ export default function WhiteLabelSettingsPage() {
   const [auditRows, setAuditRows] = useState<WhiteLabelAuditLogRow[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const [configPayload, auditPayload] = await Promise.all([
@@ -23,11 +23,11 @@ export default function WhiteLabelSettingsPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load white label settings")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   return (
     <div className="space-y-6">

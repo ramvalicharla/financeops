@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { BriefcaseBusiness, PieChart, Search } from "lucide-react"
 import { listFDDEngagements } from "@/lib/api/fdd"
 import { listMAWorkspaces } from "@/lib/api/ma"

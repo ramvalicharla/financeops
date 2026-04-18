@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import apiClient from "@/lib/api/client"
 
@@ -18,7 +18,7 @@ export default function AIProvidersAdminPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -31,11 +31,11 @@ export default function AIProvidersAdminPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const toggle = async (slot: ProviderSlot): Promise<void> => {
     const action = slot.status === "disabled" ? "enable" : "disable"

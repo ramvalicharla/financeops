@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { AssumptionsPanel } from "@/components/forecast/AssumptionsPanel"
 import { ForecastChart } from "@/components/forecast/ForecastChart"
@@ -22,7 +22,7 @@ export default function ForecastRunPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
@@ -33,13 +33,13 @@ export default function ForecastRunPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [runId])
 
   useEffect(() => {
     if (runId) {
       void load()
     }
-  }, [runId])
+  }, [runId, load])
 
   const metrics = useMemo(
     () => Array.from(new Set(detail?.line_items.map((row) => row.mis_line_item) ?? [])),

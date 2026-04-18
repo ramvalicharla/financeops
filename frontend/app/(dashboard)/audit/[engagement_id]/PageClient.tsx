@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { EvidenceUploader } from "@/components/audit/EvidenceUploader"
 import { PBCRequestTable } from "@/components/audit/PBCRequestTable"
@@ -15,7 +15,7 @@ export default function AuditEngagementPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -27,14 +27,14 @@ export default function AuditEngagementPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [engagementId])
 
   useEffect(() => {
     if (!engagementId) {
       return
     }
     void load()
-  }, [engagementId])
+  }, [engagementId, load])
 
   const allRows = useMemo(() => {
     if (!tracker) {

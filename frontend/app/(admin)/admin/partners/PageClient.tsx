@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { approvePartner, getPartnerAdminStats, listPartnerApplications } from "@/lib/api/partner"
 import type { PartnerProfile } from "@/lib/types/partner"
 
@@ -17,7 +17,7 @@ export default function AdminPartnersPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const [appsPayload, statsPayload] = await Promise.all([
@@ -29,11 +29,11 @@ export default function AdminPartnersPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load partner admin data")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const approve = async (partnerId: string) => {
     setMessage(null)

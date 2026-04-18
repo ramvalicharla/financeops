@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { getMarketplaceContributorDashboard } from "@/lib/api/marketplace"
 import type {
   MarketplacePayout,
@@ -30,7 +30,7 @@ export default function MarketplaceMyTemplatesPage() {
   const [hasContributor, setHasContributor] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await getMarketplaceContributorDashboard()
@@ -45,11 +45,11 @@ export default function MarketplaceMyTemplatesPage() {
       setTemplates([])
       setError(loadError instanceof Error ? loadError.message : "Unable to load contributor dashboard")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const visibleTemplates = useMemo(
     () => templates.filter((template) => template.status === tab),

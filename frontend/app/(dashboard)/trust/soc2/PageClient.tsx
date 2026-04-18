@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { getSoc2Dashboard, getSoc2Evidence, listSoc2Controls } from "@/lib/api/compliance"
 import type { ComplianceControl, ComplianceDashboard } from "@/lib/types/compliance"
 import { ComplianceProgress } from "@/components/compliance/ComplianceProgress"

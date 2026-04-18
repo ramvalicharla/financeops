@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   listLearningBenchmarkResults,
   listRecentLearningSignals,
@@ -16,7 +16,7 @@ export default function AIQualityPage() {
   const [running, setRunning] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const benchmarkPayload = await listLearningBenchmarkResults({ limit: 100, offset: 0 })
     setResults(benchmarkPayload.data)
 
@@ -26,11 +26,11 @@ export default function AIQualityPage() {
     } catch {
       setSignals([])
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const summary = useMemo(() => {
     if (results.length === 0) {

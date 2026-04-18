@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { DataTable } from "@/components/admin/DataTable"
 import { TenantSelector } from "@/components/admin/TenantSelector"
@@ -41,7 +41,7 @@ export default function AdminFlagsPage() {
   }>({})
   const [message, setMessage] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const [tenantPayload, modulePayload] = await Promise.all([
@@ -60,12 +60,12 @@ export default function AdminFlagsPage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load feature flags")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [load])
 
   useEffect(() => {
     if (!selectedTenant) return

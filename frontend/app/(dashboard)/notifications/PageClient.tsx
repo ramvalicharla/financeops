@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   listNotifications,
   markAllNotificationsRead,
@@ -21,7 +21,7 @@ export default function NotificationsPage() {
     [rows],
   )
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
       const payload = await listNotifications({
@@ -34,11 +34,11 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [filterType])
 
   useEffect(() => {
     void load()
-  }, [filterType])
+  }, [filterType, load])
 
   const onMarkAll = async () => {
     await markAllNotificationsRead()

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { createBreach, listBreaches } from "@/lib/api/compliance"
 import type { GDPRBreach } from "@/lib/types/compliance"
 import { BreachForm } from "@/components/trust/BreachForm"
@@ -8,14 +8,14 @@ import { BreachForm } from "@/components/trust/BreachForm"
 export default function TrustGdprBreachPage() {
   const [breaches, setBreaches] = useState<GDPRBreach[]>([])
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const result = await listBreaches({ limit: 100, offset: 0 })
     setBreaches(result.data)
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const latestOpen = useMemo(
     () => breaches.find((row) => row.status === "open" && ["high", "critical"].includes(row.severity)),

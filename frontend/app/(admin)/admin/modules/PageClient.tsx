@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
 import { DataTable } from "@/components/admin/DataTable"
 import { ToggleSwitch } from "@/components/admin/ToggleSwitch"
@@ -15,7 +15,7 @@ export default function AdminModulesPage() {
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await listPlatformModules()
@@ -23,11 +23,11 @@ export default function AdminModulesPage() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to load modules")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const onToggle = async (row: ServiceRegistryModule, next: boolean) => {
     setError(null)

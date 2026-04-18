@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { CashFlowGrid, type EditableField } from "@/components/treasury/CashFlowGrid"
@@ -20,7 +20,7 @@ export default function TreasuryDetailPage() {
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -31,14 +31,12 @@ export default function TreasuryDetailPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [forecastId])
 
   useEffect(() => {
-    if (!forecastId) {
-      return
-    }
+    if (!forecastId) return
     void load()
-  }, [forecastId])
+  }, [forecastId, load])
 
   const handleCellEdit = async (
     weekNumber: number,

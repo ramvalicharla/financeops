@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { FormField } from "@/components/ui/FormField"
 import type { WhiteLabelConfig } from "@/lib/types/white-label"
 import { getWhiteLabelConfig, updateWhiteLabelConfig } from "@/lib/api/white-label"

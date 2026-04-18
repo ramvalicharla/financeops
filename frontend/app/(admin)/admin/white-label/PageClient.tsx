@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { enableWhiteLabelTenant, listWhiteLabelAdminConfigs } from "@/lib/api/white-label"
 import type { WhiteLabelConfig } from "@/lib/types/white-label"
 
@@ -10,7 +10,7 @@ export default function AdminWhiteLabelPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await listWhiteLabelAdminConfigs({ limit: 200, offset: 0 })
@@ -18,11 +18,11 @@ export default function AdminWhiteLabelPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load white label tenants")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const enable = async (tenantId: string) => {
     setMessage(null)

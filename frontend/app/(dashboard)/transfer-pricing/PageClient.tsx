@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
@@ -38,7 +38,7 @@ export default function TransferPricingPage() {
     method?: string
   }>({})
 
-  const load = async (): Promise<void> => {
+  const load = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -55,11 +55,11 @@ export default function TransferPricingPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const addTransaction = async (): Promise<void> => {
     const nextFieldErrors: typeof fieldErrors = {}

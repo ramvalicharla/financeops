@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { DocumentVault } from "@/components/advisory/ma/DocumentVault"
 import { listMADocuments, registerMADocument } from "@/lib/api/ma"
@@ -13,20 +13,20 @@ export default function MADocumentsPage() {
   const [documents, setDocuments] = useState<MADocument[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const payload = await listMADocuments(workspaceId, { limit: 100, offset: 0 })
       setDocuments(payload.data)
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load documents")
     }
-  }
+  }, [workspaceId])
 
   useEffect(() => {
     if (workspaceId) {
       void load()
     }
-  }, [workspaceId])
+  }, [workspaceId, load])
 
   const register = async (payload: {
     document_name: string

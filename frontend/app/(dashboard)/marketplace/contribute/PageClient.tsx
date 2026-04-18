@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { FormField } from "@/components/ui/FormField"
 import {
   getMarketplaceContributorDashboard,
@@ -39,7 +39,7 @@ export default function MarketplaceContributePage() {
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
-  const loadContributor = async () => {
+  const loadContributor = useCallback(async () => {
     try {
       const payload = await getMarketplaceContributorDashboard()
       setContributor(payload.contributor)
@@ -52,11 +52,11 @@ export default function MarketplaceContributePage() {
     } catch {
       setContributor(null)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void loadContributor()
-  }, [])
+  }, [loadContributor])
 
   const onRegister = async () => {
     setError(null)

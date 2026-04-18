@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   listNotifications,
@@ -26,10 +26,8 @@ export function NotificationPanel({
   const [rows, setRows] = useState<NotificationRow[]>([])
   const [loading, setLoading] = useState(false)
 
-  const load = async () => {
-    if (!open) {
-      return
-    }
+  const load = useCallback(async () => {
+    if (!open) return
     setLoading(true)
     try {
       const payload = await listNotifications({ limit: 12, offset: 0 })
@@ -40,11 +38,11 @@ export function NotificationPanel({
     } finally {
       setLoading(false)
     }
-  }
+  }, [open, onUnreadCountChange])
 
   useEffect(() => {
     void load()
-  }, [open])
+  }, [load])
 
   const onMarkAllRead = async () => {
     await markAllNotificationsRead()

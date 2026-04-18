@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { listWhiteLabelAdminConfigs } from "@/lib/api/white-label"
 import type { WhiteLabelConfig } from "@/lib/types/white-label"
@@ -13,7 +13,7 @@ export default function AdminWhiteLabelTenantPage() {
   const [config, setConfig] = useState<WhiteLabelConfig | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await listWhiteLabelAdminConfigs({ limit: 500, offset: 0 })
@@ -25,13 +25,13 @@ export default function AdminWhiteLabelTenantPage() {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load tenant white label config")
     }
-  }
+  }, [tenantId])
 
   useEffect(() => {
     if (tenantId) {
       void load()
     }
-  }, [tenantId])
+  }, [tenantId, load])
 
   return (
     <div className="space-y-6">

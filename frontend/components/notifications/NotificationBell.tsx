@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Bell } from "lucide-react"
 import { getUnreadNotificationCount } from "@/lib/api/notifications"
 import { useUIStore } from "@/lib/store/ui"
@@ -17,7 +17,7 @@ export function NotificationBell({ onTrigger }: NotificationBellProps = {}) {
   const [count, setCount] = useState(0)
   const setStoreCount = useUIStore((state) => state.setNotificationCount)
 
-  const refreshCount = async () => {
+  const refreshCount = useCallback(async () => {
     try {
       const unread = await getUnreadNotificationCount()
       setCount(unread)
@@ -26,7 +26,7 @@ export function NotificationBell({ onTrigger }: NotificationBellProps = {}) {
       setCount(0)
       setStoreCount(0)
     }
-  }
+  }, [setStoreCount])
 
   useEffect(() => {
     void refreshCount()
@@ -40,7 +40,7 @@ export function NotificationBell({ onTrigger }: NotificationBellProps = {}) {
       void refreshCount()
     }, 30_000)
     return () => clearInterval(timer)
-  }, [])
+  }, [refreshCount])
 
   return (
     <div className="relative">

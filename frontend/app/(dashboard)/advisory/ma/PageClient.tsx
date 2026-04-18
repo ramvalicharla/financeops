@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { createMAWorkspace, getMAWorkspace, listMAWorkspaces } from "@/lib/api/ma"
 import type { MAWorkspace } from "@/lib/types/ma"
 import { WorkspaceCard } from "@/components/advisory/ma/WorkspaceCard"
@@ -16,7 +16,7 @@ export default function MAWorkspaceListPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setError(null)
     try {
       const payload = await listMAWorkspaces({ limit: 50, offset: 0 })
@@ -37,11 +37,11 @@ export default function MAWorkspaceListPage() {
     } catch (fetchError) {
       setError(fetchError instanceof Error ? fetchError.message : "Failed to load M&A workspaces")
     }
-  }
+  }, [])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
   const createNew = async () => {
     setCreating(true)
