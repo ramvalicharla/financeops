@@ -1,18 +1,19 @@
 import apiClient from "@/lib/api/client"
-import type { SearchResultRow } from "@/lib/types/search"
+import type { UnifiedSearchResponse } from "@/lib/types/search"
 
 export const searchGlobal = async (params?: {
   q?: string
-  types?: string[]
+  module?: string
   limit?: number
-}): Promise<SearchResultRow[]> => {
+  offset?: number
+}): Promise<UnifiedSearchResponse> => {
   const search = new URLSearchParams()
-  search.set("q", params?.q ?? "")
-  if (params?.types && params.types.length > 0) {
-    search.set("types", params.types.join(","))
-  }
-  search.set("limit", String(params?.limit ?? 10))
-  const response = await apiClient.get<SearchResultRow[]>(
+  if (params?.q) search.set("q", params.q)
+  if (params?.module && params.module !== "all") search.set("module", params.module)
+  if (params?.limit) search.set("limit", String(params.limit))
+  if (params?.offset !== undefined) search.set("offset", String(params.offset))
+
+  const response = await apiClient.get<UnifiedSearchResponse>(
     `/api/v1/search?${search.toString()}`,
   )
   return response.data

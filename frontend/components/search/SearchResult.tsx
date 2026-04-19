@@ -24,29 +24,18 @@ type SearchResultProps = {
   onSelect: (result: SearchResultRow) => void
 }
 
-const entityIcon = (entityType: string) => {
-  switch (entityType) {
-    case "expense_claim":
+const entityIcon = (module: string) => {
+  switch (module) {
+    case "expense":
       return Receipt
-    case "anomaly":
-      return AlertTriangle
-    case "checklist_task":
-      return CalendarCheck2
-    case "fdd_engagement":
-    case "ppa_engagement":
-    case "ma_workspace":
-      return BriefcaseBusiness
-    case "marketplace_template":
-      return Shapes
-    case "mis_line":
-      return Landmark
-    case "document":
+    case "report":
       return FileText
-    case "closing_run":
+    case "user":
+      return Building2
+    case "entity":
+      return Landmark
+    case "journal":
       return FolderKanban
-    case "budget_line":
-    case "forecast_run":
-      return HandCoins
     default:
       return Search
   }
@@ -72,8 +61,8 @@ const highlight = (value: string, query: string): ReactNode => {
 }
 
 export function SearchResult({ result, isActive, query, onSelect }: SearchResultProps) {
-  const Icon = entityIcon(result.entity_type)
-  const entityLabel = result.entity_type.replaceAll("_", " ")
+  const Icon = entityIcon(result.module)
+  const entityLabel = result.module.replaceAll("_", " ")
 
   return (
     <button

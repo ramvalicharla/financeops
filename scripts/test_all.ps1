@@ -71,8 +71,11 @@ try {
         Write-Host "Applying migrations..."
         Invoke-Checked -Command $pythonExe -Arguments @("-m", "alembic", "upgrade", "head")
 
-        Write-Host "Running pytest..."
-        Invoke-Checked -Command $pythonExe -Arguments @("-m", "pytest", "-q")
+        Write-Host "Running parallel-safe pytest suite..."
+        Invoke-Checked -Command $pythonExe -Arguments @("-m", "pytest", "-q", "-n", "auto", "-m", "not serial_only")
+
+        Write-Host "Running serial-only pytest tail..."
+        Invoke-Checked -Command $pythonExe -Arguments @("-m", "pytest", "-q", "-n", "1", "-m", "serial_only")
     }
     finally {
         Pop-Location

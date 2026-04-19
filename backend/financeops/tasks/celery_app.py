@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import redis.asyncio as aioredis
 from celery import Celery
 from celery.schedules import crontab
 import logging
 from datetime import UTC, datetime, timedelta
+from time import perf_counter
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, text
 
 from financeops.config import settings
+from financeops.db.append_only import append_only_trigger_name
+from financeops.db.models.payment import WebhookEvent
+from financeops.shared_kernel.idempotency import cleanup_nonexpiring_idempotency_keys
 from financeops.observability.celery_monitor import get_celery_monitor
 from financeops.observability.celery_propagation import connect_celery_correlation_signals
 from financeops.observability.celery_monitor import connect_task_failure_signal
@@ -25,8 +30,8 @@ celery_app = Celery("financeops")
 
 celery_app.conf.update(
     # Broker and result backend
-    broker_url=str(settings.REDIS_URL),
-    result_backend=str(settings.REDIS_URL),
+    broker_url=settings.redis_broker_url,
+    result_backend=settings.redis_result_backend_url,
     # Serialization
     task_serializer="json",
     accept_content=["json"],
@@ -110,6 +115,18 @@ celery_app.conf.update(
         "ops-check-dead-letter-queue-hourly": {
             "task": "ops.check_dead_letter_queue",
             "schedule": 3600.0,
+        },
+        "ops-check-payment-dead-letter-queue-hourly": {
+            "task": "ops.check_payment_dead_letter_queue",
+            "schedule": 3600.0,
+        },
+        "ops-cleanup-idempotency-keys-daily": {
+            "task": "ops.cleanup_idempotency_keys",
+            "schedule": 86400.0,
+        },
+        "payment-cleanup-webhook-events-daily": {
+            "task": "payment.cleanup_webhook_events",
+            "schedule": 86400.0,
         },
         "accounting-approval-reminders": {
             "task": "accounting_layer.approval_reminder",
@@ -196,3 +213,149 @@ def check_dead_letter_queue() -> dict[str, int]:
                 },
             )
     return {"dead_letter_items": total, "stale_items": stale_count}
+
+
+@celery_app.task(name="ops.check_payment_dead_letter_queue")
+def check_payment_dead_letter_queue() -> dict[str, int]:
+    stale_count = 0
+    total = 0
+    cutoff = datetime.now(UTC) - timedelta(hours=24)
+    for item in get_celery_monitor().list_dead_letter_items_for_workloads(
+        workloads={"payment", "webhook"}
+    ):
+        total += 1
+        failed_at_raw = item.get("failed_at")
+        if not isinstance(failed_at_raw, str):
+            continue
+        try:
+            failed_at = datetime.fromisoformat(failed_at_raw)
+        except ValueError:
+            continue
+        if failed_at.tzinfo is None:
+            failed_at = failed_at.replace(tzinfo=UTC)
+        if failed_at <= cutoff:
+            stale_count += 1
+            log.error(
+                "payment_dead_letter_item_stale",
+                extra={
+                    "task_name": item.get("task_name"),
+                    "task_id": item.get("task_id"),
+                    "tenant_id": item.get("tenant_id"),
+                    "correlation_id": item.get("correlation_id"),
+                    "error": item.get("error"),
+                    "failed_at": failed_at.isoformat(),
+                    "workload": item.get("workload"),
+                },
+            )
+    return {"dead_letter_items": total, "stale_items": stale_count}
+
+
+@celery_app.task(name="ops.cleanup_idempotency_keys")
+def cleanup_idempotency_keys() -> dict[str, int]:
+    async def _run() -> int:
+        redis_client = aioredis.from_url(settings.redis_cache_url, decode_responses=True)
+        try:
+            return await cleanup_nonexpiring_idempotency_keys(redis_client)
+        finally:
+            await redis_client.aclose()
+
+    removed = int(run_async(_run()) or 0)
+    if removed:
+        log.info("idempotency_key_cleanup_removed_nonexpiring_keys count=%s", removed)
+    return {"removed_nonexpiring_keys": removed}
+
+
+async def cleanup_webhook_events_for_retention(
+    *,
+    retention_days: int | None = None,
+) -> dict[str, int | bool]:
+    started_at = perf_counter()
+    effective_retention_days = int(
+        retention_days
+        if retention_days is not None
+        else settings.WEBHOOK_EVENT_RETENTION_DAYS
+    )
+    cutoff = datetime.now(UTC) - timedelta(days=effective_retention_days)
+    trigger_name = append_only_trigger_name("webhook_events")
+
+    async with AsyncSessionLocal() as session:
+        stale_count = int(
+            (
+                await session.execute(
+                    select(func.count())
+                    .select_from(WebhookEvent)
+                    .where(WebhookEvent.created_at < cutoff)
+                )
+            ).scalar_one()
+            or 0
+        )
+        if stale_count == 0:
+            duration_ms = int((perf_counter() - started_at) * 1000)
+            return {
+                "removed_webhook_events": 0,
+                "stale_webhook_events": 0,
+                "retention_days": effective_retention_days,
+                "duration_ms": duration_ms,
+                "slow_cleanup": duration_ms >= settings.WEBHOOK_EVENT_RETENTION_SLOW_MS,
+            }
+
+        await session.execute(text(f"ALTER TABLE webhook_events DISABLE TRIGGER {trigger_name}"))
+        try:
+            await session.execute(
+                delete(WebhookEvent).where(WebhookEvent.created_at < cutoff)
+            )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.execute(text(f"ALTER TABLE webhook_events ENABLE TRIGGER {trigger_name}"))
+            await session.commit()
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    return {
+        "removed_webhook_events": stale_count,
+        "stale_webhook_events": stale_count,
+        "retention_days": effective_retention_days,
+        "duration_ms": duration_ms,
+        "slow_cleanup": duration_ms >= settings.WEBHOOK_EVENT_RETENTION_SLOW_MS,
+    }
+
+
+@celery_app.task(name="payment.cleanup_webhook_events")
+def cleanup_webhook_events() -> dict[str, int]:
+    result = run_async(cleanup_webhook_events_for_retention()) or {
+        "removed_webhook_events": 0,
+        "stale_webhook_events": 0,
+        "retention_days": settings.WEBHOOK_EVENT_RETENTION_DAYS,
+        "duration_ms": 0,
+        "slow_cleanup": False,
+    }
+    removed = int(result["removed_webhook_events"])
+    if removed:
+        log.info(
+            "payment_webhook_retention_cleanup_removed_rows count=%s retention_days=%s duration_ms=%s",
+            removed,
+            result["retention_days"],
+            result["duration_ms"],
+        )
+    elif bool(result["slow_cleanup"]):
+        log.warning(
+            "payment_webhook_retention_cleanup_slow retention_days=%s duration_ms=%s removed_rows=%s",
+            result["retention_days"],
+            result["duration_ms"],
+            removed,
+        )
+    else:
+        log.info(
+            "payment_webhook_retention_cleanup_checked retention_days=%s duration_ms=%s removed_rows=%s",
+            result["retention_days"],
+            result["duration_ms"],
+            removed,
+        )
+    return {
+        "removed_webhook_events": removed,
+        "stale_webhook_events": int(result["stale_webhook_events"]),
+        "retention_days": int(result["retention_days"]),
+        "duration_ms": int(result["duration_ms"]),
+        "slow_cleanup": int(bool(result["slow_cleanup"])),
+    }

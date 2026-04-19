@@ -35,7 +35,10 @@ def test_on_task_failure_pushes_dead_letter_after_final_retry(monkeypatch: pytes
     monitor = CeleryMonitor("redis://localhost:6379/0")
     sender = SimpleNamespace(
         name="payment.retry_failed_payments",
-        request=SimpleNamespace(retries=3),
+        request=SimpleNamespace(
+            retries=3,
+            kwargs={"tenant_id": "tenant-123", "correlation_id": "corr-123"},
+        ),
         max_retries=3,
     )
 
@@ -52,6 +55,34 @@ def test_on_task_failure_pushes_dead_letter_after_final_retry(monkeypatch: pytes
     assert items[0]["task_name"] == "payment.retry_failed_payments"
     assert items[0]["task_id"] == "task-123"
     assert items[0]["error"] == "boom"
+    assert items[0]["tenant_id"] == "tenant-123"
+    assert items[0]["correlation_id"] == "corr-123"
+    assert items[0]["retries"] == 3
+    assert items[0]["max_retries"] == 3
+    assert items[0]["workload"] == "payment"
+
+
+@pytest.mark.unit
+def test_list_dead_letter_items_for_workloads_filters_payment_and_webhook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from financeops.observability.celery_monitor import CeleryMonitor
+
+    fake_client = _FakeRedisClient()
+    fake_client.items = [
+        '{"task_name":"ops.cleanup","task_id":"1","error":"x","failed_at":"2026-01-01T00:00:00+00:00","workload":"other"}',
+        '{"task_name":"financeops.modules.erp_push.application.webhook_task","task_id":"2","error":"y","failed_at":"2026-01-01T00:00:00+00:00","workload":"webhook"}',
+        '{"task_name":"payment.retry_failed_payments","task_id":"3","error":"z","failed_at":"2026-01-01T00:00:00+00:00","workload":"payment"}',
+    ]
+    monkeypatch.setattr(
+        "financeops.observability.celery_monitor.redis.Redis.from_url",
+        lambda *args, **kwargs: fake_client,
+    )
+
+    monitor = CeleryMonitor("redis://localhost:6379/0")
+    items = monitor.list_dead_letter_items_for_workloads(workloads={"payment", "webhook"})
+
+    assert [item["task_id"] for item in items] == ["2", "3"]
 
 
 @pytest.mark.unit
@@ -81,5 +112,44 @@ def test_check_dead_letter_queue_counts_stale_items(monkeypatch: pytest.MonkeyPa
     )
 
     result = check_dead_letter_queue.run()
+
+    assert result == {"dead_letter_items": 2, "stale_items": 1}
+
+
+@pytest.mark.unit
+def test_check_payment_dead_letter_queue_counts_only_payment_and_webhook_stale_items(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from financeops.tasks.celery_app import check_payment_dead_letter_queue
+
+    now = datetime.now(UTC)
+    fake_monitor = SimpleNamespace(
+        list_dead_letter_items_for_workloads=lambda workloads: [
+            {
+                "task_name": "payment.retry_failed_payments",
+                "task_id": "pay-1",
+                "tenant_id": "tenant-1",
+                "correlation_id": "corr-1",
+                "error": "payment stale failure",
+                "workload": "payment",
+                "failed_at": (now - timedelta(hours=25)).isoformat(),
+            },
+            {
+                "task_name": "financeops.modules.erp_push.application.webhook_task",
+                "task_id": "webhook-1",
+                "tenant_id": "tenant-2",
+                "correlation_id": "corr-2",
+                "error": "fresh webhook failure",
+                "workload": "webhook",
+                "failed_at": (now - timedelta(hours=1)).isoformat(),
+            },
+        ]
+    )
+    monkeypatch.setattr(
+        "financeops.tasks.celery_app.get_celery_monitor",
+        lambda: fake_monitor,
+    )
+
+    result = check_payment_dead_letter_queue.run()
 
     assert result == {"dead_letter_items": 2, "stale_items": 1}

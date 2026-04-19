@@ -12,10 +12,8 @@ Later, the backend team should clear this checklist to ensure true 1-to-1 parity
 * **Current Fallback:** The frontend injects `X-Tenant-ID` and `X-Entity-ID` directly into HTTP Headers via `api/client.ts` Axios interceptors pulling from `useTenantStore`.
 * **Backend Fix Required:** The backend Python FastAPI schema requires migrating entirely to respect path-based multi-tenancy. Endpoints should formally evolve from `GET /api/v1/accounting/journals` to `GET /api/v1/tenant/{tenant_id}/entity/{entity_id}/accounting/journals` for maximum RESTful clarity and security, matching the new Frontend Next.js routing architecture exactly.
 
-## 3. Omnisearch Enrichment 
-* **Current Frontend Need:** The Global Command Palette (`Cmd+K`) provides instant navigation, but needs a global search text aggregator to be "World-Class".
-* **Backend Fix Required:** Ensure `GET /api/v1/search?q={query}` scans across Journals, Users, Invoices, Workflows, and Intent pipelines globally, returning categorized hits (e.g., `type: 'journal', id: '123'`) so the frontend can render rich dropdown states natively.
+## 3. Omnisearch Enrichment (DONE ✅)
+* **Status:** The frontend and backend have now established the UnifiedSearchResponse DTO. Global search spans across Journals, Expenses, Users, Reports, and Entities, seamlessly rendering results natively into the Command Palette and `/search` standalone page.
 
-## 4. Drawers & Aggressive Pagination
-* **Current Frontend Need:** The frontend is utilizing Slide-over "Sheet" drawers for editing data, meaning it will pull data more aggressively. 
-* **Backend Fix Required:** Ensure all list endpoints correctly support standardized `offset`, `limit`, and multi-array `sort` parameters (e.g., `?sort=-created_at,amount_asc`) so the Tanstack Data Grid implementations can fetch sub-pages without forcing heavy localized data processing on the client machine.
+## 4. Drawers & Aggressive Pagination (DONE ✅)
+* **Status:** Frontend Tanstack Data Grid implementations and the global PaginationBar components are now fully wired to proactively pass `offset`, `limit`, and server-side arguments to backend data fetches.

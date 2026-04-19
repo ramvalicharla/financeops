@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { SessionProvider } from "next-auth/react"
+import { ThemeProvider } from "next-themes"
 import { useState } from "react"
 import { queryRetryDelay, shouldRetryQuery } from "@/lib/query-client"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -28,7 +29,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={300}>
-          {children}
+          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            {children}
+          </ThemeProvider>
         </TooltipProvider>
       </QueryClientProvider>
     </SessionProvider>

@@ -46,6 +46,8 @@ echo "Waiting for database readiness..."
   "${python_exe}" tests/utils/wait_for_db.py --url "${TEST_DATABASE_URL}" --timeout 30
   echo "Applying migrations..."
   "${python_exe}" -m alembic upgrade head
-  echo "Running pytest..."
-  "${python_exe}" -m pytest -q
+  echo "Running parallel-safe pytest suite..."
+  "${python_exe}" -m pytest -q -n auto -m "not serial_only"
+  echo "Running serial-only pytest tail..."
+  "${python_exe}" -m pytest -q -n 1 -m "serial_only"
 )

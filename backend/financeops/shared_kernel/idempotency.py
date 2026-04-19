@@ -15,6 +15,7 @@ from financeops.shared_kernel.response import err
 
 IDEMPOTENCY_TTL_SECONDS = 86_400
 MAX_IDEMPOTENCY_KEY_LENGTH = 128
+IDEMPOTENCY_CACHE_PREFIX = "idempotency:"
 
 REQUIRED_ERP_SYNC_ENDPOINT_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"^/api/v1/erp-sync/sync-runs$"),
@@ -120,7 +121,23 @@ def _extract_tenant_id(request: Request) -> str:
 
 
 def _cache_key(tenant_id: str, idempotency_key: str) -> str:
-    return f"idempotency:{tenant_id}:{idempotency_key}"
+    return f"{IDEMPOTENCY_CACHE_PREFIX}{tenant_id}:{idempotency_key}"
+
+
+async def cleanup_nonexpiring_idempotency_keys(redis_client=None) -> int:
+    """Delete only malformed idempotency cache keys that were stored without expiry."""
+    client = redis_client or api_deps._redis_pool
+    if client is None:
+        return 0
+
+    removed = 0
+    async for raw_key in client.scan_iter(match=f"{IDEMPOTENCY_CACHE_PREFIX}*"):
+        key = raw_key.decode("utf-8") if isinstance(raw_key, bytes) else str(raw_key)
+        ttl = await client.ttl(key)
+        if ttl == -1:
+            await client.delete(key)
+            removed += 1
+    return removed
 
 
 def _error_response(request: Request, code: str, message: str, *, status_code: int) -> JSONResponse:

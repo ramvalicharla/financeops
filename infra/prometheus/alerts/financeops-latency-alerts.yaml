@@ -1,0 +1,42 @@
+groups:
+  - name: financeops-latency
+    rules:
+      - alert: FinanceOpsApiP99LatencyHigh
+        expr: histogram_quantile(0.99, sum by (le) (rate(financeops_api_request_latency_ms_bucket[5m]))) > 2500
+        for: 15m
+        labels:
+          severity: warning
+          service: financeops-api
+        annotations:
+          summary: FinanceOps API p99 latency is elevated
+          description: API p99 latency has been above 2500ms for 15 minutes.
+
+      - alert: FinanceOpsWorkflowP99LatencyHigh
+        expr: histogram_quantile(0.99, sum by (le) (rate(financeops_finance_workflow_duration_ms_bucket[10m]))) > 10000
+        for: 15m
+        labels:
+          severity: warning
+          service: financeops-workflows
+        annotations:
+          summary: FinanceOps workflow p99 latency is elevated
+          description: Finance workflow p99 latency has been above 10000ms for 15 minutes.
+
+      - alert: FinanceOpsErpSyncP95LatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(financeops_erp_sync_duration_ms_bucket[10m]))) > 5000
+        for: 15m
+        labels:
+          severity: warning
+          service: financeops-erp-sync
+        annotations:
+          summary: ERP sync latency is elevated
+          description: ERP sync p95 latency has been above 5000ms for 15 minutes.
+
+      - alert: FinanceOpsAiNarrativeP99LatencyHigh
+        expr: histogram_quantile(0.99, sum by (le) (rate(financeops_ai_narrative_duration_ms_bucket[10m]))) > 10000
+        for: 15m
+        labels:
+          severity: warning
+          service: financeops-ai
+        annotations:
+          summary: AI narrative latency is elevated
+          description: AI narrative p99 latency has been above 10000ms for 15 minutes.

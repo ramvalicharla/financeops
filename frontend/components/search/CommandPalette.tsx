@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { ChevronLeft, Loader2, Sparkles } from "lucide-react"
 import { useRouter } from "next/navigation"
 import {
@@ -19,6 +19,9 @@ import {
   NAV_ITEMS,
   type NavigationLeafItem,
 } from "@/lib/config/navigation"
+import { useQuery } from "@tanstack/react-query"
+import { searchGlobal } from "@/lib/api/search"
+import { useUIStore } from "@/lib/store/ui"
 
 // ---------------------------------------------------------------------------
 // Static data — built once at module load from the nav config
@@ -62,9 +65,27 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   const { response: aiResponse, isStreaming, error: streamError, traceId, stream } =
     useStreamingAI()
 
+  const [query, setQuery] = useState("")
+  const [debouncedQuery, setDebouncedQuery] = useState("")
+  const recentSearches = useUIStore((state) => state.recentSearches ?? [])
+  const addRecentSearch = useUIStore((state) => state.addRecentSearch)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const searchQuery = useQuery({
+    queryKey: ["global-search", debouncedQuery],
+    queryFn: () => searchGlobal({ q: debouncedQuery, limit: 5, module: "all" }),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 30000,
+  })
+
   function handleClose() {
     setShowAIPanel(false)
     setAiPrompt("")
+    setQuery("")
     onClose()
   }
 
@@ -75,57 +96,144 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     await stream(prompt, AI_SYSTEM_PROMPT)
   }
 
+  const groupedResults = useMemo(() => {
+    if (!searchQuery.data?.data) return {}
+    return searchQuery.data.data.reduce((acc, current) => {
+      if (!acc[current.module]) acc[current.module] = []
+      acc[current.module]!.push(current)
+      return acc
+    }, {} as Record<string, typeof searchQuery.data.data>)
+  }, [searchQuery])
+
   return (
-    <CommandDialog open={isOpen} onOpenChange={(open) => { if (!open) handleClose() }}>
+    <CommandDialog 
+      open={isOpen} 
+      onOpenChange={(open) => { if (!open) handleClose() }}
+      shouldFilter={false} // Disable cmdk auto-filtering so backend search isn't hidden
+    >
       {!showAIPanel ? (
         <>
-          <CommandInput placeholder="Search modules or type a command…" />
+          <CommandInput 
+            placeholder="Search modules or type a command…" 
+            value={query}
+            onValueChange={setQuery}
+          />
           <CommandList className="max-h-[min(400px,60vh)]">
-            <CommandEmpty>No results found.</CommandEmpty>
+            <CommandEmpty>
+              {searchQuery.isLoading ? (
+                <div className="flex items-center justify-center p-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                "No results found."
+              )}
+            </CommandEmpty>
 
-            {NAV_GROUP_DEFINITIONS.map((group) => {
-              const items = group.hrefs
-                .map((href) => hrefToNavItem.get(href))
-                .filter((item): item is NavigationLeafItem => item !== undefined)
-              if (!items.length) return null
-              return (
-                <CommandGroup key={group.label} heading={group.label}>
-                  {items.map((item) => {
-                    const Icon = item.icon
-                    return (
+            {/* When not searching, show base items */}
+            {debouncedQuery.length < 2 ? (
+              <>
+                {recentSearches.length > 0 && (
+                  <CommandGroup heading="Recent Searches">
+                    {recentSearches.map(term => (
                       <CommandItem
-                        key={item.href}
-                        value={item.label.toLowerCase()}
+                        key={term}
+                        value={term}
                         onSelect={() => {
-                          router.push(item.href)
+                          setQuery(term)
+                          setDebouncedQuery(term)
+                        }}
+                      >
+                        {term}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {NAV_GROUP_DEFINITIONS.map((group) => {
+                  const items = group.hrefs
+                    .map((href) => hrefToNavItem.get(href))
+                    .filter((item): item is NavigationLeafItem => item !== undefined)
+                  if (!items.length) return null
+                  return (
+                    <CommandGroup key={group.label} heading={group.label}>
+                      {items.map((item) => {
+                        const Icon = item.icon
+                        return (
+                          <CommandItem
+                            key={item.href}
+                            value={item.label.toLowerCase()}
+                            onSelect={() => {
+                              router.push(item.href)
+                              handleClose()
+                            }}
+                          >
+                            <Icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                            {item.label}
+                          </CommandItem>
+                        )
+                      })}
+                    </CommandGroup>
+                  )
+                })}
+
+                <CommandSeparator />
+
+                <CommandGroup heading="Quick Actions">
+                  {QUICK_ACTIONS.map((action) => (
+                    <CommandItem
+                      key={action.href}
+                      value={action.label.toLowerCase()}
+                      onSelect={() => {
+                        router.push(action.href)
+                        handleClose()
+                      }}
+                    >
+                      {action.label}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            ) : (
+              /* When searching, show dynamic backend results */
+              <>
+                {Object.entries(groupedResults).map(([moduleName, rows]) => (
+                  <CommandGroup key={moduleName} heading={moduleName.toUpperCase()}>
+                    {rows.map(row => (
+                      <CommandItem
+                        key={row.id}
+                        value={row.title}
+                        onSelect={() => {
+                          if (addRecentSearch) addRecentSearch(debouncedQuery)
+                          router.push(row.href)
                           handleClose()
                         }}
                       >
-                        <Icon className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                        {item.label}
+                         <div className="flex flex-col gap-0.5">
+                           <span className="text-sm font-medium">{row.title}</span>
+                           {row.subtitle && <span className="text-xs text-muted-foreground">{row.subtitle}</span>}
+                         </div>
                       </CommandItem>
-                    )
-                  })}
-                </CommandGroup>
-              )
-            })}
+                    ))}
+                  </CommandGroup>
+                ))}
 
-            <CommandSeparator />
-
-            <CommandGroup heading="Quick Actions">
-              {QUICK_ACTIONS.map((action) => (
-                <CommandItem
-                  key={action.href}
-                  value={action.label.toLowerCase()}
-                  onSelect={() => {
-                    router.push(action.href)
-                    handleClose()
-                  }}
-                >
-                  {action.label}
-                </CommandItem>
-              ))}
-            </CommandGroup>
+                {searchQuery.data?.meta && searchQuery.data.meta.total_results > 0 && (
+                  <>
+                    <CommandSeparator />
+                    <CommandItem
+                      onSelect={() => {
+                        if (addRecentSearch) addRecentSearch(debouncedQuery)
+                        router.push(`/search?q=${encodeURIComponent(debouncedQuery)}`)
+                        handleClose()
+                      }}
+                      className="justify-center text-xs font-semibold text-[hsl(var(--brand-primary))] hover:text-[hsl(var(--brand-primary)/0.8)]"
+                    >
+                      View all {searchQuery.data.meta.total_results} results ➔
+                    </CommandItem>
+                  </>
+                )}
+              </>
+            )}
 
             <CommandSeparator />
 

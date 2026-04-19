@@ -3,7 +3,7 @@
   "title": "FinanceOps Infrastructure",
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -15,43 +15,56 @@
       "type": "timeseries",
       "title": "API Request Rate",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
-      "targets": [{ "expr": "rate(http_requests_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(financeops_api_requests_total[5m])) by (method, path)", "refId": "A" }]
     },
     {
       "id": 2,
       "type": "timeseries",
       "title": "API Error Rate",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [{ "expr": "rate(http_requests_total{status=~\"4..|5..\"}[5m])", "refId": "A" }]
+      "targets": [{ "expr": "sum(rate(financeops_api_errors_total[5m])) by (method, path, status_code)", "refId": "A" }]
     },
     {
       "id": 3,
       "type": "timeseries",
-      "title": "API p95 Latency",
+      "title": "API p50 Latency",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "targets": [{ "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))", "refId": "A" }]
+      "targets": [{ "expr": "histogram_quantile(0.50, sum by (le) (rate(financeops_api_request_latency_ms_bucket[5m])))", "refId": "A" }]
     },
     {
       "id": 4,
-      "type": "gauge",
-      "title": "CPU per Service",
-      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
-      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total[5m])) by (container)", "refId": "A" }]
+      "type": "timeseries",
+      "title": "API p95 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(financeops_api_request_latency_ms_bucket[5m])))", "refId": "A" }]
     },
     {
       "id": 5,
-      "type": "gauge",
-      "title": "Memory per Service",
-      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
-      "targets": [{ "expr": "sum(container_memory_working_set_bytes) by (container)", "refId": "A" }]
+      "type": "timeseries",
+      "title": "API p99 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [{ "expr": "histogram_quantile(0.99, sum by (le) (rate(financeops_api_request_latency_ms_bucket[5m])))", "refId": "A" }]
     },
     {
       "id": 6,
+      "type": "gauge",
+      "title": "CPU per Service",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 16 },
+      "targets": [{ "expr": "sum(rate(container_cpu_usage_seconds_total[5m])) by (container)", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "type": "gauge",
+      "title": "Memory per Service",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 16 },
+      "targets": [{ "expr": "sum(container_memory_working_set_bytes) by (container)", "refId": "A" }]
+    },
+    {
+      "id": 8,
       "type": "stat",
       "title": "Container Restarts",
-      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 16 },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 24 },
       "targets": [{ "expr": "sum(kube_pod_container_status_restarts_total)", "refId": "A" }]
     }
   ]
 }
-

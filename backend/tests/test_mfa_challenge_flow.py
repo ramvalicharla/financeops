@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock
 from financeops.core.security import encrypt_field, generate_totp_secret
 from financeops.services.auth_service import create_mfa_challenge
 
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
+TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://:redis_local_2024@localhost:6379/15")
 
 
 @asynccontextmanager

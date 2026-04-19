@@ -21,7 +21,12 @@ from financeops.core.security import decode_token
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.db.rls import clear_tenant_context, set_tenant_context
-from financeops.db.session import AsyncSessionLocal, finalize_session_success
+from financeops.db.session import (
+    AsyncReadSessionLocal,
+    AsyncSessionLocal,
+    finalize_session_read_only,
+    finalize_session_success,
+)
 from financeops.modules.payment.application.entitlement_service import EntitlementService
 from financeops.platform.db.models.modules import CpModuleRegistry
 from financeops.platform.services.enforcement.auth_modes import (
@@ -159,6 +164,49 @@ async def get_async_session(request: Request) -> AsyncGenerator[AsyncSession, No
             await set_tenant_context(session, tenant_id)
             yield session
             await finalize_session_success(session)
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            if session.in_transaction():
+                await clear_tenant_context(session)
+            await session.close()
+
+
+async def get_read_async_session(request: Request) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Yield a read-only async DB session with RLS context set from request middleware.
+    """
+    path = request.url.path
+    if path in PUBLIC_ROUTE_PATHS:
+        async with AsyncReadSessionLocal() as session:
+            try:
+                request.state.auth_mode = AuthMode.PUBLIC.value
+                yield session
+                await finalize_session_read_only(session)
+            except Exception:
+                await session.rollback()
+                raise
+            finally:
+                await session.close()
+        return
+
+    tenant_id = str(getattr(request.state, "tenant_id", "") or "")
+    if not tenant_id:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+            payload = decode_token(token)
+            tenant_id = str(payload.get("tenant_id", "") or "")
+    if not tenant_id:
+        raise AuthenticationError(
+            "tenant_id missing from token - RLS context cannot be set"
+        )
+    async with AsyncReadSessionLocal() as session:
+        try:
+            await set_tenant_context(session, tenant_id)
+            yield session
+            await finalize_session_read_only(session)
         except Exception:
             await session.rollback()
             raise
@@ -553,7 +601,7 @@ async def get_redis() -> AsyncGenerator[aioredis.Redis, None]:
     from financeops.config import settings
     if _redis_pool is None:
         _redis_pool = aioredis.from_url(
-            str(settings.REDIS_URL),
+            settings.redis_cache_url,
             encoding="utf-8",
             decode_responses=True,
         )

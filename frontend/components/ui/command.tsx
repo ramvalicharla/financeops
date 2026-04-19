@@ -108,11 +108,12 @@ function CommandDialog({
   open,
   onOpenChange,
   children,
+  ...props
 }: {
   open?: boolean
   onOpenChange?: (open: boolean) => void
   children?: ReactNode
-}) {
+} & React.ComponentPropsWithoutRef<typeof CommandPrimitive>) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <DialogPrimitive.Portal>
@@ -136,6 +137,7 @@ function CommandDialog({
               "[&_[cmdk-input-wrapper]_svg]:h-5 [&_[cmdk-input-wrapper]_svg]:w-5",
               "[&_[cmdk-input]]:h-12",
             )}
+            {...props}
           >
             {children}
           </Command>

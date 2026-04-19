@@ -8,6 +8,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, version as package_version
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
+from urllib.parse import urlparse
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -149,7 +150,7 @@ async def _initialize_redis_pool() -> None:
         from financeops.api import deps as api_deps
 
         redis_client = aioredis.from_url(
-            str(settings.REDIS_URL), encoding="utf-8", decode_responses=True
+            settings.redis_cache_url, encoding="utf-8", decode_responses=True
         )
         await asyncio.wait_for(redis_client.ping(), timeout=2.0)
         api_deps._redis_pool = redis_client
@@ -170,10 +171,10 @@ def _check_ai_provider_keys() -> None:
         "openai": "OPENAI_API_KEY",
         "google": "GEMINI_API_KEY",
     }
-    _KEY_VALUE: dict[str, str] = {
-        "anthropic": settings.ANTHROPIC_API_KEY or "",
-        "openai": settings.OPENAI_API_KEY or "",
-        "google": settings.GEMINI_API_KEY or "",
+    _KEY_VALUE: dict[str, str | None] = {
+        "anthropic": settings.ANTHROPIC_API_KEY,
+        "openai": settings.OPENAI_API_KEY,
+        "google": settings.GEMINI_API_KEY,
     }
     needed: set[str] = set()
     for chain in FALLBACK_CHAINS.values():
@@ -182,7 +183,7 @@ def _check_ai_provider_keys() -> None:
                 needed.add(cfg.provider)
 
     for provider in sorted(needed):
-        if not _KEY_VALUE[provider]:
+        if not _has_valid_ai_provider_key(_KEY_VALUE[provider]):
             log.warning(
                 "AI provider '%s' appears in fallback chains but %s is not set — "
                 "calls to this provider will fail at runtime",
@@ -195,6 +196,35 @@ def _has_valid_ai_provider_key(value: str | None) -> bool:
     if not value:
         return False
     return "PLACEHOLDER" not in value.upper()
+
+
+def _has_valid_ollama_base_url(value: str | None) -> bool:
+    if not value:
+        return False
+    parsed = urlparse(value.strip())
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _validate_llm_provider_configuration() -> None:
+    from financeops.llm.fallback import FALLBACK_CHAINS
+
+    supported_providers = {"anthropic", "openai", "google", "ollama"}
+    configured_providers = {
+        cfg.provider
+        for chain in FALLBACK_CHAINS.values()
+        for cfg in chain
+    }
+    unsupported = sorted(configured_providers - supported_providers)
+    if unsupported:
+        raise ValueError(
+            "Unsupported LLM providers in fallback chains: "
+            f"{', '.join(unsupported)}"
+        )
+
+    if "ollama" in configured_providers and not _has_valid_ollama_base_url(settings.OLLAMA_BASE_URL):
+        raise ValueError(
+            "OLLAMA_BASE_URL must be a valid http:// or https:// URL when Ollama appears in fallback chains"
+        )
 
 
 def _validate_ai_cfo_configuration() -> None:
@@ -222,6 +252,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("FinanceOps starting up (env=%s)", settings.APP_ENV)
     log.info("DATABASE_URL in use: %s", _masked_database_url(str(settings.DATABASE_URL)))
     _validate_permission_matrix_configuration()
+    _validate_llm_provider_configuration()
     _validate_ai_cfo_configuration()
     _check_ai_provider_keys()
     startup_errors: list[str] = []

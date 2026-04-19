@@ -70,6 +70,15 @@ class CeleryMonitor:
                 statuses[queue_name] = "ok"
         return statuses
 
+    @staticmethod
+    def classify_workload(task_name: str | None) -> str:
+        name = (task_name or "").strip().lower()
+        if name.startswith("payment."):
+            return "payment"
+        if "webhook" in name:
+            return "webhook"
+        return "other"
+
     def on_task_failure(
         self,
         *,
@@ -126,6 +135,21 @@ class CeleryMonitor:
         finally:
             client.close()
 
+    def list_dead_letter_items_for_workloads(
+        self,
+        *,
+        workloads: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        items = self.list_dead_letter_items()
+        if not workloads:
+            return items
+        normalized = {value.strip().lower() for value in workloads if value and value.strip()}
+        return [
+            item
+            for item in items
+            if self.classify_workload(str(item.get("task_name") or "")) in normalized
+        ]
+
     def _push_dead_letter_item(
         self,
         *,
@@ -153,6 +177,11 @@ class CeleryMonitor:
                         "task_id": str(task_id) if task_id is not None else "",
                         "error": str(exception) if exception else "unknown",
                         "failed_at": datetime.now(UTC).isoformat(),
+                        "tenant_id": str(getattr(request, "kwargs", {}).get("tenant_id") or ""),
+                        "correlation_id": str(getattr(request, "kwargs", {}).get("correlation_id") or ""),
+                        "retries": retries,
+                        "max_retries": int(max_retries),
+                        "workload": self.classify_workload(getattr(sender, "name", str(sender))),
                     }
                 ),
             )
@@ -164,7 +193,7 @@ class CeleryMonitor:
 
 @lru_cache
 def get_celery_monitor() -> CeleryMonitor:
-    return CeleryMonitor(redis_url=str(settings.REDIS_URL))
+    return CeleryMonitor(redis_url=settings.redis_cache_url)
 
 
 def connect_task_failure_signal() -> None:

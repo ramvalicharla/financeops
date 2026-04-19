@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { defaultMetadata } from "@/lib/metadata";
 import { AppProviders } from "@/app/providers";
 import { CookieConsent } from "@/components/legal/CookieConsent";
+import { KeyboardShortcutsModal } from "@/components/ui/KeyboardShortcutsModal";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -24,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <a
           href="#main-content"
@@ -34,6 +35,7 @@ export default function RootLayout({
         </a>
         <AppProviders>{children}</AppProviders>
         <CookieConsent />
+        <KeyboardShortcutsModal />
         <Toaster position="bottom-right" richColors duration={4000} />
       </body>
     </html>

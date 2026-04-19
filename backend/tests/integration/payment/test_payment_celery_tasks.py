@@ -10,6 +10,7 @@ def test_payment_tasks_registered_and_scheduled() -> None:
     assert "payment.retry_failed_payments" in task_names
     assert "payment.expire_credits" in task_names
     assert "ops.check_dead_letter_queue" in task_names
+    assert "ops.check_payment_dead_letter_queue" in task_names
 
     schedule = celery_app.conf.beat_schedule or {}
     assert "payment-check-trial-conversions-daily-0000-utc" in schedule
@@ -17,3 +18,4 @@ def test_payment_tasks_registered_and_scheduled() -> None:
     assert "payment-retry-failed-payments-daily-0600-utc" in schedule
     assert "payment-expire-credits-daily-2300-utc" in schedule
     assert "ops-check-dead-letter-queue-hourly" in schedule
+    assert "ops-check-payment-dead-letter-queue-hourly" in schedule

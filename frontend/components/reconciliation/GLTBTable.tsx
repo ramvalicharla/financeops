@@ -124,8 +124,8 @@ export function GLTBTable({ accounts, onRowClick, onSelectionChange, selectedIds
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-md border border-border">
-        <table aria-label="General ledger and trial balance" className="w-full min-w-[980px] text-sm">
+      <div className="overflow-x-auto w-full rounded-md border border-border">
+        <table role="grid" aria-rowcount={accounts.length} aria-label="General ledger and trial balance" className="w-full min-w-[980px] text-sm">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="bg-muted/30">
@@ -176,7 +176,15 @@ export function GLTBTable({ accounts, onRowClick, onSelectionChange, selectedIds
                 className="cursor-pointer border-t border-border hover:bg-accent/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => onRowClick(row.original)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+                  if (event.key === "ArrowDown") {
+                    event.preventDefault()
+                    const nextRow = event.currentTarget.nextElementSibling as HTMLElement
+                    if (nextRow) nextRow.focus()
+                  } else if (event.key === "ArrowUp") {
+                    event.preventDefault()
+                    const prevRow = event.currentTarget.previousElementSibling as HTMLElement
+                    if (prevRow) prevRow.focus()
+                  } else if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault()
                     onRowClick(row.original)
                   }

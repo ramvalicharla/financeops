@@ -7,6 +7,8 @@ import {
   registerMarketplaceContributor,
   submitMarketplaceTemplate,
 } from "@/lib/api/marketplace"
+import { FileUploadZone } from "@/components/sync/FileUploadZone"
+import { TemplatePreview } from "@/components/marketplace/TemplatePreview"
 import type { MarketplaceContributor } from "@/lib/types/marketplace"
 import { toast } from "sonner"
 
@@ -34,9 +36,10 @@ export default function MarketplaceContributePage() {
   const [industry, setIndustry] = useState("")
   const [priceCredits, setPriceCredits] = useState(0)
   const [tagsInput, setTagsInput] = useState("")
-  const [templateDataText, setTemplateDataText] = useState("{\n  \"line_items\": []\n}")
+  const [templateDataText, setTemplateDataText] = useState("")
+  const [file, setFile] = useState<File | null>(null)
 
-    const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const loadContributor = useCallback(async () => {
@@ -52,15 +55,33 @@ export default function MarketplaceContributePage() {
     } catch {
       setContributor(null)
     }
-  }, [])
+  }, [displayName, bio])
 
   useEffect(() => {
     void loadContributor()
   }, [loadContributor])
 
+  useEffect(() => {
+    if (!file) {
+      setTemplateDataText("")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = (e) => setTemplateDataText(e.target?.result as string)
+    reader.readAsText(file)
+  }, [file])
+
+  const safeJsonParse = (text: string) => {
+    try {
+      return JSON.parse(text || "{}")
+    } catch {
+      return { error: "Invalid JSON format" }
+    }
+  }
+
   const onRegister = async () => {
     setError(null)
-        try {
+    try {
       const row = await registerMarketplaceContributor({
         display_name: displayName,
         bio: bio || undefined,
@@ -221,16 +242,25 @@ export default function MarketplaceContributePage() {
             required
             error={fieldErrors.file}
           >
-            <textarea
-              value={templateDataText}
-              onChange={(event) => {
-                setTemplateDataText(event.target.value)
+            <FileUploadZone 
+              file={file} 
+              onFileSelected={(selected) => {
+                setFile(selected)
                 setFieldErrors((current) => ({ ...current, file: "" }))
-              }}
-              rows={10}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
+              }} 
+              error={null} 
             />
           </FormField>
+
+          {templateDataText && templateType && (
+            <div className="mt-4 border border-border rounded-xl bg-card p-4">
+              <p className="text-sm font-semibold mb-2">Data Preview</p>
+              <div className="max-h-60 overflow-y-auto">
+                <TemplatePreview templateType={templateType} templateData={safeJsonParse(templateDataText)} />
+              </div>
+            </div>
+          )}
+
           <button
             type="button"
             onClick={() => void onSubmitTemplate()}

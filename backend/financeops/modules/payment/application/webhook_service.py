@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import uuid
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.payment import BillingInvoice, BillingPayment, TenantSubscription, WebhookEvent
@@ -15,10 +17,47 @@ from financeops.modules.payment.domain.enums import PaymentProvider
 from financeops.modules.payment.infrastructure.providers.registry import get_provider
 from financeops.services.audit_writer import AuditEvent, AuditWriter
 
+log = logging.getLogger(__name__)
+
 
 class WebhookService:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
+
+    async def _claim_webhook_event(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        provider: PaymentProvider,
+        provider_event_id: str,
+        canonical_event_type: str,
+        parsed_payload: dict[str, Any],
+    ) -> bool:
+        try:
+            async with self._session.begin_nested():
+                await AuditWriter.insert_financial_record(
+                    self._session,
+                    model_class=WebhookEvent,
+                    tenant_id=tenant_id,
+                    record_data={
+                        "provider": provider.value,
+                        "provider_event_id": provider_event_id,
+                        "event_type": canonical_event_type,
+                        "processed": "false",
+                    },
+                    values={
+                        "provider": provider.value,
+                        "provider_event_id": provider_event_id,
+                        "event_type": canonical_event_type,
+                        "payload": parsed_payload,
+                        "processed": False,
+                        "processed_at": None,
+                        "processing_error": None,
+                    },
+                )
+        except IntegrityError:
+            return False
+        return True
 
     async def handle_webhook(
         self,
@@ -32,6 +71,11 @@ class WebhookService:
         provider_impl = get_provider(provider)
         verified = await provider_impl.verify_webhook(payload=payload, signature=signature, secret=secret)
         if not verified:
+            log.warning(
+                "payment_webhook_verification_failed provider=%s tenant_id=%s",
+                provider.value,
+                tenant_id,
+            )
             return
 
         parsed_payload = json.loads(payload.decode("utf-8")) if payload else {}
@@ -48,19 +92,29 @@ class WebhookService:
             )
         normalized_data["provider_event_id"] = provider_event_id
 
-        existing = (
-            await self._session.execute(
-                select(WebhookEvent).where(
-                    WebhookEvent.tenant_id == tenant_id,
-                    WebhookEvent.provider == provider.value,
-                    WebhookEvent.provider_event_id == provider_event_id,
-                )
+        claimed = await self._claim_webhook_event(
+            tenant_id=tenant_id,
+            provider=provider,
+            provider_event_id=provider_event_id,
+            canonical_event_type=canonical_event_type,
+            parsed_payload=parsed_payload,
+        )
+        if not claimed:
+            log.info(
+                "payment_webhook_duplicate_ignored provider=%s tenant_id=%s event_id=%s",
+                provider.value,
+                tenant_id,
+                provider_event_id,
             )
-        ).scalar_one_or_none()
-        if existing is not None:
             return
+        log.info(
+            "payment_webhook_claimed provider=%s tenant_id=%s event_id=%s event_type=%s",
+            provider.value,
+            tenant_id,
+            provider_event_id,
+            canonical_event_type,
+        )
 
-        processing_error: str | None = None
         try:
             await self._route_event(
                 tenant_id=tenant_id,
@@ -69,27 +123,21 @@ class WebhookService:
                 provider_event_id=provider_event_id,
             )
         except Exception as exc:  # pragma: no cover - defensive path for webhook resilience
-            processing_error = str(exc)
-
-        await AuditWriter.insert_financial_record(
-            self._session,
-            model_class=WebhookEvent,
-            tenant_id=tenant_id,
-            record_data={
-                "provider": provider.value,
-                "provider_event_id": provider_event_id,
-                "event_type": canonical_event_type,
-                "processed": "true",
-            },
-            values={
-                "provider": provider.value,
-                "provider_event_id": provider_event_id,
-                "event_type": canonical_event_type,
-                "payload": parsed_payload,
-                "processed": True,
-                "processed_at": datetime.now(UTC),
-                "processing_error": processing_error,
-            },
+            log.warning(
+                "payment_webhook_processing_failed provider=%s tenant_id=%s event_id=%s event_type=%s error=%s",
+                provider.value,
+                tenant_id,
+                provider_event_id,
+                canonical_event_type,
+                exc,
+            )
+            return
+        log.info(
+            "payment_webhook_processed provider=%s tenant_id=%s event_id=%s event_type=%s",
+            provider.value,
+            tenant_id,
+            provider_event_id,
+            canonical_event_type,
         )
 
     async def _route_event(

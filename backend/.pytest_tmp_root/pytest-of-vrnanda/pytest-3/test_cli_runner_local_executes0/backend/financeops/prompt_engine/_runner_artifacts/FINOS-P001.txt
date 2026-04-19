@@ -1,4 +1,0 @@
-timestamp_utc=2026-04-19T06:34:26.336779+00:00
-prompt_id=FINOS-P001
-subsystem=Auth
-prompt_preview=Placeholder prompt for local runner backend testing.

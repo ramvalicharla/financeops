@@ -173,6 +173,32 @@ const showTrust = userRole === "finance_leader"
   const reconciliationItem = visibleNavItems.find(
     (item) => "children" in item,
   ) as NavigationGroupItem | undefined
+
+  const pinnedModules = useUIStore((state) => state.pinnedModules)
+  const pinnedItems = useMemo(() => {
+    const allLeafs: NavigationLeafItem[] = []
+    
+    // Extract leafs from standard items
+    visibleNavItems.forEach(item => {
+      if (!("children" in item)) allLeafs.push(item)
+      else allLeafs.push(...item.children)
+    })
+    
+    // Extract leafs from groups (Trust, Advisory, Settings, Admin)
+    TRUST_NAV_ITEMS.forEach(i => allLeafs.push(i))
+    ADVISORY_NAV_ITEMS.forEach(i => allLeafs.push(i))
+    visibleSettingsItems.forEach(i => allLeafs.push(i as NavigationLeafItem))
+    
+    // Filter down to what's pinned, removing duplicates just in case
+    const map = new Map<string, NavigationLeafItem>()
+    allLeafs.forEach(i => {
+      if (pinnedModules.includes(i.href) && !map.has(i.href)) {
+        map.set(i.href, i)
+      }
+    })
+    return Array.from(map.values())
+  }, [visibleNavItems, visibleSettingsItems, pinnedModules])
+
   const organizationLabel =
     contextQuery.data?.current_organisation.organisation_name ??
     contextQuery.data?.tenant_slug ??
@@ -248,6 +274,15 @@ const showTrust = userRole === "finance_leader"
             sidebarCollapsed ? "space-y-1" : "space-y-3",
           )}
         >
+          {pinnedItems.length > 0 ? (
+            <SidebarNavGroup
+              closeSidebar={closeSidebar}
+              items={pinnedItems}
+              label="Pinned"
+              pathname={pathname}
+            />
+          ) : null}
+
           {NAV_GROUP_DEFINITIONS.map((group) => {
             const hrefSet = new Set<string>(group.hrefs)
             const leafItems = visibleNavItems.filter(

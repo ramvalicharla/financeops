@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 import json
 from pathlib import Path
+import yaml
 
 from prometheus_client import REGISTRY
 
@@ -109,6 +110,44 @@ def test_grafana_dashboard_files_exist() -> None:
         assert "uid" in data
 
 
+def test_grafana_dashboards_reference_financeops_latency_metrics() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    dashboard_dir = repo_root / "infra" / "grafana" / "dashboards"
+    dashboard_files = [
+        dashboard_dir / "infrastructure.json",
+        dashboard_dir / "application.json",
+        dashboard_dir / "business.json",
+    ]
+
+    financeops_latency_refs = 0
+    p99_refs = 0
+    for path in dashboard_files:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        for panel in data.get("panels", []):
+            for target in panel.get("targets", []):
+                expr = str(target.get("expr", ""))
+                if "financeops_" in expr and "_duration_ms_bucket" in expr or "financeops_api_request_latency_ms_bucket" in expr:
+                    financeops_latency_refs += 1
+                if "histogram_quantile(0.99" in expr:
+                    p99_refs += 1
+
+    assert financeops_latency_refs >= 4
+    assert p99_refs >= 1
+
+
+def test_prometheus_latency_alert_rules_exist_and_are_valid_yaml() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    rules_path = repo_root / "infra" / "prometheus" / "alerts" / "financeops-latency-alerts.yaml"
+    assert rules_path.exists(), "Missing latency alert rules file"
+    data = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    groups = data.get("groups")
+    assert isinstance(groups, list) and groups
+    rules = groups[0].get("rules")
+    assert isinstance(rules, list) and rules
+    assert any("financeops_api_request_latency_ms_bucket" in str(rule.get("expr", "")) for rule in rules)
+
+
 def test_provisioning_yaml_files_exist() -> None:
     """Grafana provisioning YAML files are present."""
     repo_root = Path(__file__).resolve().parents[2]
@@ -119,4 +158,3 @@ def test_provisioning_yaml_files_exist() -> None:
     ]
     for file_path in files:
         assert file_path.exists(), f"Missing provisioning file: {file_path}"
-

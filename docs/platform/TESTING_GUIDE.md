@@ -17,8 +17,9 @@ Both scripts do the same sequence:
 4. Start Docker test services from `infra/docker-compose.test.yml`.
 5. Wait for Postgres readiness.
 6. Apply migrations (`alembic upgrade head`).
-7. Run `pytest -q`.
-8. Stop test containers on exit (success or failure).
+7. Run the parallel-safe suite with `pytest -q -n auto -m "not serial_only"`.
+8. Run the serial-only tail with `pytest -q -n 1 -m serial_only`.
+9. Stop test containers on exit (success or failure).
 
 ## Prompt Engine governance flags
 
@@ -64,18 +65,25 @@ Run specific groups from `backend/`:
 - `python -m pytest tests/integration -q`
 - `python -m pytest tests/prompt_engine -q`
 
+Recommended full-suite local command from `backend/`:
+
+- `python -m pytest -q -n auto -m "not serial_only"`
+- `python -m pytest -q -n 1 -m serial_only`
+
 ## Pytest defaults
 
 Pytest is configured with:
 
 - `--strict-markers`
-- `--maxfail=1`
+- worker-isolated database handling for `pytest-xdist`
+- `serial_only` markers for tests that must stay on a single worker
 
 Declared markers:
 
 - `unit`
 - `integration`
 - `slow`
+- `serial_only`
 
 ## Docker services used for tests
 

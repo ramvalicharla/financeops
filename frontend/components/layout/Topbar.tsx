@@ -9,7 +9,6 @@ import {
 } from "react"
 import { usePathname } from "next/navigation"
 import { Ellipsis, Menu, Search } from "lucide-react"
-import { signOut } from "next-auth/react"
 import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
@@ -19,7 +18,7 @@ import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { DensitySelector } from "@/components/ui/DensitySelector"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Button } from "@/components/ui/button"
+import { TopbarProfileMenu } from "@/components/layout/_components/TopbarProfileMenu"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
@@ -35,93 +34,6 @@ interface TopbarProps {
   entityRoles: EntityRole[]
 }
 
-interface ProfileMenuProps {
-  menuId: string
-  menuRef: MutableRefObject<HTMLDivElement | null>
-  open: boolean
-  onClose: () => void
-  triggerRef: MutableRefObject<HTMLButtonElement | null>
-  userEmail: string
-  userName: string
-  onToggle: () => void
-}
-
-function ProfileMenu({
-  menuId,
-  menuRef,
-  open,
-  onClose,
-  triggerRef,
-  userEmail,
-  userName,
-  onToggle,
-}: ProfileMenuProps) {
-  return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        aria-controls={menuId}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label="Account menu"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-accent text-sm font-medium text-accent-foreground"
-        onClick={onToggle}
-        type="button"
-      >
-        {userName.slice(0, 1).toUpperCase()}
-      </button>
-      {open ? (
-        <div
-          id={menuId}
-          ref={menuRef}
-          role="menu"
-          tabIndex={-1}
-          className="absolute right-0 z-50 mt-2 w-64 rounded-md border border-border bg-card p-3 shadow-lg"
-          onKeyDown={(event) => {
-            if (event.key === "Tab") {
-              onClose()
-              return
-            }
-            if (event.key === "Escape") {
-              onClose()
-              triggerRef.current?.focus()
-              return
-            }
-            const items = menuRef.current?.querySelectorAll('[role="menuitem"]')
-            if (!items?.length) {
-              return
-            }
-            const current = document.activeElement
-            const currentIndex = Array.from(items).indexOf(current as Element)
-            if (event.key === "ArrowDown") {
-              event.preventDefault()
-              const next = items[currentIndex + 1] ?? items[0]
-              ;(next as HTMLElement)?.focus()
-            }
-            if (event.key === "ArrowUp") {
-              event.preventDefault()
-              const previous = items[currentIndex - 1] ?? items[items.length - 1]
-              ;(previous as HTMLElement)?.focus()
-            }
-          }}
-        >
-          <p className="text-sm font-medium text-foreground">{userName}</p>
-          <p className="text-xs text-muted-foreground">{userEmail}</p>
-          <Button
-            className="mt-3 w-full"
-            size="sm"
-            variant="outline"
-            onClick={() => signOut({ callbackUrl: "/login" })}
-            type="button"
-            role="menuitem"
-          >
-            Sign out
-          </Button>
-        </div>
-      ) : null}
-    </div>
-  )
-}
 
 export function Topbar({
   tenantSlug: _tenantSlug,
@@ -290,7 +202,7 @@ export function Topbar({
             <Ellipsis className="h-4 w-4" />
           </button>
 
-          <ProfileMenu
+          <TopbarProfileMenu
             menuId="mobile-account-menu"
             menuRef={mobileProfileMenuRef}
             open={profileOpen}
@@ -451,7 +363,7 @@ export function Topbar({
 
           <NotificationBell onTrigger={() => setProfileOpen(false)} />
 
-          <ProfileMenu
+          <TopbarProfileMenu
             menuId="desktop-account-menu"
             menuRef={desktopProfileMenuRef}
             open={profileOpen}

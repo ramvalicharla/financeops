@@ -63,6 +63,17 @@ Key metric families added/used:
 
 Percentiles (`p50/p95/p99`) are derived from histogram queries in Prometheus/Grafana.
 
+## Dashboards And Alerts
+- Grafana dashboards under `infra/grafana/dashboards` now include FinanceOps-native latency views for:
+  - API `p50/p95/p99`
+  - Celery task `p95/p99`
+  - finance workflow `p95/p99`
+  - ERP sync `p95/p99`
+  - AI pipeline and AI narrative latency
+- Repo-tracked Prometheus alert rules live at:
+  - `infra/prometheus/alerts/financeops-latency-alerts.yaml`
+- Alert routing, contact points, and notification policies remain environment-specific and are still configured outside application code.
+
 ## Tracing
 Tracing is additive and disabled unless `OTEL_EXPORTER_OTLP_ENDPOINT` is configured.
 

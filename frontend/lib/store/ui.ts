@@ -16,6 +16,8 @@ interface UIState {
   }>
   billingWarning: string | null
   billingWarningDismissed: boolean
+  pinnedModules: string[]
+  recentSearches: string[]
   toggleSidebar: () => void
   closeSidebar: () => void
   toggleSidebarCollapsed: () => void
@@ -31,6 +33,8 @@ interface UIState {
   ) => void
   setBillingWarning: (warning: string | null) => void
   dismissBillingWarning: () => void
+  togglePinModule: (href: string) => void
+  addRecentSearch: (query: string) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -44,6 +48,8 @@ export const useUIStore = create<UIState>()(
       notificationItems: [],
       billingWarning: null,
       billingWarningDismissed: false,
+      pinnedModules: [],
+      recentSearches: [],
       toggleSidebar: () =>
         set((state) => ({ sidebarOpen: !state.sidebarOpen })),
       closeSidebar: () => set({ sidebarOpen: false }),
@@ -60,6 +66,17 @@ export const useUIStore = create<UIState>()(
           billingWarningDismissed: warning ? false : true,
         }),
       dismissBillingWarning: () => set({ billingWarningDismissed: true }),
+      togglePinModule: (href) => set((state) => ({
+        pinnedModules: state.pinnedModules.includes(href) 
+          ? state.pinnedModules.filter((p) => p !== href) 
+          : [...state.pinnedModules, href]
+      })),
+      addRecentSearch: (query) => set((state) => {
+        const lower = query.trim().toLowerCase()
+        if (!lower) return {}
+        const filtered = state.recentSearches.filter(s => s !== lower)
+        return { recentSearches: [lower, ...filtered].slice(0, 10) }
+      }),
     }),
     {
       name: "financeops-ui-store",
@@ -76,6 +93,8 @@ export const useUIStore = create<UIState>()(
         notificationItems: state.notificationItems,
         billingWarning: state.billingWarning,
         billingWarningDismissed: state.billingWarningDismissed,
+        pinnedModules: state.pinnedModules,
+        recentSearches: state.recentSearches,
       }),
     },
   ),

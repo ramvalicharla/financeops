@@ -1,40 +1,45 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from celery.result import AsyncResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.api.deps import get_async_session, get_current_user, require_finance_leader
+from financeops.api.deps import get_async_session, get_current_user, get_read_async_session, require_finance_leader
 from financeops.core.intent.dispatcher import JobDispatcher
 from financeops.db.models.users import IamUser
-from financeops.modules.search.service import search
+from financeops.modules.search.schemas import SearchModule, UnifiedSearchResponse
 from financeops.modules.search.tasks import reindex_search_index
+from financeops.modules.search.unified_service import search_unified
 from financeops.tasks.celery_app import celery_app
 
 router = APIRouter(prefix="/search", tags=["search"])
 log = logging.getLogger(__name__)
 
 
-@router.get("")
+@router.get("", response_model=UnifiedSearchResponse)
 async def search_endpoint(
-    q: str = Query(default=""),
-    types: str | None = Query(default=None),
-    limit: int = Query(default=10, ge=1, le=20),
-    session: AsyncSession = Depends(get_async_session),
+    q: str = Query(..., min_length=2),
+    module: SearchModule | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    session: AsyncSession = Depends(get_read_async_session),
     user: IamUser = Depends(get_current_user),
-) -> list[dict]:
-    parsed_types = [value.strip() for value in (types or "").split(",") if value.strip()]
-    rows = await search(
+) -> UnifiedSearchResponse:
+    clean_query = q.strip()
+    if len(clean_query) < 2:
+        raise HTTPException(status_code=422, detail="q must contain at least 2 non-space characters")
+    return await search_unified(
         session,
-        tenant_id=user.tenant_id,
-        query=q,
-        entity_types=parsed_types or None,
+        user=user,
+        query_text=clean_query,
+        module=module,
         limit=limit,
+        offset=offset,
     )
-    return rows
 
 
 @router.post("/reindex")
@@ -45,9 +50,13 @@ async def reindex_endpoint(
     del session
     task_id: str
     try:
-        task = JobDispatcher().enqueue_task(
-            reindex_search_index,
-            tenant_id=str(user.tenant_id),
+        task = await asyncio.wait_for(
+            asyncio.to_thread(
+                JobDispatcher().enqueue_task,
+                reindex_search_index,
+                tenant_id=str(user.tenant_id),
+            ),
+            timeout=2.0,
         )
         task_id = str(task.id)
     except Exception as exc:  # noqa: BLE001

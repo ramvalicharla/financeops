@@ -54,8 +54,8 @@ if sys.platform == "win32":
 _WORKER_DATABASE_URL = _initial_worker_database_url()
 os.environ["DATABASE_URL"] = _WORKER_DATABASE_URL
 os.environ["TEST_DATABASE_URL"] = _WORKER_DATABASE_URL
-os.environ.setdefault("REDIS_URL", "redis://localhost:6380/0")
-os.environ.setdefault("TEST_REDIS_URL", "redis://localhost:6380/0")
+os.environ.setdefault("REDIS_URL", "redis://:redis_local_2024@localhost:6379/15")
+os.environ.setdefault("TEST_REDIS_URL", "redis://:redis_local_2024@localhost:6379/15")
 os.environ.setdefault("TEMPORAL_ADDRESS", "localhost:7233")
 os.environ.setdefault("TEMPORAL_NAMESPACE", "default")
 if os.environ.get("DEBUG", "").strip().lower() not in {
@@ -577,7 +577,7 @@ TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://financeops_test:testpassword@localhost:5433/financeops_test",
 )
-TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://localhost:6380/0")
+TEST_REDIS_URL = os.getenv("TEST_REDIS_URL", "redis://:redis_local_2024@localhost:6379/15")
 TEST_DATABASE_ADMIN_DB = os.getenv("TEST_DATABASE_ADMIN_DB", "postgres")
 _VALID_TEST_DB_NAME = re.compile(r"[a-z0-9_]+")
 _CACHED_TEST_PASSWORD_HASH = hash_password("TestPass123!")

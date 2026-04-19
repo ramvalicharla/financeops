@@ -204,8 +204,12 @@ class CreditTopUp(FinancialBase):
 
 class WebhookEvent(FinancialBase):
     __tablename__ = "webhook_events"
+    # Keep webhook_events unpartitioned for now. Our idempotency guarantee depends on
+    # global uniqueness across (tenant_id, provider, provider_event_id), and monthly
+    # partitioning by created_at would conflict with that guarantee in PostgreSQL.
     __table_args__ = (
         Index("idx_webhook_events_tenant", "tenant_id", "provider", "processed", "created_at"),
+        Index("idx_webhook_events_created_at", "created_at"),
         UniqueConstraint("tenant_id", "provider", "provider_event_id", name="uq_webhook_events_provider_event"),
     )
 

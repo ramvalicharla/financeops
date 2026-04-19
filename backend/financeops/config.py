@@ -52,11 +52,16 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: PostgresDsn = Field(default=_DEV_DATABASE_URL_DEFAULT)
+    DATABASE_READ_REPLICA_URL: PostgresDsn | None = None
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
 
     # Redis
     REDIS_URL: RedisDsn = Field(default=_DEV_REDIS_URL_DEFAULT)
+    REDIS_TOPOLOGY: str = "single"
+    REDIS_BROKER_URL: RedisDsn | None = None
+    REDIS_CACHE_URL: RedisDsn | None = None
+    REDIS_RESULT_BACKEND_URL: RedisDsn | None = None
 
     # JWT
     JWT_SECRET: str = _DEV_JWT_SECRET_DEFAULT
@@ -97,6 +102,8 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
+    WEBHOOK_EVENT_RETENTION_DAYS: int = 90
+    WEBHOOK_EVENT_RETENTION_SLOW_MS: int = 5000
 
     # Scheduled delivery transport
     SMTP_HOST: str = "localhost"
@@ -245,6 +252,18 @@ class Settings(BaseSettings):
     def ai_cfo_enabled(self) -> bool:
         return bool(self.AI_CFO_ENABLED)
 
+    @property
+    def redis_broker_url(self) -> str:
+        return str(self.REDIS_BROKER_URL or self.REDIS_URL)
+
+    @property
+    def redis_cache_url(self) -> str:
+        return str(self.REDIS_CACHE_URL or self.REDIS_URL)
+
+    @property
+    def redis_result_backend_url(self) -> str:
+        return str(self.REDIS_RESULT_BACKEND_URL or self.REDIS_URL)
+
     @model_validator(mode="after")
     def validate_production_security_requirements(self) -> Settings:
         if self.APP_ENV.lower() != "production":
@@ -318,5 +337,14 @@ def _rate_limit_key(request: Request) -> str:
     return base_key
 
 
+def _build_limiter(*, redis_url: str) -> Limiter:
+    return Limiter(
+        key_func=_rate_limit_key,
+        headers_enabled=True,
+        storage_uri=redis_url,
+        in_memory_fallback_enabled=True,
+    )
+
+
 settings = get_settings()
-limiter = Limiter(key_func=_rate_limit_key, headers_enabled=True)
+limiter = _build_limiter(redis_url=settings.redis_cache_url)

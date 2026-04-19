@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.api.deps import get_async_session, get_current_user
 from financeops.config import settings
 from financeops.db.models.users import IamUser
-from financeops.db.session import AsyncSessionLocal, engine
+from financeops.db.session import (
+    AsyncReadSessionLocal,
+    AsyncSessionLocal,
+    engine,
+    is_read_replica_configured,
+)
 from financeops.core.migration_checker import check_migration_state
 from financeops.observability.celery_monitor import get_celery_monitor
 from financeops.tasks.celery_app import celery_app
@@ -153,12 +158,33 @@ async def _check_database() -> dict[str, Any]:
         }
 
 
+async def _check_database_replica() -> dict[str, Any]:
+    if not is_read_replica_configured():
+        return {
+            "status": "not_configured",
+            "latency_ms": 0.0,
+            "detail": "DATABASE_READ_REPLICA_URL is not configured.",
+        }
+
+    started_at = time.perf_counter()
+    try:
+        async with AsyncReadSessionLocal() as session:
+            await asyncio.wait_for(session.execute(text("SELECT 1")), timeout=5.0)
+        return {"status": "healthy", "latency_ms": _latency_ms(started_at)}
+    except Exception as exc:
+        return {
+            "status": "unhealthy",
+            "latency_ms": _latency_ms(started_at),
+            "error": _error_detail(exc),
+        }
+
+
 async def _check_redis() -> dict[str, Any]:
     started_at = time.perf_counter()
     client: aioredis.Redis | None = None
     try:
         client = aioredis.from_url(
-            str(settings.REDIS_URL),
+            settings.redis_cache_url,
             encoding="utf-8",
             decode_responses=True,
         )
@@ -289,10 +315,17 @@ async def _check_temporal() -> dict[str, str]:
 
 async def _build_health_payload() -> dict[str, Any]:
     # Run DB first, then migration state check to avoid connection contention.
-    db_check = await _run_check_with_timeout(
-        _check_database(),
-        timeout=5.0,
-        timeout_response={"status": "unhealthy"},
+    db_check, replica_db_check = await asyncio.gather(
+        _run_check_with_timeout(
+            _check_database(),
+            timeout=5.0,
+            timeout_response={"status": "unhealthy"},
+        ),
+        _run_check_with_timeout(
+            _check_database_replica(),
+            timeout=5.0,
+            timeout_response={"status": "unhealthy"},
+        ),
     )
     if db_check["status"] == "healthy":
         migration_check = await _run_check_with_timeout(
@@ -360,6 +393,7 @@ async def _build_health_payload() -> dict[str, Any]:
 
     checks = {
         "database": db_check["status"],
+        "database_replica": replica_db_check["status"],
         "redis": redis_check["status"],
         "ai": ai_check["status"],
         "queues": queue_check["status"],
@@ -396,6 +430,7 @@ async def _build_health_payload() -> dict[str, Any]:
         "checks": checks,
         "check_details": {
             "database": db_check,
+            "database_replica": replica_db_check,
             "redis": redis_check,
             "queues": queue_check,
             "workers": workers_check,

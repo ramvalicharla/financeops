@@ -3,7 +3,7 @@
   "title": "FinanceOps Business",
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "1m",
   "time": {
     "from": "now-24h",
@@ -44,7 +44,34 @@
       "title": "Workflow Completions Today",
       "gridPos": { "h": 6, "w": 12, "x": 12, "y": 6 },
       "targets": [{ "expr": "increase(financeops_workflow_completed_total[1d])", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "AI Pipeline p95 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, task_type) (rate(financeops_ai_pipeline_duration_ms_bucket[5m])))", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "AI Narrative p99 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "histogram_quantile(0.99, sum by (le, status) (rate(financeops_ai_narrative_duration_ms_bucket[5m])))", "refId": "A" }]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "AI Recommendation Failures",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [{ "expr": "sum(rate(financeops_ai_recommendation_failures_total[5m])) by (reason)", "refId": "A" }]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Close Readiness Failures",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [{ "expr": "sum(rate(financeops_close_readiness_failures_total[5m])) by (reason)", "refId": "A" }]
     }
   ]
 }
-

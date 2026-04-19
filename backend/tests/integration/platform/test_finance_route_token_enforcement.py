@@ -21,6 +21,7 @@ async def test_missing_control_plane_token_allows_browser_billing_route(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
+@pytest.mark.filterwarnings("ignore::pytest.PytestUnraisableExceptionWarning")
 async def test_missing_control_plane_token_reaches_erp_entitlement_gate(
     async_client: AsyncClient,
     test_access_token: str,

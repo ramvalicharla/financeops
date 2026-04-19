@@ -56,8 +56,8 @@ export function DataTable<T>({
 
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
-      <div className="overflow-x-auto">
-        <table aria-label={label} className="min-w-full text-sm">
+      <div className="overflow-x-auto w-full">
+        <table role="grid" aria-rowcount={rows.length} aria-label={label} className="min-w-full text-sm">
           <thead className="bg-background/50 text-xs uppercase tracking-[0.14em] text-muted-foreground">
             <tr>
               {selectable && (
@@ -86,9 +86,28 @@ export function DataTable<T>({
               const rowId = getRowId?.(row) ?? String(index)
               const isSelected = selectedIds.has(rowId)
               return (
-              <tr key={index} className={isSelected ? "bg-primary/5" : ""}>
+              <tr 
+                key={index} 
+                role="row"
+                tabIndex={0}
+                className={`focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${isSelected ? "bg-primary/5" : ""}`}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault()
+                    const nextRow = e.currentTarget.nextElementSibling as HTMLElement
+                    if (nextRow) nextRow.focus()
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault()
+                    const prevRow = e.currentTarget.previousElementSibling as HTMLElement
+                    if (prevRow) prevRow.focus()
+                  } else if ((e.key === "Enter" || e.key === " ") && selectable) {
+                    e.preventDefault()
+                    handleSelectOne(rowId)
+                  }
+                }}
+              >
                 {selectable && (
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3" role="gridcell">
                     <input
                       type="checkbox"
                       className="rounded border-border"
@@ -98,7 +117,7 @@ export function DataTable<T>({
                   </td>
                 )}
                 {columns.map((column) => (
-                  <td key={column.key} className={`px-4 py-3 ${column.className ?? ""}`}>
+                  <td key={column.key} className={`px-4 py-3 ${column.className ?? ""}`} role="gridcell">
                     {column.render(row)}
                   </td>
                 ))}
@@ -106,8 +125,8 @@ export function DataTable<T>({
               )
             })}
             {rows.length === 0 ? (
-              <tr>
-                <td colSpan={columns.length + (selectable ? 1 : 0)} className="px-4 py-6 text-center text-sm text-muted-foreground">
+              <tr role="row">
+                <td colSpan={columns.length + (selectable ? 1 : 0)} role="gridcell" className="px-4 py-6 text-center text-sm text-muted-foreground">
                   {emptyMessage}
                 </td>
               </tr>

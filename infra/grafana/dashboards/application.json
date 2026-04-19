@@ -3,7 +3,7 @@
   "title": "FinanceOps Application",
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": {
     "from": "now-6h",
@@ -20,31 +20,51 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Task Completion Rate",
+      "title": "Task p95 Latency",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
-      "targets": [{ "expr": "rate(celery_tasks_succeeded_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, task_name) (rate(financeops_task_duration_ms_bucket[5m])))", "refId": "A" }]
     },
     {
       "id": 3,
       "type": "timeseries",
-      "title": "Task Failure Rate",
+      "title": "Task p99 Latency",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
-      "targets": [{ "expr": "rate(celery_tasks_failed_total[5m])", "refId": "A" }]
+      "targets": [{ "expr": "histogram_quantile(0.99, sum by (le, task_name) (rate(financeops_task_duration_ms_bucket[5m])))", "refId": "A" }]
     },
     {
       "id": 4,
-      "type": "stat",
-      "title": "Active Temporal Workflows",
-      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
-      "targets": [{ "expr": "sum(temporal_workflow_active_total)", "refId": "A" }]
+      "type": "timeseries",
+      "title": "Finance Workflow p95 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, workflow) (rate(financeops_finance_workflow_duration_ms_bucket[5m])))", "refId": "A" }]
     },
     {
       "id": 5,
+      "type": "timeseries",
+      "title": "Finance Workflow p99 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [{ "expr": "histogram_quantile(0.99, sum by (le, workflow) (rate(financeops_finance_workflow_duration_ms_bucket[5m])))", "refId": "A" }]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "ERP Sync p95 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(financeops_erp_sync_duration_ms_bucket[5m])))", "refId": "A" }]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "ERP Sync p99 Latency",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "targets": [{ "expr": "histogram_quantile(0.99, sum by (le, operation) (rate(financeops_erp_sync_duration_ms_bucket[5m])))", "refId": "A" }]
+    },
+    {
+      "id": 8,
       "type": "stat",
       "title": "Dead Letter Queue Count",
-      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
       "targets": [{ "expr": "sum(celery_dead_letter_total)", "refId": "A" }]
     }
   ]
 }
-

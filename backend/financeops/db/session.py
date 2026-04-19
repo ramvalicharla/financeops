@@ -27,18 +27,30 @@ from financeops.db.rls import (
 log = logging.getLogger(__name__)
 
 _SSL_REQUIRED_MODES = {"require", "verify-ca", "verify-full"}
+_DB_ROLE_SESSION_KEY = "app.current_db_role"
 
 
 def _build_ssl_context() -> ssl.SSLContext:
     """
     Build TLS context for Supabase/asyncpg connections.
 
-    Hostname checks are disabled and certificate verification is relaxed
-    to tolerate Supabase pooler certificate chain behavior.
+    Production must verify certificates and hostnames. Non-production keeps a
+    relaxed posture for local/dev environments that rely on self-signed or
+    pooler-managed certificates.
     """
+    app_env = settings.APP_ENV.strip().lower()
     ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
+    if app_env == "production":
+        ssl_context.check_hostname = True
+        ssl_context.verify_mode = ssl.CERT_REQUIRED
+    else:
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        log.warning("Database TLS certificate verification relaxed outside production (APP_ENV=%s)", settings.APP_ENV)
+    if app_env == "production" and (
+        ssl_context.check_hostname is not True or ssl_context.verify_mode != ssl.CERT_REQUIRED
+    ):
+        raise RuntimeError("Production database TLS must enforce hostname and certificate verification")
     return ssl_context
 
 
@@ -89,6 +101,12 @@ def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[st
 _DATABASE_URL, _DATABASE_CONNECT_ARGS = _normalise_database_url_and_connect_args(
     str(settings.DATABASE_URL)
 )
+_READ_DATABASE_CONFIGURED = bool(
+    settings.DATABASE_READ_REPLICA_URL and str(settings.DATABASE_READ_REPLICA_URL).strip()
+)
+_READ_DATABASE_URL, _READ_DATABASE_CONNECT_ARGS = _normalise_database_url_and_connect_args(
+    str(settings.DATABASE_READ_REPLICA_URL or settings.DATABASE_URL)
+)
 
 if _DATABASE_CONNECT_ARGS.get("statement_cache_size") == 0:
     log.info("Asyncpg statement cache disabled (PgBouncer mode)")
@@ -100,6 +118,16 @@ engine = create_async_engine(
     echo=settings.DEBUG,
 )
 
+if _READ_DATABASE_CONFIGURED:
+    read_engine = create_async_engine(
+        _READ_DATABASE_URL,
+        poolclass=NullPool,
+        connect_args=_READ_DATABASE_CONNECT_ARGS,
+        echo=settings.DEBUG,
+    )
+else:
+    read_engine = engine
+
 AsyncSessionLocal = async_sessionmaker(
     engine,
     class_=AsyncSession,
@@ -108,9 +136,25 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
+AsyncReadSessionLocal = (
+    AsyncSessionLocal
+    if read_engine is engine
+    else async_sessionmaker(
+        read_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+        autocommit=False,
+        autoflush=False,
+    )
+)
+
 
 @event.listens_for(AsyncSession.sync_session_class, "after_begin")
 def _reapply_tenant_context(sync_session, transaction, connection) -> None:
+    db_role = sync_session.info.get(_DB_ROLE_SESSION_KEY)
+    if db_role:
+        quoted_role = '"' + str(db_role).replace('"', '""') + '"'
+        connection.exec_driver_sql(f"SET LOCAL ROLE {quoted_role}")
     tenant_id = sync_session.info.get(_TENANT_CONTEXT_SESSION_KEY)
     if not tenant_id:
         return
@@ -118,6 +162,19 @@ def _reapply_tenant_context(sync_session, transaction, connection) -> None:
         text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
         {"tenant_id": str(tenant_id)},
     )
+
+
+async def set_session_db_role(session: AsyncSession, role_name: str) -> None:
+    """Remember and apply a DB role for the current and future transactions."""
+    session.info[_DB_ROLE_SESSION_KEY] = role_name
+    quoted_role = '"' + str(role_name).replace('"', '""') + '"'
+    await session.execute(text(f"SET LOCAL ROLE {quoted_role}"))
+
+
+async def clear_session_db_role(session: AsyncSession) -> None:
+    """Forget any remembered DB role and reset the active transaction role."""
+    session.info.pop(_DB_ROLE_SESSION_KEY, None)
+    await session.execute(text("RESET ROLE"))
 
 
 async def finalize_session_success(session: AsyncSession) -> None:
@@ -134,11 +191,28 @@ async def finalize_session_success(session: AsyncSession) -> None:
         await commit()
 
 
+async def finalize_session_read_only(session: AsyncSession) -> None:
+    if session.in_transaction():
+        await session.rollback()
+
+
 async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
             await finalize_session_success(session)
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+
+
+async def get_read_async_session() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncReadSessionLocal() as session:
+        try:
+            yield session
+            await finalize_session_read_only(session)
         except Exception:
             await session.rollback()
             raise
@@ -159,6 +233,21 @@ async def get_raw_session() -> AsyncGenerator[AsyncSession, None]:
             except Exception:
                 await session.rollback()
                 raise
+
+
+@asynccontextmanager
+async def tenant_read_session(tenant_id: UUID | str) -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncReadSessionLocal() as session:
+        try:
+            await set_tenant_context(session, str(tenant_id))
+            yield session
+            await finalize_session_read_only(session)
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await clear_tenant_context(session)
+            await session.close()
 
 
 @asynccontextmanager
@@ -189,3 +278,7 @@ async def check_db_health() -> dict[str, Any]:
     except Exception as exc:
         log.error("DB health check failed: %s", exc)
         return {"status": "error", "detail": str(exc)}
+
+
+def is_read_replica_configured() -> bool:
+    return _READ_DATABASE_CONFIGURED
