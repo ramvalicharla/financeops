@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -18,7 +18,11 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from financeops.config import settings
-from financeops.db.rls import clear_tenant_context, set_tenant_context
+from financeops.db.rls import (
+    _TENANT_CONTEXT_SESSION_KEY,
+    clear_tenant_context,
+    set_tenant_context,
+)
 
 log = logging.getLogger(__name__)
 
@@ -103,6 +107,17 @@ AsyncSessionLocal = async_sessionmaker(
     autocommit=False,
     autoflush=False,
 )
+
+
+@event.listens_for(AsyncSession.sync_session_class, "after_begin")
+def _reapply_tenant_context(sync_session, transaction, connection) -> None:
+    tenant_id = sync_session.info.get(_TENANT_CONTEXT_SESSION_KEY)
+    if not tenant_id:
+        return
+    connection.execute(
+        text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
+        {"tenant_id": str(tenant_id)},
+    )
 
 
 async def finalize_session_success(session: AsyncSession) -> None:

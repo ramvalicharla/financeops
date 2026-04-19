@@ -95,7 +95,7 @@ def deterministic_uuid(seed: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"recon-phase1f2:{seed}")
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def recon_phase1f2_db_url() -> AsyncGenerator[str, None]:
     target_url, temp_db, admin_url = await create_migrated_temp_database(
         prefix="financeops_recon",
@@ -108,7 +108,7 @@ async def recon_phase1f2_db_url() -> AsyncGenerator[str, None]:
         await drop_temp_database(admin_url=admin_url, database_name=temp_db)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def recon_phase1f2_engine(recon_phase1f2_db_url: str):
     engine = create_async_engine(recon_phase1f2_db_url, echo=False, poolclass=NullPool)
     try:

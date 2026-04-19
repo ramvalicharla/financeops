@@ -7,14 +7,14 @@ import { ToggleSwitch } from "@/components/admin/ToggleSwitch"
 import { listPlatformModules, togglePlatformModule } from "@/lib/api/platform-admin"
 import type { ServiceRegistryModule } from "@/lib/types/service-registry"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
+import { toast } from "sonner"
 
 export default function AdminModulesPage() {
   const { data: session } = useSession()
   const canManageModules = canPerformAction("platform.modules.enable", session?.user?.role)
   const [rows, setRows] = useState<ServiceRegistryModule[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const load = useCallback(async () => {
     setError(null)
     try {
@@ -31,10 +31,9 @@ export default function AdminModulesPage() {
 
   const onToggle = async (row: ServiceRegistryModule, next: boolean) => {
     setError(null)
-    setMessage(null)
-    try {
+        try {
       await togglePlatformModule(row.module_name, next)
-      setMessage(`Module ${row.module_name} ${next ? "enabled" : "disabled"}.`)
+      toast.success(`Module ${row.module_name} ${next ? "enabled" : "disabled"}.`)
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to toggle module")
@@ -55,8 +54,7 @@ export default function AdminModulesPage() {
         ) : null}
       </header>
 
-      {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
 
       <DataTable
         rows={rows}

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from typing import Any
@@ -15,6 +14,7 @@ from financeops.modules.accounting_ingestion.application.ocr_pipeline_service im
     detect_entity,
 )
 from financeops.storage.provider import get_storage
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.base_task import FinanceOpsTask
 from financeops.tasks.celery_app import celery_app
 
@@ -75,7 +75,7 @@ def run_ocr_pipeline_task(
             }
 
     try:
-        return asyncio.run(_run())
+        return run_async(_run())
     except Exception as exc:  # pragma: no cover - celery retry behavior
         logger.exception(
             "OCR pipeline task failed",

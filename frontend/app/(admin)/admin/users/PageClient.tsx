@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/platform-admin"
 import type { PlatformUser, PlatformUserRole } from "@/lib/types/platform-admin"
 import { canPerformAction } from "@/lib/ui-access"
+import { toast } from "sonner"
 
 const editableRoles: PlatformUserRole[] = [
   "platform_owner",
@@ -26,8 +27,7 @@ export default function AdminUsersPage() {
   const [rows, setRows] = useState<PlatformUser[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -51,11 +51,10 @@ export default function AdminUsersPage() {
   )
 
   const changeRole = async (row: PlatformUser, role: PlatformUserRole) => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await updatePlatformUserRole(row.id, role)
-      setMessage(`Updated role for ${row.email} to ${role}.`)
+      toast.success(`Updated role for ${row.email} to ${role}.`)
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to update role")
@@ -63,11 +62,10 @@ export default function AdminUsersPage() {
   }
 
   const deactivate = async (row: PlatformUser) => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await deactivatePlatformUser(row.id)
-      setMessage(`Deactivated user ${row.email}.`)
+      toast.success(`Deactivated user ${row.email}.`)
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to deactivate user")
@@ -91,8 +89,7 @@ export default function AdminUsersPage() {
         ) : null}
       </header>
 
-      {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading users...</p> : null}
 
       <DataTable

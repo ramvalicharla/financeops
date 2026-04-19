@@ -33,7 +33,7 @@ _MFA_REQUIRED_MESSAGE = "MFA is required for this role. Please complete MFA setu
 _PROTECTED_URL = "/api/v1/platform/users"
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def engine(test_database_url: str):
     test_engine = create_async_engine(test_database_url, echo=False, poolclass=NullPool)
     yield test_engine

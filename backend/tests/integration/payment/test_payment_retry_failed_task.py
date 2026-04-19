@@ -4,6 +4,9 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
+
+pytestmark = pytest.mark.committed_session
+
 from sqlalchemy import select
 
 from financeops.db.models.payment import BillingInvoice, PaymentMethod, SubscriptionEvent, TenantSubscription

@@ -42,7 +42,7 @@ def _to_asyncpg_dsn(raw_url: str) -> str:
     return raw_url.replace("postgresql+asyncpg://", "postgresql://", 1)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def ownership_phase2_5_db_url() -> AsyncGenerator[str, None]:
     target_url, temp_db, admin_url = await create_migrated_temp_database(
         prefix="financeops_ownership",

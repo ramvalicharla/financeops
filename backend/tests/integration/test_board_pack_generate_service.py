@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 

@@ -9,13 +9,13 @@ import {
 import type { BenchmarkResult, LearningSignalSummary } from "@/lib/types/learning"
 import { BenchmarkChart } from "@/components/admin/BenchmarkChart"
 import { LearningSignalTable } from "@/components/admin/LearningSignalTable"
+import { toast } from "sonner"
 
 export default function AIQualityPage() {
   const [results, setResults] = useState<BenchmarkResult[]>([])
   const [signals, setSignals] = useState<LearningSignalSummary[]>([])
   const [running, setRunning] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const load = useCallback(async () => {
     const benchmarkPayload = await listLearningBenchmarkResults({ limit: 100, offset: 0 })
     setResults(benchmarkPayload.data)
@@ -48,13 +48,12 @@ export default function AIQualityPage() {
 
   const onRunBenchmarks = async () => {
     setRunning(true)
-    setMessage(null)
-    try {
+        try {
       const payload = await runLearningBenchmarks()
-      setMessage(`Benchmarks completed (${payload.results.length} suites).`)
+      toast.success(`Benchmarks completed (${payload.results.length} suites).`)
       await load()
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to run benchmarks")
+      toast.success(error instanceof Error ? error.message : "Unable to run benchmarks")
     } finally {
       setRunning(false)
     }
@@ -96,8 +95,7 @@ export default function AIQualityPage() {
         </article>
       </section>
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-
+      
       <BenchmarkChart results={results} />
 
       <section className="space-y-2">

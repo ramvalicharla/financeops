@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from financeops.db.session import tenant_session
 from financeops.modules.search.service import reindex_tenant
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.celery_app import celery_app
 
 
@@ -20,7 +20,7 @@ def reindex_search_index(self, tenant_id: str) -> dict[str, int]:  # noqa: ANN00
             return await reindex_tenant(session, tenant_uuid)
 
     try:
-        return asyncio.run(_run())
+        return run_async(_run())
     except Exception as exc:  # noqa: BLE001
         raise self.retry(exc=exc)
 

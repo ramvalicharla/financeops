@@ -1,9 +1,10 @@
 "use client"
 
 import Link from "next/link"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
+import { toast } from "sonner"
 import { listJournals, type JournalRecord } from "@/lib/api/accounting-journals"
 import { createGovernedIntent } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
@@ -13,6 +14,8 @@ import { FlowStrip } from "@/components/ui/FlowStrip"
 import { StateBadge } from "@/components/ui/StateBadge"
 import { Button } from "@/components/ui/button"
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable"
+import { BulkActionBar } from "@/components/ui/BulkActionBar"
+import { Play } from "lucide-react"
 
 const formatAmount = (value: string): string =>
   Number(value).toLocaleString(undefined, {
@@ -28,10 +31,14 @@ export function JournalList() {
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const [skip, setSkip] = useState(0)
+  const [limit] = useState(50)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
   const query = useQuery({
-    queryKey: ["accounting-journals", activeEntityId],
+    queryKey: ["accounting-journals", activeEntityId, skip, limit],
     queryFn: async () =>
-      listJournals(activeEntityId ? { org_entity_id: activeEntityId, limit: 100 } : { limit: 100 }),
+      listJournals(activeEntityId ? { org_entity_id: activeEntityId, limit, offset: skip } : { limit, offset: skip }),
   })
 
   const refresh = (): void => {
@@ -232,6 +239,40 @@ export function JournalList() {
     [governedMutation, openIntentPanel, openJobPanel, openTimelinePanel, userRole],
   )
 
+  const handleBulkApprove = async () => {
+    try {
+      const promises = Array.from(selectedIds).map((id) =>
+        createGovernedIntent({
+          type: "APPROVE_JOURNAL",
+          data: { journal_id: id },
+        })
+      )
+      await Promise.all(promises)
+      toast.success(`Successfully dispatched approval for ${selectedIds.size} journals`)
+      setSelectedIds(new Set())
+      refresh()
+    } catch (e) {
+      toast.error("Failed to approve some journals in bulk.")
+    }
+  }
+
+  const handleBulkSubmit = async () => {
+    try {
+      const promises = Array.from(selectedIds).map((id) =>
+        createGovernedIntent({
+          type: "SUBMIT_JOURNAL",
+          data: { journal_id: id },
+        })
+      )
+      await Promise.all(promises)
+      toast.success(`Successfully dispatched submit for ${selectedIds.size} journals`)
+      setSelectedIds(new Set())
+      refresh()
+    } catch (e) {
+      toast.error("Failed to submit some journals in bulk.")
+    }
+  }
+
   if (query.isLoading) {
     return (
       <div className="space-y-3">
@@ -316,11 +357,42 @@ export function JournalList() {
           { label: "Record" },
         ]}
       />
+      
+      <BulkActionBar
+        selectedCount={selectedIds.size}
+        onClearSelection={() => setSelectedIds(new Set())}
+        actions={
+          <>
+            <Button size="sm" onClick={handleBulkSubmit} className="gap-2">
+              <Play className="h-4 w-4" /> Bulk Submit
+            </Button>
+            <Button size="sm" onClick={handleBulkApprove} className="gap-2">
+              <Play className="h-4 w-4" /> Bulk Approve
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { toast.success(`Exporting ${selectedIds.size} journals`) }}>
+              Export
+            </Button>
+          </>
+        }
+      />
+
       <DataTable
         columns={columns}
         rows={journals}
         emptyMessage="No journals returned for the current scope."
         label="Journals"
+        selectable
+        getRowId={(row) => row.id}
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        pagination={{
+          skip,
+          limit,
+          onPageChange: setSkip,
+          // listJournals doesn't return total/has_more out of the box in this proxy,
+          // infer "hasMore" from whether we got a full page back.
+          hasMore: journals.length === limit,
+        }}
       />
     </div>
   )

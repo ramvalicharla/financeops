@@ -11,7 +11,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { SortableHeader } from "@/components/ui/SortableHeader"
-import { Button } from "@/components/ui/button"
+import { PaginationBar } from "@/components/ui/PaginationBar"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { PayrollCostCentre } from "@/types/reconciliation"
 
@@ -154,32 +154,13 @@ export function PayrollReconTable({
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between text-sm">
-        <p className="text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount() || 1}
-        </p>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.previousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.nextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <PaginationBar
+        total={table.getPrePaginationRowModel().rows.length}
+        skip={table.getState().pagination.pageIndex * table.getState().pagination.pageSize}
+        limit={table.getState().pagination.pageSize}
+        onPageChange={(skip) => table.setPageIndex(Math.floor(skip / table.getState().pagination.pageSize))}
+        hasMore={table.getCanNextPage()}
+      />
     </div>
   )
 }

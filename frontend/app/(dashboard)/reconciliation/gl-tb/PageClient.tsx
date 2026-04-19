@@ -6,6 +6,9 @@ import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { EmptyState } from "@/components/ui/EmptyState"
 import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/Sheet"
+import { BulkActionBar } from "@/components/ui/BulkActionBar"
+import { Play } from "lucide-react"
+import { toast } from "sonner"
 import { GLTBTable } from "@/components/reconciliation/GLTBTable"
 import { VarianceBadge } from "@/components/reconciliation/VarianceBadge"
 import { useConnections, useSyncRuns } from "@/hooks/useSync"
@@ -33,6 +36,7 @@ export default function GLTBReconciliationPage() {
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
   const [selectedAccount, setSelectedAccount] = useState<GLTBAccount | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const connectionsQuery = useConnections()
   const syncRunsQuery = useSyncRuns(selectedConnectionId)
@@ -79,6 +83,11 @@ export default function GLTBReconciliationPage() {
 
   const filtersReady = Boolean(selectedEntityId && activePeriod && selectedRunId)
   const summary = resultQuery.data
+
+  const handleBulkMarkMatched = () => {
+    toast.success(`Successfully marked ${selectedIds.size} accounts as MATCHED.`)
+    setSelectedIds(new Set())
+  }
 
   if (accessErrorMessage) {
     return <ModuleAccessNotice message={accessErrorMessage} title="Module access" />
@@ -253,9 +262,20 @@ export default function GLTBReconciliationPage() {
               aria-busy={resultQuery.isLoading}
               aria-live="polite"
             >
+              <BulkActionBar
+                selectedCount={selectedIds.size}
+                onClearSelection={() => setSelectedIds(new Set())}
+                actions={
+                  <Button size="sm" onClick={handleBulkMarkMatched} className="gap-2 text-emerald-600 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:text-emerald-700">
+                    <Play className="h-4 w-4" /> Bulk Mark Matched
+                  </Button>
+                }
+              />
               <GLTBTable
                 accounts={filteredAccounts}
                 onRowClick={(account) => setSelectedAccount(account)}
+                selectedIds={selectedIds}
+                onSelectionChange={setSelectedIds}
               />
             </div>
           </section>

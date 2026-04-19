@@ -17,6 +17,7 @@ import {
 import type { PlatformFeatureFlag, PlatformTenant } from "@/lib/types/platform-admin"
 import type { ServiceRegistryModule } from "@/lib/types/service-registry"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
+import { toast } from "sonner"
 
 const nowIso = () => new Date().toISOString()
 
@@ -39,8 +40,7 @@ export default function AdminFlagsPage() {
     scope?: string
     flagKey?: string
   }>({})
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const load = useCallback(async () => {
     setError(null)
     try {
@@ -97,8 +97,7 @@ export default function AdminFlagsPage() {
     }
     setFieldErrors({})
     setError(null)
-    setMessage(null)
-    try {
+        try {
       await createFeatureFlag(selectedTenant, {
         module_id: selectedModule,
         flag_key: flagKey.trim(),
@@ -114,7 +113,7 @@ export default function AdminFlagsPage() {
         effective_to: null,
       })
       setFlagKey("")
-      setMessage("Feature flag created.")
+      toast.success("Feature flag created.")
       const items = await listFeatureFlags({ tenant_id: selectedTenant })
       setRows(items)
     } catch (cause) {
@@ -124,10 +123,9 @@ export default function AdminFlagsPage() {
 
   const onToggle = async (row: PlatformFeatureFlag, enabled: boolean) => {
     setError(null)
-    setMessage(null)
-    try {
+        try {
       await updateFeatureFlag(row.id, { enabled })
-      setMessage(`Flag ${row.flag_key} ${enabled ? "enabled" : "disabled"}.`)
+      toast.success(`Flag ${row.flag_key} ${enabled ? "enabled" : "disabled"}.`)
       const items = await listFeatureFlags({ tenant_id: selectedTenant || undefined })
       setRows(items)
     } catch (cause) {
@@ -137,10 +135,9 @@ export default function AdminFlagsPage() {
 
   const onDelete = async (row: PlatformFeatureFlag) => {
     setError(null)
-    setMessage(null)
-    try {
+        try {
       await deleteFeatureFlag(row.id)
-      setMessage(`Flag ${row.flag_key} deleted.`)
+      toast.success(`Flag ${row.flag_key} deleted.`)
       const items = await listFeatureFlags({ tenant_id: selectedTenant || undefined })
       setRows(items)
     } catch (cause) {
@@ -162,8 +159,7 @@ export default function AdminFlagsPage() {
         ) : null}
       </header>
 
-      {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
 
       <section className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
         <TenantSelector

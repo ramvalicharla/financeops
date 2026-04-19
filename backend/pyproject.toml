@@ -127,6 +127,7 @@ markers = [
     "db_heavy: tests that apply DDL or heavy database state setup",
     "migration_heavy: tests that exercise migration or temp-database bootstrap paths",
     "serial_only: tests that must run with -n 1 for stable lock usage",
+    "committed_session: async_session fixture uses committed (non-rollback) session for tests that need data visible across connections",
 ]
 
 

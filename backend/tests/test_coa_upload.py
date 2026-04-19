@@ -67,7 +67,6 @@ async def _template_ledger(async_session: AsyncSession, template_id: uuid.UUID) 
     ).scalar_one()
 
 
-@pytest.mark.asyncio
 async def test_validate_only_detects_duplicate_ledger_code(async_session: AsyncSession) -> None:
     service = CoaUploadService(async_session)
     csv_content = (
@@ -89,7 +88,6 @@ async def test_validate_only_detects_duplicate_ledger_code(async_session: AsyncS
     assert "duplicate ledger_code in upload" in result["errors"][0]["errors"]
 
 
-@pytest.mark.asyncio
 async def test_validate_route_tags_onboarding_upload_metadata(
     async_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -143,7 +141,6 @@ async def test_validate_route_tags_onboarding_upload_metadata(
     }
 
 
-@pytest.mark.asyncio
 async def test_parse_normalized_dataframe_accepts_xlsx_alias_columns(async_session: AsyncSession) -> None:
     service = CoaUploadService(async_session)
     workbook = Workbook()
@@ -167,7 +164,6 @@ async def test_parse_normalized_dataframe_accepts_xlsx_alias_columns(async_sessi
     ]
 
 
-@pytest.mark.asyncio
 async def test_upload_and_apply_creates_tenant_custom_ledger(async_session: AsyncSession, test_user: IamUser) -> None:
     await run_coa_seeds(async_session)
     template = await _software_template(async_session)
@@ -204,7 +200,6 @@ async def test_upload_and_apply_creates_tenant_custom_ledger(async_session: Asyn
     assert any(row.code == "CUS_LEDGER_001" for row in rows)
 
 
-@pytest.mark.asyncio
 async def test_initialise_tenant_coa_fails_when_template_has_no_ledgers(
     async_session: AsyncSession,
     test_user: IamUser,
@@ -223,7 +218,6 @@ async def test_initialise_tenant_coa_fails_when_template_has_no_ledgers(
         await service.initialise_tenant_coa(test_user.tenant_id, empty_template.id)
 
 
-@pytest.mark.asyncio
 async def test_apply_replace_disables_previous_scope_ledgers(async_session: AsyncSession, test_user: IamUser) -> None:
     await run_coa_seeds(async_session)
     template = await _software_template(async_session)
@@ -287,7 +281,6 @@ async def test_apply_replace_disables_previous_scope_ledgers(async_session: Asyn
     assert any(item.code == "CUS_LEDGER_200" and item.is_active is True for item in custom_ledgers)
 
 
-@pytest.mark.asyncio
 async def test_flexible_upload_returns_activation_summary_and_review_flags(
     async_session: AsyncSession,
     test_user: IamUser,
@@ -336,7 +329,6 @@ async def test_flexible_upload_returns_activation_summary_and_review_flags(
     assert upload["activation_summary"]["needs_review"] == 1
 
 
-@pytest.mark.asyncio
 async def test_flexible_upload_activation_plan_uses_decimal_amounts(
     async_session: AsyncSession,
 ) -> None:
@@ -354,7 +346,6 @@ async def test_flexible_upload_activation_plan_uses_decimal_amounts(
     assert result["credit"] == Decimal("0.0000")
 
 
-@pytest.mark.asyncio
 async def test_flexible_upload_apply_is_idempotent_and_marks_activation(
     async_session: AsyncSession,
     test_user: IamUser,

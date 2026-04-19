@@ -1,5 +1,7 @@
 "use client"
 
+import { toast } from "sonner"
+
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { DataTable } from "@/components/admin/DataTable"
@@ -34,8 +36,7 @@ export default function AdminRbacPage() {
   const [assignments, setAssignments] = useState<RbacAssignment[]>([])
   const [users, setUsers] = useState<PlatformUser[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const [newRoleCode, setNewRoleCode] = useState("")
   const [newRoleScope, setNewRoleScope] = useState("PLATFORM")
   const [selectedRoleId, setSelectedRoleId] = useState("")
@@ -103,15 +104,14 @@ export default function AdminRbacPage() {
       return
     }
     setFieldErrors((previous) => ({ ...previous, roleName: undefined, roleScope: undefined }))
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await createRbacRole({
         role_code: newRoleCode.trim(),
         role_scope: newRoleScope,
         is_active: true,
       })
-      setMessage(`Created role ${newRoleCode.trim()}.`)
+      toast.success(`Created role ${newRoleCode.trim()}.`)
       setNewRoleCode("")
       await load()
     } catch (cause) {
@@ -132,15 +132,14 @@ export default function AdminRbacPage() {
       permissionRole: undefined,
       permissionAction: undefined,
     }))
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await grantRbacPermission({
         role_id: selectedRoleId,
         permission_id: selectedPermissionId,
         effect: "allow",
       })
-      setMessage("Permission assigned to role.")
+      toast.success("Permission assigned to role.")
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to assign permission")
@@ -160,8 +159,7 @@ export default function AdminRbacPage() {
       userRoleUser: undefined,
       userRoleRole: undefined,
     }))
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await assignRbacRole({
         user_id: selectedUserId,
@@ -171,7 +169,7 @@ export default function AdminRbacPage() {
         assigned_by: null,
         effective_from: nowIso(),
       })
-      setMessage("User-role mapping created.")
+      toast.success("User-role mapping created.")
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to map user to role")
@@ -192,8 +190,7 @@ export default function AdminRbacPage() {
         ) : null}
       </header>
 
-      {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
 
       <section className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-3">
         <div className="space-y-2">

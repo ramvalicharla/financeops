@@ -6,6 +6,7 @@ import { getPartnerDashboard, registerPartner } from "@/lib/api/partner"
 import type { PartnerDashboard as PartnerDashboardPayload } from "@/lib/types/partner"
 import { PartnerDashboard } from "@/components/partner/PartnerDashboard"
 import { FormField } from "@/components/ui/FormField"
+import { toast } from "sonner"
 
 export default function PartnerHubPage() {
   const [dashboard, setDashboard] = useState<PartnerDashboardPayload | null>(null)
@@ -14,8 +15,7 @@ export default function PartnerHubPage() {
   const [contactEmail, setContactEmail] = useState("")
   const [websiteUrl, setWebsiteUrl] = useState("")
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     try {
@@ -32,8 +32,7 @@ export default function PartnerHubPage() {
 
   const submitRegistration = async () => {
     setError(null)
-    setMessage(null)
-    const nextFieldErrors: Record<string, string> = {}
+        const nextFieldErrors: Record<string, string> = {}
     if (!tier.trim()) nextFieldErrors.type = "Partnership type is required."
     if (!companyName.trim()) nextFieldErrors.company = "Company name is required."
     if (!contactEmail.trim()) nextFieldErrors.email = "Business email is required."
@@ -49,7 +48,7 @@ export default function PartnerHubPage() {
         contact_email: contactEmail,
         website_url: websiteUrl || undefined,
       })
-      setMessage("Partner application submitted. Await platform approval.")
+      toast.success("Partner application submitted. Await platform approval.")
       await load()
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to register as partner")
@@ -151,8 +150,7 @@ export default function PartnerHubPage() {
         </Link>
       </section>
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
     </div>
   )
 }

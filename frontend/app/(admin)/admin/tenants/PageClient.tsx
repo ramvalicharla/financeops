@@ -8,13 +8,13 @@ import {
   updatePlatformTenantStatus,
 } from "@/lib/api/platform-admin"
 import type { PlatformTenant } from "@/lib/types/platform-admin"
+import { toast } from "sonner"
 
 export default function AdminTenantsPage() {
   const [rows, setRows] = useState<PlatformTenant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -33,11 +33,10 @@ export default function AdminTenantsPage() {
   }, [load])
 
   const onToggle = async (tenant: PlatformTenant, enabled: boolean) => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await updatePlatformTenantStatus(tenant.id, enabled ? "active" : "suspended")
-      setMessage(`Tenant ${tenant.slug} ${enabled ? "activated" : "suspended"}.`)
+      toast.success(`Tenant ${tenant.slug} ${enabled ? "activated" : "suspended"}.`)
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to update tenant status")
@@ -53,8 +52,7 @@ export default function AdminTenantsPage() {
         </p>
       </header>
 
-      {message ? <p className="text-sm text-emerald-300">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading tenants...</p> : null}
 
       <DataTable

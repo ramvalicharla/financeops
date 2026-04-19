@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any
 
@@ -10,6 +9,7 @@ from financeops.db.session import tenant_session
 from financeops.modules.erp_push.application.webhook_processor import (
     process_webhook_event,
 )
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.base_task import FinanceOpsTask
 from financeops.tasks.celery_app import celery_app
 
@@ -37,6 +37,6 @@ def process_webhook_event_task(
             )
 
     try:
-        return asyncio.run(_run())
+        return run_async(_run())
     except Exception as exc:
         raise self.retry(exc=exc, countdown=30 * (2**self.request.retries))

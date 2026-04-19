@@ -8,6 +8,7 @@ import {
   submitMarketplaceTemplate,
 } from "@/lib/api/marketplace"
 import type { MarketplaceContributor } from "@/lib/types/marketplace"
+import { toast } from "sonner"
 
 const templateTypeOptions = [
   "mis_template",
@@ -35,8 +36,7 @@ export default function MarketplaceContributePage() {
   const [tagsInput, setTagsInput] = useState("")
   const [templateDataText, setTemplateDataText] = useState("{\n  \"line_items\": []\n}")
 
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
 
   const loadContributor = useCallback(async () => {
@@ -60,14 +60,13 @@ export default function MarketplaceContributePage() {
 
   const onRegister = async () => {
     setError(null)
-    setMessage(null)
-    try {
+        try {
       const row = await registerMarketplaceContributor({
         display_name: displayName,
         bio: bio || undefined,
       })
       setContributor(row)
-      setMessage("Contributor profile created.")
+      toast.success("Contributor profile created.")
     } catch (registerError) {
       setError(registerError instanceof Error ? registerError.message : "Failed to register contributor")
     }
@@ -75,8 +74,7 @@ export default function MarketplaceContributePage() {
 
   const onSubmitTemplate = async () => {
     setError(null)
-    setMessage(null)
-    const nextFieldErrors: Record<string, string> = {}
+        const nextFieldErrors: Record<string, string> = {}
     if (!title.trim()) nextFieldErrors.title = "Template title is required."
     if (!description.trim()) nextFieldErrors.description = "Description is required."
     if (!templateType.trim()) nextFieldErrors.category = "Category is required."
@@ -100,7 +98,7 @@ export default function MarketplaceContributePage() {
           .map((tag) => tag.trim())
           .filter((tag) => tag.length > 0),
       })
-      setMessage("Template submitted for review.")
+      toast.success("Template submitted for review.")
       setTitle("")
       setDescription("")
       setTagsInput("")
@@ -251,8 +249,7 @@ export default function MarketplaceContributePage() {
         </p>
       </section>
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
     </div>
   )
 }

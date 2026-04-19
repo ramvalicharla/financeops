@@ -40,6 +40,13 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 import os
 
+if sys.platform == "win32":
+    # Keep pytest temp dirs inside the workspace to avoid Windows temp-root
+    # permission/locking issues under AppData\Local\Temp.
+    _WINDOWS_PYTEST_TEMPROOT = Path(__file__).resolve().parents[1] / ".pytest_tmp_root"
+    _WINDOWS_PYTEST_TEMPROOT.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("PYTEST_DEBUG_TEMPROOT", str(_WINDOWS_PYTEST_TEMPROOT))
+
 # Ensure deterministic worker-local database URLs for every pytest process.
 # xdist workers inherit the controller environment, so ``setdefault()`` would
 # leave them pinned to ``finos_test_master``. Force the worker-specific URL
@@ -954,7 +961,7 @@ async def _ensure_template_database(admin_url: str) -> None:
             await bootstrap_engine.dispose()
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
     """Close module-level Redis pools before the event loop is torn down."""
     yield
@@ -967,6 +974,32 @@ async def _close_global_redis_clients() -> AsyncGenerator[None, None]:
             pass
         finally:
             api_deps._redis_pool = None
+
+
+@pytest.fixture(autouse=True)
+def _pin_session_event_loop(_session_scoped_runner) -> None:  # type: ignore[return]
+    """
+    Pin asyncio.get_event_loop() to the session runner's loop immediately
+    before each test body executes.
+
+    pytest-asyncio's wrap_in_sync() calls _get_event_loop_no_warn() (which
+    resolves to asyncio.get_event_loop() in a sync context) to choose which
+    loop runs the test coroutine.  All async fixtures use runner.run() with
+    the session-scoped Runner, so their asyncpg connections have futures
+    bound to that runner's loop.  If _local._loop is anything else when
+    wrap_in_sync fires, asyncio raises "Future attached to a different loop".
+
+    The async_client fixture captures the current loop via
+    asyncio.get_event_loop_policy().get_event_loop() (bypassing
+    asyncio.set_event_loop()) and restores it in teardown.  That path can
+    silently leave _local._loop pointing at the temporary "wrap loop" that
+    _temporary_event_loop_policy created before the session Runner was
+    initialised.  This sync autouse fixture corrects that by explicitly
+    re-pinning _local._loop to the session Runner's loop right before the
+    test body runs, regardless of what prior fixture teardown left behind.
+    """
+    asyncio.set_event_loop(_session_scoped_runner._loop)
+    yield
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -1025,7 +1058,7 @@ async def engine(test_database_url: str):
     await test_engine.dispose()
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def _bind_worker_database_to_runtime_session_factories(engine) -> AsyncGenerator[None, None]:
     """
     Rebind modules that manage their own sessions so xdist workers do not fall
@@ -1126,107 +1159,17 @@ async def async_session(
       committed setup/verification session so API requests can observe data
       through their own fresh request-scoped sessions.
     """
-    service_session_files = {
-        "tests/integration/payment/test_payment_retry_failed_task.py",
-        "tests/integration/platform/test_feature_flag_canary.py",
-        "tests/integration/platform/test_isolation_routing_paths.py",
-        "tests/integration/platform/test_module_enablement_enforcement.py",
-        "tests/integration/platform/test_parallel_approval_race_safety.py",
-        "tests/integration/platform/test_quota_enforcement_api_async.py",
-        "tests/integration/platform/test_rbac_denial_paths.py",
-        "tests/integration/platform/test_user_plane_rbac_enforcement.py",
-        "tests/integration/test_anomaly_ui_migration.py",
-        "tests/integration/test_bank_recon_matching.py",
-        "tests/integration/test_board_pack_api.py",
-        "tests/integration/test_board_pack_generate_service.py",
-        "tests/integration/test_board_pack_narrative_engine_api_phase1f7.py",
-        "tests/integration/test_consolidation_drill_flow.py",
-        "tests/integration/test_consolidation_endpoints.py",
-        "tests/integration/test_consolidation_group_endpoints.py",
-        "tests/integration/test_consolidation_phase2_4.py",
-        "tests/integration/test_control_plane_context_phase4_4.py",
-        "tests/integration/test_delivery_migration.py",
-        "tests/integration/test_financial_risk_engine_api_phase1f5.py",
-        "tests/integration/test_fixed_assets_depreciation.py",
-        "tests/integration/test_fixed_assets_endpoints.py",
-        "tests/integration/test_fx_endpoints.py",
-        "tests/integration/test_gst_endpoints.py",
-        "tests/integration/test_gst_recon.py",
-        "tests/integration/test_lease_endpoints.py",
-        "tests/integration/test_mis_manager_api_phase1f1.py",
-        "tests/integration/test_mis_manager_isolation_phase1f1.py",
-        "tests/integration/test_monthend_endpoints.py",
-        "tests/integration/test_observability_engine_determinism_phase3.py",
-        "tests/integration/test_ownership_consolidation_determinism_phase2_5.py",
-        "tests/integration/test_payroll_gl_reconciliation_api_phase1f3_1.py",
-        "tests/integration/test_phase5_cross_module.py",
-        "tests/integration/test_prepaid_endpoints.py",
-        "tests/integration/test_ratio_variance_engine_api_phase1f4.py",
-        "tests/integration/test_reconciliation_bridge_api_phase1f2.py",
-        "tests/integration/test_reconciliation_endpoints.py",
-        "tests/integration/test_report_api.py",
-        "tests/integration/test_report_migration.py",
-        "tests/integration/test_report_run_service.py",
-        "tests/integration/test_revenue_endpoints.py",
-        "tests/integration/test_rls_isolation.py",
-        "tests/integration/test_tenant_endpoints.py",
-        "tests/integration/test_user_management.py",
-        "tests/integration/test_working_capital.py",
-        "tests/integration/test_working_capital_endpoints.py",
-        "tests/test_auto_trigger_pipeline.py",
-        "tests/test_backup_dr.py",
-        "tests/test_budgeting.py",
-        "tests/test_coa.py",
-        "tests/test_coa_upload.py",
-        "tests/test_debt_covenants.py",
-        "tests/test_entity_isolation.py",
-        "tests/test_fdd.py",
-        "tests/test_fixed_assets.py",
-        "tests/test_forecasting.py",
-        "tests/test_gdpr_erasure.py",
-        "tests/test_invoice_classifier.py",
-        "tests/test_learning_engine.py",
-        "tests/test_ma_workspace.py",
-        "tests/test_marketplace.py",
-        "tests/test_multi_gaap.py",
-        "tests/test_notifications.py",
-        "tests/test_org_setup.py",
-        "tests/test_pagination.py",
-        "tests/test_partner_program.py",
-        "tests/test_placeholder_services.py",
-        "tests/test_platform_bootstrap.py",
-        "tests/test_ppa.py",
-        "tests/test_prepaid_expenses.py",
-        "tests/test_scenario_modelling.py",
-        "tests/test_secret_encryption_at_rest.py",
-        "tests/test_tax_provision.py",
-        "tests/test_user_offboarding.py",
-        "tests/test_white_label.py",
-        "tests/unit/intent/test_phase1_intent_pipeline.py",
-        "tests/unit/platform/test_control_plane_authorizer.py",
-        "tests/unit/platform/test_feature_flag_precedence.py",
-        "tests/unit/platform/test_isolation_routing.py",
-        "tests/unit/platform/test_quota_guard.py",
-        "tests/unit/platform/test_rbac_evaluator.py",
-        "tests/unit/platform/test_workflow_approval_idempotency.py",
-        "tests/unit/platform/test_workflow_template_versioning.py",
-        "tests/unit/test_append_only_enforcement.py",
-        "tests/unit/test_consolidation_append_only.py",
-        "tests/unit/test_consolidation_service.py",
-        "tests/unit/test_drilldown_endpoints.py",
-        "tests/unit/test_fixed_assets_append_only.py",
-        "tests/unit/test_lease_append_only.py",
-        "tests/unit/test_phase11d_operations.py",
-        "tests/unit/test_phase4_control_plane.py",
-        "tests/unit/test_prepaid_append_only.py",
-        "tests/unit/test_revenue_append_only.py",
-        "tests/unit/test_run_lifecycle_base.py",
-    }
-    request_path = str(getattr(request.node, "path", "")).replace("\\", "/")
+    # Routing decision:
+    #   async_client in fixturenames → committed (API test, data must be visible
+    #     across request-scoped sessions)
+    #   @pytest.mark.committed_session on the test → committed (service test
+    #     that calls code which opens its own sessions)
+    #   otherwise → rollback-isolated (pure unit/DB test)
+    uses_committed_session = "async_client" in request.fixturenames or any(
+        m.name == "committed_session" for m in request.node.iter_markers()
+    )
 
-    if "async_client" in request.fixturenames or any(
-        request_path.endswith(path) for path in service_session_files
-    ):
+    if uses_committed_session:
         async with api_session_factory() as session:
             original_flush = session.flush
 
@@ -1570,13 +1513,8 @@ async def async_client(
                 except Exception:
                     payload = {}
                 tenant_id = str(payload.get("tenant_id", "") or "")
-        admin_url = _with_database(TEST_DATABASE_URL, TEST_DATABASE_ADMIN_DB)
-        await _ensure_template_database(admin_url)
-        conn = await asyncpg.connect(_to_asyncpg_dsn(admin_url))
-        try:
-            await _create_database(conn, _worker_test_database_name(), template_name=_TEMPLATE_DATABASE_NAME)
-        finally:
-            await conn.close()
+        # The worker database is already provisioned by the session-scoped `engine`
+        # fixture before any test runs. No per-request database setup is needed.
         async with api_session_factory() as session:
             if tenant_id:
                 await set_tenant_context(session, tenant_id)
@@ -1594,6 +1532,7 @@ async def async_client(
                         await session.rollback()
 
     app.dependency_overrides[get_async_session] = override_session
+
     async with AsyncClient(
         transport=ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://test",
@@ -1603,6 +1542,7 @@ async def async_client(
         },
     ) as client:
         yield client
+
     app.dependency_overrides.clear()
     app.state.startup_errors = original_startup_errors
     app.state.migration_state = original_migration_state

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from typing import Any
 
@@ -15,6 +14,7 @@ from financeops.modules.custom_report_builder.application.run_service import (
     ReportRunError,
     ReportRunService,
 )
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.celery_app import celery_app
 
 
@@ -76,7 +76,7 @@ def run_custom_report_task(
                 await clear_tenant_context(session)
 
     try:
-        return asyncio.run(_run())
+        return run_async(_run())
     except (InvalidReportRunStateError, ReportRunError):
         raise
     except (OperationalError, InterfaceError, DBAPIError, ConnectionError, TimeoutError, OSError) as exc:

@@ -17,6 +17,7 @@ import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { Button } from "@/components/ui/button"
+import { PaginationBar } from "@/components/ui/PaginationBar"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Dialog } from "@/components/ui/Dialog"
 import { FormField } from "@/components/ui/FormField"
@@ -442,29 +443,13 @@ export default function FixedAssetsPage() {
               </table>
             </div>
           )}
-          <div className="flex items-center justify-between border-t border-border px-4 py-3 text-sm text-muted-foreground">
-            <p>
-              Showing {assets.length} of {assetsQuery.data?.total ?? 0}
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSkip(Math.max(0, skip - limit))}
-                disabled={skip === 0}
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSkip(skip + limit)}
-                disabled={!(assetsQuery.data?.has_more ?? false)}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <PaginationBar
+            total={assetsQuery.data?.total ?? 0}
+            skip={skip}
+            limit={limit}
+            onPageChange={setSkip}
+            hasMore={assetsQuery.data?.has_more}
+          />
         </section>
       ) : (
         <section className="overflow-hidden rounded-xl border border-border bg-card">

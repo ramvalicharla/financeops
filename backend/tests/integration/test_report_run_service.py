@@ -8,6 +8,9 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+
+pytestmark = pytest.mark.committed_session
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 

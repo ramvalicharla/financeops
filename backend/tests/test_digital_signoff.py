@@ -74,6 +74,8 @@ async def test_complete_signoff_requires_valid_mfa(async_session: AsyncSession, 
 async def test_complete_signoff_sets_mfa_verified(async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
+    await async_session.flush()
     code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
@@ -108,6 +110,8 @@ async def test_complete_signoff_sets_mfa_verified(async_session: AsyncSession, t
 async def test_signature_hash_computed(async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
+    await async_session.flush()
     code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
@@ -136,6 +140,8 @@ async def test_signature_hash_computed(async_session: AsyncSession, test_user: I
 async def test_verify_signoff_valid(async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
+    await async_session.flush()
     code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
@@ -193,6 +199,8 @@ async def test_verify_signoff_tampered(async_session: AsyncSession, test_user: I
 async def test_signoff_append_only(async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
+    await async_session.flush()
     code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
@@ -249,6 +257,8 @@ async def test_signoff_rls(async_session: AsyncSession, test_user: IamUser) -> N
 async def test_certificate_structure(async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
+    await async_session.flush()
     code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
@@ -278,6 +288,8 @@ async def test_certificate_structure(async_session: AsyncSession, test_user: Iam
 async def test_certificate_includes_hashes(async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
+    await async_session.flush()
     code = pyotp.TOTP(secret).now()
     row = await initiate_signoff(
         async_session,
@@ -326,6 +338,7 @@ async def test_api_initiate_signoff(async_client, test_user: IamUser) -> None:
 async def test_api_complete_signoff_with_mfa(async_client, async_session: AsyncSession, test_user: IamUser) -> None:
     secret = generate_totp_secret()
     test_user.totp_secret_encrypted = encrypt_field(secret)
+    await async_session.merge(test_user)
     await async_session.flush()
 
     create = await async_client.post(

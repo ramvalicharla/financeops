@@ -4,11 +4,11 @@ import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import { enableWhiteLabelTenant, listWhiteLabelAdminConfigs } from "@/lib/api/white-label"
 import type { WhiteLabelConfig } from "@/lib/types/white-label"
+import { toast } from "sonner"
 
 export default function AdminWhiteLabelPage() {
   const [rows, setRows] = useState<WhiteLabelConfig[]>([])
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -25,11 +25,10 @@ export default function AdminWhiteLabelPage() {
   }, [load])
 
   const enable = async (tenantId: string) => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await enableWhiteLabelTenant(tenantId)
-      setMessage("White label enabled for tenant.")
+      toast.success("White label enabled for tenant.")
       await load()
     } catch (enableError) {
       setError(enableError instanceof Error ? enableError.message : "Failed to enable white label")
@@ -53,8 +52,7 @@ export default function AdminWhiteLabelPage() {
         <p className="text-sm text-muted-foreground">Enable and review custom domain and branding status per tenant.</p>
       </header>
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
 
       <section className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="overflow-x-auto">

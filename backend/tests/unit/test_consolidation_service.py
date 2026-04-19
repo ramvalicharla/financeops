@@ -5,6 +5,7 @@ from uuid import UUID
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.db.models.consolidation import (

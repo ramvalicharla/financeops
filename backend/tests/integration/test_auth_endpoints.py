@@ -32,7 +32,7 @@ def _unique_registration_payload(*, full_name: str, tenant_name_prefix: str) -> 
     }
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def engine(test_database_url: str):
     test_engine = create_async_engine(test_database_url, echo=False, poolclass=NullPool)
     yield test_engine

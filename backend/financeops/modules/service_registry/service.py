@@ -71,34 +71,42 @@ def _q4(value: Decimal) -> Decimal:
 
 
 async def ensure_registry_seeded(session: AsyncSession) -> None:
-    existing_module_id = (
-        await session.execute(select(ModuleRegistry.id).limit(1))
-    ).scalar_one_or_none()
-    if existing_module_id is None:
-        for module_name, route_prefix, depends_on in _MODULE_SEED:
-            session.add(
-                ModuleRegistry(
-                    module_name=module_name,
-                    description=f"{module_name} description",
-                    route_prefix=route_prefix,
-                    depends_on=depends_on,
-                )
+    existing_modules = {
+        module_name
+        for module_name in (
+            await session.execute(select(ModuleRegistry.module_name))
+        ).scalars().all()
+    }
+    for module_name, route_prefix, depends_on in _MODULE_SEED:
+        if module_name in existing_modules:
+            continue
+        session.add(
+            ModuleRegistry(
+                module_name=module_name,
+                description=f"{module_name} description",
+                route_prefix=route_prefix,
+                depends_on=depends_on,
             )
+        )
 
-    existing_task_id = (
-        await session.execute(select(TaskRegistry.id).limit(1))
-    ).scalar_one_or_none()
-    if existing_task_id is None:
-        for task_name, module_name, queue_name, is_scheduled in _TASK_SEED:
-            session.add(
-                TaskRegistry(
-                    task_name=task_name,
-                    module_name=module_name,
-                    queue_name=queue_name,
-                    description=f"{task_name} description",
-                    is_scheduled=is_scheduled,
-                )
+    existing_tasks = {
+        task_name
+        for task_name in (
+            await session.execute(select(TaskRegistry.task_name))
+        ).scalars().all()
+    }
+    for task_name, module_name, queue_name, is_scheduled in _TASK_SEED:
+        if task_name in existing_tasks:
+            continue
+        session.add(
+            TaskRegistry(
+                task_name=task_name,
+                module_name=module_name,
+                queue_name=queue_name,
+                description=f"{task_name} description",
+                is_scheduled=is_scheduled,
             )
+        )
 
     await session.flush()
 

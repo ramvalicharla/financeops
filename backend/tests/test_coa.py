@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +20,7 @@ from financeops.modules.coa.models import (
     CoaGaapMapping,
     CoaIndustryTemplate,
     CoaLedgerAccount,
+    CoaSourceType,
     ErpAccountMapping,
     TenantCoaAccount,
 )
@@ -148,6 +150,7 @@ async def test_gaap_mappings_seeded(async_session: AsyncSession) -> None:
                 select(func.count())
                 .select_from(CoaLedgerAccount)
                 .where(CoaLedgerAccount.industry_template_id == template_id)
+                .where(CoaLedgerAccount.source_type == CoaSourceType.SYSTEM)
             )
         ).scalar_one()
     )
@@ -156,7 +159,10 @@ async def test_gaap_mappings_seeded(async_session: AsyncSession) -> None:
             await async_session.execute(
                 select(func.count())
                 .select_from(CoaGaapMapping)
+                .join(CoaLedgerAccount, CoaLedgerAccount.id == CoaGaapMapping.ledger_account_id)
                 .where(CoaGaapMapping.gaap == "INDAS")
+                .where(CoaLedgerAccount.industry_template_id == template_id)
+                .where(CoaLedgerAccount.source_type == CoaSourceType.SYSTEM)
             )
         ).scalar_one()
     )

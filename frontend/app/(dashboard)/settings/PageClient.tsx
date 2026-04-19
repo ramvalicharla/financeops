@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/sprint11"
 import { useDisplayScale } from "@/lib/store/displayScale"
 import type { DisplayScale } from "@/lib/utils"
+import { toast } from "sonner"
 
 const FINANCE_LEADER_ROLES = new Set(["finance_leader", "platform_owner"])
 
@@ -22,8 +23,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true)
   const [savingUser, setSavingUser] = useState(false)
   const [savingTenant, setSavingTenant] = useState(false)
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
   const isFinanceLeader = useMemo(() => {
     const role = session?.user?.role
@@ -65,10 +65,9 @@ export default function SettingsPage() {
     setScale(scale)
     setSavingUser(true)
     setError(null)
-    setMessage(null)
-    try {
+        try {
       await updateDisplayPreferences({ user_scale: scale })
-      setMessage("Personal display preference updated.")
+      toast.success("Personal display preference updated.")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to update personal preference")
     } finally {
@@ -80,10 +79,9 @@ export default function SettingsPage() {
     setTenantScale(scale)
     setSavingTenant(true)
     setError(null)
-    setMessage(null)
-    try {
+        try {
       await updateDisplayPreferences({ tenant_scale: scale })
-      setMessage("Company default display updated.")
+      toast.success("Company default display updated.")
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to update company default")
     } finally {
@@ -103,8 +101,7 @@ export default function SettingsPage() {
 
         {loading ? <p className="text-sm text-muted-foreground">Loading display preferences...</p> : null}
         {error ? <p className="text-sm text-red-400">{error}</p> : null}
-        {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
-
+        
         <div className="space-y-4">
           <div>
             <label className="mb-2 block text-sm text-muted-foreground">

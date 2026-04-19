@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -25,6 +24,7 @@ from financeops.modules.accounting_layer.application.notification_service import
     send_approval_reminders,
 )
 from financeops.modules.notifications.service import send_notification
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.base_task import FinanceOpsTask
 from financeops.tasks.celery_app import celery_app
 
@@ -337,7 +337,7 @@ async def _run_daily_digests() -> dict[str, Any]:
 )
 def approval_reminder_task(self: Task) -> dict[str, Any]:
     del self
-    return asyncio.run(_run_approval_reminders())
+    return run_async(_run_approval_reminders())
 
 
 @celery_app.task(
@@ -348,7 +348,7 @@ def approval_reminder_task(self: Task) -> dict[str, Any]:
 )
 def sla_breach_check_task(self: Task) -> dict[str, Any]:
     del self
-    return asyncio.run(_run_sla_breach_checks())
+    return run_async(_run_sla_breach_checks())
 
 
 @celery_app.task(
@@ -359,4 +359,4 @@ def sla_breach_check_task(self: Task) -> dict[str, Any]:
 )
 def daily_digest_task(self: Task) -> dict[str, Any]:
     del self
-    return asyncio.run(_run_daily_digests())
+    return run_async(_run_daily_digests())

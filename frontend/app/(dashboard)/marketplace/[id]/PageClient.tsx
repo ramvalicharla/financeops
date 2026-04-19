@@ -12,6 +12,7 @@ import type {
 } from "@/lib/types/marketplace"
 import { TemplatePreview } from "@/components/marketplace/TemplatePreview"
 import { PurchaseFlow } from "@/components/marketplace/PurchaseFlow"
+import { toast } from "sonner"
 
 export default function MarketplaceTemplateDetailPage() {
   const params = useParams()
@@ -21,8 +22,7 @@ export default function MarketplaceTemplateDetailPage() {
   const [reviews, setReviews] = useState<MarketplaceRating[]>([])
   const [rating, setRating] = useState(5)
   const [reviewText, setReviewText] = useState("")
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!templateId) {
@@ -43,14 +43,13 @@ export default function MarketplaceTemplateDetailPage() {
   }, [templateId, load])
 
   const submitRating = async () => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await rateMarketplaceTemplate(templateId, {
         rating,
         review_text: reviewText.trim() || undefined,
       })
-      setMessage("Rating submitted.")
+      toast.success("Rating submitted.")
       setReviewText("")
       await load()
     } catch (submitError) {
@@ -77,8 +76,7 @@ export default function MarketplaceTemplateDetailPage() {
       )}
 
       {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-
+      
       {template ? (
         <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
           <div className="space-y-4">

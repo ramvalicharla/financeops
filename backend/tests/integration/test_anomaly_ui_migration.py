@@ -4,6 +4,9 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+
+pytestmark = pytest.mark.committed_session
+
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession

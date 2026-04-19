@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.platform.db.models.modules import CpModuleRegistry

@@ -12,6 +12,7 @@ import type { ComplianceControl, ComplianceDashboard } from "@/lib/types/complia
 import { ComplianceProgress } from "@/components/compliance/ComplianceProgress"
 import { ControlCard } from "@/components/compliance/ControlCard"
 import { EvidencePanel } from "@/components/compliance/EvidencePanel"
+import { toast } from "sonner"
 
 const FILTERS = ["all", "green", "amber", "red", "grey", "auto"] as const
 
@@ -20,8 +21,7 @@ export default function AdminSoc2Page() {
   const [controls, setControls] = useState<ComplianceControl[]>([])
   const [selected, setSelected] = useState<ComplianceControl | null>(null)
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all")
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
@@ -64,7 +64,7 @@ export default function AdminSoc2Page() {
     setError(null)
     try {
       const result = await evaluateSoc2()
-      setMessage(`${result.passed} passed, ${result.failed} failed`)
+      toast.success(`${result.passed} passed, ${result.failed} failed`)
       await load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Failed to run SOC2 auto-evaluation")
@@ -97,8 +97,7 @@ export default function AdminSoc2Page() {
       </header>
 
       {dashboard ? <ComplianceProgress summary={dashboard.summary} /> : null}
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading SOC2 controls...</p> : null}
 
       <div className="flex flex-wrap gap-2">

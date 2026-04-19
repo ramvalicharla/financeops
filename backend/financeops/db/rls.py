@@ -10,10 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from financeops.core.exceptions import TenantContextError
 
 log = logging.getLogger(__name__)
+_TENANT_CONTEXT_SESSION_KEY = "app.current_tenant_id"
 
 
 async def set_tenant_context(session: AsyncSession, tenant_id: UUID | str) -> None:
     """Set PostgreSQL session variable used by RLS policies."""
+    session.info[_TENANT_CONTEXT_SESSION_KEY] = str(tenant_id)
     await session.execute(
         text("SELECT set_config('app.current_tenant_id', :tenant_id, true)"),
         {"tenant_id": str(tenant_id)},
@@ -23,6 +25,7 @@ async def set_tenant_context(session: AsyncSession, tenant_id: UUID | str) -> No
 
 async def clear_tenant_context(session: AsyncSession) -> None:
     """Clear the RLS context variable."""
+    session.info.pop(_TENANT_CONTEXT_SESSION_KEY, None)
     try:
         await session.execute(text("SELECT set_config('app.current_tenant_id', '', true)"))
     except (PendingRollbackError, DBAPIError):

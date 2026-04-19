@@ -22,7 +22,7 @@ from financeops.modules.scheduled_delivery.application.delivery_service import D
 from financeops.modules.payment.application.entitlement_service import EntitlementService
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def ensure_secret_rotation_schema(engine) -> None:
     """Ensure secret_rotation_log table and trigger exist before secret-rotation endpoint tests."""
     from sqlalchemy import text

@@ -15,15 +15,18 @@ import {
 import { VarianceBadge } from "@/components/reconciliation/VarianceBadge"
 import { SortableHeader } from "@/components/ui/SortableHeader"
 import { Button } from "@/components/ui/button"
+import { PaginationBar } from "@/components/ui/PaginationBar"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { GLTBAccount } from "@/types/reconciliation"
 
 interface GLTBTableProps {
   accounts: GLTBAccount[]
   onRowClick: (account: GLTBAccount) => void
+  onSelectionChange?: (ids: Set<string>) => void
+  selectedIds?: Set<string>
 }
 
-export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
+export function GLTBTable({ accounts, onRowClick, onSelectionChange, selectedIds = new Set() }: GLTBTableProps) {
   const [sorting, setSorting] = useState<SortingState>([])
 
   const columns = useMemo<ColumnDef<GLTBAccount>[]>(
@@ -126,6 +129,22 @@ export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="bg-muted/30">
+                {onSelectionChange && (
+                  <th className="px-3 py-2 text-left w-[40px] sticky left-0 z-10 bg-muted/30">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border"
+                      checked={accounts.length > 0 && Array.from(accounts).every(a => selectedIds.has(a.account_code))}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onSelectionChange(new Set(accounts.map(a => a.account_code)))
+                        } else {
+                          onSelectionChange(new Set())
+                        }
+                      }}
+                    />
+                  </th>
+                )}
                 {headerGroup.headers.map((header) =>
                   header.isPlaceholder ? null : (
                     <SortableHeader
@@ -164,6 +183,22 @@ export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
                 }}
                 aria-label={`View details for ${row.original.account_name || row.original.account_code}`}
               >
+                {onSelectionChange && (
+                  <td className="px-3 py-2 sticky left-0 z-10 bg-card">
+                    <input
+                      type="checkbox"
+                      className="rounded border-border"
+                      checked={selectedIds.has(row.original.account_code)}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => {
+                        const next = new Set(selectedIds)
+                        if (e.target.checked) next.add(row.original.account_code)
+                        else next.delete(row.original.account_code)
+                        onSelectionChange(next)
+                      }}
+                    />
+                  </td>
+                )}
                 {row.getVisibleCells().map((cell) => (
                   <td
                     key={cell.id}
@@ -178,32 +213,13 @@ export function GLTBTable({ accounts, onRowClick }: GLTBTableProps) {
           </tbody>
         </table>
       </div>
-      <div className="flex items-center justify-between text-sm">
-        <p className="text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of{" "}
-          {table.getPageCount() || 1}
-        </p>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            disabled={!table.getCanPreviousPage()}
-            onClick={() => table.previousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            size="sm"
-            type="button"
-            variant="outline"
-            disabled={!table.getCanNextPage()}
-            onClick={() => table.nextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      <PaginationBar
+        total={table.getPrePaginationRowModel().rows.length}
+        skip={table.getState().pagination.pageIndex * table.getState().pagination.pageSize}
+        limit={table.getState().pagination.pageSize}
+        onPageChange={(skip) => table.setPageIndex(Math.floor(skip / table.getState().pagination.pageSize))}
+        hasMore={table.getCanNextPage()}
+      />
     </div>
   )
 }

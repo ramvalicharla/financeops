@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 

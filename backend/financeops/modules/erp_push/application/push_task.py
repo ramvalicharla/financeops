@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from typing import Any
@@ -10,6 +9,7 @@ from celery import Task
 from financeops.db.models.erp_push import PushStatus
 from financeops.db.session import tenant_session
 from financeops.modules.erp_push.application.posting_service import SoftPushError, execute_push
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.base_task import FinanceOpsTask
 from financeops.tasks.celery_app import celery_app
 
@@ -54,7 +54,7 @@ def push_journal_task(
             }
 
     try:
-        result = asyncio.run(_run())
+        result = run_async(_run())
     except SoftPushError as exc:
         countdown = _BASE_RETRY_DELAY * (2 ** self.request.retries)
         raise self.retry(exc=exc, countdown=countdown)

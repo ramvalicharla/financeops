@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react"
 import { approvePartner, getPartnerAdminStats, listPartnerApplications } from "@/lib/api/partner"
 import type { PartnerProfile } from "@/lib/types/partner"
+import { toast } from "sonner"
 
 interface PartnerAdminStats {
   total_partners: number
@@ -15,8 +16,7 @@ export default function AdminPartnersPage() {
   const [applications, setApplications] = useState<PartnerProfile[]>([])
   const [stats, setStats] = useState<PartnerAdminStats | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-
+  
   const load = useCallback(async () => {
     setError(null)
     try {
@@ -36,11 +36,10 @@ export default function AdminPartnersPage() {
   }, [load])
 
   const approve = async (partnerId: string) => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await approvePartner(partnerId)
-      setMessage("Partner approved.")
+      toast.success("Partner approved.")
       await load()
     } catch (approveError) {
       setError(approveError instanceof Error ? approveError.message : "Failed to approve partner")
@@ -75,8 +74,7 @@ export default function AdminPartnersPage() {
         </section>
       ) : null}
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
 
       <section className="overflow-hidden rounded-xl border border-border bg-card">
         <div className="border-b border-border px-4 py-3">

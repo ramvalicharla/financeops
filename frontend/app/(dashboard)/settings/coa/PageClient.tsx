@@ -1,5 +1,7 @@
 "use client"
 
+import { toast } from "sonner"
+
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
@@ -26,8 +28,7 @@ export default function CoaSettingsPage() {
   const [file, setFile] = useState<File | null>(null)
   const [lastUpload, setLastUpload] = useState<CoaUploadResult | null>(null)
   const [validationResult, setValidationResult] = useState<CoaUploadResult | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
   const templatesQuery = useQuery({
     queryKey: ["coa-templates"],
@@ -51,13 +52,12 @@ export default function CoaSettingsPage() {
     mutationFn: (targetFile: File) => validateCoaFile(targetFile),
     onSuccess: (result) => {
       setValidationResult(result as CoaUploadResult)
-      setMessage("Validation completed")
+      toast.success("Validation completed")
       setError(null)
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Validation failed")
-      setMessage(null)
-    },
+          },
   })
 
   const uploadMutation = useMutation({
@@ -77,28 +77,26 @@ export default function CoaSettingsPage() {
     onSuccess: (result) => {
       setLastUpload(result)
       setValidationResult(result)
-      setMessage("Upload completed")
+      toast.success("Upload completed")
       setError(null)
       void queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Upload failed")
-      setMessage(null)
-    },
+          },
   })
 
   const applyMutation = useMutation({
     mutationFn: (batchId: string) => applyCoaBatch(batchId),
     onSuccess: () => {
-      setMessage("CoA batch applied successfully")
+      toast.success("CoA batch applied successfully")
       setError(null)
       void queryClient.invalidateQueries({ queryKey: ["coa-effective-accounts"] })
       void queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Apply failed")
-      setMessage(null)
-    },
+          },
   })
 
   const latestBatchId = useMemo(() => {
@@ -117,8 +115,7 @@ export default function CoaSettingsPage() {
         </p>
       </header>
 
-      {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
-      {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+            {error ? <p className="text-sm text-rose-400">{error}</p> : null}
 
       <CoaUploader
         templates={templatesQuery.data ?? []}

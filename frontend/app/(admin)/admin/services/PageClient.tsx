@@ -11,6 +11,7 @@ import type { ServiceDashboard, ServiceRegistryModule } from "@/lib/types/servic
 import { RAGBadge } from "@/components/compliance/RAGBadge"
 import { ServiceHealthCard } from "@/components/admin/ServiceHealthCard"
 import { TaskRegistryTable } from "@/components/admin/TaskRegistryTable"
+import { toast } from "sonner"
 
 const toRagStatus = (status: ServiceDashboard["overall_status"]): "green" | "amber" | "red" => {
   if (status === "healthy") return "green"
@@ -21,8 +22,7 @@ const toRagStatus = (status: ServiceDashboard["overall_status"]): "green" | "amb
 export default function AdminServicesPage() {
   const { data: session } = useSession()
   const [dashboard, setDashboard] = useState<ServiceDashboard | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
 
@@ -49,7 +49,7 @@ export default function AdminServicesPage() {
     setError(null)
     try {
       const payload = await runServiceHealthCheck()
-      setMessage(
+      toast.success(
         `Health checks complete: ${payload.healthy} healthy, ${payload.degraded} degraded, ${payload.unhealthy} unhealthy.`,
       )
       await load()
@@ -90,8 +90,7 @@ export default function AdminServicesPage() {
         </div>
       </header>
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
       {loading ? <p className="text-sm text-muted-foreground">Loading service registry...</p> : null}
 
       <section className="space-y-3">

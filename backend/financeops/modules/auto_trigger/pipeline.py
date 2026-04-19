@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -11,6 +10,7 @@ from celery import chord, group
 from sqlalchemy import desc, select
 from sqlalchemy.exc import DBAPIError, IntegrityError, InterfaceError, OperationalError
 
+from financeops.tasks.async_runner import run_async
 from financeops.db.models.anomaly_pattern_engine import AnomalyRun
 from financeops.db.models.mis_manager import MisDataSnapshot
 from financeops.db.models.payroll_gl_normalization import NormalizationRun
@@ -219,7 +219,7 @@ def trigger_post_sync_pipeline(
     sync_run_id: str,
 ) -> dict[str, Any]:
     try:
-        run_result = asyncio.run(
+        run_result = run_async(
             trigger_post_sync_pipeline_async(
                 tenant_id=tenant_id,
                 sync_run_id=sync_run_id,
@@ -596,7 +596,7 @@ def run_gl_reconciliation(
     pipeline_run_id: str,
     tenant_id: str,
 ) -> dict[str, Any]:
-    return asyncio.run(
+    return run_async(
         run_gl_reconciliation_async(
             pipeline_run_id=pipeline_run_id,
             tenant_id=tenant_id,
@@ -622,7 +622,7 @@ def run_payroll_reconciliation(
     pipeline_run_id: str,
     tenant_id: str,
 ) -> dict[str, Any]:
-    return asyncio.run(
+    return run_async(
         run_payroll_reconciliation_async(
             pipeline_run_id=pipeline_run_id,
             tenant_id=tenant_id,
@@ -648,7 +648,7 @@ def run_mis_recomputation(
     pipeline_run_id: str,
     tenant_id: str,
 ) -> dict[str, Any]:
-    return asyncio.run(
+    return run_async(
         run_mis_recomputation_async(
             pipeline_run_id=pipeline_run_id,
             tenant_id=tenant_id,
@@ -674,7 +674,7 @@ def run_anomaly_detection(
     pipeline_run_id: str,
     tenant_id: str,
 ) -> dict[str, Any]:
-    return asyncio.run(
+    return run_async(
         run_anomaly_detection_async(
             pipeline_run_id=pipeline_run_id,
             tenant_id=tenant_id,
@@ -703,7 +703,7 @@ def finalise_pipeline_run(
 ) -> dict[str, Any]:
     del step_results  # status is derived from persisted logs for idempotency
 
-    return asyncio.run(
+    return run_async(
         finalise_pipeline_run_async(
             pipeline_run_id=pipeline_run_id,
             tenant_id=tenant_id,

@@ -110,7 +110,7 @@ def csv_b64(text: str) -> str:
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def normalization_phase1f3_db_url() -> AsyncGenerator[str, None]:
     target_url, temp_db, admin_url = await create_migrated_temp_database(
         prefix="financeops_norm",
@@ -123,7 +123,7 @@ async def normalization_phase1f3_db_url() -> AsyncGenerator[str, None]:
         await drop_temp_database(admin_url=admin_url, database_name=temp_db)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def normalization_phase1f3_engine(normalization_phase1f3_db_url: str):
     engine = create_async_engine(normalization_phase1f3_db_url, echo=False, poolclass=NullPool)
     try:

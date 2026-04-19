@@ -89,35 +89,7 @@ async def _registry_session_scope():
 
 async def _ensure_registry_seeded() -> None:
     async with _registry_session_scope() as session:
-        existing_modules = (
-            await session.execute(select(ModuleRegistry.id).limit(1))
-        ).scalar_one_or_none()
-        if existing_modules is None:
-            for module_name, route_prefix, depends_on in MODULE_SEED:
-                session.add(
-                    ModuleRegistry(
-                        module_name=module_name,
-                        description=f"{module_name} description",
-                        route_prefix=route_prefix,
-                        depends_on=depends_on,
-                    )
-                )
-
-        existing_tasks = (
-            await session.execute(select(TaskRegistry.id).limit(1))
-        ).scalar_one_or_none()
-        if existing_tasks is None:
-            for task_name, module_name, queue_name, is_scheduled in TASK_SEED:
-                session.add(
-                    TaskRegistry(
-                        task_name=task_name,
-                        module_name=module_name,
-                        queue_name=queue_name,
-                        description=f"{task_name} description",
-                        is_scheduled=is_scheduled,
-                    )
-                )
-        await session.flush()
+        await ensure_registry_seeded(session)
 
 
 async def _create_platform_user(
@@ -153,6 +125,17 @@ async def _create_platform_user(
             )
         )
         await session.flush()
+
+    existing = (
+        await session.execute(
+            select(IamUser).where(
+                IamUser.email == email,
+                IamUser.tenant_id == PLATFORM_TENANT_ID,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
 
     user = IamUser(
         tenant_id=PLATFORM_TENANT_ID,

@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

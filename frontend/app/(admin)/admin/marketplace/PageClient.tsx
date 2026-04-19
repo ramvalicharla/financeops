@@ -9,6 +9,7 @@ import {
   reviewMarketplaceTemplate,
 } from "@/lib/api/marketplace"
 import type { MarketplaceContributor, MarketplaceTemplate } from "@/lib/types/marketplace"
+import { toast } from "sonner"
 
 interface MarketplaceStats {
   total_templates: number
@@ -20,8 +21,7 @@ interface MarketplaceStats {
 export default function AdminMarketplacePage() {
   const [pending, setPending] = useState<MarketplaceTemplate[]>([])
   const [stats, setStats] = useState<MarketplaceStats | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setError(null)
@@ -42,11 +42,10 @@ export default function AdminMarketplacePage() {
   }, [load])
 
   const review = async (templateId: string, action: "approve" | "reject") => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       await reviewMarketplaceTemplate(templateId, { action })
-      setMessage(`Template ${action}d.`)
+      toast.success(`Template ${action}d.`)
       await load()
     } catch (reviewError) {
       setError(reviewError instanceof Error ? reviewError.message : "Failed to review template")
@@ -54,11 +53,10 @@ export default function AdminMarketplacePage() {
   }
 
   const processPayouts = async () => {
-    setMessage(null)
-    setError(null)
+        setError(null)
     try {
       const payload = await processMarketplacePayouts()
-      setMessage(`Payout processing complete. ${payload.count} payout records created.`)
+      toast.success(`Payout processing complete. ${payload.count} payout records created.`)
       await load()
     } catch (payoutError) {
       setError(payoutError instanceof Error ? payoutError.message : "Failed to process payouts")
@@ -98,8 +96,7 @@ export default function AdminMarketplacePage() {
         </section>
       ) : null}
 
-      {message ? <p className="text-sm text-muted-foreground">{message}</p> : null}
-      {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
+            {error ? <p className="text-sm text-[hsl(var(--brand-danger))]">{error}</p> : null}
 
       <section className="rounded-xl border border-border bg-card">
         <div className="border-b border-border px-4 py-3">

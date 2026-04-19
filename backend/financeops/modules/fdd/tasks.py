@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import AsyncSessionLocal
 from financeops.modules.fdd.service import run_engagement
+from financeops.tasks.async_runner import run_async
 from financeops.tasks.celery_app import celery_app
 
 
@@ -30,7 +30,7 @@ def run_fdd_engagement_task(tenant_id: str, engagement_id: str) -> dict:
             finally:
                 await clear_tenant_context(session)
 
-    return asyncio.run(_run())
+    return run_async(_run())
 
 
 __all__ = ["run_fdd_engagement_task"]

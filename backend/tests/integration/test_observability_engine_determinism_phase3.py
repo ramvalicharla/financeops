@@ -4,6 +4,7 @@ import uuid
 from datetime import date
 
 import pytest
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

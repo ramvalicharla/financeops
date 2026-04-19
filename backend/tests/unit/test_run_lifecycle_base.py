@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 import pytest
+
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession

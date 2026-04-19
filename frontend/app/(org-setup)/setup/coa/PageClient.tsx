@@ -17,6 +17,7 @@ import {
   type CoaUploadResult,
 } from "@/lib/api/coa"
 import { getOrgSetupSummary } from "@/lib/api/orgSetup"
+import { toast } from "sonner"
 
 const DEFAULT_MODE: CoaUploadMode = "APPEND"
 
@@ -30,8 +31,7 @@ function SetupCoaPageContent() {
   const [file, setFile] = useState<File | null>(null)
   const [lastUpload, setLastUpload] = useState<CoaUploadResult | null>(null)
   const [validationResult, setValidationResult] = useState<CoaUploadResult | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
   const templatesQuery = useQuery({
     queryKey: ["coa-templates"],
@@ -52,13 +52,12 @@ function SetupCoaPageContent() {
     mutationFn: (targetFile: File) => validateCoaFile(targetFile),
     onSuccess: (result) => {
       setValidationResult(result as CoaUploadResult)
-      setMessage("Validation completed")
+      toast.success("Validation completed")
       setError(null)
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Validation failed")
-      setMessage(null)
-    },
+          },
   })
 
   const uploadMutation = useMutation({
@@ -78,42 +77,38 @@ function SetupCoaPageContent() {
     onSuccess: (result) => {
       setLastUpload(result)
       setValidationResult(result)
-      setMessage("Upload completed")
+      toast.success("Upload completed")
       setError(null)
       void queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Upload failed")
-      setMessage(null)
-    },
+          },
   })
 
   const applyMutation = useMutation({
     mutationFn: (batchId: string) => applyCoaBatch(batchId),
     onSuccess: async () => {
-      setMessage("CoA batch applied successfully")
+      toast.success("CoA batch applied successfully")
       setError(null)
       await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
       await queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Apply failed")
-      setMessage(null)
-    },
+          },
   })
 
   const skipMutation = useMutation({
     mutationFn: skipCoaSetup,
     onSuccess: async () => {
       setError(null)
-      setMessage(null)
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+            await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
       router.push(nextPath)
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Unable to skip CoA setup right now")
-      setMessage(null)
-    },
+          },
   })
 
   const latestBatchId = useMemo(() => {
@@ -151,8 +146,7 @@ function SetupCoaPageContent() {
         </p>
       </header>
 
-      {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
-      {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+            {error ? <p className="text-sm text-rose-400">{error}</p> : null}
 
       <CoaUploader
         templates={templatesQuery.data ?? []}
