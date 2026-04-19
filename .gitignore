@@ -57,6 +57,12 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
+backend/.pytest_tmp_root/
+backend/.pytest_*.log
+backend/.pytest_*.out
+backend/.coverage
+backend/coverage.xml
+backend/celerybeat-schedule
 
 # Alembic
 migrations/versions/*.pyc
@@ -75,6 +81,8 @@ secrets/
 
 # Logs
 *.log
+*.out
+*.pid
 logs/
 backend/_local_logs/
 frontend/test-results/
@@ -86,6 +94,7 @@ frontend/test-results/
 # Node (frontend)
 node_modules/
 .next/
+.vercel/
 out/
 .nuxt/
 dist/
