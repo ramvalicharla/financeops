@@ -31,6 +31,14 @@ _SSL_REQUIRED_MODES = {"require", "verify-ca", "verify-full"}
 _DB_ROLE_SESSION_KEY = "app.current_db_role"
 
 
+def _is_supabase_host(host: str) -> bool:
+    return (
+        host.endswith(".supabase.co")
+        or host.endswith(".supabase.com")
+        or host.endswith(".pooler.supabase.com")
+    )
+
+
 def _build_ssl_context() -> ssl.SSLContext:
     """
     Build TLS context for Supabase/asyncpg connections.
@@ -73,13 +81,9 @@ def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[st
     query = dict(url_obj.query)
     sslmode = str(query.pop("sslmode", "")).lower()
     host = (url_obj.host or "").lower()
-    if (
-        url_obj.port == 5432
-        and (
-            host.endswith(".supabase.co")
-            or host.endswith(".supabase.com")
-            or host.endswith(".pooler.supabase.com")
-        )
+    if url_obj.port == 5432 and (
+        host.endswith(".pooler.supabase.com")
+        or (_is_supabase_host(host) and not host.startswith("db."))
     ):
         url_obj = url_obj.set(port=6543)
 
@@ -91,9 +95,7 @@ def _normalise_database_url_and_connect_args(raw_url: str) -> tuple[str, dict[st
     }
     if (
         sslmode in _SSL_REQUIRED_MODES
-        or host.endswith(".supabase.co")
-        or host.endswith(".supabase.com")
-        or host.endswith(".pooler.supabase.com")
+        or _is_supabase_host(host)
     ):
         connect_args["ssl"] = _build_ssl_context()
 
