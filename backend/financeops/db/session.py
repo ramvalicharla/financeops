@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 from uuid import uuid4
 
+import certifi
 from sqlalchemy import event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
@@ -39,7 +40,9 @@ def _build_ssl_context() -> ssl.SSLContext:
     pooler-managed certificates.
     """
     app_env = settings.APP_ENV.strip().lower()
-    ssl_context = ssl.create_default_context()
+    ca_bundle = certifi.where()
+    ssl_context = ssl.create_default_context(cafile=ca_bundle)
+    log.info("Using certifi CA bundle for database SSL: %s", ca_bundle)
     if app_env == "production":
         ssl_context.check_hostname = True
         ssl_context.verify_mode = ssl.CERT_REQUIRED

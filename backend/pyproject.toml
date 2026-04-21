@@ -27,6 +27,7 @@ dependencies = [
     "passlib[bcrypt]==1.7.4",
     "pyotp==2.9.0",
     "cryptography==43.0.1",
+    "certifi==2026.2.25",
     "slowapi==0.1.9",
     "starlette-csrf==3.0.0",
     # File Processing
