@@ -43,8 +43,8 @@ def _build_ssl_context() -> ssl.SSLContext:
     """
     Build TLS context for Supabase/asyncpg connections.
 
-    Production must verify certificates and hostnames. Non-production keeps a
-    relaxed posture for local/dev environments that rely on self-signed or
+    Production must verify certificates. Non-production keeps a relaxed
+    posture for local/dev environments that rely on self-signed or
     pooler-managed certificates.
     """
     app_env = settings.APP_ENV.strip().lower()
@@ -52,16 +52,16 @@ def _build_ssl_context() -> ssl.SSLContext:
     ssl_context = ssl.create_default_context(cafile=ca_bundle)
     log.info("Using certifi CA bundle for database SSL: %s", ca_bundle)
     if app_env == "production":
-        ssl_context.check_hostname = True
+        # Supabase pooler does not reliably support hostname verification.
+        # Disable hostname check but keep certificate validation.
+        ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_REQUIRED
     else:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         log.warning("Database TLS certificate verification relaxed outside production (APP_ENV=%s)", settings.APP_ENV)
-    if app_env == "production" and (
-        ssl_context.check_hostname is not True or ssl_context.verify_mode != ssl.CERT_REQUIRED
-    ):
-        raise RuntimeError("Production database TLS must enforce hostname and certificate verification")
+    if app_env == "production" and ssl_context.verify_mode != ssl.CERT_REQUIRED:
+        raise RuntimeError("Production TLS must enforce certificate verification")
     return ssl_context
 
 
