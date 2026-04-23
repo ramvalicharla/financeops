@@ -406,21 +406,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await redis_init_task
 
-    yield
-
-    # Shutdown
-    log.info("FinanceOps shutting down")
     try:
-        from financeops.api import deps as api_deps
-        redis_pool = api_deps._redis_pool
-        if redis_pool is not None:
-            await redis_pool.aclose()
-            api_deps._redis_pool = None
-            log.info("Redis pool closed")
-    except Exception as exc:
-        log.warning("Redis pool close failed: %s", exc)
-    await engine.dispose()
-    log.info("Database pool closed")
+        yield
+    except asyncio.CancelledError:
+        log.warning("FinanceOps lifespan shutdown was cancelled")
+    finally:
+        # Shutdown
+        log.info("FinanceOps shutting down")
+        try:
+            from financeops.api import deps as api_deps
+            redis_pool = api_deps._redis_pool
+            if redis_pool is not None:
+                try:
+                    await redis_pool.aclose()
+                except asyncio.CancelledError:
+                    log.warning("Redis pool close cancelled during shutdown")
+                except Exception as exc:
+                    log.warning("Redis pool close failed: %s", exc)
+                else:
+                    log.info("Redis pool closed")
+                finally:
+                    api_deps._redis_pool = None
+        except asyncio.CancelledError:
+            log.warning("Redis shutdown block cancelled during shutdown")
+        except Exception as exc:
+            log.warning("Redis shutdown block failed: %s", exc)
+
+        try:
+            await engine.dispose()
+        except asyncio.CancelledError:
+            log.warning("Database pool disposal cancelled during shutdown")
+        except Exception as exc:
+            log.warning("Database pool close failed: %s", exc)
+        else:
+            log.info("Database pool closed")
 
 
 def create_app() -> FastAPI:
