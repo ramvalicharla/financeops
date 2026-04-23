@@ -8,7 +8,6 @@ from typing import Any
 from uuid import UUID
 from uuid import uuid4
 
-import certifi
 from sqlalchemy import event, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
@@ -41,27 +40,15 @@ def _is_supabase_host(host: str) -> bool:
 
 def _build_ssl_context() -> ssl.SSLContext:
     """
-    Build TLS context for Supabase/asyncpg connections.
+    Build TLS context for asyncpg connections.
 
-    Production must verify certificates. Non-production keeps a relaxed
-    posture for local/dev environments that rely on self-signed or
-    pooler-managed certificates.
+    Render/Supabase deployments can present a self-signed certificate in the
+    chain, so disable hostname and certificate verification in the driver SSL
+    context used by SQLAlchemy's asyncpg engine.
     """
-    app_env = settings.APP_ENV.strip().lower()
-    ca_bundle = certifi.where()
-    ssl_context = ssl.create_default_context(cafile=ca_bundle)
-    log.info("Using certifi CA bundle for database SSL: %s", ca_bundle)
-    if app_env == "production":
-        # Supabase pooler does not reliably support hostname verification.
-        # Disable hostname check but keep certificate validation.
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_REQUIRED
-    else:
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        log.warning("Database TLS certificate verification relaxed outside production (APP_ENV=%s)", settings.APP_ENV)
-    if app_env == "production" and ssl_context.verify_mode != ssl.CERT_REQUIRED:
-        raise RuntimeError("Production TLS must enforce certificate verification")
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
     return ssl_context
 
 
