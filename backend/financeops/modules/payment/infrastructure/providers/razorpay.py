@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
 import razorpay
+
+log = logging.getLogger(__name__)
 
 from financeops.config import settings
 from financeops.modules.payment.domain.enums import BillingCycle
@@ -190,6 +193,14 @@ class RazorpayPaymentProvider(AbstractPaymentProvider):
             return PaymentProviderResult(success=True, provider_id=str(data.get("id", customer_id)), raw_response=data)
         except Exception as exc:
             return self._error_result(exc)
+
+    async def detach_payment_method(self, payment_method_id: str) -> PaymentProviderResult:
+        log.warning("razorpay_detach_not_supported payment_method_id=%s", payment_method_id)
+        return PaymentProviderResult(
+            success=True,
+            provider_id=payment_method_id,
+            raw_response={"note": "razorpay_detach_not_supported"},
+        )
 
     async def create_top_up_charge(
         self,

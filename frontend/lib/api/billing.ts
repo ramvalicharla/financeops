@@ -80,8 +80,13 @@ export const getInvoices = async (): Promise<BillingInvoice[]> => {
 }
 
 export const getInvoicePDFUrl = async (id: string): Promise<string | null> => {
-  const response = await apiClient.get<BillingInvoice>(`/api/v1/billing/invoices/${id}`)
-  return response.data.invoice_pdf_url
+  const response = await apiClient.get<unknown>(`/api/v1/billing/invoices/${id}`)
+  const payload = response.data as unknown
+  const invoice: BillingInvoice | null =
+    payload && typeof payload === "object" && "data" in payload
+      ? ((payload as { data: BillingInvoice }).data ?? null)
+      : (payload as BillingInvoice) ?? null
+  return invoice?.invoice_pdf_url ?? null
 }
 
 export const createTopUp = async (

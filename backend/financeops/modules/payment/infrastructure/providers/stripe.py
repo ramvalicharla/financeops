@@ -51,6 +51,10 @@ except ModuleNotFoundError:
             def attach(*args, **kwargs):
                 raise ModuleNotFoundError("stripe package is not installed")
 
+            @staticmethod
+            def detach(*args, **kwargs):
+                raise ModuleNotFoundError("stripe package is not installed")
+
         class PaymentIntent:
             @staticmethod
             def create(**kwargs):
@@ -244,6 +248,14 @@ class StripePaymentProvider(AbstractPaymentProvider):
             )
             data = self._to_dict(updated)
             return PaymentProviderResult(success=True, provider_id=str(data.get("id", customer_id)), raw_response=data)
+        except stripe.StripeError as exc:
+            return self._error_result(exc)
+
+    async def detach_payment_method(self, payment_method_id: str) -> PaymentProviderResult:
+        try:
+            detached = stripe.PaymentMethod.detach(payment_method_id)
+            data = self._to_dict(detached)
+            return PaymentProviderResult(success=True, provider_id=str(data.get("id", payment_method_id)), raw_response=data)
         except stripe.StripeError as exc:
             return self._error_result(exc)
 

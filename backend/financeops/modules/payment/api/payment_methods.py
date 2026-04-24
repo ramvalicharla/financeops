@@ -105,9 +105,54 @@ async def create_payment_method(
 
 
 @router.delete("/payment-methods/{id}")
-async def delete_payment_method(request: Request, id: str) -> dict:
+async def delete_payment_method(
+    request: Request,
+    id: str,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    from fastapi import HTTPException
+
+    current = (
+        await session.execute(
+            select(PaymentMethod).where(
+                PaymentMethod.tenant_id == user.tenant_id,
+                PaymentMethod.id == uuid.UUID(id),
+            )
+        )
+    ).scalar_one_or_none()
+    if current is None:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    if current.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete the default payment method")
+
+    provider_impl = get_provider(PaymentProvider(current.provider))
+    await provider_impl.detach_payment_method(current.provider_payment_method_id)
+
+    await AuditWriter.insert_financial_record(
+        session,
+        model_class=PaymentMethod,
+        tenant_id=user.tenant_id,
+        record_data={
+            "provider": current.provider,
+            "provider_payment_method_id": current.provider_payment_method_id,
+            "deactivated": "true",
+        },
+        values={
+            "provider": current.provider,
+            "provider_payment_method_id": current.provider_payment_method_id,
+            "type": current.type,
+            "last4": current.last4,
+            "brand": current.brand,
+            "expiry_month": current.expiry_month,
+            "expiry_year": current.expiry_year,
+            "is_default": False,
+            "billing_details": {**(current.billing_details or {}), "deactivated": True},
+        },
+    )
+    await session.flush()
     return ok(
-        {"id": id, "status": "accepted", "note": "append-only billing table; event-driven deactivation"},
+        {"success": True},
         request_id=getattr(request.state, "request_id", None),
     ).model_dump(mode="json")
 

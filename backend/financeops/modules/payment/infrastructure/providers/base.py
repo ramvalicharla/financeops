@@ -75,6 +75,12 @@ class AbstractPaymentProvider(ABC):
     ) -> PaymentProviderResult: ...
 
     @abstractmethod
+    async def detach_payment_method(
+        self,
+        payment_method_id: str,
+    ) -> PaymentProviderResult: ...
+
+    @abstractmethod
     async def create_top_up_charge(
         self,
         customer_id: str,
