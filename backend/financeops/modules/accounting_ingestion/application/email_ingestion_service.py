@@ -162,13 +162,17 @@ async def _process_attachment(
 
     storage = get_storage()
     r2_key = f"ingestion/{tenant_id}/{airlock_item.checksum_sha256}/{filename}"
-    storage.upload_file(
-        file_bytes,
-        key=r2_key,
-        content_type=airlock_item.mime_type or mime_type,
-        tenant_id=str(tenant_id),
-        uploaded_by=None,
-    )
+    try:
+        storage.upload_file(
+            file_bytes,
+            key=r2_key,
+            content_type=airlock_item.mime_type or mime_type,
+            tenant_id=str(tenant_id),
+            uploaded_by=None,
+        )
+    except Exception as exc:
+        logger.warning("r2_upload_failed location=email_ingestion error=%s", exc)
+        raise
 
     _enqueue_ocr(
         tenant_id=str(tenant_id),

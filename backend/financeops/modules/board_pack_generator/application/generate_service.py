@@ -10,6 +10,7 @@ import sentry_sdk
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from financeops.core.exceptions import ServiceUnavailableError
 from financeops.core.intent.context import apply_mutation_linkage, get_mutation_context
 from financeops.storage.provider import get_storage
 from financeops.modules.board_pack_generator.application.export_service import (
@@ -620,13 +621,17 @@ class BoardPackGenerateService:
             if export_format is ExportFormat.PDF
             else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        get_storage().upload_file(
-            file_bytes=content,
-            key=storage_path,
-            content_type=content_type,
-            tenant_id=str(tenant_id),
-            uploaded_by=str(uploaded_by),
-        )
+        try:
+            get_storage().upload_file(
+                file_bytes=content,
+                key=storage_path,
+                content_type=content_type,
+                tenant_id=str(tenant_id),
+                uploaded_by=str(uploaded_by),
+            )
+        except Exception as exc:
+            log.warning("r2_upload_failed location=board_pack error=%s", exc)
+            raise ServiceUnavailableError("File storage unavailable") from exc
         artifact = BoardPackGeneratorArtifact(
             id=artifact_id,
             run_id=run_id,

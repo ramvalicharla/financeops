@@ -263,11 +263,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "head_revision": None,
         "detail": "startup check pending",
     }
-    configure_sentry(
-        dsn=settings.SENTRY_DSN,
-        environment=settings.APP_ENVIRONMENT,
-        release=settings.APP_RELEASE,
-    )
+    if settings.APP_ENV.lower() != "test":
+        configure_sentry(
+            dsn=settings.SENTRY_DSN,
+            environment=settings.APP_ENVIRONMENT,
+            release=settings.APP_RELEASE,
+        )
     is_production = settings.APP_ENV.lower() == "production"
     migration_fail_fast = settings.MIGRATION_FAIL_FAST or is_production
 
@@ -502,6 +503,24 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Security headers (production only)
+    if _is_prod:
+        @app.middleware("http")
+        async def add_security_headers(request: Request, call_next):
+            response = await call_next(request)
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "connect-src 'self' https://api.anthropic.com https://api.openai.com; "
+                "frame-ancestors 'none'"
+            )
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            return response
 
     # Exception handlers
     register_exception_handlers(app)

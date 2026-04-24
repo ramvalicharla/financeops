@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from financeops.core.exceptions import ValidationError
+from financeops.core.exceptions import ServiceUnavailableError, ValidationError
 from financeops.core.governance.airlock import AirlockAdmissionService
 from financeops.db.models.accounting_ingestion import (
     PortalSubmissionStatus,
@@ -96,13 +96,17 @@ async def create_submission(
         assert airlock_item is not None
         r2_key = f"vendor_portal/{tenant_id}/{airlock_item.checksum_sha256}/{filename}"
         storage = get_storage()
-        storage.upload_file(
-            file_bytes,
-            key=r2_key,
-            content_type=airlock_item.mime_type or mime_type,
-            tenant_id=str(tenant_id),
-            uploaded_by=None,
-        )
+        try:
+            storage.upload_file(
+                file_bytes,
+                key=r2_key,
+                content_type=airlock_item.mime_type or mime_type,
+                tenant_id=str(tenant_id),
+                uploaded_by=None,
+            )
+        except Exception as exc:
+            logger.warning("r2_upload_failed location=vendor_portal error=%s", exc)
+            raise ServiceUnavailableError("File storage unavailable") from exc
 
     reference_id = _generate_reference_id()
     public_status = (

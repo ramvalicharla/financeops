@@ -128,6 +128,14 @@ class PromptInjectionError(FinanceOpsError):
         super().__init__(message)
 
 
+class ServiceUnavailableError(FinanceOpsError):
+    status_code = 503
+    error_code = "service_unavailable"
+
+    def __init__(self, message: str = "A downstream service is temporarily unavailable") -> None:
+        super().__init__(message)
+
+
 def _error_response(
     request: Request,
     status_code: int,

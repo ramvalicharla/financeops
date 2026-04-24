@@ -580,9 +580,14 @@ async def download_artifact(
     if artifact is None:
         raise HTTPException(status_code=404, detail=f"{requested_format} artifact not found for run")
 
+    try:
+        signed_url = get_storage().generate_signed_url(artifact.storage_path, expires_in=900)
+    except Exception as exc:
+        log.warning("r2_presigned_url_failed error=%s", exc)
+        raise HTTPException(status_code=503, detail="File storage unavailable") from exc
     return ArtifactDownloadResponse(
         artifact_id=artifact.id,
-        signed_url=get_storage().generate_signed_url(artifact.storage_path, expires_in=900),
+        signed_url=signed_url,
         expires_in_seconds=900,
     )
 
@@ -625,8 +630,13 @@ async def get_export_artifact_signed_url(
     if artifact is None or artifact.run_id != run_id:
         raise HTTPException(status_code=404, detail="Artifact not found")
 
+    try:
+        signed_url = get_storage().generate_signed_url(artifact.storage_path, expires_in=900)
+    except Exception as exc:
+        log.warning("r2_presigned_url_failed error=%s", exc)
+        raise HTTPException(status_code=503, detail="File storage unavailable") from exc
     return ArtifactDownloadResponse(
         artifact_id=artifact.id,
-        signed_url=get_storage().generate_signed_url(artifact.storage_path, expires_in=900),
+        signed_url=signed_url,
         expires_in_seconds=900,
     )
