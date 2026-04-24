@@ -62,6 +62,9 @@ from financeops.services.auth_service import (
     setup_totp,
     verify_mfa_challenge,
 )
+from financeops.db.models.payment import BillingPlan, TenantSubscription
+from financeops.modules.payment.application.subscription_service import SubscriptionService
+from financeops.modules.payment.domain.enums import OnboardingMode
 from financeops.services.credit_service import add_credits
 from financeops.services.tenant_service import create_default_workspace, create_tenant
 from financeops.services.user_service import create_user, get_user_by_email, normalize_email
@@ -325,13 +328,46 @@ async def register(
         role=UserRole.finance_leader,
     )
 
-    # Seed initial trial credits
+    # Wire trial subscription + seed credits
+    from datetime import date, timedelta
     from decimal import Decimal
+
+    _today = date.today()
+    _trial_end = _today + timedelta(days=14)
+
+    _trial_plan = (
+        await session.execute(
+            select(BillingPlan).where(BillingPlan.plan_tier == "trial").limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if _trial_plan is not None:
+        _sub_svc = SubscriptionService(session)
+        await _sub_svc.create_subscription_record(
+            tenant_id=tenant.id,
+            plan_id=_trial_plan.id,
+            provider="internal",
+            provider_subscription_id=f"trial_{tenant.id}",
+            provider_customer_id=str(tenant.id),
+            billing_cycle="monthly",
+            period_start=_today,
+            period_end=_trial_end,
+            trial_start=_today,
+            trial_end=_trial_end,
+            billing_country=str(getattr(tenant, "country", None) or "US")[:2].upper(),
+            billing_currency="USD",
+            onboarding_mode=OnboardingMode.SELF_SERVE,
+            metadata={},
+            created_by=user.id,
+        )
+    else:
+        log.warning("trial_plan_missing tenant_id=%s — subscription not created", tenant.id)
+
     await add_credits(
         session,
         tenant_id=tenant.id,
         amount=Decimal("100"),
-        reason="trial_signup",
+        reason="trial_credit",
         user_id=user.id,
     )
 

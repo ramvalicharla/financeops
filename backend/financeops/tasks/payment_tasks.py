@@ -15,8 +15,11 @@ from financeops.db.models.payment import (
     SubscriptionEvent,
     TenantSubscription,
 )
+from financeops.db.models.users import IamUser, UserRole
 from financeops.db.session import AsyncSessionLocal
+from financeops.modules.notifications.service import send_notification
 from financeops.modules.payment.application.invoice_service import InvoiceService
+from financeops.modules.payment.application.trial_service import TrialService
 from financeops.modules.payment.domain.enums import CreditTransactionType, InvoiceStatus, PaymentProvider, SubscriptionStatus
 from financeops.modules.payment.domain.schemas import PaymentProviderResult
 from financeops.modules.payment.infrastructure.providers.registry import get_provider
@@ -518,6 +521,144 @@ def retry_failed_payments() -> dict[str, int]:
     async def _run() -> dict[str, int]:
         async with AsyncSessionLocal() as session:
             return await _retry_failed_payments_async(session)
+
+    return run_async(_run())
+
+
+@celery_app.task(name="payment.check_trial_expirations", base=FinanceOpsTask)
+def check_trial_expirations() -> dict[str, int]:
+    async def _run() -> dict[str, int]:
+        converted = 0
+        incomplete = 0
+        today = date.today()
+
+        async with AsyncSessionLocal() as session:
+            # Fetch all trialing subscriptions whose trial window has closed.
+            # Both trial_end_date and trial_end are set at subscription creation;
+            # we prefer trial_end_date (more explicit) and fall back to trial_end.
+            expired_subs: list[TenantSubscription] = list(
+                (
+                    await session.execute(
+                        select(TenantSubscription).where(
+                            TenantSubscription.status == SubscriptionStatus.TRIALING.value,
+                            TenantSubscription.trial_end_date.is_not(None),
+                            TenantSubscription.trial_end_date < today,
+                        )
+                    )
+                ).scalars()
+            )
+
+            for sub in expired_subs:
+                try:
+                    async with session.begin_nested():
+                        has_payment_method = (
+                            await session.execute(
+                                select(PaymentMethod.id).where(
+                                    PaymentMethod.tenant_id == sub.tenant_id,
+                                    PaymentMethod.is_default.is_(True),
+                                ).limit(1)
+                            )
+                        ).scalar_one_or_none() is not None
+
+                        trial_end_date = sub.trial_end_date or sub.trial_end
+                        convert = TrialService.should_convert_to_active(
+                            trial_end=trial_end_date,
+                            has_payment_method=has_payment_method,
+                            as_of=today,
+                        )
+                        mark_incomplete = TrialService.should_mark_incomplete(
+                            trial_end=trial_end_date,
+                            has_payment_method=has_payment_method,
+                            as_of=today,
+                        )
+
+                        if not convert and not mark_incomplete:
+                            continue
+
+                        old_status = sub.status
+                        if convert:
+                            next_status = SubscriptionStatus.ACTIVE.value
+                            event_type = "TRIAL_CONVERTED"
+                            notif_title = "Your trial has been activated"
+                            notif_body = "Your trial period has ended and your subscription is now active."
+                            converted += 1
+                        else:
+                            next_status = SubscriptionStatus.INCOMPLETE.value
+                            event_type = "TRIAL_EXPIRED"
+                            notif_title = "Your trial has expired"
+                            notif_body = (
+                                "Your trial period has ended. Add a payment method to continue using FinanceOps."
+                            )
+                            incomplete += 1
+
+                        revised = await _append_subscription_revision(
+                            session=session,
+                            source=sub,
+                            status=next_status,
+                        )
+                        await _emit_subscription_event(
+                            session=session,
+                            tenant_id=sub.tenant_id,
+                            subscription_id=revised.id,
+                            event_type=event_type,
+                            from_status=old_status,
+                            to_status=next_status,
+                        )
+
+                        # Notify the tenant's primary user (finance_leader or first user found).
+                        recipient = (
+                            await session.execute(
+                                select(IamUser).where(
+                                    IamUser.tenant_id == sub.tenant_id,
+                                    IamUser.role == UserRole.finance_leader.value,
+                                    IamUser.is_active.is_(True),
+                                ).limit(1)
+                            )
+                        ).scalar_one_or_none()
+
+                        if recipient is None:
+                            recipient = (
+                                await session.execute(
+                                    select(IamUser).where(
+                                        IamUser.tenant_id == sub.tenant_id,
+                                        IamUser.is_active.is_(True),
+                                    ).limit(1)
+                                )
+                            ).scalar_one_or_none()
+
+                        if recipient is not None:
+                            await send_notification(
+                                session,
+                                tenant_id=sub.tenant_id,
+                                recipient_user_id=recipient.id,
+                                notification_type="trial_expiry",
+                                title=notif_title,
+                                body=notif_body,
+                                metadata={"subscription_id": str(revised.id), "event": event_type},
+                            )
+
+                        log.info(
+                            "trial_expiry_processed tenant=%s subscription=%s old_status=%s new_status=%s",
+                            sub.tenant_id,
+                            sub.provider_subscription_id,
+                            old_status,
+                            next_status,
+                        )
+                except Exception:
+                    log.exception(
+                        "trial_expiry_failed tenant=%s subscription=%s",
+                        sub.tenant_id,
+                        sub.provider_subscription_id,
+                    )
+
+            await session.commit()
+
+        log.info(
+            "trial_expiry_task_complete converted=%s incomplete=%s",
+            converted,
+            incomplete,
+        )
+        return {"converted": converted, "incomplete": incomplete}
 
     return run_async(_run())
 

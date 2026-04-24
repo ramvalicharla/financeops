@@ -107,17 +107,23 @@ export const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
     throw new Error("NEXT_PUBLIC_API_URL is required")
   }
   const session = await readSessionForApi()
-  const token = readAccessTokenFromSession(session)
+  const sessionToken = readAccessTokenFromSession(session)
   const state = useTenantStore.getState()
   const locationState = useLocationStore.getState()
 
   config.headers.set("X-Request-ID", crypto.randomUUID())
 
-  if (token) {
-    config.headers.set("Authorization", `Bearer ${token}`)
+  // When in org-switch mode, use the short-lived switch_token as the Bearer
+  // and target the switched tenant's ID instead of the real one.
+  const isSwitched = state.is_switched && Boolean(state.switch_token)
+  const bearerToken = isSwitched ? (state.switch_token ?? sessionToken) : sessionToken
+  const effectiveTenantId = isSwitched ? (state.switched_tenant_id ?? state.tenant_id) : state.tenant_id
+
+  if (bearerToken) {
+    config.headers.set("Authorization", `Bearer ${bearerToken}`)
   }
-  if (state.tenant_id) {
-    config.headers.set("X-Tenant-ID", state.tenant_id)
+  if (effectiveTenantId) {
+    config.headers.set("X-Tenant-ID", effectiveTenantId)
   }
   if (state.active_entity_id) {
     config.headers.set("X-Entity-ID", state.active_entity_id)
@@ -171,6 +177,16 @@ apiClient.interceptors.response.use(
     captureBillingWarning(error.response?.headers?.["x-billing-warning"] as string | undefined)
     const status = error.response?.status
     const envelopeError = error.response?.data?.error
+
+    // If a 401 arrives while in org-switch mode, the switch token has expired.
+    // Exit switch mode and return to the real session rather than signing out.
+    if (status === 401 && useTenantStore.getState().is_switched) {
+      useTenantStore.getState().exitSwitchMode()
+      if (typeof window !== "undefined") {
+        window.location.assign("/dashboard?switch_expired=1")
+      }
+      return Promise.reject(error)
+    }
 
     if (shouldSignOutOnUnauthorized(error, BASE_URL)) {
       const requestPath = error.config?.url ?? ""

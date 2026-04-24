@@ -32,6 +32,7 @@ class InvoiceStatus(str, Enum):
 
 
 class CreditTransactionType(str, Enum):
+    TRIAL_CREDIT = "trial_credit"
     PLAN_ALLOCATION = "plan_allocation"
     TOP_UP_PURCHASE = "top_up_purchase"
     CONSUMPTION = "consumption"
@@ -41,6 +42,7 @@ class CreditTransactionType(str, Enum):
 
 
 class PlanTier(str, Enum):
+    TRIAL = "trial"
     STARTER = "starter"
     PROFESSIONAL = "professional"
     ENTERPRISE = "enterprise"

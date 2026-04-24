@@ -15,6 +15,8 @@ import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { useSearch } from "@/components/search/SearchProvider"
 import { EntityLocationSelector } from "@/components/layout/EntityLocationSelector"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
+import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
+import { ViewingAsBanner } from "@/components/layout/ViewingAsBanner"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { DensitySelector } from "@/components/ui/DensitySelector"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -310,6 +312,7 @@ export function Topbar({
                   <EntitySwitcher entityRoles={entityRoles} />
                 </>
               ) : null}
+              <OrgSwitcher />
             </div>
             <div className="flex items-center gap-3">
               <h1 className="text-lg font-semibold text-foreground">{title}</h1>
@@ -384,6 +387,8 @@ export function Topbar({
           />
         </div>
       </div>
+
+      <ViewingAsBanner />
 
       {billingWarning && !billingWarningDismissed ? (
         <div

@@ -84,6 +84,10 @@ celery_app.conf.update(
         "financeops.modules.notifications.tasks",
     ),
     beat_schedule={
+        "payment-check-trial-expirations-hourly": {
+            "task": "payment.check_trial_expirations",
+            "schedule": 3600.0,
+        },
         "payment-check-trial-conversions-daily-0000-utc": {
             "task": "payment.check_trial_conversions",
             "schedule": 86400.0,

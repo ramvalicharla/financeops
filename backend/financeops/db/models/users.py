@@ -16,6 +16,7 @@ class UserRole(str, enum.Enum):
     platform_owner = "platform_owner"
     platform_admin = "platform_admin"
     platform_support = "platform_support"
+    org_admin = "org_admin"
     finance_leader = "finance_leader"
     finance_team = "finance_team"
     director = "director"
