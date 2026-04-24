@@ -8,6 +8,7 @@ import { StepIndicator } from "@/components/ui/StepIndicator"
 import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
 import { getCoaTemplates, uploadCoaFile, validateCoaFile, type CoaUploadMode, type CoaUploadResult } from "@/lib/api/coa"
 import { getControlPlaneContext, listAirlockItems } from "@/lib/api/control-plane"
+import { queryKeys } from "@/lib/query/keys"
 import {
   confirmOrgSetupStep1Draft,
   confirmOrgSetupStep2Draft,
@@ -112,8 +113,8 @@ export function OnboardingWizard() {
   // ── Queries ─────────────────────────────────────────────
   const summaryQuery = useQuery({ queryKey: ["org-setup-summary"], queryFn: getOrgSetupSummary })
   const modulesQuery = useQuery({ queryKey: ["platform-modules"], queryFn: listPlatformModules })
-  const contextQuery = useQuery({ queryKey: ["control-plane-context"], queryFn: () => getControlPlaneContext(), staleTime: 60_000 })
-  const airlockQuery = useQuery({ queryKey: ["control-plane-airlock"], queryFn: async () => listAirlockItems({ limit: 12 }) })
+  const contextQuery = useQuery({ queryKey: queryKeys.workspace.context(), queryFn: () => getControlPlaneContext(), staleTime: 60_000 })
+  const airlockQuery = useQuery({ queryKey: queryKeys.workspace.airlock(), queryFn: async () => listAirlockItems({ limit: 12 }) })
   const templatesQuery = useQuery({ queryKey: ["coa-templates"], queryFn: getCoaTemplates })
 
   // ── Computed payloads ─────────────────────────────────

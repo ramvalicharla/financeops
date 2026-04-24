@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { listLocations } from "@/lib/api/locations"
 import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 export function EntityLocationSelector() {
   const entityRoles = useTenantStore((state) => state.entity_roles)
@@ -14,7 +15,7 @@ export function EntityLocationSelector() {
   const setActiveLocation = useLocationStore((state) => state.setActiveLocation)
 
   const locationsQuery = useQuery({
-    queryKey: ["entity-locations", activeEntityId],
+    queryKey: queryKeys.settings.entityLocations(activeEntityId),
     queryFn: () =>
       listLocations({
         entity_id: activeEntityId ?? "",
