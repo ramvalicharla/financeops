@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusBadge } from "@/components/ui/StatusBadge"
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
 import {
   adminGetTenant,
   adminExtendTrial,
@@ -90,6 +91,7 @@ export function AdminTenantDetailPageClient() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [extendDays, setExtendDays] = useState(14)
   const [actionFeedback, setActionFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null)
+  const [suspendDialogOpen, setSuspendDialogOpen] = useState(false)
 
   const action = useActionState()
 
@@ -130,13 +132,17 @@ export function AdminTenantDetailPageClient() {
     })
   }
 
-  const handleSuspend = async () => {
-    if (!confirm("Suspend this tenant's subscription? They will lose access.")) return
+  const handleSuspendConfirm = async () => {
+    setSuspendDialogOpen(false)
     await action.run(async () => {
       await adminSuspendTenant(tenantId)
       showFeedback("success", "Subscription suspended.")
       load()
     })
+  }
+
+  const handleSuspend = () => {
+    setSuspendDialogOpen(true)
   }
 
   const handleSwitch = async () => {
@@ -435,6 +441,16 @@ export function AdminTenantDetailPageClient() {
           </Card>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={suspendDialogOpen}
+        title="Suspend tenant subscription"
+        description="This tenant will lose access until reactivated. Continue?"
+        confirmLabel="Suspend"
+        variant="destructive"
+        onConfirm={handleSuspendConfirm}
+        onCancel={() => setSuspendDialogOpen(false)}
+      />
     </div>
   )
 }
