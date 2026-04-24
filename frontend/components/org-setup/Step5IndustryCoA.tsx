@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
+import { queryKeys } from "@/lib/query/keys"
 import { Dialog } from "@/components/ui/Dialog"
 import { getTemplateHierarchy, type CoaTemplate } from "@/lib/api/coa"
 import type { OrgEntity } from "@/lib/api/orgSetup"
@@ -34,7 +35,7 @@ export function Step5IndustryCoA({
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null)
 
   const hierarchyQuery = useQuery({
-    queryKey: ["org-setup-template-preview", previewTemplateId],
+    queryKey: queryKeys.orgSetup.templatePreview(previewTemplateId),
     queryFn: () => getTemplateHierarchy(previewTemplateId ?? ""),
     enabled: Boolean(previewTemplateId),
   })

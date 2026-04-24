@@ -8,6 +8,7 @@ import { getJournal, type JournalLine } from "@/lib/api/accounting-journals"
 import { createGovernedIntent, type JournalIntentPayload } from "@/lib/api/intents"
 import { listTimeline, type TimelineEvent } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
+import { queryKeys } from "@/lib/query/keys"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
@@ -63,7 +64,7 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const journalId = params.id
   const journalQuery = useQuery({
-    queryKey: ["accounting-journal", journalId],
+    queryKey: queryKeys.accounting.journal(journalId),
     queryFn: async () => getJournal(journalId),
   })
 
@@ -82,8 +83,8 @@ export default function JournalDetailPage({ params }: JournalDetailPageProps) {
   })
 
   const refresh = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ["accounting-journal", journalId] })
-    void queryClient.invalidateQueries({ queryKey: ["accounting-journals"] })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.accounting.journal(journalId) })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.accounting.journalsAll() })
     void queryClient.invalidateQueries({
       queryKey: controlPlaneQueryKeys.timeline({ subject_type: "journal", subject_id: journalId, limit: 25 }),
     })

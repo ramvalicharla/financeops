@@ -7,6 +7,7 @@ import {
   getConsolidationTranslation,
   getOrgSetupSummaryForConsolidation,
 } from "@/lib/api/consolidation"
+import { queryKeys } from "@/lib/query/keys"
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -16,7 +17,7 @@ export default function ConsolidationTranslationPage() {
   const [error, setError] = useState<string | null>(null)
 
   const orgSetupQuery = useQuery({
-    queryKey: ["org-setup-summary-consolidation-translation"],
+    queryKey: queryKeys.orgSetup.summaryConsolidationTranslation(),
     queryFn: getOrgSetupSummaryForConsolidation,
   })
   const orgGroupId = orgSetupQuery.data?.group?.id ?? ""

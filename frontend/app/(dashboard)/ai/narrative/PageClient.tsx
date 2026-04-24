@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { getAiAuditSamples, getAiNarrative, getAiSuggestions, getAiVarianceExplanation } from "@/lib/api/ai-cfo"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 export default function AiNarrativePage() {
   const entityId = useTenantStore((state) => state.active_entity_id)
@@ -10,7 +11,7 @@ export default function AiNarrativePage() {
   const fromDate = `${today.slice(0, 8)}01`
 
   const narrativeQuery = useQuery({
-    queryKey: ["ai-narrative", entityId, fromDate, today],
+    queryKey: queryKeys.ai.narrative(entityId, fromDate, today),
     queryFn: () =>
       getAiNarrative({
         org_entity_id: entityId ?? undefined,
@@ -21,7 +22,7 @@ export default function AiNarrativePage() {
   })
 
   const explanationQuery = useQuery({
-    queryKey: ["ai-variance-explanation", entityId, fromDate, today],
+    queryKey: queryKeys.ai.varianceExplanation(entityId, fromDate, today),
     queryFn: () =>
       getAiVarianceExplanation({
         metric_name: "revenue",
@@ -33,7 +34,7 @@ export default function AiNarrativePage() {
   })
 
   const suggestionsQuery = useQuery({
-    queryKey: ["ai-suggestions", entityId, fromDate, today],
+    queryKey: queryKeys.ai.suggestions(entityId, fromDate, today),
     queryFn: () =>
       getAiSuggestions({
         org_entity_id: entityId ?? undefined,
@@ -44,7 +45,7 @@ export default function AiNarrativePage() {
   })
 
   const sampleQuery = useQuery({
-    queryKey: ["ai-audit-samples", entityId, fromDate, today],
+    queryKey: queryKeys.ai.auditSamples(entityId, fromDate, today),
     queryFn: () =>
       getAiAuditSamples({
         org_entity_id: entityId ?? undefined,

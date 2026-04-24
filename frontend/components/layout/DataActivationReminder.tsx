@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { usePathname } from "next/navigation"
 import type { CoaStatus } from "@/types/api"
 import { getCurrentTenantProfile } from "@/lib/api/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 const DATA_DEPENDENT_PREFIXES = [
   "/dashboard",
@@ -37,7 +38,7 @@ export function DataActivationReminder({
   const pathname = usePathname() ?? ""
   const isRelevantPage = isDataDependentPath(pathname)
   const tenantQuery = useQuery({
-    queryKey: ["tenant-profile", "data-activation-reminder"],
+    queryKey: queryKeys.tenantProfile.dataActivationReminder(),
     queryFn: getCurrentTenantProfile,
     enabled: isRelevantPage,
     staleTime: 30_000,

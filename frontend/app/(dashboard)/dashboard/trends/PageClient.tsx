@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import type { TrendsChartDatum } from "@/components/charts"
 import { getTrends } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 const TrendsChart = dynamic(
   () =>
@@ -27,7 +28,7 @@ export default function TrendsPage() {
   const [frequency, setFrequency] = useState("monthly")
 
   const trendsQuery = useQuery({
-    queryKey: ["analytics-trends-page", entityId, defaultFrom, today, frequency],
+    queryKey: queryKeys.analytics.trends(entityId, defaultFrom, today, frequency),
     queryFn: () =>
       getTrends({
         org_entity_id: entityId ?? undefined,

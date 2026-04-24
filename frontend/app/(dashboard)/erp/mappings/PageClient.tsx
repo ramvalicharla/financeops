@@ -12,6 +12,7 @@ import {
   syncErpVendors,
 } from "@/lib/api/erp"
 import { getTenantCoaAccounts } from "@/lib/api/coa"
+import { queryKeys } from "@/lib/query/keys"
 import { StructuredDataView } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
@@ -22,12 +23,12 @@ export default function ErpMappingsPage() {
   const [resultPayload, setResultPayload] = useState<Record<string, unknown> | null>(null)
 
   const connectorsQuery = useQuery({
-    queryKey: ["erp-connectors"],
+    queryKey: queryKeys.erp.connectors(),
     queryFn: listErpConnectors,
   })
 
   const accountsQuery = useQuery({
-    queryKey: ["tenant-coa-accounts-for-erp-mapping"],
+    queryKey: queryKeys.coa.tenantAccountsForErpMapping(),
     queryFn: getTenantCoaAccounts,
   })
 

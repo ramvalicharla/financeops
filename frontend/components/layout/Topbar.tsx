@@ -22,6 +22,7 @@ import { DensitySelector } from "@/components/ui/DensitySelector"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { TopbarProfileMenu } from "@/components/layout/_components/TopbarProfileMenu"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
+import { queryKeys } from "@/lib/query/keys"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
@@ -63,7 +64,7 @@ export function Topbar({
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId],
+    queryKey: queryKeys.workspace.context(activeEntityId),
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,

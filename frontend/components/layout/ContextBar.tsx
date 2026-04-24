@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 interface ContextBarProps {
   tenantSlug: string
@@ -15,7 +16,7 @@ export function ContextBar({ tenantSlug: _tenantSlug }: ContextBarProps) {
   const pathname = usePathname() ?? ""
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId],
+    queryKey: queryKeys.workspace.context(activeEntityId),
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,

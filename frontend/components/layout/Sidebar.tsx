@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
+import { queryKeys } from "@/lib/query/keys"
 import {
   ADMIN_NAV_ITEMS,
   ADVISORY_NAV_ITEMS,
@@ -62,11 +63,11 @@ export function Sidebar({
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
   const entitiesQuery = useQuery({
-    queryKey: ["control-plane-entities"],
+    queryKey: queryKeys.workspace.entities(),
     queryFn: listControlPlaneEntities,
   })
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId],
+    queryKey: queryKeys.workspace.context(activeEntityId),
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,

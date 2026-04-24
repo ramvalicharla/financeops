@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { createFxRate, listFxRates, type FxRateType } from "@/lib/api/fx-rates"
+import { queryKeys } from "@/lib/query/keys"
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -18,7 +19,7 @@ export default function FxRatesPage() {
   const [error, setError] = useState<string | null>(null)
 
   const ratesQuery = useQuery({
-    queryKey: ["fx-rates"],
+    queryKey: queryKeys.fx.rates(),
     queryFn: async () => listFxRates({ limit: 200 }),
   })
 
@@ -27,7 +28,7 @@ export default function FxRatesPage() {
     onSuccess: async () => {
       setRate("")
       setError(null)
-      await queryClient.invalidateQueries({ queryKey: ["fx-rates"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.fx.rates() })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Failed to create FX rate")

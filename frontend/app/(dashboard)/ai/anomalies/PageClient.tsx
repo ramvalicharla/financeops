@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { getAiAnomalies } from "@/lib/api/ai-cfo"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 export default function AiAnomaliesPage() {
   const entityId = useTenantStore((state) => state.active_entity_id)
@@ -10,7 +11,7 @@ export default function AiAnomaliesPage() {
   const fromDate = `${today.slice(0, 8)}01`
 
   const query = useQuery({
-    queryKey: ["ai-anomalies", entityId, fromDate, today],
+    queryKey: queryKeys.ai.anomalies(entityId, fromDate, today),
     queryFn: () =>
       getAiAnomalies({
         org_entity_id: entityId ?? undefined,

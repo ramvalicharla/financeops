@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { cn } from "@/lib/utils"
 
 // Prevents blank tab bar if backend omits workspace_tabs. See audit QW-0.
@@ -19,7 +20,7 @@ export function ModuleTabs() {
   const pathname = usePathname() ?? ""
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
   const contextQuery = useQuery({
-    queryKey: ["control-plane-context", activeEntityId, "workspace-tabs"],
+    queryKey: queryKeys.workspace.tabs(activeEntityId),
     queryFn: () =>
       getControlPlaneContext({
         entity_id: activeEntityId ?? undefined,

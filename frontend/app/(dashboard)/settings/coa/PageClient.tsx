@@ -4,6 +4,7 @@ import { toast } from "sonner"
 
 import { useMemo, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { CoaPreviewTable } from "@/components/settings/CoaPreviewTable"
 import { CoaUploader } from "@/components/settings/CoaUploader"
@@ -31,12 +32,12 @@ export default function CoaSettingsPage() {
     const [error, setError] = useState<string | null>(null)
 
   const templatesQuery = useQuery({
-    queryKey: ["coa-templates"],
+    queryKey: queryKeys.coa.templates(),
     queryFn: getCoaTemplates,
   })
 
   const accountsQuery = useQuery({
-    queryKey: ["coa-effective-accounts", selectedTemplateId],
+    queryKey: queryKeys.coa.effectiveAccounts(selectedTemplateId),
     queryFn: () =>
       getEffectiveCoaAccounts(
         selectedTemplateId ? { template_id: selectedTemplateId } : {},
@@ -44,7 +45,7 @@ export default function CoaSettingsPage() {
   })
 
   const batchesQuery = useQuery({
-    queryKey: ["coa-upload-batches"],
+    queryKey: queryKeys.coa.uploadBatches(),
     queryFn: () => listCoaUploadBatches(100),
   })
 
@@ -79,7 +80,7 @@ export default function CoaSettingsPage() {
       setValidationResult(result)
       toast.success("Upload completed")
       setError(null)
-      void queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.uploadBatches() })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Upload failed")
@@ -91,8 +92,8 @@ export default function CoaSettingsPage() {
     onSuccess: () => {
       toast.success("CoA batch applied successfully")
       setError(null)
-      void queryClient.invalidateQueries({ queryKey: ["coa-effective-accounts"] })
-      void queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.effectiveAccountsAll() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.uploadBatches() })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Apply failed")

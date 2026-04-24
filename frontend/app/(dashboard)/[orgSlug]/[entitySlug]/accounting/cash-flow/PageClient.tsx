@@ -4,6 +4,7 @@ import { useCallback, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useTenantStore } from "@/lib/store/tenant"
 import { getAccountingCashFlow, type CashFlowResult } from "@/lib/api/accounting-statements"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatINR } from "@/lib/utils"
@@ -26,7 +27,7 @@ export default function CashFlowPage() {
   const [toDate, setToDate] = useState(today)
 
   const query = useQuery<CashFlowResult>({
-    queryKey: ["cash-flow", activeEntityId, fromDate, toDate],
+    queryKey: queryKeys.accounting.cashFlow(activeEntityId, fromDate, toDate),
     queryFn: () => getAccountingCashFlow({ org_entity_id: activeEntityId!, from_date: fromDate, to_date: toDate }),
     enabled: Boolean(activeEntityId) && Boolean(fromDate) && Boolean(toDate),
   })

@@ -9,10 +9,11 @@ import {
   runConsolidation,
 } from "@/lib/api/consolidation"
 import type { ConsolidationRunRequestPayload } from "@/types/consolidation"
+import { queryKeys } from "@/lib/query/keys"
 
 export const useOrgSetupSummaryForConsolidation = () =>
   useQuery({
-    queryKey: ["org-setup-summary-for-consolidation"],
+    queryKey: queryKeys.orgSetup.summaryForConsolidation(),
     queryFn: getOrgSetupSummaryForConsolidation,
   })
 
@@ -25,7 +26,7 @@ export const useConsolidationSummary = (
   } | null,
 ) =>
   useQuery({
-    queryKey: ["consolidation-summary", params],
+    queryKey: queryKeys.consolidation.summary(params),
     queryFn: () =>
       getConsolidationSummary({
         orgGroupId: params?.orgGroupId ?? "",
@@ -44,14 +45,14 @@ export const useRunConsolidation = () =>
 
 export const useConsolidationRun = (runId: string | null) =>
   useQuery({
-    queryKey: ["consolidation-run", runId],
+    queryKey: queryKeys.consolidation.run(runId),
     queryFn: () => getConsolidationRun(runId ?? ""),
     enabled: Boolean(runId),
   })
 
 export const useConsolidationRunStatements = (runId: string | null) =>
   useQuery({
-    queryKey: ["consolidation-run-statements", runId],
+    queryKey: queryKeys.consolidation.runStatements(runId),
     queryFn: () => getConsolidationRunStatements(runId ?? ""),
     enabled: Boolean(runId),
   })

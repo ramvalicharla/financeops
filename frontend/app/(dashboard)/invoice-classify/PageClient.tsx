@@ -18,6 +18,7 @@ import {
 } from "@/lib/api/invoiceClassifier"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
@@ -109,13 +110,13 @@ export default function InvoiceClassifierPage() {
   }>({})
 
   const queueQuery = useQuery({
-    queryKey: ["invoice-review-queue", activeEntityId, skip, limit],
+    queryKey: queryKeys.invoice.queue(activeEntityId, skip, limit),
     queryFn: () => getReviewQueue({ entity_id: activeEntityId ?? "", skip, limit }),
     enabled: Boolean(activeEntityId),
   })
 
   const historyQuery = useQuery({
-    queryKey: ["invoice-history", activeEntityId, historyClassification, historyMethod, skip, limit],
+    queryKey: queryKeys.invoice.history(activeEntityId, historyClassification, historyMethod, skip, limit),
     queryFn: () =>
       listClassifications({
         entity_id: activeEntityId ?? "",
@@ -131,7 +132,7 @@ export default function InvoiceClassifierPage() {
   })
 
   const rulesQuery = useQuery({
-    queryKey: ["invoice-rules"],
+    queryKey: queryKeys.invoice.rules(),
     queryFn: listClassificationRules,
   })
 
@@ -147,8 +148,8 @@ export default function InvoiceClassifierPage() {
       }),
     onSuccess: (data) => {
       setLatestResult(data)
-      void queryClient.invalidateQueries({ queryKey: ["invoice-review-queue", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["invoice-history", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
     },
   })
 
@@ -156,16 +157,16 @@ export default function InvoiceClassifierPage() {
     mutationFn: ({ id, classification }: { id: string; classification: InvoiceClassificationType }) =>
       reviewClassification(id, { confirmed_classification: classification }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["invoice-review-queue", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["invoice-history", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
     },
   })
 
   const routeMutation = useMutation({
     mutationFn: (id: string) => routeClassification(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["invoice-review-queue", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["invoice-history", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
     },
   })
 
@@ -177,8 +178,8 @@ export default function InvoiceClassifierPage() {
       return rows.length
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["invoice-review-queue", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["invoice-history", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
     },
   })
 
@@ -206,14 +207,14 @@ export default function InvoiceClassifierPage() {
       setRuleClassification("DIRECT_EXPENSE")
       setRuleConfidence("0.9500")
       setRulePriority("100")
-      void queryClient.invalidateQueries({ queryKey: ["invoice-rules"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.rules() })
     },
   })
 
   const deleteRuleMutation = useMutation({
     mutationFn: (id: string) => deleteClassificationRule(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["invoice-rules"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.rules() })
     },
   })
 

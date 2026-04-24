@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { getAccountingTrialBalance } from "@/lib/api/accounting-trial-balance"
 import { listJournals } from "@/lib/api/accounting-journals"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 
 const today = new Date().toISOString().slice(0, 10)
@@ -24,7 +25,7 @@ export default function AccountingTrialBalancePage() {
   const [selectedAccountCode, setSelectedAccountCode] = useState<string | null>(null)
 
   const trialBalanceQuery = useQuery({
-    queryKey: ["accounting-trial-balance", activeEntityId, asOfDate, fromDate, toDate],
+    queryKey: queryKeys.accounting.trialBalance(activeEntityId, asOfDate, fromDate, toDate),
     enabled: Boolean(activeEntityId && asOfDate),
     queryFn: async () =>
       getAccountingTrialBalance({
@@ -36,7 +37,7 @@ export default function AccountingTrialBalancePage() {
   })
 
   const journalsQuery = useQuery({
-    queryKey: ["accounting-journals-for-tb", activeEntityId],
+    queryKey: queryKeys.accounting.journalsForTb(activeEntityId),
     enabled: Boolean(activeEntityId),
     queryFn: async () =>
       listJournals({

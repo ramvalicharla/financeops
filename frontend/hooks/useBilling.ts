@@ -18,47 +18,48 @@ import {
   upgradeSubscription,
 } from "@/lib/api/billing"
 import type { BillingCycle } from "@/types/billing"
+import { queryKeys } from "@/lib/query/keys"
 
 export const useCurrentSubscription = () =>
   useQuery({
-    queryKey: ["billing-subscription"],
+    queryKey: queryKeys.billing.subscription(),
     queryFn: getCurrentSubscription,
   })
 
 export const usePlans = () =>
   useQuery({
-    queryKey: ["billing-plans"],
+    queryKey: queryKeys.billing.plans(),
     queryFn: getPlans,
   })
 
 export const useCreditBalance = () =>
   useQuery({
-    queryKey: ["billing-credit-balance"],
+    queryKey: queryKeys.billing.creditBalance(),
     queryFn: getCreditBalance,
   })
 
 export const useCreditLedger = () =>
   useQuery({
-    queryKey: ["billing-credit-ledger"],
+    queryKey: queryKeys.billing.creditLedger(),
     queryFn: getCreditLedger,
   })
 
 export const useInvoices = () =>
   useQuery({
-    queryKey: ["billing-invoices"],
+    queryKey: queryKeys.billing.invoices(),
     queryFn: getInvoices,
   })
 
 export const useCurrentEntitlements = (options?: { enabled?: boolean }) =>
   useQuery({
-    queryKey: ["billing-entitlements"],
+    queryKey: queryKeys.billing.entitlements(),
     queryFn: getCurrentEntitlements,
     enabled: options?.enabled ?? true,
   })
 
 export const useUsageAggregates = (params?: { period_start?: string; period_end?: string }) =>
   useQuery({
-    queryKey: ["billing-usage", params?.period_start, params?.period_end],
+    queryKey: queryKeys.billing.usage(params?.period_start, params?.period_end),
     queryFn: () => getUsageAggregates(params),
   })
 
@@ -67,8 +68,8 @@ export const useTopUp = () => {
   return useMutation({
     mutationFn: (credits: number) => createTopUp(credits),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing-credit-balance"] })
-      void queryClient.invalidateQueries({ queryKey: ["billing-credit-ledger"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.creditBalance() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.creditLedger() })
     },
   })
 }
@@ -78,7 +79,7 @@ export const useCancelSubscription = () => {
   return useMutation({
     mutationFn: cancelSubscription,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing-subscription"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.subscription() })
     },
   })
 }
@@ -89,8 +90,8 @@ export const useUpgradeSubscription = () => {
     mutationFn: ({ planId, cycle }: { planId: string; cycle: BillingCycle }) =>
       upgradeSubscription(planId, cycle),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing-subscription"] })
-      void queryClient.invalidateQueries({ queryKey: ["billing-plans"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.subscription() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.plans() })
     },
   })
 }
@@ -100,7 +101,7 @@ export const useRefreshEntitlements = () => {
   return useMutation({
     mutationFn: refreshEntitlements,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing-entitlements"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.entitlements() })
     },
   })
 }
@@ -110,7 +111,7 @@ export const useRecordUsage = () => {
   return useMutation({
     mutationFn: recordUsage,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing-usage"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.usageAll() })
     },
   })
 }
@@ -120,7 +121,7 @@ export const useGenerateInvoice = () => {
   return useMutation({
     mutationFn: generateInvoice,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["billing-invoices"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.billing.invoices() })
     },
   })
 }

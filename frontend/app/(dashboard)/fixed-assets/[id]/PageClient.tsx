@@ -13,6 +13,7 @@ import {
   runAssetDepreciation,
 } from "@/lib/api/fixedAssets"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
@@ -55,22 +56,22 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
   }>({})
 
   const assetQuery = useQuery({
-    queryKey: ["fa-asset", params.id],
+    queryKey: queryKeys.fixedAssets.asset(params.id),
     queryFn: () => getAsset(params.id),
   })
 
   const depreciationQuery = useQuery({
-    queryKey: ["fa-dep-history", params.id],
+    queryKey: queryKeys.fixedAssets.depHistory(params.id),
     queryFn: () => listDepreciationHistory(params.id, 0, 50),
   })
 
   const revaluationQuery = useQuery({
-    queryKey: ["fa-revaluation-history", params.id],
+    queryKey: queryKeys.fixedAssets.revaluationHistory(params.id),
     queryFn: () => listRevaluationHistory(params.id),
   })
 
   const impairmentQuery = useQuery({
-    queryKey: ["fa-impairment-history", params.id],
+    queryKey: queryKeys.fixedAssets.impairmentHistory(params.id),
     queryFn: () => listImpairmentHistory(params.id),
   })
 
@@ -79,8 +80,8 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
     onSuccess: () => {
       setDepStart("")
       setDepEnd("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-dep-history", params.id] })
-      void queryClient.invalidateQueries({ queryKey: ["fa-asset", params.id] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.depHistory(params.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.asset(params.id) })
     },
   })
 
@@ -94,8 +95,8 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
     onSuccess: () => {
       setFairValue("")
       setRevaluationDate("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-revaluation-history", params.id] })
-      void queryClient.invalidateQueries({ queryKey: ["fa-asset", params.id] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.revaluationHistory(params.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.asset(params.id) })
     },
   })
 
@@ -112,8 +113,8 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
       setValueInUse("")
       setFvlcts("")
       setDiscountRate("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-impairment-history", params.id] })
-      void queryClient.invalidateQueries({ queryKey: ["fa-asset", params.id] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.impairmentHistory(params.id) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.asset(params.id) })
     },
   })
 
@@ -122,7 +123,7 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
     onSuccess: () => {
       setDisposalDate("")
       setDisposalProceeds("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-asset", params.id] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.asset(params.id) })
     },
   })
 

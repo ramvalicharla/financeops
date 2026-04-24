@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { getRatios } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 export default function RatiosPage() {
   const entityId = useTenantStore((state) => state.active_entity_id)
@@ -10,7 +11,7 @@ export default function RatiosPage() {
   const fromDate = `${today.slice(0, 4)}-01-01`
 
   const ratiosQuery = useQuery({
-    queryKey: ["analytics-ratios", entityId, fromDate, today],
+    queryKey: queryKeys.analytics.ratios(entityId, fromDate, today),
     queryFn: () =>
       getRatios({
         org_entity_id: entityId ?? undefined,
