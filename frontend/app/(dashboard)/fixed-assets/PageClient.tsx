@@ -16,6 +16,7 @@ import { listCostCentres, listLocations } from "@/lib/api/locations"
 import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { PaginationBar } from "@/components/ui/PaginationBar"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
@@ -112,25 +113,25 @@ export default function FixedAssetsPage() {
   }>({})
 
   const locationsQuery = useQuery({
-    queryKey: ["fa-locations", activeEntityId],
+    queryKey: queryKeys.fixedAssets.locations(activeEntityId),
     queryFn: () => listLocations({ entity_id: activeEntityId ?? "", is_active: true, limit: 200 }),
     enabled: Boolean(activeEntityId),
   })
 
   const costCentresQuery = useQuery({
-    queryKey: ["fa-cost-centres", activeEntityId],
+    queryKey: queryKeys.fixedAssets.costCentres(activeEntityId),
     queryFn: () => listCostCentres({ entity_id: activeEntityId ?? "", limit: 300 }),
     enabled: Boolean(activeEntityId),
   })
 
   const classQuery = useQuery({
-    queryKey: ["fa-classes", activeEntityId],
+    queryKey: queryKeys.fixedAssets.classes(activeEntityId),
     queryFn: () => listAssetClasses(activeEntityId ?? "", 0, 200),
     enabled: Boolean(activeEntityId),
   })
 
   const assetsQuery = useQuery({
-    queryKey: ["fa-assets", activeEntityId, statusFilter, locationFilter, costCentreFilter, skip, limit],
+    queryKey: queryKeys.fixedAssets.list(activeEntityId, statusFilter, locationFilter, costCentreFilter, skip, limit),
     queryFn: () =>
       listAssets({
         entity_id: activeEntityId ?? "",
@@ -144,7 +145,7 @@ export default function FixedAssetsPage() {
   })
 
   const registerQuery = useQuery({
-    queryKey: ["fa-register", activeEntityId, asOfDate, gaap],
+    queryKey: queryKeys.fixedAssets.register(activeEntityId, asOfDate, gaap),
     queryFn: () =>
       getFixedAssetRegister({
         entity_id: activeEntityId ?? "",
@@ -183,8 +184,8 @@ export default function FixedAssetsPage() {
       setDepreciationMethod("SLM")
       setAssetLocationId("")
       setAssetCostCentreId("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-assets", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["fa-register", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.listAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.registerAll(activeEntityId) })
     },
   })
 
@@ -200,8 +201,8 @@ export default function FixedAssetsPage() {
       setRunModalOpen(false)
       setPeriodStart("")
       setPeriodEnd("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-assets", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["fa-register", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.listAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.registerAll(activeEntityId) })
     },
   })
 
