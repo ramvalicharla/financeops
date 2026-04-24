@@ -61,7 +61,7 @@ export function ModuleTabs() {
           </span>
         </div>
       </div>
-      <nav aria-label="Module tabs" className="flex gap-2 overflow-x-auto pb-4">
+      <nav aria-label="Module tabs" className="flex gap-0 overflow-x-auto">
         {visibleTabs.map((tab) => {
           const isActive = tab.workspace_key === activeModuleKey
           return (
@@ -69,10 +69,10 @@ export function ModuleTabs() {
               key={tab.workspace_key}
               href={tab.href}
               className={cn(
-                "rounded-full border px-4 py-2 text-sm transition-colors",
+                "whitespace-nowrap px-4 py-2.5 text-sm transition-colors border-b-2",
                 isActive
-                  ? "border-foreground bg-foreground text-background shadow-sm"
-                  : "border-border bg-card text-muted-foreground hover:border-[hsl(var(--brand-primary)/0.3)] hover:text-foreground",
+                  ? "border-[#185FA5] font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {tab.workspace_name}
