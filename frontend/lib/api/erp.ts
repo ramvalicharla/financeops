@@ -495,55 +495,135 @@ export const runErpSync = async (payload: {
   )
 }
 
-// TODO: backend not implemented
 export const importErpCoa = async (
   erpConnectorId: string,
 ): Promise<Record<string, unknown>> => {
-  void erpConnectorId
-  return warnUnsupportedErpFeature()
+  const datasetType = normalizeDatasetType("COA")
+  const bootstrap = await ensureBootstrapSyncPath(erpConnectorId, datasetType)
+  const path = "/api/v1/erp-sync/sync-runs"
+  const requestPayload: Record<string, unknown> = {
+    connection_id: erpConnectorId,
+    sync_definition_id: bootstrap.sync_definition_id,
+    sync_definition_version_id: bootstrap.sync_definition_version_id,
+    dataset_type: datasetType,
+  }
+  debugErpApiCall("POST", path, requestPayload)
+  const response = await apiClient.post<unknown>(path, requestPayload)
+  debugErpApiResponse(path, response.data)
+  const data = toRecord(response.data)
+  requireId(data)
+  return data
 }
 
-// TODO: backend not implemented
 export const mapErpCoa = async (payload: {
   erp_connector_id: string
   mappings: Array<{ erp_account_id: string; internal_account_id: string }>
 }): Promise<{ upserted: number }> => {
-  void payload
-  return warnUnsupportedErpFeature()
+  const path = "/api/v1/erp-sync/mappings/coa"
+  const requestPayload = {
+    connection_id: payload.erp_connector_id,
+    accounts: payload.mappings.map((m) => ({
+      external_account_id: m.erp_account_id,
+      internal_account_code: m.internal_account_id,
+    })),
+  }
+  debugErpApiCall("POST", path, requestPayload)
+  const response = await apiClient.post<unknown>(path, requestPayload)
+  debugErpApiResponse(path, response.data)
+  const data = toRecord(response.data)
+  return { upserted: typeof data.upserted === "number" ? data.upserted : 0 }
 }
 
-// TODO: backend not implemented
 export const importErpJournals = async (payload: {
   erp_connector_id: string
   transactions?: Array<Record<string, unknown>>
 }): Promise<Record<string, unknown>> => {
-  void payload
-  return warnUnsupportedErpFeature()
+  const datasetType = normalizeDatasetType("JOURNALS")
+  const bootstrap = await ensureBootstrapSyncPath(payload.erp_connector_id, datasetType)
+  const path = "/api/v1/erp-sync/sync-runs"
+  const requestPayload: Record<string, unknown> = {
+    connection_id: payload.erp_connector_id,
+    sync_definition_id: bootstrap.sync_definition_id,
+    sync_definition_version_id: bootstrap.sync_definition_version_id,
+    dataset_type: datasetType,
+  }
+  if (payload.transactions) {
+    requestPayload.transactions = payload.transactions
+  }
+  debugErpApiCall("POST", path, requestPayload)
+  const response = await apiClient.post<unknown>(path, requestPayload)
+  debugErpApiResponse(path, response.data)
+  const data = toRecord(response.data)
+  requireId(data)
+  return data
 }
 
-// TODO: backend not implemented
 export const exportErpJournals = async (payload: {
   erp_connector_id: string
   journal_ids?: string[]
 }): Promise<Record<string, unknown>> => {
-  void payload
-  return warnUnsupportedErpFeature()
+  const datasetType = normalizeDatasetType("JOURNALS")
+  const bootstrap = await ensureBootstrapSyncPath(payload.erp_connector_id, datasetType)
+  const path = "/api/v1/erp-sync/sync-runs/export-journals"
+  const requestPayload: Record<string, unknown> = {
+    connection_id: payload.erp_connector_id,
+    sync_definition_id: bootstrap.sync_definition_id,
+    sync_definition_version_id: bootstrap.sync_definition_version_id,
+  }
+  if (payload.journal_ids) {
+    requestPayload.journal_ids = payload.journal_ids
+  }
+  debugErpApiCall("POST", path, requestPayload)
+  const response = await apiClient.post<unknown>(path, requestPayload)
+  debugErpApiResponse(path, response.data)
+  const data = toRecord(response.data)
+  return data
 }
 
-// TODO: backend not implemented
 export const syncErpVendors = async (payload: {
   erp_connector_id: string
   rows?: Array<Record<string, unknown>>
 }): Promise<Record<string, unknown>> => {
-  void payload
-  return warnUnsupportedErpFeature()
+  const datasetType = normalizeDatasetType("VENDORS")
+  const bootstrap = await ensureBootstrapSyncPath(payload.erp_connector_id, datasetType)
+  const path = "/api/v1/erp-sync/sync-runs"
+  const requestPayload: Record<string, unknown> = {
+    connection_id: payload.erp_connector_id,
+    sync_definition_id: bootstrap.sync_definition_id,
+    sync_definition_version_id: bootstrap.sync_definition_version_id,
+    dataset_type: datasetType,
+  }
+  if (payload.rows) {
+    requestPayload.rows = payload.rows
+  }
+  debugErpApiCall("POST", path, requestPayload)
+  const response = await apiClient.post<unknown>(path, requestPayload)
+  debugErpApiResponse(path, response.data)
+  const data = toRecord(response.data)
+  requireId(data)
+  return data
 }
 
-// TODO: backend not implemented
 export const syncErpCustomers = async (payload: {
   erp_connector_id: string
   rows?: Array<Record<string, unknown>>
 }): Promise<Record<string, unknown>> => {
-  void payload
-  return warnUnsupportedErpFeature()
+  const datasetType = normalizeDatasetType("CUSTOMERS")
+  const bootstrap = await ensureBootstrapSyncPath(payload.erp_connector_id, datasetType)
+  const path = "/api/v1/erp-sync/sync-runs"
+  const requestPayload: Record<string, unknown> = {
+    connection_id: payload.erp_connector_id,
+    sync_definition_id: bootstrap.sync_definition_id,
+    sync_definition_version_id: bootstrap.sync_definition_version_id,
+    dataset_type: datasetType,
+  }
+  if (payload.rows) {
+    requestPayload.rows = payload.rows
+  }
+  debugErpApiCall("POST", path, requestPayload)
+  const response = await apiClient.post<unknown>(path, requestPayload)
+  debugErpApiResponse(path, response.data)
+  const data = toRecord(response.data)
+  requireId(data)
+  return data
 }
