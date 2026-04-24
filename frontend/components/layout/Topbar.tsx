@@ -72,6 +72,12 @@ export function Topbar({
   })
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
+  const activePeriod = useUIStore((state) => state.activePeriod)
+  // TODO: wire to workspaceStore.period in Phase 0.
+  const fyLabel = (() => {
+    const year = parseInt(activePeriod?.slice(0, 4) ?? "", 10) || new Date().getFullYear()
+    return `FY ${String(year).slice(-2)}-${String(year + 1).slice(-2)}`
+  })()
 
   const title = pathname.startsWith("/board-pack/")
     ? "Board Pack Run"
@@ -344,6 +350,10 @@ export function Topbar({
           >
             Jobs
           </button>
+
+          <div className="hidden md:flex items-center px-2.5 py-1 text-xs border border-border rounded-md text-muted-foreground select-none">
+            {fyLabel}
+          </div>
 
           <Tooltip>
             <TooltipTrigger asChild>
