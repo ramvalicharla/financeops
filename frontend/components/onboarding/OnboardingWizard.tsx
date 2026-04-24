@@ -115,7 +115,7 @@ export function OnboardingWizard() {
   const modulesQuery = useQuery({ queryKey: ["platform-modules"], queryFn: listPlatformModules })
   const contextQuery = useQuery({ queryKey: queryKeys.workspace.context(), queryFn: () => getControlPlaneContext(), staleTime: 60_000 })
   const airlockQuery = useQuery({ queryKey: queryKeys.workspace.airlock(), queryFn: async () => listAirlockItems({ limit: 12 }) })
-  const templatesQuery = useQuery({ queryKey: ["coa-templates"], queryFn: getCoaTemplates })
+  const templatesQuery = useQuery({ queryKey: queryKeys.coa.templates(), queryFn: getCoaTemplates })
 
   // ── Computed payloads ─────────────────────────────────
   const organizationPayload = useMemo(() => ({

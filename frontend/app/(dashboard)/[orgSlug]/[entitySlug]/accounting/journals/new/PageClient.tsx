@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useSession } from "next-auth/react"
 import { getTenantCoaAccounts } from "@/lib/api/coa"
+import { queryKeys } from "@/lib/query/keys"
 import type { CreateJournalPayload } from "@/lib/api/accounting-journals"
 import { createGovernedIntent, type JournalIntentPayload } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
@@ -94,7 +95,7 @@ export default function NewJournalPage() {
   const [error, setError] = useState<string | null>(null)
 
   const accountsQuery = useQuery({
-    queryKey: ["tenant-coa-accounts"],
+    queryKey: queryKeys.coa.tenantAccounts(),
     queryFn: getTenantCoaAccounts,
   })
   const accountChoices = useMemo(

@@ -12,6 +12,7 @@ import {
   type TenantCoaAccount,
   updateTenantAccount,
 } from "@/lib/api/coa"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/Dialog"
 import { FormField } from "@/components/ui/FormField"
@@ -85,7 +86,7 @@ export default function ChartOfAccountsSettingsPage() {
   }>({})
 
   const templatesQuery = useQuery({
-    queryKey: ["coa-templates"],
+    queryKey: queryKeys.coa.templates(),
     queryFn: getCoaTemplates,
   })
 
@@ -98,20 +99,20 @@ export default function ChartOfAccountsSettingsPage() {
   }, [templatesQuery.data])
 
   const hierarchyQuery = useQuery({
-    queryKey: ["coa-hierarchy", templateId, gaap],
+    queryKey: queryKeys.coa.hierarchy(templateId, gaap),
     queryFn: () => getTemplateHierarchy(templateId ?? ""),
     enabled: Boolean(templateId),
   })
 
   const tenantAccountsQuery = useQuery({
-    queryKey: ["tenant-coa-accounts"],
+    queryKey: queryKeys.coa.tenantAccounts(),
     queryFn: getTenantCoaAccounts,
   })
 
   const initialiseMutation = useMutation({
     mutationFn: (id: string) => initialiseTenantCoa(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tenant-coa-accounts"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.tenantAccounts() })
     },
   })
 
@@ -124,7 +125,7 @@ export default function ChartOfAccountsSettingsPage() {
       payload: { display_name?: string; is_active?: boolean }
     }) => updateTenantAccount(accountId, payload),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["tenant-coa-accounts"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.tenantAccounts() })
     },
   })
 
@@ -139,7 +140,7 @@ export default function ChartOfAccountsSettingsPage() {
       setCustomModalOpen(false)
       setCustomCode("")
       setCustomName("")
-      void queryClient.invalidateQueries({ queryKey: ["tenant-coa-accounts"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.tenantAccounts() })
     },
   })
 

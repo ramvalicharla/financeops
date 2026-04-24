@@ -17,6 +17,7 @@ import {
   type CoaUploadResult,
 } from "@/lib/api/coa"
 import { getOrgSetupSummary } from "@/lib/api/orgSetup"
+import { queryKeys } from "@/lib/query/keys"
 import { toast } from "sonner"
 
 const DEFAULT_MODE: CoaUploadMode = "APPEND"
@@ -34,17 +35,17 @@ function SetupCoaPageContent() {
     const [error, setError] = useState<string | null>(null)
 
   const templatesQuery = useQuery({
-    queryKey: ["coa-templates"],
+    queryKey: queryKeys.coa.templates(),
     queryFn: getCoaTemplates,
   })
 
   const batchesQuery = useQuery({
-    queryKey: ["coa-upload-batches"],
+    queryKey: queryKeys.coa.uploadBatches(),
     queryFn: () => listCoaUploadBatches(50),
   })
 
   const summaryQuery = useQuery({
-    queryKey: ["org-setup-summary"],
+    queryKey: queryKeys.orgSetup.summary(),
     queryFn: getOrgSetupSummary,
   })
 
@@ -79,7 +80,7 @@ function SetupCoaPageContent() {
       setValidationResult(result)
       toast.success("Upload completed")
       setError(null)
-      void queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.coa.uploadBatches() })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Upload failed")
@@ -91,8 +92,8 @@ function SetupCoaPageContent() {
     onSuccess: async () => {
       toast.success("CoA batch applied successfully")
       setError(null)
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
-      await queryClient.invalidateQueries({ queryKey: ["coa-upload-batches"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.summary() })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.coa.uploadBatches() })
     },
     onError: (cause) => {
       setError(cause instanceof Error ? cause.message : "Apply failed")
@@ -103,7 +104,7 @@ function SetupCoaPageContent() {
     mutationFn: skipCoaSetup,
     onSuccess: async () => {
       setError(null)
-            await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+            await queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.summary() })
       router.push(nextPath)
     },
     onError: (cause) => {
