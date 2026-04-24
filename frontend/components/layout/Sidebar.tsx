@@ -238,7 +238,7 @@ const showTrust = userRole === "finance_leader"
             <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Organization</p>
+                  <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">ACTIVE ENTITY</p>
                   {contextQuery.isLoading ? (
                     <Skeleton className="mt-1 h-5 w-32" />
                   ) : (
