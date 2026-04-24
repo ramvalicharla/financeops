@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
+from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,6 +65,179 @@ def _build_service(session: AsyncSession) -> MisIngestService:
         snapshot_service=snapshot_service,
         validation_service=validation_service,
     )
+
+
+_DASHBOARD_METRIC_MAP: dict[str, str] = {
+    "revenue": "revenue",
+    "revenue_net": "revenue",
+    "gross_profit": "gross_profit",
+    "ebitda": "ebitda",
+    "net_profit": "net_profit",
+    "profit_after_tax": "net_profit",
+    "pat": "net_profit",
+}
+
+
+def _parse_period(period: str) -> date:
+    """Accept YYYY-MM or YYYY-MM-DD, return the corresponding date."""
+    clean = period.strip()
+    if len(clean) == 7:  # YYYY-MM — treat as first day of month
+        return date.fromisoformat(clean + "-01")
+    return date.fromisoformat(clean)
+
+
+def _prev_period(d: date) -> date:
+    if d.month == 1:
+        return date(d.year - 1, 12, 1)
+    return date(d.year, d.month - 1, 1)
+
+
+def _period_label(d: date) -> str:
+    return d.strftime("%b %Y")
+
+
+def _aggregate_metrics(lines: list) -> dict[str, Decimal]:
+    totals: dict[str, Decimal] = {
+        "revenue": Decimal("0"),
+        "gross_profit": Decimal("0"),
+        "ebitda": Decimal("0"),
+        "net_profit": Decimal("0"),
+    }
+    for line in lines:
+        metric = (line.canonical_metric_code or "").strip().lower()
+        target = _DASHBOARD_METRIC_MAP.get(metric)
+        if target is not None:
+            totals[target] += Decimal(str(line.period_value))
+    return totals
+
+
+def _pct_change(current: Decimal, previous: Decimal) -> str:
+    if previous == Decimal("0"):
+        return "0"
+    return str(
+        ((current - previous) / abs(previous) * 100).quantize(
+            Decimal("0.01"), rounding=ROUND_HALF_UP
+        )
+    )
+
+
+def _build_empty_dashboard(entity_id: str, period: str) -> dict:
+    return {
+        "entity_id": entity_id,
+        "period": period,
+        "previous_period": "",
+        "revenue": "0",
+        "gross_profit": "0",
+        "ebitda": "0",
+        "net_profit": "0",
+        "revenue_change_pct": "0",
+        "gross_profit_change_pct": "0",
+        "ebitda_change_pct": "0",
+        "net_profit_change_pct": "0",
+        "line_items": [],
+        "chart_data": [],
+    }
+
+
+@router.get("/dashboard")
+async def get_mis_dashboard(
+    period: str = Query(..., description="Reporting period: YYYY-MM or YYYY-MM-DD"),
+    entity_id: uuid.UUID | None = Query(default=None),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> dict:
+    try:
+        period_date = _parse_period(period)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"Invalid period format: {period!r}")
+
+    entity_id_str = str(entity_id) if entity_id is not None else ""
+    repo = MisManagerRepository(session)
+
+    snapshot = await repo.get_latest_snapshot_for_period(
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        reporting_period=period_date,
+    )
+    if snapshot is None:
+        return _build_empty_dashboard(entity_id_str, period_date.isoformat())
+
+    lines = await repo.list_normalized_lines(
+        tenant_id=user.tenant_id, snapshot_id=snapshot.id
+    )
+    curr = _aggregate_metrics(lines)
+
+    prev_date = _prev_period(period_date)
+    prev_snapshot = await repo.get_latest_snapshot_for_period(
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+        reporting_period=prev_date,
+    )
+    prev: dict[str, Decimal] = {k: Decimal("0") for k in curr}
+    if prev_snapshot is not None:
+        prev_lines = await repo.list_normalized_lines(
+            tenant_id=user.tenant_id, snapshot_id=prev_snapshot.id
+        )
+        prev = _aggregate_metrics(prev_lines)
+
+    line_items = [
+        {
+            "line_item_id": str(line.id),
+            "label": line.canonical_metric_code,
+            "current_value": str(line.period_value),
+            "previous_value": "0",
+            "variance": str(line.period_value),
+            "variance_pct": "0",
+            "is_heading": False,
+            "indent_level": 0,
+        }
+        for line in lines
+    ]
+
+    return {
+        "entity_id": str(snapshot.entity_id) if snapshot.entity_id else entity_id_str,
+        "period": period_date.isoformat(),
+        "previous_period": prev_date.isoformat(),
+        "revenue": str(curr["revenue"]),
+        "gross_profit": str(curr["gross_profit"]),
+        "ebitda": str(curr["ebitda"]),
+        "net_profit": str(curr["net_profit"]),
+        "revenue_change_pct": _pct_change(curr["revenue"], prev["revenue"]),
+        "gross_profit_change_pct": _pct_change(curr["gross_profit"], prev["gross_profit"]),
+        "ebitda_change_pct": _pct_change(curr["ebitda"], prev["ebitda"]),
+        "net_profit_change_pct": _pct_change(curr["net_profit"], prev["net_profit"]),
+        "line_items": line_items,
+        "chart_data": [
+            {
+                "period": period_date.isoformat(),
+                "label": _period_label(period_date),
+                "revenue": str(curr["revenue"]),
+                "gross_profit": str(curr["gross_profit"]),
+                "ebitda": str(curr["ebitda"]),
+            }
+        ],
+    }
+
+
+@router.get("/periods")
+async def get_mis_periods(
+    entity_id: uuid.UUID | None = Query(default=None),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(get_current_user),
+) -> list[dict]:
+    repo = MisManagerRepository(session)
+    snapshots = await repo.list_snapshots_for_entity(
+        tenant_id=user.tenant_id,
+        entity_id=entity_id,
+    )
+    seen: set[date] = set()
+    result: list[dict] = []
+    for snap in snapshots:
+        p = snap.reporting_period
+        if p not in seen:
+            seen.add(p)
+            result.append({"period": p.isoformat(), "label": _period_label(p)})
+    return result
 
 
 @router.post(

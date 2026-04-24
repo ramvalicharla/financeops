@@ -412,6 +412,29 @@ async def submit_step6(
     )
 
 
+@router.post("/step")
+async def submit_step_dispatcher(
+    body: dict[str, Any],
+    session: AsyncSession = Depends(get_async_session),
+    tenant: IamTenant = Depends(get_current_tenant),
+) -> Any:
+    step_num = body.get("step")
+    if not isinstance(step_num, int) or step_num not in range(1, 7):
+        raise ValidationError("step must be an integer between 1 and 6")
+    rest = {k: v for k, v in body.items() if k != "step"}
+    if step_num == 1:
+        return await submit_step1(Step1Request.model_validate(rest), session, tenant)
+    if step_num == 2:
+        return await submit_step2(Step2Request.model_validate(rest), session, tenant)
+    if step_num == 3:
+        return await submit_step3(Step3Request.model_validate(rest), session, tenant)
+    if step_num == 4:
+        return await submit_step4(Step4Request.model_validate(rest), session, tenant)
+    if step_num == 5:
+        return await submit_step5(Step5Request.model_validate(rest), session, tenant)
+    return await submit_step6(Step6Request.model_validate(rest), session, tenant)
+
+
 @router.get("/summary", response_model=OrgSetupSummaryResponse)
 async def get_setup_summary(
     session: AsyncSession = Depends(get_async_session),

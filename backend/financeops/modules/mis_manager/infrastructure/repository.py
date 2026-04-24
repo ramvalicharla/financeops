@@ -458,6 +458,43 @@ class MisManagerRepository:
         )
         return list(result.scalars().all())
 
+    async def get_latest_snapshot_for_period(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        entity_id: uuid.UUID | None,
+        reporting_period: date,
+    ) -> MisDataSnapshot | None:
+        stmt = (
+            select(MisDataSnapshot)
+            .where(
+                MisDataSnapshot.tenant_id == tenant_id,
+                MisDataSnapshot.reporting_period == reporting_period,
+            )
+            .order_by(MisDataSnapshot.created_at.desc(), MisDataSnapshot.id.desc())
+            .limit(1)
+        )
+        if entity_id is not None:
+            stmt = stmt.where(MisDataSnapshot.entity_id == entity_id)
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def list_snapshots_for_entity(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        entity_id: uuid.UUID | None = None,
+    ) -> list[MisDataSnapshot]:
+        stmt = (
+            select(MisDataSnapshot)
+            .where(MisDataSnapshot.tenant_id == tenant_id)
+            .order_by(MisDataSnapshot.reporting_period.desc(), MisDataSnapshot.created_at.desc())
+        )
+        if entity_id is not None:
+            stmt = stmt.where(MisDataSnapshot.entity_id == entity_id)
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
+
     async def summarize_snapshot(
         self,
         *,
