@@ -9,6 +9,7 @@ import { listJournals, type JournalRecord } from "@/lib/api/accounting-journals"
 import { createGovernedIntent } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { FlowStrip } from "@/components/ui/FlowStrip"
 import { StateBadge } from "@/components/ui/StateBadge"
@@ -36,13 +37,13 @@ export function JournalList() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const query = useQuery({
-    queryKey: ["accounting-journals", activeEntityId, skip, limit],
+    queryKey: queryKeys.accounting.journals(activeEntityId, skip, limit),
     queryFn: async () =>
       listJournals(activeEntityId ? { org_entity_id: activeEntityId, limit, offset: skip } : { limit, offset: skip }),
   })
 
   const refresh = (): void => {
-    void queryClient.invalidateQueries({ queryKey: ["accounting-journals"] })
+    void queryClient.invalidateQueries({ queryKey: queryKeys.accounting.journalsAll() })
   }
 
   const onGovernedSuccess = (result: {
