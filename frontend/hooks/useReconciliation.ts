@@ -1,6 +1,7 @@
 "use client"
 
 import { useMutation, useQuery } from "@tanstack/react-query"
+import { queryKeys } from "@/lib/query/keys"
 import {
   exportGLTBCSV,
   getGLTBAccountEntries,
@@ -15,7 +16,7 @@ export const useGLTBResult = (
   runId: string | null,
 ) =>
   useQuery({
-    queryKey: ["gltb-result", entityId, period, runId],
+    queryKey: queryKeys.recon.gltbResult(entityId, period, runId),
     queryFn: () => getGLTBResult(entityId ?? "", period ?? "", runId ?? ""),
     enabled: Boolean(entityId && period && runId),
   })
@@ -26,7 +27,7 @@ export const useGLTBAccountEntries = (
   period: string | null,
 ) =>
   useQuery({
-    queryKey: ["gltb-account-entries", entityId, accountCode, period],
+    queryKey: queryKeys.recon.gltbAccountEntries(entityId, accountCode, period),
     queryFn: () =>
       getGLTBAccountEntries(entityId ?? "", accountCode ?? "", period ?? ""),
     enabled: Boolean(entityId && accountCode && period),
@@ -51,7 +52,7 @@ export const usePayrollRecon = (
   runId: string | null,
 ) =>
   useQuery({
-    queryKey: ["payroll-recon", entityId, period, runId],
+    queryKey: queryKeys.recon.payrollRecon(entityId, period, runId),
     queryFn: () => getPayrollRecon(entityId ?? "", period ?? "", runId ?? ""),
     enabled: Boolean(entityId && period && runId),
   })
@@ -62,7 +63,7 @@ export const usePayrollCostCentreDetail = (
   period: string | null,
 ) =>
   useQuery({
-    queryKey: ["payroll-cost-centre-detail", entityId, costCentreId, period],
+    queryKey: queryKeys.recon.payrollCostCentreDetail(entityId, costCentreId, period),
     queryFn: () =>
       getPayrollCostCentreDetail(entityId ?? "", costCentreId ?? "", period ?? ""),
     enabled: Boolean(entityId && costCentreId && period),

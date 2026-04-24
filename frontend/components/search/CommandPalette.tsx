@@ -21,6 +21,7 @@ import {
 } from "@/lib/config/navigation"
 import { useQuery } from "@tanstack/react-query"
 import { searchGlobal } from "@/lib/api/search"
+import { queryKeys } from "@/lib/query/keys"
 import { useUIStore } from "@/lib/store/ui"
 
 // ---------------------------------------------------------------------------
@@ -76,7 +77,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
   }, [query])
 
   const searchQuery = useQuery({
-    queryKey: ["global-search", debouncedQuery],
+    queryKey: queryKeys.search.global(debouncedQuery),
     queryFn: () => searchGlobal({ q: debouncedQuery, limit: 5, module: "all" }),
     enabled: debouncedQuery.length >= 2,
     staleTime: 30000,

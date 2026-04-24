@@ -9,6 +9,7 @@ import { listJournals, type JournalRecord } from "@/lib/api/accounting-journals"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useTenantStore } from "@/lib/store/tenant"
 import { cn } from "@/lib/utils"
+import { queryKeys } from "@/lib/query/keys"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -266,14 +267,14 @@ export default function HomePageClient() {
 
   // Sections 1 + 2: ERP connectors (shared query — one fetch for both)
   const connectorsQuery = useQuery({
-    queryKey: ["home-erp-connectors"],
+    queryKey: queryKeys.home.erpConnectors(),
     queryFn: listErpConnectors,
     staleTime: 60_000,
   })
 
   // Section 1: Pending approvals — journals submitted for review
   const approvalsQuery = useQuery({
-    queryKey: ["home-pending-approvals", entityId],
+    queryKey: queryKeys.home.pendingApprovals(entityId),
     queryFn: () =>
       listJournals({
         org_entity_id: entityId ?? undefined,
@@ -286,14 +287,14 @@ export default function HomePageClient() {
 
   // Section 1: Open anomalies count
   const anomaliesQuery = useQuery({
-    queryKey: ["home-open-anomalies"],
+    queryKey: queryKeys.home.openAnomalies(),
     queryFn: () => fetchAnomalyAlerts({ status: "OPEN", limit: 200 }),
     staleTime: 60_000,
   })
 
   // Section 3: Recent journal activity (10 most recent, any status)
   const journalsQuery = useQuery({
-    queryKey: ["home-recent-journals", entityId],
+    queryKey: queryKeys.home.recentJournals(entityId),
     queryFn: () =>
       listJournals({
         org_entity_id: entityId ?? undefined,

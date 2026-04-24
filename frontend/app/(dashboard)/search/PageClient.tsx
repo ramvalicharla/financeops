@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Search, FileText, Receipt, Users, Building, Activity, FileSpreadsheet, Layers, PieChart } from "lucide-react"
 
 import { searchGlobal } from "@/lib/api/search"
+import { queryKeys } from "@/lib/query/keys"
 import type { SearchModuleType } from "@/lib/types/search"
 import { PaginationBar } from "@/components/ui/PaginationBar"
 import { useUIStore } from "@/lib/store/ui"
@@ -56,7 +57,7 @@ export default function PageClient() {
   }, [urlQuery, activeModule])
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["global-search-page", urlQuery, activeModule, page, pageSize],
+    queryKey: queryKeys.search.globalPage(urlQuery, activeModule, page, pageSize),
     queryFn: () => searchGlobal({ 
       q: urlQuery, 
       module: activeModule, 

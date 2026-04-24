@@ -1,25 +1,25 @@
 // Reconciliation — GL/TB and payroll reconciliation results.
 
 export const reconKeys = {
-  gltbResult: (entityId: string | null, period: string, runId: string | null) =>
+  gltbResult: (entityId: string | null, period: string | null, runId: string | null) =>
     ["gltb-result", entityId, period, runId] as const,
 
   gltbAccountEntries: (
     entityId: string | null,
-    accountCode: string,
-    period: string,
+    accountCode: string | null,
+    period: string | null,
   ) => ["gltb-account-entries", entityId, accountCode, period] as const,
 
   payrollRecon: (
     entityId: string | null,
-    period: string,
+    period: string | null,
     runId: string | null,
   ) => ["payroll-recon", entityId, period, runId] as const,
 
   payrollCostCentreDetail: (
     entityId: string | null,
-    costCentreId: string,
-    period: string,
+    costCentreId: string | null,
+    period: string | null,
   ) =>
     ["payroll-cost-centre-detail", entityId, costCentreId, period] as const,
 } as const
