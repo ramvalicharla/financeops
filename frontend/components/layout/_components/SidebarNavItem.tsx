@@ -6,6 +6,7 @@ import { useUIStore } from "@/lib/store/ui"
 import { useTenantStore } from "@/lib/store/tenant"
 import { cn } from "@/lib/utils"
 import { Star } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface SidebarNavItemProps {
   item: NavigationLeafItem
@@ -39,20 +40,26 @@ export function SidebarNavItem({
 
   if (collapsed) {
     return (
-      <Link
-        href={targetHref}
-        onClick={onClick}
-        title={item.label}
-        aria-label={item.label}
-        className={cn(
-          "flex h-9 w-full items-center justify-center rounded-md transition",
-          active
-            ? "bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
-            : "text-muted-foreground hover:bg-accent hover:text-foreground",
-        )}
-      >
-        <Icon className="h-4 w-4 shrink-0" />
-      </Link>
+      <Tooltip delayDuration={200}>
+        <TooltipTrigger asChild>
+          <Link
+            href={targetHref}
+            onClick={onClick}
+            aria-label={item.label}
+            className={cn(
+              "flex h-9 w-full items-center justify-center rounded-md transition",
+              active
+                ? "bg-[hsl(var(--brand-primary)/0.15)] text-foreground"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>
+          {item.label}
+        </TooltipContent>
+      </Tooltip>
     )
   }
 
@@ -64,7 +71,6 @@ export function SidebarNavItem({
         key={targetHref}
         href={targetHref}
         onClick={onClick}
-        title={item.label}
         className={cn(
           "flex-1",
           withIcon

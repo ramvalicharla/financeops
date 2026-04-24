@@ -111,7 +111,7 @@ export default function PageClient() {
                 key={tab.value}
                 onClick={() => setActiveModule(tab.value)}
                 className={cn(
-                  "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none",
+                  "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   activeModule === tab.value 
                     ? "bg-[hsl(var(--brand-primary)/0.15)] text-[hsl(var(--brand-primary))] hover:bg-[hsl(var(--brand-primary)/0.2)]" 
                     : "text-muted-foreground hover:text-foreground"
