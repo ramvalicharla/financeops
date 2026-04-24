@@ -13,6 +13,7 @@ import { listCostCentres, listLocations } from "@/lib/api/locations"
 import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { Dialog } from "@/components/ui/Dialog"
@@ -64,19 +65,19 @@ export default function PrepaidExpensesPage() {
   }>({})
 
   const locationsQuery = useQuery({
-    queryKey: ["prepaid-locations", activeEntityId],
+    queryKey: queryKeys.prepaid.locations(activeEntityId),
     queryFn: () => listLocations({ entity_id: activeEntityId ?? "", is_active: true, limit: 200 }),
     enabled: Boolean(activeEntityId),
   })
 
   const costCentresQuery = useQuery({
-    queryKey: ["prepaid-cost-centres", activeEntityId],
+    queryKey: queryKeys.prepaid.costCentres(activeEntityId),
     queryFn: () => listCostCentres({ entity_id: activeEntityId ?? "", limit: 300 }),
     enabled: Boolean(activeEntityId),
   })
 
   const schedulesQuery = useQuery({
-    queryKey: ["prepaid-schedules", activeEntityId, statusFilter, typeFilter, locationFilter, costCentreFilter, skip, limit],
+    queryKey: queryKeys.prepaid.schedules(activeEntityId, statusFilter, typeFilter, locationFilter, costCentreFilter, skip, limit),
     queryFn: () =>
       listPrepaidSchedules({
         entity_id: activeEntityId ?? "",
@@ -117,7 +118,7 @@ export default function PrepaidExpensesPage() {
       setCoverageEnd("")
       setCreateLocationId("")
       setCreateCostCentreId("")
-      void queryClient.invalidateQueries({ queryKey: ["prepaid-schedules", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.prepaid.schedulesAll(activeEntityId) })
     },
   })
 
@@ -132,7 +133,7 @@ export default function PrepaidExpensesPage() {
       setRunModalOpen(false)
       setPeriodStart("")
       setPeriodEnd("")
-      void queryClient.invalidateQueries({ queryKey: ["prepaid-schedules", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.prepaid.schedulesAll(activeEntityId) })
     },
   })
 

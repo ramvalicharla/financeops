@@ -8,6 +8,7 @@ import {
   listPrepaidEntries,
 } from "@/lib/api/prepaid"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
+import { queryKeys } from "@/lib/query/keys"
 
 interface PrepaidDetailPageProps {
   params: {
@@ -19,17 +20,17 @@ export default function PrepaidDetailPage({ params }: PrepaidDetailPageProps) {
   const { fmt } = useFormattedAmount()
 
   const scheduleQuery = useQuery({
-    queryKey: ["prepaid-schedule", params.id],
+    queryKey: queryKeys.prepaid.schedule(params.id),
     queryFn: () => getPrepaidSchedule(params.id),
   })
 
   const amortisationQuery = useQuery({
-    queryKey: ["prepaid-amortisation", params.id],
+    queryKey: queryKeys.prepaid.amortisation(params.id),
     queryFn: () => getPrepaidAmortisationSchedule(params.id),
   })
 
   const entriesQuery = useQuery({
-    queryKey: ["prepaid-entries", params.id],
+    queryKey: queryKeys.prepaid.entries(params.id),
     queryFn: () => listPrepaidEntries(params.id, 0, 50),
   })
 
