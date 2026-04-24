@@ -3,11 +3,17 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useMemo } from "react"
+import * as Sentry from "@sentry/browser"
 import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { cn } from "@/lib/utils"
+
+// Prevents blank tab bar if backend omits workspace_tabs. See audit QW-0.
+const FALLBACK_TABS = [
+  { workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] },
+]
 
 export function ModuleTabs() {
   const pathname = usePathname() ?? ""
@@ -21,39 +27,29 @@ export function ModuleTabs() {
     staleTime: 60_000,
   })
 
-  const visibleTabs = contextQuery.data?.workspace_tabs ?? []
+  const tabs = contextQuery.data?.workspace_tabs?.length
+    ? contextQuery.data.workspace_tabs
+    : FALLBACK_TABS
+
+  // Spec §1.5: Overview must be first and required. Re-sort if backend violates this.
+  const visibleTabs = (() => {
+    if (tabs[0]?.workspace_key === "overview") return tabs
+    const overview = tabs.find((t) => t.workspace_key === "overview")
+    const others = tabs.filter((t) => t.workspace_key !== "overview")
+    if (!overview) {
+      Sentry.captureMessage("[shell] Backend omitted Overview tab; prepending from fallback.", "warning")
+      return [{ workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] }, ...others]
+    }
+    Sentry.captureMessage("[shell] Backend returned non-canonical tab order; re-sorting to put Overview first.", "warning")
+    return [overview, ...others]
+  })()
   const activeModuleKey = useMemo(() => {
     const matchedTab = resolveWorkspaceFromTabs(pathname, visibleTabs)
     return matchedTab?.workspace_key ?? contextQuery.data?.current_module.module_key ?? null
   }, [contextQuery.data?.current_module.module_key, pathname, visibleTabs])
-  const activeLabel = useMemo(() => {
-    const activeTab = visibleTabs.find((tab) => tab.workspace_key === activeModuleKey)
-    return activeTab?.workspace_name ?? contextQuery.data?.current_module.module_name ?? "Unavailable"
-  }, [activeModuleKey, contextQuery.data?.current_module.module_name, visibleTabs])
-
   return (
     <div className="border-b border-border bg-background/90 px-4 md:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Workspace Modules
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {contextQuery.isLoading
-              ? "Waiting for backend module context."
-              : `Tabs are rendered from backend workspace context. Backend workspace: ${contextQuery.data?.current_module.module_name ?? "Unavailable"}.`}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            {visibleTabs.length} visible
-          </span>
-          <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-            Viewing: {activeLabel}
-          </span>
-        </div>
-      </div>
-      <nav aria-label="Module tabs" className="flex gap-2 overflow-x-auto pb-4">
+      <nav aria-label="Module tabs" className="flex gap-0 overflow-x-auto">
         {visibleTabs.map((tab) => {
           const isActive = tab.workspace_key === activeModuleKey
           return (
@@ -61,16 +57,26 @@ export function ModuleTabs() {
               key={tab.workspace_key}
               href={tab.href}
               className={cn(
-                "rounded-full border px-4 py-2 text-sm transition-colors",
+                "whitespace-nowrap px-4 py-2.5 text-sm transition-colors border-b-2",
                 isActive
-                  ? "border-foreground bg-foreground text-background shadow-sm"
-                  : "border-border bg-card text-muted-foreground hover:border-[hsl(var(--brand-primary)/0.3)] hover:text-foreground",
+                  ? "border-[#185FA5] font-medium text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {tab.workspace_name}
             </Link>
           )
         })}
+        {/* Module Manager entry point — wired in Phase 3. See audit QW-6. */}
+        <button
+          type="button"
+          disabled
+          title="Module Manager — coming soon"
+          aria-label="Module Manager — coming soon"
+          className="ml-1.5 my-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 text-sm text-muted-foreground/50 cursor-not-allowed"
+        >
+          +
+        </button>
       </nav>
     </div>
   )

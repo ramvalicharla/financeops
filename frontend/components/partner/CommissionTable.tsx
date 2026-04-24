@@ -1,6 +1,7 @@
 "use client"
 
 import type { PartnerCommissionRow } from "@/lib/types/partner"
+import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 
 interface CommissionTableProps {
   commissions: PartnerCommissionRow[]
@@ -14,6 +15,7 @@ const statusClass: Record<PartnerCommissionRow["status"], string> = {
 }
 
 export function CommissionTable({ commissions }: CommissionTableProps) {
+  const { fmt } = useFormattedAmount()
   const total = commissions.reduce((sum, row) => sum + Number.parseFloat(row.commission_amount), 0)
 
   return (
@@ -61,7 +63,8 @@ export function CommissionTable({ commissions }: CommissionTableProps) {
               <td className="px-4 py-3 font-medium text-foreground">Total</td>
               <td className="px-4 py-3 text-muted-foreground">-</td>
               <td className="px-4 py-3 text-muted-foreground">-</td>
-              <td className="px-4 py-3 font-medium text-foreground">{total.toFixed(2)}</td>
+              {/* TODO: thread entity functional currency from workspaceStore in Phase 2. */}
+              <td className="px-4 py-3 font-medium text-foreground">{fmt(total)}</td>
               <td className="px-4 py-3 text-muted-foreground">-</td>
               <td className="px-4 py-3 text-muted-foreground">-</td>
             </tr>

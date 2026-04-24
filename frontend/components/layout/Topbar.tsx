@@ -72,6 +72,12 @@ export function Topbar({
   })
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
+  const activePeriod = useUIStore((state) => state.activePeriod)
+  // TODO: wire to workspaceStore.period in Phase 0.
+  const fyLabel = (() => {
+    const year = parseInt(activePeriod?.slice(0, 4) ?? "", 10) || new Date().getFullYear()
+    return `FY ${String(year).slice(-2)}-${String(year + 1).slice(-2)}`
+  })()
 
   const title = pathname.startsWith("/board-pack/")
     ? "Board Pack Run"
@@ -166,7 +172,7 @@ export function Topbar({
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
       <div className="relative md:hidden">
-        <div className="flex min-h-16 items-center gap-2 px-4 py-2">
+        <div className="flex min-h-12 items-center gap-2 px-4 py-2">
           <div className="flex items-center gap-3">
             <div className="hidden rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground lg:block">
               {contextQuery.isLoading ? (
@@ -296,7 +302,7 @@ export function Topbar({
         ) : null}
       </div>
 
-      <div className="hidden min-h-16 items-center justify-between gap-6 px-4 py-3 md:flex md:px-6">
+      <div className="hidden min-h-12 items-center justify-between gap-6 px-4 py-3 md:flex md:px-6">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -344,6 +350,10 @@ export function Topbar({
           >
             Jobs
           </button>
+
+          <div className="hidden md:flex items-center px-2.5 py-1 text-xs border border-border rounded-md text-muted-foreground select-none">
+            {fyLabel}
+          </div>
 
           <Tooltip>
             <TooltipTrigger asChild>

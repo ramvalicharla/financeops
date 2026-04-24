@@ -62,12 +62,11 @@ const editableFields: EditableField[] = [
   "other_outflows",
 ]
 
+// formatNumeric is only used to revert an editable cell to a parseable string
+// on blur when the user's input is invalid. fmtNum handles display formatting.
 const formatNumeric = (value: string): string => {
   const amount = Number.parseFloat(value)
-  if (Number.isNaN(amount)) {
-    return value
-  }
-  return amount.toFixed(2)
+  return Number.isNaN(amount) ? value : String(amount)
 }
 
 export function CashFlowGrid({ weeks, onCellEdit }: CashFlowGridProps) {
@@ -128,6 +127,7 @@ export function CashFlowGrid({ weeks, onCellEdit }: CashFlowGridProps) {
                             event.currentTarget.value = formatNumeric(value)
                             return
                           }
+                          // Backend submission value — raw serialisation, not display. See QW-10 deferred list.
                           const raw = parsedRaw.toFixed(2)
                           event.currentTarget.value = formatNumeric(
                             String(parsedRaw / SCALE_DIVISORS[scale]),

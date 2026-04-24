@@ -3,7 +3,8 @@
 import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
-import { ChevronsLeft, ChevronsRight } from "lucide-react"
+import Link from "next/link"
+import { ChevronsLeft, ChevronsRight, Settings } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
 import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
@@ -238,7 +239,7 @@ const showTrust = userRole === "finance_leader"
             <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs uppercase tracking-wide text-muted-foreground">Organization</p>
+                  <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">ACTIVE ENTITY</p>
                   {contextQuery.isLoading ? (
                     <Skeleton className="mt-1 h-5 w-32" />
                   ) : (
@@ -369,8 +370,8 @@ const showTrust = userRole === "finance_leader"
         {/* ── Footer ─────────────────────────────────────────────────────── */}
         <div className="space-y-2 border-t border-border p-3">
           {sidebarCollapsed ? (
-            /* Collapsed footer: initials avatar acts as a sign-out shortcut */
-            <div className="flex justify-center py-1">
+            /* Collapsed footer: avatar sign-out + settings cog below */
+            <div className="flex flex-col items-center gap-1 py-1">
               <button
                 type="button"
                 title={`${userName} · ${String(userRole).replace(/_/g, " ")}\n${userEmail}\nClick to sign out`}
@@ -380,6 +381,13 @@ const showTrust = userRole === "finance_leader"
               >
                 {initials}
               </button>
+              <Link
+                href="/settings"
+                aria-label="Settings"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              >
+                <Settings className="h-4 w-4" />
+              </Link>
             </div>
           ) : (
             <>
@@ -388,13 +396,20 @@ const showTrust = userRole === "finance_leader"
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium">
                     {initials}
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">{userName}</p>
                     <p className="text-xs text-muted-foreground">{userEmail}</p>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Role: {String(userRole).replace(/_/g, " ")}
                     </p>
                   </div>
+                  <Link
+                    href="/settings"
+                    aria-label="Settings"
+                    className="ml-auto flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Link>
                 </div>
                 <Button
                   className="w-full"
