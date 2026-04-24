@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/locations"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
@@ -71,7 +72,7 @@ export default function LocationsSettingsPage() {
   }>({})
 
   const locationsQuery = useQuery({
-    queryKey: ["settings-locations", activeEntityId, skip, limit],
+    queryKey: queryKeys.settings.locations(activeEntityId, skip, limit),
     queryFn: () =>
       listLocations({
         entity_id: activeEntityId ?? "",
@@ -82,7 +83,7 @@ export default function LocationsSettingsPage() {
   })
 
   const stateCodesQuery = useQuery({
-    queryKey: ["india-state-codes"],
+    queryKey: queryKeys.settings.indiaStateCodes(),
     queryFn: listStateCodes,
   })
 
@@ -112,8 +113,8 @@ export default function LocationsSettingsPage() {
       setGstinHint(null)
       setGstinError(null)
       setActiveLocation(row.id)
-      void queryClient.invalidateQueries({ queryKey: ["settings-locations", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["entity-locations", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(activeEntityId) })
     },
   })
 
@@ -123,8 +124,8 @@ export default function LocationsSettingsPage() {
     onSuccess: () => {
       setEditingId(null)
       setEditingDraft(null)
-      void queryClient.invalidateQueries({ queryKey: ["settings-locations", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["entity-locations", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(activeEntityId) })
     },
   })
 
@@ -132,8 +133,8 @@ export default function LocationsSettingsPage() {
     mutationFn: (locationId: string) => setPrimaryLocation(locationId),
     onSuccess: (row) => {
       setActiveLocation(row.id)
-      void queryClient.invalidateQueries({ queryKey: ["settings-locations", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["entity-locations", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(activeEntityId) })
     },
   })
 

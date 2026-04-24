@@ -10,6 +10,7 @@ import {
   type CostCentreTreeNode,
 } from "@/lib/api/locations"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
@@ -85,7 +86,7 @@ export default function CostCentresSettingsPage() {
   }>({})
 
   const flatQuery = useQuery({
-    queryKey: ["settings-cost-centres-flat", activeEntityId],
+    queryKey: queryKeys.settings.costCentresFlat(activeEntityId),
     queryFn: () =>
       listCostCentres({
         entity_id: activeEntityId ?? "",
@@ -96,7 +97,7 @@ export default function CostCentresSettingsPage() {
   })
 
   const treeQuery = useQuery({
-    queryKey: ["settings-cost-centres-tree", activeEntityId],
+    queryKey: queryKeys.settings.costCentresTree(activeEntityId),
     queryFn: () => getCostCentreTree(activeEntityId ?? ""),
     enabled: Boolean(activeEntityId),
   })
@@ -113,8 +114,8 @@ export default function CostCentresSettingsPage() {
       setCode("")
       setName("")
       setParentId("")
-      void queryClient.invalidateQueries({ queryKey: ["settings-cost-centres-flat", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["settings-cost-centres-tree", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresFlat(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresTree(activeEntityId) })
     },
   })
 
@@ -125,8 +126,8 @@ export default function CostCentresSettingsPage() {
       setEditingId(null)
       setEditingCode("")
       setEditingName("")
-      void queryClient.invalidateQueries({ queryKey: ["settings-cost-centres-flat", activeEntityId] })
-      void queryClient.invalidateQueries({ queryKey: ["settings-cost-centres-tree", activeEntityId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresFlat(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresTree(activeEntityId) })
     },
   })
 
