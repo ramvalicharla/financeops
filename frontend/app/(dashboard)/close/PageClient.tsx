@@ -19,6 +19,7 @@ import { useTenantStore } from "@/lib/store/tenant"
 import {
   canPerformAction,
 } from "@/lib/ui-access"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { PeriodLockOverlay } from "./_components/PeriodLockOverlay"
 import { LockReasonDialog } from "./_components/LockReasonDialog"
@@ -62,7 +63,7 @@ export default function ClosePage() {
   )
 
   const periodQuery = useQuery({
-    queryKey: ["period-status", activeEntityId, fiscalYear, periodNumber],
+    queryKey: queryKeys.close.periodStatus(activeEntityId, fiscalYear, periodNumber),
     queryFn: async () =>
       getPeriodStatus({
         org_entity_id: activeEntityId ?? undefined,
@@ -73,7 +74,7 @@ export default function ClosePage() {
   })
 
   const readinessQuery = useQuery({
-    queryKey: ["close-readiness", activeEntityId, fiscalYear, periodNumber],
+    queryKey: queryKeys.close.readiness(activeEntityId, fiscalYear, periodNumber),
     queryFn: async () =>
       runReadiness({
         org_entity_id: activeEntityId as string,
@@ -84,7 +85,7 @@ export default function ClosePage() {
   })
 
   const monthendListQuery = useQuery({
-    queryKey: ["monthend-checklists", activeEntity?.entity_name ?? null],
+    queryKey: queryKeys.close.monthendList(activeEntity?.entity_name ?? null),
     queryFn: async () =>
       getMonthendChecklists({
         entity_name: activeEntity?.entity_name ?? undefined,
@@ -103,7 +104,7 @@ export default function ClosePage() {
   )
 
   const monthendDetailQuery = useQuery({
-    queryKey: ["monthend-checklist", currentMonthendChecklist?.checklist_id ?? null],
+    queryKey: queryKeys.close.monthendDetail(currentMonthendChecklist?.checklist_id ?? null),
     queryFn: async () =>
       currentMonthendChecklist
         ? getMonthendChecklist(currentMonthendChecklist.checklist_id)
@@ -112,10 +113,10 @@ export default function ClosePage() {
   })
 
   const refresh = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ["period-status"] })
-    await queryClient.invalidateQueries({ queryKey: ["close-readiness"] })
-    await queryClient.invalidateQueries({ queryKey: ["monthend-checklists"] })
-    await queryClient.invalidateQueries({ queryKey: ["monthend-checklist"] })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.periodStatusAll() })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.readinessAll() })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.monthendListAll() })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.monthendDetailAll() })
   }
 
   const lockMutation = useMutation({

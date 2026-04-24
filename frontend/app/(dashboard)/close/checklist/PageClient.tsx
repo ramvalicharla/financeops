@@ -13,6 +13,7 @@ import {
   type MonthendChecklistTask,
 } from "@/lib/api/close-governance"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { StateBadge } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 import { ChecklistCloseDialog } from "../_components/ChecklistCloseDialog"
@@ -45,7 +46,7 @@ export default function CloseChecklistPage() {
   )
 
   const monthendListQuery = useQuery({
-    queryKey: ["monthend-checklists", activeEntity?.entity_name ?? null],
+    queryKey: queryKeys.close.monthendList(activeEntity?.entity_name ?? null),
     queryFn: async () =>
       getMonthendChecklists({
         entity_name: activeEntity?.entity_name ?? undefined,
@@ -64,13 +65,13 @@ export default function CloseChecklistPage() {
   )
 
   const checklistDetailQuery = useQuery({
-    queryKey: ["monthend-checklist", currentChecklist?.checklist_id ?? null],
+    queryKey: queryKeys.close.monthendDetail(currentChecklist?.checklist_id ?? null),
     queryFn: async () => (currentChecklist ? getMonthendChecklist(currentChecklist.checklist_id) : null),
     enabled: Boolean(currentChecklist?.checklist_id),
   })
 
   const readinessQuery = useQuery({
-    queryKey: ["close-readiness", activeEntityId, fiscalYear, periodNumber],
+    queryKey: queryKeys.close.readiness(activeEntityId, fiscalYear, periodNumber),
     queryFn: async () =>
       runReadiness({
         org_entity_id: activeEntityId as string,
@@ -81,9 +82,9 @@ export default function CloseChecklistPage() {
   })
 
   const refresh = async (): Promise<void> => {
-    await queryClient.invalidateQueries({ queryKey: ["monthend-checklists"] })
-    await queryClient.invalidateQueries({ queryKey: ["monthend-checklist"] })
-    await queryClient.invalidateQueries({ queryKey: ["close-readiness"] })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.monthendListAll() })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.monthendDetailAll() })
+    await queryClient.invalidateQueries({ queryKey: queryKeys.close.readinessAll() })
   }
 
   const updateTaskMutation = useMutation({
