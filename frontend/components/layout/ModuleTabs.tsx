@@ -54,6 +54,16 @@ export function ModuleTabs() {
             </Link>
           )
         })}
+        {/* Module Manager entry point — wired in Phase 3. See audit QW-6. */}
+        <button
+          type="button"
+          disabled
+          title="Module Manager — coming soon"
+          aria-label="Module Manager — coming soon"
+          className="ml-1.5 my-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-dashed border-muted-foreground/30 text-sm text-muted-foreground/50 cursor-not-allowed"
+        >
+          +
+        </button>
       </nav>
     </div>
   )
