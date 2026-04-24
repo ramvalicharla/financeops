@@ -9,6 +9,11 @@ import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { cn } from "@/lib/utils"
 
+// Prevents blank tab bar if backend omits workspace_tabs. See audit QW-0.
+const FALLBACK_TABS = [
+  { workspace_key: "overview", workspace_name: "Overview", href: "/dashboard" },
+]
+
 export function ModuleTabs() {
   const pathname = usePathname() ?? ""
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
@@ -21,7 +26,10 @@ export function ModuleTabs() {
     staleTime: 60_000,
   })
 
-  const visibleTabs = contextQuery.data?.workspace_tabs ?? []
+  const tabs = contextQuery.data?.workspace_tabs?.length
+    ? contextQuery.data.workspace_tabs
+    : FALLBACK_TABS
+  const visibleTabs = tabs
   const activeModuleKey = useMemo(() => {
     const matchedTab = resolveWorkspaceFromTabs(pathname, visibleTabs)
     return matchedTab?.workspace_key ?? contextQuery.data?.current_module.module_key ?? null
