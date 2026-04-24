@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import hashlib
 import secrets
 import uuid
@@ -7,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from sqlalchemy import case, func, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import (
@@ -15,12 +16,16 @@ from financeops.api.deps import (
     get_current_user,
     require_user_plane_permission,
 )
+from financeops.db.models.payment import BillingPlan, TenantSubscription
 from financeops.config import settings
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserRole
 from financeops.modules.notifications.service import send_notification
+from financeops.platform.db.models.roles import CpRole
+from financeops.platform.db.models.tenants import CpTenant
 from financeops.platform.db.models.user_membership import CpUserEntityAssignment
+from financeops.platform.db.models.user_role_assignments import CpUserRoleAssignment
 from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
 from financeops.services.user_service import (
     list_tenant_users,
@@ -31,6 +36,7 @@ from financeops.services.user_service import (
 from financeops.shared_kernel.idempotency import optional_idempotency_key
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 tenant_user_manage_guard = require_user_plane_permission(
     resource_type="tenant_user",
@@ -58,6 +64,15 @@ class InviteUserRequest(BaseModel):
 
 class UpdateRoleRequest(BaseModel):
     role: UserRole
+
+
+class UserTenantOut(BaseModel):
+    id: str
+    slug: str
+    name: str
+    role: str
+    status: str
+    plan: str
 
 
 def _validate_tenant_assignable_role(role: UserRole) -> UserRole:
@@ -101,6 +116,185 @@ async def _get_tenant_user_or_404(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+def _active_membership_filters(model: type, *, user_id: uuid.UUID, now: datetime):
+    return (
+        model.user_id == user_id,
+        model.is_active.is_(True),
+        model.effective_from <= now,
+        or_(model.effective_to.is_(None), model.effective_to > now),
+    )
+
+
+def _build_user_tenants_stmt(
+    *,
+    current_user: IamUser,
+):
+    now = datetime.now(UTC)
+    direct_membership = select(
+        literal(current_user.tenant_id).label("tenant_id"),
+        literal(current_user.role.value).label("role_code"),
+        literal(1).label("source_priority"),
+        literal(current_user.created_at).label("created_at"),
+        literal(current_user.id).label("ordering_id"),
+    )
+    explicit_tenant_roles = (
+        select(
+            CpUserRoleAssignment.tenant_id.label("tenant_id"),
+            CpRole.role_code.label("role_code"),
+            literal(0).label("source_priority"),
+            CpUserRoleAssignment.created_at.label("created_at"),
+            CpUserRoleAssignment.id.label("ordering_id"),
+        )
+        .join(
+            CpRole,
+            (CpRole.id == CpUserRoleAssignment.role_id)
+            & (CpRole.tenant_id == CpUserRoleAssignment.tenant_id),
+        )
+        .where(*_active_membership_filters(CpUserRoleAssignment, user_id=current_user.id, now=now))
+        .where(CpUserRoleAssignment.context_type == "tenant")
+        .where(CpUserRoleAssignment.context_id.is_not(None))
+        .where(CpUserRoleAssignment.context_id == CpUserRoleAssignment.tenant_id)
+        .where(CpRole.is_active.is_(True))
+    )
+    candidate_tenants = union_all(direct_membership, explicit_tenant_roles).subquery(
+        "candidate_tenants"
+    )
+
+    ranked_roles = select(
+        candidate_tenants.c.tenant_id,
+        candidate_tenants.c.role_code,
+        func.row_number()
+        .over(
+            partition_by=candidate_tenants.c.tenant_id,
+            # deterministic rule: latest assignment wins
+            order_by=(
+                candidate_tenants.c.source_priority.asc(),
+                candidate_tenants.c.created_at.desc(),
+                candidate_tenants.c.ordering_id.desc(),
+            ),
+        )
+        .label("rn"),
+    ).cte("ranked_roles")
+    resolved_roles = (
+        select(
+            ranked_roles.c.tenant_id,
+            ranked_roles.c.role_code.label("role"),
+        )
+        .where(ranked_roles.c.rn == 1)
+        .cte("resolved_roles")
+    )
+
+    ranked_subscriptions = select(
+        TenantSubscription.tenant_id,
+        BillingPlan.plan_tier.label("plan_tier"),
+        func.row_number()
+        .over(
+            partition_by=TenantSubscription.tenant_id,
+            order_by=(
+                TenantSubscription.created_at.desc(),
+                TenantSubscription.id.desc(),
+            ),
+        )
+        .label("rn"),
+    ).join(
+        BillingPlan,
+        BillingPlan.id == TenantSubscription.plan_id,
+        isouter=True,
+    ).cte("ranked_subscriptions")
+    resolved_subscriptions = (
+        select(
+            ranked_subscriptions.c.tenant_id,
+            ranked_subscriptions.c.plan_tier,
+        )
+        .where(ranked_subscriptions.c.rn == 1)
+        .cte("resolved_subscriptions")
+    )
+
+    ranked_cp_tenants = select(
+        CpTenant.tenant_id,
+        CpTenant.billing_tier,
+        func.row_number()
+        .over(
+            partition_by=CpTenant.tenant_id,
+            order_by=(CpTenant.created_at.desc(), CpTenant.id.desc()),
+        )
+        .label("rn"),
+    ).cte("ranked_cp_tenants")
+    resolved_cp_tenants = (
+        select(
+            ranked_cp_tenants.c.tenant_id,
+            ranked_cp_tenants.c.billing_tier,
+        )
+        .where(ranked_cp_tenants.c.rn == 1)
+        .cte("resolved_cp_tenants")
+    )
+
+    return (
+        select(
+            IamTenant.id.label("id"),
+            IamTenant.slug.label("slug"),
+            IamTenant.display_name.label("name"),
+            resolved_roles.c.role.label("role"),
+            # status represents tenant lifecycle status.
+            IamTenant.status.label("status"),
+            func.coalesce(
+                resolved_subscriptions.c.plan_tier,
+                resolved_cp_tenants.c.billing_tier,
+                literal("free"),
+            ).label("plan"),
+            case(
+                (resolved_subscriptions.c.plan_tier.is_(None), True),
+                else_=False,
+            ).label("plan_fallback_applied"),
+        )
+        .join(resolved_roles, resolved_roles.c.tenant_id == IamTenant.id)
+        .outerjoin(
+            resolved_subscriptions,
+            resolved_subscriptions.c.tenant_id == IamTenant.id,
+        )
+        .outerjoin(
+            resolved_cp_tenants,
+            resolved_cp_tenants.c.tenant_id == IamTenant.id,
+        )
+        .order_by(IamTenant.display_name.asc(), IamTenant.id.asc())
+    )
+
+
+@router.get("/user/tenants", response_model=list[UserTenantOut])
+async def list_user_tenants(
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> list[UserTenantOut]:
+    rows = (await session.execute(_build_user_tenants_stmt(current_user=current_user))).all()
+    if not rows:
+        log.info("User tenants resolved user_id=%s tenant_count=0", current_user.id)
+        return []
+
+    resolved: list[UserTenantOut] = []
+    for row in rows:
+        status_value = row.status.value if hasattr(row.status, "value") else str(row.status)
+        payload = {
+            "id": str(row.id) if row.id is not None else "",
+            "slug": str(row.slug or "").strip(),
+            "name": str(row.name or "").strip(),
+            "role": str(row.role or "").strip(),
+            "status": str(status_value or "").strip(),
+            "plan": str(row.plan or "").strip(),
+        }
+        if any(not value for value in payload.values()):
+            raise ValueError("Invalid tenant response shape")
+        if row.plan_fallback_applied:
+            log.warning("Tenant plan fallback applied tenant_id=%s", payload["id"])
+        resolved.append(UserTenantOut(**payload))
+
+    log.info(
+        "User tenants resolved user_id=%s tenant_count=%s",
+        current_user.id,
+        len(resolved),
+    )
+    return resolved
 
 
 @router.get("/users")
