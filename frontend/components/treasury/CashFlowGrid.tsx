@@ -127,6 +127,7 @@ export function CashFlowGrid({ weeks, onCellEdit }: CashFlowGridProps) {
                             event.currentTarget.value = formatNumeric(value)
                             return
                           }
+                          // Backend submission value — raw serialisation, not display. See QW-10 deferred list.
                           const raw = parsedRaw.toFixed(2)
                           event.currentTarget.value = formatNumeric(
                             String(parsedRaw / SCALE_DIVISORS[scale]),

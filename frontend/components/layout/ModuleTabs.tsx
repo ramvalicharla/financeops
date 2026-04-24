@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useMemo } from "react"
+import * as Sentry from "@sentry/browser"
 import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
@@ -36,10 +37,10 @@ export function ModuleTabs() {
     const overview = tabs.find((t) => t.workspace_key === "overview")
     const others = tabs.filter((t) => t.workspace_key !== "overview")
     if (!overview) {
-      console.warn("[shell] Backend omitted Overview tab; prepending from fallback.")
+      Sentry.captureMessage("[shell] Backend omitted Overview tab; prepending from fallback.", "warning")
       return [{ workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] }, ...others]
     }
-    console.warn("[shell] Backend returned non-canonical tab order; re-sorting to put Overview first.")
+    Sentry.captureMessage("[shell] Backend returned non-canonical tab order; re-sorting to put Overview first.", "warning")
     return [overview, ...others]
   })()
   const activeModuleKey = useMemo(() => {
