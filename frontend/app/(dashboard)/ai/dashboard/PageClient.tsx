@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useQuery } from "@tanstack/react-query"
 import { getAiAnomalies, getAiRecommendations } from "@/lib/api/ai-cfo"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 export default function AiDashboardPage() {
   const entityId = useTenantStore((state) => state.active_entity_id)
@@ -11,7 +12,7 @@ export default function AiDashboardPage() {
   const fromDate = `${today.slice(0, 8)}01`
 
   const anomaliesQuery = useQuery({
-    queryKey: ["ai-dashboard-anomalies", entityId, fromDate, today],
+    queryKey: queryKeys.ai.dashboardAnomalies(entityId, fromDate, today),
     queryFn: () =>
       getAiAnomalies({
         org_entity_id: entityId ?? undefined,
@@ -22,7 +23,7 @@ export default function AiDashboardPage() {
   })
 
   const recommendationsQuery = useQuery({
-    queryKey: ["ai-dashboard-recommendations", entityId, fromDate, today],
+    queryKey: queryKeys.ai.dashboardRecommendations(entityId, fromDate, today),
     queryFn: () =>
       getAiRecommendations({
         org_entity_id: entityId ?? undefined,
