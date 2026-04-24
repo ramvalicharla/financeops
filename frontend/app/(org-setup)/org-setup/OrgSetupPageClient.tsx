@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/orgSetup"
 import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 export default function OrgSetupPageClient() {
   const router = useRouter()
@@ -34,7 +35,7 @@ export default function OrgSetupPageClient() {
   const [localStep, setLocalStep] = useState<5 | null>(null)
 
   const summaryQuery = useQuery({
-    queryKey: ["org-setup-summary"],
+    queryKey: queryKeys.orgSetup.summary(),
     queryFn: getOrgSetupSummary,
   })
 
@@ -73,7 +74,7 @@ export default function OrgSetupPageClient() {
   const step1Mutation = useMutation({
     mutationFn: submitOrgSetupStep1,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.summary() })
     },
   })
 
@@ -84,21 +85,21 @@ export default function OrgSetupPageClient() {
         entities: payload,
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.summary() })
     },
   })
 
   const step3Mutation = useMutation({
     mutationFn: submitOrgSetupStep3,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.summary() })
     },
   })
 
   const step4Mutation = useMutation({
     mutationFn: submitOrgSetupStep4,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["org-setup-summary"] })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.summary() })
       // Advance to local step 5 (Invite team) before navigating
       setLocalStep(5)
     },
