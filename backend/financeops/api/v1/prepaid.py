@@ -3,9 +3,11 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
+from financeops.db.models.prepaid import PrepaidAmortizationSchedule, PrepaidRun
 from financeops.core.intent.api import build_idempotency_key, build_intent_actor
 from financeops.core.intent.enums import IntentType
 from financeops.core.intent.service import IntentService
@@ -55,6 +57,53 @@ async def _submit_intent(
             body=payload,
         ),
     )
+
+
+@router.get("/schedule")
+async def get_prepaid_schedule_endpoint(
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> list[dict]:
+    latest_run = (
+        await session.execute(
+            select(PrepaidRun)
+            .where(PrepaidRun.tenant_id == user.tenant_id)
+            .order_by(PrepaidRun.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_run is None:
+        return []
+    rows = (
+        await session.execute(
+            select(PrepaidAmortizationSchedule)
+            .where(
+                PrepaidAmortizationSchedule.tenant_id == user.tenant_id,
+                PrepaidAmortizationSchedule.run_id == latest_run.id,
+            )
+            .order_by(
+                PrepaidAmortizationSchedule.amortization_date.asc(),
+                PrepaidAmortizationSchedule.period_seq.asc(),
+            )
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "run_id": str(row.run_id),
+            "prepaid_id": str(row.prepaid_id),
+            "period_seq": row.period_seq,
+            "amortization_date": row.amortization_date.isoformat(),
+            "recognition_period_year": row.recognition_period_year,
+            "recognition_period_month": row.recognition_period_month,
+            "base_amount_contract_currency": str(row.base_amount_contract_currency),
+            "amortized_amount_reporting_currency": str(row.amortized_amount_reporting_currency),
+            "cumulative_amortized_reporting_currency": str(row.cumulative_amortized_reporting_currency),
+            "fx_rate_used": str(row.fx_rate_used),
+            "schedule_status": row.schedule_status,
+        }
+        for row in rows
+    ]
 
 
 @router.post("/run", response_model=PrepaidRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)

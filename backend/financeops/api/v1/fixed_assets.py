@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
@@ -10,6 +10,8 @@ from financeops.core.intent.api import build_idempotency_key, build_intent_actor
 from financeops.core.intent.enums import IntentType
 from financeops.core.intent.service import IntentService
 from financeops.db.models.users import IamUser
+from financeops.modules.fixed_assets.api.schemas import FaAssetResponse
+from financeops.modules.fixed_assets.application.fixed_asset_service import FixedAssetService
 from financeops.platform.services.enforcement.interceptors import (
     validate_optional_control_plane_token,
 )
@@ -33,6 +35,7 @@ from financeops.services.fixed_assets import (
     get_results,
     get_run_status,
 )
+from financeops.shared_kernel.pagination import Paginated
 
 router = APIRouter(
     dependencies=[Depends(validate_optional_control_plane_token(module_code="fixed_assets"))]
@@ -59,6 +62,47 @@ async def _submit_intent(
             body=payload,
         ),
     )
+
+
+@router.get("", response_model=Paginated[FaAssetResponse])
+async def list_fixed_assets(
+    entity_id: UUID = Query(...),
+    status: str | None = Query(default=None),
+    location_id: UUID | None = Query(default=None),
+    cost_centre_id: UUID | None = Query(default=None),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=1000),
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> Paginated[FaAssetResponse]:
+    service = FixedAssetService(session)
+    payload = await service.get_assets(
+        user.tenant_id,
+        entity_id,
+        skip,
+        limit,
+        status=status,
+        location_id=location_id,
+        cost_centre_id=cost_centre_id,
+    )
+    return Paginated[FaAssetResponse](
+        items=[FaAssetResponse.model_validate(item, from_attributes=True) for item in payload["items"]],
+        total=payload["total"],
+        skip=payload["skip"],
+        limit=payload["limit"],
+        has_more=payload["has_more"],
+    )
+
+
+@router.get("/{asset_id}", response_model=FaAssetResponse)
+async def get_fixed_asset(
+    asset_id: UUID,
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> FaAssetResponse:
+    service = FixedAssetService(session)
+    row = await service.get_asset(user.tenant_id, asset_id)
+    return FaAssetResponse.model_validate(row, from_attributes=True)
 
 
 @router.post("/run", response_model=FarRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)

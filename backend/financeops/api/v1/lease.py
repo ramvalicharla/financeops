@@ -4,11 +4,13 @@ from datetime import timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.api.deps import get_async_session, require_finance_leader, require_finance_team
 from financeops.config import settings
 from financeops.core.intent.dispatcher import JobDispatcher
+from financeops.db.models.lease import LeaseLiabilitySchedule, LeaseRun
 from financeops.db.models.users import IamUser
 from financeops.schemas.lease import (
     LeaseContractDrillResponse,
@@ -37,6 +39,50 @@ from financeops.temporal.lease_workflows import (
 )
 
 router = APIRouter()
+
+
+@router.get("/schedule")
+async def get_lease_schedule_endpoint(
+    session: AsyncSession = Depends(get_async_session),
+    user: IamUser = Depends(require_finance_team),
+) -> list[dict]:
+    latest_run = (
+        await session.execute(
+            select(LeaseRun)
+            .where(LeaseRun.tenant_id == user.tenant_id)
+            .order_by(LeaseRun.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_run is None:
+        return []
+    rows = (
+        await session.execute(
+            select(LeaseLiabilitySchedule)
+            .where(
+                LeaseLiabilitySchedule.tenant_id == user.tenant_id,
+                LeaseLiabilitySchedule.run_id == latest_run.id,
+            )
+            .order_by(LeaseLiabilitySchedule.schedule_date.asc(), LeaseLiabilitySchedule.period_seq.asc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(row.id),
+            "run_id": str(row.run_id),
+            "lease_id": str(row.lease_id),
+            "period_seq": row.period_seq,
+            "schedule_date": row.schedule_date.isoformat(),
+            "period_year": row.period_year,
+            "period_month": row.period_month,
+            "opening_liability": str(row.opening_liability_reporting_currency),
+            "interest_expense": str(row.interest_expense_reporting_currency),
+            "payment_amount": str(row.payment_amount_reporting_currency),
+            "closing_liability": str(row.closing_liability_reporting_currency),
+            "fx_rate_used": str(row.fx_rate_used),
+        }
+        for row in rows
+    ]
 
 
 @router.post("/run", response_model=LeaseRunAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)

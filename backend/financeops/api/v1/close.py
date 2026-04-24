@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 import uuid
 
@@ -52,12 +53,7 @@ async def trigger_month_end_close(
     }
 
 
-@router.get("/{workflow_id}/status")
-async def get_month_end_close_status(
-    workflow_id: str,
-    user: IamUser = Depends(require_finance_leader),
-) -> dict:
-    _ = user
+async def _get_workflow_status(workflow_id: str) -> dict:
     handle = await JobDispatcher().get_temporal_workflow_handle(workflow_id)
     try:
         description = await handle.describe()
@@ -86,3 +82,23 @@ async def get_month_end_close_status(
         "status": mapped,
         "result": result_payload,
     }
+
+
+@router.get("/by-period/{period}/status")
+async def get_month_end_close_status_by_period(
+    period: str,
+    user: IamUser = Depends(require_finance_leader),
+) -> dict:
+    if not re.fullmatch(r"\d{4}-\d{2}", period):
+        raise HTTPException(status_code=400, detail="period must be YYYY-MM")
+    workflow_id = f"month-end-close-{user.tenant_id}-{period}"
+    return await _get_workflow_status(workflow_id)
+
+
+@router.get("/{workflow_id}/status")
+async def get_month_end_close_status(
+    workflow_id: str,
+    user: IamUser = Depends(require_finance_leader),
+) -> dict:
+    _ = user
+    return await _get_workflow_status(workflow_id)

@@ -15,7 +15,7 @@ from financeops.modules.erp_push.application.posting_service import execute_push
 from financeops.modules.erp_push.application.push_task import push_journal_task
 from financeops.shared_kernel.response import ok
 
-router = APIRouter(prefix="/erp-push", tags=["ERP Push"])
+router = APIRouter(tags=["ERP Push"])
 
 
 class PushRequest(BaseModel):

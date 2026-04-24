@@ -22,7 +22,14 @@ def schedule_notification_delivery(
     notification_event_id: uuid.UUID,
     tenant_id: uuid.UUID,
 ):
-    return send_notification_task.delay(str(notification_event_id), str(tenant_id))
+    try:
+        return send_notification_task.delay(str(notification_event_id), str(tenant_id))
+    except Exception as exc:
+        log.warning(
+            "task_enqueue_failed task=%s error=%s",
+            send_notification_task.name,
+            exc,
+        )
 
 
 async def run_notification_delivery(
