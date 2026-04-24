@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils"
 
 // Prevents blank tab bar if backend omits workspace_tabs. See audit QW-0.
 const FALLBACK_TABS = [
-  { workspace_key: "overview", workspace_name: "Overview", href: "/dashboard" },
+  { workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] },
 ]
 
 export function ModuleTabs() {
@@ -37,7 +37,7 @@ export function ModuleTabs() {
     const others = tabs.filter((t) => t.workspace_key !== "overview")
     if (!overview) {
       console.warn("[shell] Backend omitted Overview tab; prepending from fallback.")
-      return [{ workspace_key: "overview", workspace_name: "Overview", href: "/dashboard" }, ...others]
+      return [{ workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] }, ...others]
     }
     console.warn("[shell] Backend returned non-canonical tab order; re-sorting to put Overview first.")
     return [overview, ...others]
