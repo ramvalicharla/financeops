@@ -29,7 +29,19 @@ export function ModuleTabs() {
   const tabs = contextQuery.data?.workspace_tabs?.length
     ? contextQuery.data.workspace_tabs
     : FALLBACK_TABS
-  const visibleTabs = tabs
+
+  // Spec §1.5: Overview must be first and required. Re-sort if backend violates this.
+  const visibleTabs = (() => {
+    if (tabs[0]?.workspace_key === "overview") return tabs
+    const overview = tabs.find((t) => t.workspace_key === "overview")
+    const others = tabs.filter((t) => t.workspace_key !== "overview")
+    if (!overview) {
+      console.warn("[shell] Backend omitted Overview tab; prepending from fallback.")
+      return [{ workspace_key: "overview", workspace_name: "Overview", href: "/dashboard" }, ...others]
+    }
+    console.warn("[shell] Backend returned non-canonical tab order; re-sorting to put Overview first.")
+    return [overview, ...others]
+  })()
   const activeModuleKey = useMemo(() => {
     const matchedTab = resolveWorkspaceFromTabs(pathname, visibleTabs)
     return matchedTab?.workspace_key ?? contextQuery.data?.current_module.module_key ?? null
