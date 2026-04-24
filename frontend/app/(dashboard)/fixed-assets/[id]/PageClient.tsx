@@ -123,7 +123,7 @@ export default function FixedAssetDetailPage({ params }: FixedAssetDetailPagePro
     onSuccess: () => {
       setDisposalDate("")
       setDisposalProceeds("")
-      void queryClient.invalidateQueries({ queryKey: ["fa-asset", params.id] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.asset(params.id) })
     },
   })
 
