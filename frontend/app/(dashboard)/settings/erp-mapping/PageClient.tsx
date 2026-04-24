@@ -12,6 +12,7 @@ import {
   type ErpMapping,
 } from "@/lib/api/coa"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 
 const confidenceToPercent = (value: string | null): number => {
@@ -44,12 +45,12 @@ export default function ErpMappingPage() {
   const [viewFilter, setViewFilter] = useState<"all" | "unmapped" | "unconfirmed">("all")
 
   const tenantAccountsQuery = useQuery({
-    queryKey: ["tenant-coa-accounts-for-mapping"],
+    queryKey: queryKeys.coa.tenantAccountsForMapping(),
     queryFn: getTenantCoaAccounts,
   })
 
   const mappingsQuery = useQuery({
-    queryKey: ["erp-mappings", activeEntityId, connectorType],
+    queryKey: queryKeys.erp.mappings(activeEntityId, connectorType),
     queryFn: () =>
       getErpMappings({
         entity_id: activeEntityId ?? "",
@@ -59,7 +60,7 @@ export default function ErpMappingPage() {
   })
 
   const summaryQuery = useQuery({
-    queryKey: ["erp-mappings-summary", activeEntityId, connectorType],
+    queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType),
     queryFn: () =>
       getErpMappingSummary({
         entity_id: activeEntityId ?? "",
@@ -85,8 +86,8 @@ export default function ErpMappingPage() {
       })
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["erp-mappings", activeEntityId, connectorType] })
-      void queryClient.invalidateQueries({ queryKey: ["erp-mappings-summary", activeEntityId, connectorType] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(activeEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType) })
     },
   })
 
@@ -94,8 +95,8 @@ export default function ErpMappingPage() {
     mutationFn: ({ mappingId, tenantCoaAccountId }: { mappingId: string; tenantCoaAccountId: string }) =>
       confirmErpMapping(mappingId, tenantCoaAccountId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["erp-mappings", activeEntityId, connectorType] })
-      void queryClient.invalidateQueries({ queryKey: ["erp-mappings-summary", activeEntityId, connectorType] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(activeEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType) })
     },
   })
 
@@ -106,8 +107,8 @@ export default function ErpMappingPage() {
         auto_confirm_above: "0.90",
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["erp-mappings", activeEntityId, connectorType] })
-      void queryClient.invalidateQueries({ queryKey: ["erp-mappings-summary", activeEntityId, connectorType] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(activeEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType) })
     },
   })
 

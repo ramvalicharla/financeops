@@ -14,6 +14,7 @@ import {
   updateErpConnectorStatus,
 } from "@/lib/api/erp"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import {
   canPerformAction,
   getAccessErrorMessage,
@@ -54,7 +55,7 @@ export default function ErpConnectorsPage() {
   const [testResult, setTestResult] = useState<Record<string, unknown> | null>(null)
 
   const connectorsQuery = useQuery({
-    queryKey: ["erp-connectors"],
+    queryKey: queryKeys.erp.connectors(),
     queryFn: listErpConnectors,
   })
 
@@ -75,7 +76,7 @@ export default function ErpConnectorsPage() {
       })
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["erp-connectors"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.connectors() })
     },
   })
 
@@ -88,7 +89,7 @@ export default function ErpConnectorsPage() {
     mutationFn: ({ connectorId, status }: { connectorId: string; status: ErpConnectorStatus }) =>
       updateErpConnectorStatus(connectorId, status),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["erp-connectors"] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.connectors() })
     },
   })
 

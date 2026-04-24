@@ -13,6 +13,7 @@ import {
   type ErpMapping,
 } from "@/lib/api/coa"
 import type { OrgEntity } from "@/lib/api/orgSetup"
+import { queryKeys } from "@/lib/query/keys"
 
 interface Step6ErpMappingProps {
   entities: OrgEntity[]
@@ -48,12 +49,12 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
   const [viewFilter, setViewFilter] = useState<"all" | "unmapped" | "unconfirmed">("all")
 
   const tenantAccountsQuery = useQuery({
-    queryKey: ["org-setup-tenant-coa-accounts"],
+    queryKey: queryKeys.orgSetup.tenantCoaAccounts(),
     queryFn: getTenantCoaAccounts,
   })
 
   const mappingQuery = useQuery({
-    queryKey: ["org-setup-erp-mappings", selectedEntityId, connectorType],
+    queryKey: queryKeys.orgSetup.erpMappings(selectedEntityId, connectorType),
     queryFn: () =>
       getErpMappings({
         entity_id: selectedEntityId,
@@ -63,7 +64,7 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
   })
 
   const summaryQuery = useQuery({
-    queryKey: ["org-setup-erp-summary", selectedEntityId, connectorType],
+    queryKey: queryKeys.orgSetup.erpSummary(selectedEntityId, connectorType),
     queryFn: () =>
       getErpMappingSummary({
         entity_id: selectedEntityId,
@@ -76,8 +77,8 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
     mutationFn: ({ mappingId, accountId }: { mappingId: string; accountId: string }) =>
       confirmErpMapping(mappingId, accountId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-erp-mappings", selectedEntityId, connectorType] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-erp-summary", selectedEntityId, connectorType] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.erpMappings(selectedEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.erpSummary(selectedEntityId, connectorType) })
     },
   })
 
@@ -88,8 +89,8 @@ export function Step6ErpMapping({ entities, submitting, onSubmit }: Step6ErpMapp
         auto_confirm_above: "0.90",
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-erp-mappings", selectedEntityId, connectorType] })
-      void queryClient.invalidateQueries({ queryKey: ["org-setup-erp-summary", selectedEntityId, connectorType] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.erpMappings(selectedEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orgSetup.erpSummary(selectedEntityId, connectorType) })
     },
   })
 

@@ -18,6 +18,7 @@ import {
   getPermissionDeniedMessage,
 } from "@/lib/ui-access"
 import { Button } from "@/components/ui/button"
+import { queryKeys } from "@/lib/query/keys"
 
 const MODULES: ErpSyncModule[] = ["COA", "JOURNALS", "VENDORS", "CUSTOMERS"]
 const TYPES: ErpSyncType[] = ["IMPORT", "EXPORT"]
@@ -37,12 +38,12 @@ export default function ErpSyncPage() {
   const [moduleName, setModuleName] = useState<ErpSyncModule>("COA")
 
   const connectorsQuery = useQuery({
-    queryKey: ["erp-connectors"],
+    queryKey: queryKeys.erp.connectors(),
     queryFn: listErpConnectors,
   })
 
   const jobsQuery = useQuery({
-    queryKey: ["erp-sync-jobs", connectorId],
+    queryKey: queryKeys.erp.syncJobs(connectorId),
     queryFn: () => listErpSyncJobs({ erp_connector_id: connectorId || undefined }),
   })
 
@@ -54,7 +55,7 @@ export default function ErpSyncPage() {
         module: moduleName,
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["erp-sync-jobs", connectorId] })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.syncJobs(connectorId) })
     },
   })
 
