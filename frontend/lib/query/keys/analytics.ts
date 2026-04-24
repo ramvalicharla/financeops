@@ -12,7 +12,7 @@ export const analyticsKeys = {
 
   kpiDrilldown: (
     entityId: string | null,
-    metric: string,
+    metric: string | null,
     fromDate: string,
     toDate: string,
   ) =>

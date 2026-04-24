@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDrilldown, getKpis } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 import { StructuredDataView, TableSkeleton } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
@@ -14,7 +15,7 @@ export default function KpisPage() {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null)
 
   const kpisQuery = useQuery({
-    queryKey: ["analytics-kpis-page", entityId, fromDate, today],
+    queryKey: queryKeys.analytics.kpis(entityId, fromDate, today),
     queryFn: () =>
       getKpis({
         org_entity_id: entityId ?? undefined,
@@ -26,7 +27,7 @@ export default function KpisPage() {
   })
 
   const drilldownQuery = useQuery({
-    queryKey: ["analytics-kpi-drilldown", entityId, selectedMetric, fromDate, today],
+    queryKey: queryKeys.analytics.kpiDrilldown(entityId, selectedMetric, fromDate, today),
     queryFn: () =>
       getDrilldown({
         metric_name: selectedMetric ?? "",

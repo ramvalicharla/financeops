@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getVariance } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 const abs = (value: string | number | null | undefined) => Math.abs(Number(value ?? 0))
 
@@ -14,7 +15,7 @@ export default function VariancePage() {
   const fromDate = `${today.slice(0, 8)}01`
 
   const varianceQuery = useQuery({
-    queryKey: ["analytics-variance", entityId, fromDate, today, comparison],
+    queryKey: queryKeys.analytics.variance(entityId, fromDate, today, comparison),
     queryFn: () =>
       getVariance({
         org_entity_id: entityId ?? undefined,

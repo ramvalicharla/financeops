@@ -8,6 +8,7 @@ import type { CfoChartDatum } from "@/components/charts"
 import { DataActivationSection } from "@/components/dashboard/DataActivationSection"
 import { getKpis, getTrends } from "@/lib/api/analytics"
 import { useTenantStore } from "@/lib/store/tenant"
+import { queryKeys } from "@/lib/query/keys"
 
 const CfoChart = dynamic(
   () => import("@/components/charts/CfoChart").then((module) => module.CfoChart),
@@ -25,7 +26,7 @@ export default function CfoDashboardPage() {
   const fromDate = `${today.slice(0, 8)}01`
 
   const kpisQuery = useQuery({
-    queryKey: ["analytics-kpis-cfo", entityId, fromDate, today],
+    queryKey: queryKeys.analytics.kpisCfo(entityId, fromDate, today),
     queryFn: () =>
       getKpis({
         org_entity_id: entityId ?? undefined,
@@ -37,7 +38,7 @@ export default function CfoDashboardPage() {
   })
 
   const trendsQuery = useQuery({
-    queryKey: ["analytics-trends-cfo", entityId, fromDate, today],
+    queryKey: queryKeys.analytics.trendsCfo(entityId, fromDate, today),
     queryFn: () =>
       getTrends({
         org_entity_id: entityId ?? undefined,
