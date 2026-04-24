@@ -12,7 +12,7 @@ export const settingsKeys = {
     ["settings-locations", entityId, skip, limit] as const,
 
   // Prefix used in invalidateQueries (clears all skip/limit variants)
-  locationsRoot: (entityId: string | null) =>
+  locationsAll: (entityId: string | null) =>
     ["settings-locations", entityId] as const,
 
   // Entity locations — used by EntityLocationSelector and settings/locations invalidation

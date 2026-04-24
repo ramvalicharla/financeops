@@ -21,14 +21,14 @@ export const fixedAssetsKeys = {
     ] as const,
 
   // Prefix used in invalidateQueries (clears all filter/page variants)
-  listRoot: (entityId: string | null) => ["fa-assets", entityId] as const,
+  listAll: (entityId: string | null) => ["fa-assets", entityId] as const,
 
   // Full key used in useQuery
   register: (entityId: string | null, asOfDate: string, gaap: string) =>
     ["fa-register", entityId, asOfDate, gaap] as const,
 
   // Prefix used in invalidateQueries
-  registerRoot: (entityId: string | null) =>
+  registerAll: (entityId: string | null) =>
     ["fa-register", entityId] as const,
 
   locations: (entityId: string | null) =>

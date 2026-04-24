@@ -23,7 +23,7 @@ export const prepaidKeys = {
     ] as const,
 
   // Prefix used in invalidateQueries (clears all filter/page variants)
-  schedulesRoot: (entityId: string | null) =>
+  schedulesAll: (entityId: string | null) =>
     ["prepaid-schedules", entityId] as const,
 
   locations: (entityId: string | null) =>

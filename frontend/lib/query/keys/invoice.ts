@@ -6,7 +6,7 @@ export const invoiceKeys = {
     ["invoice-review-queue", entityId, skip, limit] as const,
 
   // Prefix used in invalidateQueries (clears all skip/limit variants)
-  queueRoot: (entityId: string | null) =>
+  queueAll: (entityId: string | null) =>
     ["invoice-review-queue", entityId] as const,
 
   // Full key used in useQuery
@@ -27,7 +27,7 @@ export const invoiceKeys = {
     ] as const,
 
   // Prefix used in invalidateQueries (clears all filter/page variants)
-  historyRoot: (entityId: string | null) =>
+  historyAll: (entityId: string | null) =>
     ["invoice-history", entityId] as const,
 
   rules: () => ["invoice-rules"] as const,
