@@ -217,7 +217,7 @@ export default function TrialBalancePage() {
             <span className="text-muted-foreground">Entity</span>
             <select
               value={entityId ?? ""}
-              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
             >
               <option value="">Select entity</option>
