@@ -47,8 +47,16 @@ def upgrade() -> None:
 
     # 2. Add org_admin to the iam_users role enum
     #    PostgreSQL enums require ALTER TYPE; Alembic exposes execute() for raw DDL.
-    conn.execute(
-        sa.text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'org_admin'")
+    #    The type is named user_role_enum (defined in 0001_initial_schema.py).
+    op.execute(
+        sa.text(
+            "DO $$ BEGIN "
+            "  IF NOT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid "
+            "    WHERE t.typname = 'user_role_enum' AND e.enumlabel = 'org_admin') THEN "
+            "    ALTER TYPE user_role_enum ADD VALUE 'org_admin'; "
+            "  END IF; "
+            "END $$"
+        )
     )
 
     # 3. Seed the 4 canonical plans (INSERT ... ON CONFLICT DO NOTHING)
