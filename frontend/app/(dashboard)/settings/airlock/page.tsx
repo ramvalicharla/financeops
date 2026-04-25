@@ -1,4 +1,10 @@
+import type { Metadata } from "next"
 import { AirlockQueue } from "@/components/airlock/AirlockQueue"
+
+export const metadata: Metadata = {
+  title: "Airlock Queue · Finqor",
+  description: "Review and approve incoming data submissions before they land in production accounting records.",
+}
 
 export default function AirlockQueuePage() {
   return (
