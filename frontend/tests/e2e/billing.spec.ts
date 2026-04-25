@@ -108,7 +108,7 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse(invoices))
     })
 
-    await page.goto("/billing")
+    await page.goto("/settings/billing")
     await expect(page.getByText("PROFESSIONAL")).toBeVisible()
     await expect(page.getByText("450").first()).toBeVisible()
     await expect(page.locator("table").nth(1).locator("tbody tr")).toHaveCount(3)
@@ -136,7 +136,7 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse([]))
     })
 
-    await page.goto("/billing")
+    await page.goto("/settings/billing")
     await expect(
       page.getByText("Account suspended. Update payment method to restore access."),
     ).toBeVisible()
@@ -164,7 +164,7 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse([]))
     })
 
-    await page.goto("/billing")
+    await page.goto("/settings/billing")
     await expect(page.getByText("Account in grace period.")).toBeVisible()
   })
 
@@ -197,7 +197,7 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse({ success: true }))
     })
 
-    await page.goto("/billing")
+    await page.goto("/settings/billing")
     await page.getByRole("button", { name: "Buy More Credits" }).click()
     const topUpDialog = page.getByRole("dialog", { name: "Add credits" })
     await expect(topUpDialog).toBeVisible()
@@ -234,7 +234,7 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse({ success: true }))
     })
 
-    await page.goto("/billing")
+    await page.goto("/settings/billing")
     await page.getByRole("button", { name: "Cancel Subscription" }).click()
     const cancelDialog = page.getByRole("dialog", { name: /Cancel subscription/i })
     await expect(cancelDialog).toBeVisible()
@@ -278,7 +278,7 @@ test.describe("Billing page", () => {
       await fulfillJson(route, apiResponse([]))
     })
 
-    await page.goto("/billing")
+    await page.goto("/settings/billing")
     await expect(page.getByText("Failed to load billing subscription details.")).toBeVisible()
     await expectNotCrashed(page)
   })
