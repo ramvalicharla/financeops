@@ -56,6 +56,75 @@ at an API the frontend can read and switch between.
 
 ---
 
+## 0. Pre-implementation investigation gate
+
+Before writing any model, migration, or endpoint code, the backend agent must
+complete and report on two investigations. Both are read-only. Neither
+investigation modifies the codebase. Implementation proceeds only after both
+are reported and any required ticket amendments are made.
+
+### 0.1 — `scope` claim handling in the auth path
+
+The admin impersonation flow (`admin.py:519–557`) issues a 900-second JWT with
+`scope: "platform_switch"` and `switched_by` claims. The user switch token
+defined in Section 4.2 carries **no** `scope` claim. Before implementing,
+verify the existing auth path does not reject tokens for missing or
+non-`platform_switch` scope claims.
+
+Read and capture verbatim:
+- `backend/financeops/api/deps.py` — `get_current_user`, `get_current_tenant`,
+  and any related dependency functions
+- Any middleware in `backend/financeops/main.py` or `backend/financeops/api/`
+  that touches JWT validation
+- Any decorator-based guard that inspects token claims
+
+For each, report whether `scope` claims are: (a) ignored, (b) required to
+match a specific value, (c) required to be absent, or (d) checked
+conditionally. Cite file path and line number for every finding.
+
+**If the existing auth path requires `scope: "platform_switch"`** for any
+switch-flavored token, the ticket needs amendment — either issue the user
+switch token with a new scope value (e.g. `scope: "user_switch"`) and update
+the auth path to accept it, or restructure the check. Stop and request
+ticket amendment before proceeding.
+
+**If `scope` is ignored or optional**, the ticket as written is correct.
+Proceed.
+
+### 0.2 — `create_access_token` signature
+
+Section 4.2 line 260 shows:
+`create_access_token(user.id, target_tenant_id, membership.role.value, additional_claims={})`
+
+The `additional_claims` kwarg may or may not exist on the current
+implementation. Read `backend/financeops/core/security.py` and capture the
+exact signature of `create_access_token`. Also capture the call site in
+`backend/financeops/services/auth_service.py:116–121` for reference.
+
+**If the kwarg exists or the function accepts `**kwargs`**, the ticket as
+written is correct. Proceed.
+
+**If the kwarg does not exist and there is no `**kwargs`**, the ticket needs
+amendment — either add the kwarg to `create_access_token` (small refactor,
+~30 minutes, and re-test all existing call sites), or change Section 4.2 to
+construct the JWT inline rather than via `create_access_token`. Stop and
+request ticket amendment before proceeding.
+
+### Gate report
+
+The agent must produce a short report (≤ 1 page) at the start of the BE-001
+branch, committed as the first commit on that branch:
+
+`docs/audits/be001-investigation-gate-YYYY-MM-DD.md`
+
+The report has two sections (0.1 and 0.2), each ending with the verdict
+"Proceed as written" or "Ticket amendment required: [specifics]".
+
+If either verdict is "amendment required", the agent stops and requests the
+amendment from the ticket owner before writing implementation code.
+
+---
+
 ## Scope
 
 ### 1. Migration strategy
