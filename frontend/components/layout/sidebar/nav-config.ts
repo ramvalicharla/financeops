@@ -9,12 +9,11 @@
  *   SidebarNavItem (which expects NavigationLeafItem) and filterNavigationItems
  *   (which expects readonly NavigationItem[]) without type errors.
  *
- * Route placeholders (6 of 12 routes missing — FU-012 filed in 1.2):
+ * Route placeholders (5 of 12 routes missing — FU-012 filed in 1.2):
  *   /settings/connectors    → MISSING (placeholder /dashboard)
- *   /settings/modules       → MISSING; /modules exists — rename candidate
- *   /settings/billing       → MISSING; /billing exists — rename candidate
- *   /governance/audit       → MISSING; /audit exists — rename candidate
- *   /settings/team          → MISSING; /settings/users + /settings/groups exist — consolidation candidate
+ *   /today                  → MISSING (placeholder /dashboard)
+ *   /period-close           → MISSING (placeholder /dashboard)
+ *   /approvals              → MISSING (placeholder /dashboard)
  *   /governance/compliance  → MISSING (placeholder /dashboard)
  */
 
@@ -70,20 +69,16 @@ export const NAV_GROUPS: NavGroup[] = [
       { id: "org-settings", label: "Org settings", href: "/settings", icon: Settings },
       // TODO Phase 2: route does not exist yet (/settings/connectors)
       { id: "connectors", label: "Connectors", href: "/dashboard", icon: Plug },
-      // TODO Phase 2: route does not exist yet (/settings/modules — /modules exists, rename candidate)
-      { id: "modules", label: "Modules", href: "/dashboard", icon: LayoutGrid },
-      // TODO Phase 2: route does not exist yet (/settings/billing — /billing exists, rename candidate)
-      { id: "billing", label: "Billing · Credits", href: "/dashboard", icon: CreditCard },
+      { id: "modules", label: "Modules", href: "/settings/modules", icon: LayoutGrid },
+      { id: "billing", label: "Billing · Credits", href: "/settings/billing", icon: CreditCard },
     ],
   },
   {
     id: "governance",
     label: "Governance",
     items: [
-      // TODO Phase 2: route does not exist yet (/governance/audit — /audit exists, rename candidate)
-      { id: "audit-trail", label: "Audit trail", href: "/dashboard", icon: ScrollText },
-      // TODO Phase 2: route does not exist yet (/settings/team — /settings/users + /settings/groups exist, consolidation candidate)
-      { id: "team-rbac", label: "Team · RBAC", href: "/dashboard", icon: Users },
+      { id: "audit-trail", label: "Audit trail", href: "/governance/audit", icon: ScrollText },
+      { id: "team-rbac", label: "Team · RBAC", href: "/settings/team", icon: Users },
       // TODO Phase 2: route does not exist yet (/governance/compliance)
       { id: "compliance", label: "Compliance", href: "/dashboard", icon: ShieldCheck },
     ],
