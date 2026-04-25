@@ -12,6 +12,7 @@ import { Dialog } from "@/components/ui/Dialog"
 import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { getSafeCallbackUrl } from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 type Step = "generate" | "verify" | "done"
 type SessionTokens = {
@@ -46,6 +47,7 @@ export default function MFASetupPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const setTenant = useTenantStore((state) => state.setTenant)
+  const { setOrgId, setEntityId } = useWorkspaceStore()
   const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
   const [step, setStep] = useState<Step>("generate")
   const [secret, setSecret] = useState("")
@@ -178,6 +180,8 @@ export default function MFASetupPage() {
           entity_roles: user.entity_roles,
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
+        setOrgId(user.tenant_id)
+        setEntityId(user.entity_roles.at(0)?.entity_id ?? null)
       }
 
       setRecoveryDialogOpen(false)

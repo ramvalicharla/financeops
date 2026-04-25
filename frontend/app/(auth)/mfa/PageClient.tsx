@@ -12,6 +12,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { getSafeCallbackUrl } from "@/lib/login-flow"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 const mfaSchema = z.object({
   code: z
@@ -34,6 +35,7 @@ function MFAPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const setTenant = useTenantStore((state) => state.setTenant)
+  const { setOrgId, setEntityId } = useWorkspaceStore()
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const challengeToken = searchParams?.get("challenge")?.trim() ?? null
@@ -111,6 +113,8 @@ function MFAPageContent() {
           entity_roles: user.entity_roles,
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
+        setOrgId(user.tenant_id)
+        setEntityId(user.entity_roles.at(0)?.entity_id ?? null)
       }
       navigateAfterAuth(callbackUrl)
     } catch (error) {
