@@ -18,7 +18,8 @@ When picking up a follow-up:
 | FU-003 | [Add org-scoped entity endpoint for Phase 2](./FU-003-entity-endpoint-org-scoping.md) | 2026-04-25 | Phase 0 sub-prompt 0.3 |
 | FU-004 | [Address pre-existing lint warnings](./FU-004-pre-existing-lint-warnings.md) | 2026-04-25 | Phase 0 |
 | FU-005 | [Remove deprecated fields from legacy Zustand stores](./FU-005-legacy-store-cleanup.md) | 2026-04-25 | Phase 0 sub-prompt 0.1 redo |
-| FU-006 | [Add useSession mock to OrgSwitcher unit tests](./FU-006-useSession-mock-incompleteness.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
+| FU-006 | [Add useSession mock to OrgSwitcher unit tests (partially resolved 2026-04-25)](./FU-006-useSession-mock-incompleteness.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
 | FU-007 | [Fix onboarding wizard test text mismatches](./FU-007-onboarding-wizard-text-mismatches.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
 | FU-008 | [Resolve E2E test data dependencies (seed or stub)](./FU-008-e2e-data-dependencies.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
 | FU-009 | [Install WebKit Playwright browser binary for Mobile Safari E2E](./FU-009-webkit-binary-missing.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
+| FU-010 | [Control-plane test render harness incomplete](./FU-010-control-plane-test-render-harness.md) | 2026-04-25 | Pre-existing — unmasked by FU-006 |
