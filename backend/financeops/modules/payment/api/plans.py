@@ -12,6 +12,7 @@ from financeops.db.models.users import IamUser
 from financeops.shared_kernel.response import ok
 
 router = APIRouter()
+PLATFORM_PLAN_TENANT_ID = uuid.UUID("00000000-0000-0000-0000-000000000000")
 
 
 @router.get("/plans")
@@ -24,7 +25,11 @@ async def list_billing_plans(
         (
             await session.execute(
                 select(BillingPlan)
-                .where(BillingPlan.tenant_id == user.tenant_id)
+                .where(
+                    BillingPlan.tenant_id.in_(
+                        [user.tenant_id, PLATFORM_PLAN_TENANT_ID]
+                    )
+                )
                 .order_by(BillingPlan.created_at.desc(), BillingPlan.id.desc())
             )
         ).scalars()
@@ -64,7 +69,9 @@ async def get_billing_plan(
     row = (
         await session.execute(
             select(BillingPlan).where(
-                BillingPlan.tenant_id == user.tenant_id,
+                BillingPlan.tenant_id.in_(
+                    [user.tenant_id, PLATFORM_PLAN_TENANT_ID]
+                ),
                 BillingPlan.id == uuid.UUID(id),
             )
         )

@@ -38,7 +38,12 @@ def upgrade() -> None:
     conn = op.get_bind()
 
     # 1. Drop old tier check constraint and replace with one that includes 'trial'
-    op.drop_constraint("ck_billing_plans_tier", "billing_plans")
+    op.execute(
+        sa.text(
+            "ALTER TABLE billing_plans "
+            "DROP CONSTRAINT IF EXISTS ck_billing_plans_tier"
+        )
+    )
     op.create_check_constraint(
         "ck_billing_plans_tier",
         "billing_plans",
@@ -191,15 +196,31 @@ def upgrade() -> None:
 def downgrade() -> None:
     conn = op.get_bind()
 
-    # Remove seeded plans
+    # Deactivate seeded plans. billing_plans is append-only, so temporarily
+    # disable the trigger for this downgrade maintenance update.
+    op.execute(
+        "ALTER TABLE billing_plans DISABLE TRIGGER trg_append_only_billing_plans"
+    )
     for plan_id in _PLAN_IDS.values():
         conn.execute(
-            sa.text("DELETE FROM billing_plans WHERE id = CAST(:id AS uuid)"),
+            sa.text(
+                "UPDATE billing_plans "
+                "SET is_active = false "
+                "WHERE id = CAST(:id AS uuid)"
+            ),
             {"id": plan_id},
         )
+    op.execute(
+        "ALTER TABLE billing_plans ENABLE TRIGGER trg_append_only_billing_plans"
+    )
 
     # Restore original tier constraint (without 'trial')
-    op.drop_constraint("ck_billing_plans_tier", "billing_plans")
+    op.execute(
+        sa.text(
+            "ALTER TABLE billing_plans "
+            "DROP CONSTRAINT IF EXISTS ck_billing_plans_tier"
+        )
+    )
     op.create_check_constraint(
         "ck_billing_plans_tier",
         "billing_plans",

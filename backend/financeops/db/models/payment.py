@@ -28,7 +28,10 @@ from financeops.db.base import FinancialBase, utc_now
 class BillingPlan(FinancialBase):
     __tablename__ = "billing_plans"
     __table_args__ = (
-        CheckConstraint("plan_tier IN ('starter','professional','enterprise')", name="ck_billing_plans_tier"),
+        CheckConstraint(
+            "plan_tier IN ('trial','starter','professional','enterprise')",
+            name="ck_billing_plans_tier",
+        ),
         CheckConstraint("billing_cycle IN ('monthly','annual')", name="ck_billing_plans_cycle"),
         CheckConstraint(
             "pricing_type IS NULL OR pricing_type IN ('flat','tiered','usage','hybrid')",
