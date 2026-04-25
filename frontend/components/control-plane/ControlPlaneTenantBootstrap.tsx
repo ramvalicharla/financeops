@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import type { EntityRole } from "@/types/api"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 interface ControlPlaneTenantBootstrapProps {
   tenantId: string
@@ -20,6 +21,7 @@ export function ControlPlaneTenantBootstrap({
   entityRoles,
 }: ControlPlaneTenantBootstrapProps) {
   const setTenant = useTenantStore((state) => state.setTenant)
+  const { setOrgId, setEntityId } = useWorkspaceStore()
 
   useEffect(() => {
     setTenant({
@@ -30,7 +32,9 @@ export function ControlPlaneTenantBootstrap({
       entity_roles: entityRoles,
       active_entity_id: entityRoles.at(0)?.entity_id ?? null,
     })
-  }, [entityRoles, orgSetupComplete, orgSetupStep, setTenant, tenantId, tenantSlug])
+    setOrgId(tenantId)
+    setEntityId(entityRoles.at(0)?.entity_id ?? null)
+  }, [entityRoles, orgSetupComplete, orgSetupStep, setEntityId, setOrgId, setTenant, tenantId, tenantSlug])
 
   return null
 }

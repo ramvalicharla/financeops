@@ -21,6 +21,7 @@ import {
 } from "@/lib/api/orgSetup"
 import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 
 export default function OrgSetupPageClient() {
@@ -29,6 +30,7 @@ export default function OrgSetupPageClient() {
   const queryClient = useQueryClient()
   const setTenant = useTenantStore((state) => state.setTenant)
   const tenantState = useTenantStore((state) => state)
+  const { setOrgId, setEntityId } = useWorkspaceStore()
 
   const [step2Draft, setStep2Draft] = useState<Step2EntityPayload[]>([])
   // localStep tracks UI-only step 5 (Invite team) which has no backend mutation
@@ -109,15 +111,18 @@ export default function OrgSetupPageClient() {
     const refreshedSession = await refreshSessionAfterSetup()
     const user = refreshedSession?.user
     if (tenantState.tenant_id && tenantState.tenant_slug) {
+      const newEntityId =
+        user?.entity_roles.at(0)?.entity_id ?? tenantState.active_entity_id
       setTenant({
         tenant_id: tenantState.tenant_id,
         tenant_slug: tenantState.tenant_slug,
         org_setup_complete: user?.org_setup_complete ?? true,
         org_setup_step: user?.org_setup_step ?? 7,
         entity_roles: user?.entity_roles ?? tenantState.entity_roles,
-        active_entity_id:
-          user?.entity_roles.at(0)?.entity_id ?? tenantState.active_entity_id,
+        active_entity_id: newEntityId,
       })
+      setOrgId(tenantState.tenant_id)
+      setEntityId(newEntityId)
     }
     navigateAfterAuth(nextPath)
   }
