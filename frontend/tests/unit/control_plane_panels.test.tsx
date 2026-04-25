@@ -195,7 +195,6 @@ describe("control plane panels", () => {
     renderWithProviders(
       <>
         <Topbar
-          entityRoles={[]}
           tenantSlug="acme"
           userEmail="leader@acme.test"
           userName="Finance Leader"

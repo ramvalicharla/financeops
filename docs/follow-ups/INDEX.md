@@ -15,3 +15,4 @@ When picking up a follow-up:
 |---|---|---|---|
 | FU-001 | [Refactor sync cache-busting sentinel](./FU-001-refactor-sync-cache-busting.md) | 2026-04-25 | Phase 0 sub-prompt 0.2 |
 | FU-002 | [Unify tenant-coa-accounts query keys](./FU-002-refactor-coa-tenant-accounts.md) | 2026-04-25 | Phase 0 sub-prompt 0.2 |
+| FU-003 | [Add org-scoped entity endpoint for Phase 2](./FU-003-entity-endpoint-org-scoping.md) | 2026-04-25 | Phase 0 sub-prompt 0.3 |
