@@ -51,7 +51,7 @@ asyncio.run(main())
 done
 
 echo "========== MIGRATION START =========="
-if ! PYTHONUNBUFFERED=1 python -m financeops.migrations.run; then
+if ! PYTHONUNBUFFERED=1 python -m financeops.migrations.run 2>&1; then
     echo "========== MIGRATION FAILED =========="
     exit 1
 fi

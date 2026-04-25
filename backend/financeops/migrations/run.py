@@ -15,6 +15,28 @@ log = logging.getLogger(__name__)
 configure_logging()
 
 
+def _print_migration_error(exc: BaseException) -> None:
+    if getattr(exc, "_financeops_migration_error_printed", False):
+        return
+    setattr(exc, "_financeops_migration_error_printed", True)
+
+    print("MIGRATION ERROR:", str(exc), flush=True)
+
+    statement = getattr(exc, "statement", None)
+    if statement is not None:
+        print("MIGRATION SQL:", statement, flush=True)
+
+    params = getattr(exc, "params", None)
+    if params is not None:
+        print("MIGRATION PARAMS:", repr(params), flush=True)
+
+    orig = getattr(exc, "orig", None)
+    if orig is not None:
+        print("MIGRATION DBAPI ERROR:", repr(orig), flush=True)
+
+    print(traceback.format_exc(), flush=True)
+
+
 def _backend_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -78,7 +100,11 @@ def run_migrations_to_head() -> str:
     log.info("starting alembic upgrade head")
     log.info("migration lock file: %s", lock_file)
     with _acquire_lock(lock_file):
-        command.upgrade(cfg, "head")
+        try:
+            command.upgrade(cfg, "head")
+        except Exception as exc:
+            _print_migration_error(exc)
+            raise
 
     elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
     log.info("alembic upgrade head completed in %sms (head=%s)", elapsed_ms, head_revision)
@@ -88,15 +114,13 @@ def run_migrations_to_head() -> str:
 def main() -> int:
     try:
         head = run_migrations_to_head()
-        print(f"Migrations applied successfully. Head={head}")
+        print(f"Migrations applied successfully. Head={head}", flush=True)
         return 0
     except Exception as exc:
         log.error("migration run failed: %s", exc)
-        traceback.print_exc()
-        print(f"Migration failed: {exc}", file=sys.stderr)
-        sys.stderr.flush()
+        _print_migration_error(exc)
         return 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    sys.exit(main())
