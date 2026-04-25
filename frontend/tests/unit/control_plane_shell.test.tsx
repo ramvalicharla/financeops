@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next-auth/react", () => ({
   signOut: vi.fn(),
+  useSession: () => ({ data: null, status: "unauthenticated" }),
 }))
 
 vi.mock("@/components/search/SearchProvider", () => ({
