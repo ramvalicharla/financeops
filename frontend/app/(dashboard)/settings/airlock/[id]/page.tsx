@@ -1,4 +1,10 @@
+import type { Metadata } from "next"
 import { AirlockReview } from "@/components/airlock/AirlockReview"
+
+export const metadata: Metadata = {
+  title: "Airlock Review · Finqor",
+  description: "Inspect a single airlock submission's payload, validation results, and approval status.",
+}
 
 interface AirlockReviewPageProps {
   params: {

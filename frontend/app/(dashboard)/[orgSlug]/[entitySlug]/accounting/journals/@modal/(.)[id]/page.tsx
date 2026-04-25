@@ -1,3 +1,5 @@
+// Metadata intentionally omitted: parallel route intercept.
+// Parent route's <title> remains active while this modal is open.
 import { InterceptingSheet } from "@/components/layout/_components/InterceptingSheet"
 import PageClient from "../../[id]/PageClient"
 
