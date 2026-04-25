@@ -28,6 +28,7 @@ import {
 import { filterNavigationItems } from "@/lib/ui-access"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { cn } from "@/lib/utils"
 
 interface SidebarProps {
@@ -57,20 +58,21 @@ export function Sidebar({
   )
   const sidebarOpen = useUIStore((state) => state.sidebarOpen)
   const closeSidebar = useUIStore((state) => state.closeSidebar)
-  const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed)
-  const toggleSidebarCollapsed = useUIStore((state) => state.toggleSidebarCollapsed)
+  const sidebarCollapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
+  const toggleSidebar = useWorkspaceStore((s) => s.toggleSidebar)
   const setTenant = useTenantStore((state) => state.setTenant)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
-  const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
+  const entityId = useWorkspaceStore((s) => s.entityId)
+  const switchEntity = useWorkspaceStore((s) => s.switchEntity)
+  const { setOrgId, setEntityId } = useWorkspaceStore()
   const entitiesQuery = useQuery({
     queryKey: queryKeys.workspace.entities(),
     queryFn: listControlPlaneEntities,
   })
   const contextQuery = useQuery({
-    queryKey: queryKeys.workspace.context(activeEntityId),
+    queryKey: queryKeys.workspace.context(entityId),
     queryFn: () =>
       getControlPlaneContext({
-        entity_id: activeEntityId ?? undefined,
+        entity_id: entityId ?? undefined,
       }),
     staleTime: 60_000,
   })
@@ -84,13 +86,17 @@ export function Sidebar({
       entity_roles: entityRoles,
       active_entity_id: entityRoles.at(0)?.entity_id ?? null,
     })
-  }, [entityRoles, orgSetupComplete, orgSetupStep, setTenant, tenantId, tenantSlug])
+    // Bootstrap workspaceStore — orgId/entityId are workspace context,
+    // not identity facts. Phase 2 will decouple these from setTenant.
+    setOrgId(tenantId)
+    setEntityId(entityRoles.at(0)?.entity_id ?? null)
+  }, [entityRoles, orgSetupComplete, orgSetupStep, setEntityId, setOrgId, setTenant, tenantId, tenantSlug])
 
   useEffect(() => {
-    if (!activeEntityId && entitiesQuery.data?.[0]?.id) {
-      setActiveEntity(entitiesQuery.data[0].id)
+    if (!entityId && entitiesQuery.data?.[0]?.id) {
+      switchEntity(entitiesQuery.data[0].id)
     }
-  }, [activeEntityId, entitiesQuery.data, setActiveEntity])
+  }, [entityId, entitiesQuery.data, switchEntity])
 
   useEffect(() => {
     if (pathname.startsWith("/reconciliation")) {
@@ -428,7 +434,7 @@ const showTrust = userRole === "finance_leader"
           {/* Collapse toggle — desktop only (mobile sidebar uses translate) */}
           <button
             type="button"
-            onClick={toggleSidebarCollapsed}
+            onClick={toggleSidebar}
             aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             className="hidden md:flex w-full h-8 items-center justify-center hover:bg-accent rounded-md transition-colors"
           >
