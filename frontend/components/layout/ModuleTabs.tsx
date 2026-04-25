@@ -9,11 +9,12 @@ import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
+import { getModuleIcon } from "@/components/layout/tabs/module-icons"
 import { cn } from "@/lib/utils"
 
 // Prevents blank tab bar if backend omits workspace_tabs. See audit QW-0.
 const FALLBACK_TABS = [
-  { workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] },
+  { workspace_key: "dashboard", workspace_name: "Dashboard", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] },
 ]
 
 export function ModuleTabs() {
@@ -32,39 +33,41 @@ export function ModuleTabs() {
     ? contextQuery.data.workspace_tabs
     : FALLBACK_TABS
 
-  // Spec §1.5: Overview must be first and required. Re-sort if backend violates this.
+  // Spec §1.5: Dashboard must be first and required. Re-sort if backend violates this.
   const visibleTabs = (() => {
-    if (tabs[0]?.workspace_key === "overview") return tabs
-    const overview = tabs.find((t) => t.workspace_key === "overview")
-    const others = tabs.filter((t) => t.workspace_key !== "overview")
-    if (!overview) {
-      Sentry.captureMessage("[shell] Backend omitted Overview tab; prepending from fallback.", "warning")
-      return [{ workspace_key: "overview", workspace_name: "Overview", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] }, ...others]
+    if (tabs[0]?.workspace_key === "dashboard") return tabs
+    const dashboard = tabs.find((t) => t.workspace_key === "dashboard")
+    const others = tabs.filter((t) => t.workspace_key !== "dashboard")
+    if (!dashboard) {
+      Sentry.captureMessage("[shell] Backend omitted Dashboard tab; prepending from fallback.", "warning")
+      return [{ workspace_key: "dashboard", workspace_name: "Dashboard", href: "/dashboard", match_prefixes: ["/dashboard"], module_codes: [] }, ...others]
     }
-    Sentry.captureMessage("[shell] Backend returned non-canonical tab order; re-sorting to put Overview first.", "warning")
-    return [overview, ...others]
+    Sentry.captureMessage("[shell] Backend returned non-canonical tab order; re-sorting to put Dashboard first.", "warning")
+    return [dashboard, ...others]
   })()
   const activeModuleKey = useMemo(() => {
     const matchedTab = resolveWorkspaceFromTabs(pathname, visibleTabs)
     return matchedTab?.workspace_key ?? contextQuery.data?.current_module.module_key ?? null
   }, [contextQuery.data?.current_module.module_key, pathname, visibleTabs])
   return (
-    <div className="border-b border-border bg-background/90 px-4 md:px-6">
-      <nav aria-label="Module tabs" className="flex gap-0 overflow-x-auto">
+    <div className="h-10 border-b border-border bg-background/90 px-4 md:px-6">
+      <nav aria-label="Module tabs" className="flex h-full gap-0 overflow-x-auto">
         {visibleTabs.map((tab) => {
           const isActive = tab.workspace_key === activeModuleKey
+          const Icon = getModuleIcon(tab.workspace_key)
           return (
             <Link
               key={tab.workspace_key}
               href={tab.href}
               className={cn(
-                "whitespace-nowrap px-4 py-2.5 text-sm transition-colors border-b-2",
+                "flex items-center gap-2 whitespace-nowrap px-4 py-2.5 text-sm transition-colors border-b-2",
                 isActive
                   ? "border-[#185FA5] font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
-              {tab.workspace_name}
+              <Icon size={14} className="shrink-0" />
+              <span>{tab.workspace_name}</span>
             </Link>
           )
         })}
