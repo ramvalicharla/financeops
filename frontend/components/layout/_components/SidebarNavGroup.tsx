@@ -4,7 +4,7 @@ import {
   type NavigationGroupItem,
   type NavigationLeafItem,
 } from "@/lib/config/navigation"
-import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { cn } from "@/lib/utils"
 import { ChevronDown } from "lucide-react"
 import { SidebarNavItem } from "./SidebarNavItem"
@@ -34,7 +34,7 @@ export function SidebarDisclosureGroup({
 }: SidebarDisclosureGroupProps) {
   const Icon = item.icon
   const groupId = `nav-group-${item.label.toLowerCase().replace(/\s+/g, "-")}`
-  const collapsed = useUIStore((state) => state.sidebarCollapsed)
+  const collapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
 
   if (collapsed) {
     // Show all children as icon-only items — group concept collapses away.
@@ -99,7 +99,7 @@ export function SidebarNavGroup({
   pathname,
   type = "boxed",
 }: SidebarNavGroupProps) {
-  const collapsed = useUIStore((state) => state.sidebarCollapsed)
+  const collapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
 
   if (collapsed) {
     // Strip all wrappers and labels — just a flat list of icon-only items.

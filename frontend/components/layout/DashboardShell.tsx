@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react"
 import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { cn } from "@/lib/utils"
 
 interface DashboardShellProps {
@@ -14,7 +15,7 @@ interface DashboardShellProps {
  * because app/(dashboard)/layout.tsx is a Server Component.
  */
 export function DashboardShell({ children }: DashboardShellProps) {
-  const sidebarCollapsed = useUIStore((state) => state.sidebarCollapsed)
+  const sidebarCollapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
   const density = useUIStore((state) => state.density)
 
   return (
