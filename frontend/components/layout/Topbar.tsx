@@ -27,6 +27,7 @@ import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useDisplayScale } from "@/lib/store/displayScale"
 import { cn } from "@/lib/utils"
 
@@ -62,6 +63,7 @@ export function Topbar({
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const period = useWorkspaceStore((s) => s.period)
   const contextQuery = useQuery({
     queryKey: queryKeys.workspace.context(activeEntityId),
     queryFn: () =>
@@ -72,10 +74,8 @@ export function Topbar({
   })
   const scale = useDisplayScale((state) => state.scale)
   const setScale = useDisplayScale((state) => state.setScale)
-  const activePeriod = useUIStore((state) => state.activePeriod)
-  // TODO: wire to workspaceStore.period in Phase 0.
   const fyLabel = (() => {
-    const year = parseInt(activePeriod?.slice(0, 4) ?? "", 10) || new Date().getFullYear()
+    const year = parseInt(period?.slice(0, 4) ?? "", 10) || new Date().getFullYear()
     return `FY ${String(year).slice(-2)}-${String(year + 1).slice(-2)}`
   })()
 
