@@ -1,6 +1,6 @@
 # Shell Rebuild — Roadmap
 
-> **Last updated:** 2026-04-25, after Phase 0 sub-prompts 0.1 (redo as v2), 0.2, 0.3 merged.
+> **Last updated:** 2026-04-26, after Phase 1 exit gate (all sub-prompts 1.1–1.4 merged).
 > **Authoritative source:** This file is the single source of truth for shell rebuild planning. Sub-prompt resolution log lives in `docs/audits/finqor-shell-audit-2026-04-24.md`.
 
 ---
@@ -9,7 +9,7 @@
 
 The pre-Phase-0 gap resolution surfaced one significant finding that reshapes the roadmap: **Phase 2 (Org + Entity Switching) is not a frontend-only phase.** It requires a backend schema migration (`user_org_memberships` table) that must ship before Phase 2 frontend work can begin.
 
-Phase 0, Phase 1, and the rest of the phase structure are unchanged from the original plan. The schema migration runs in parallel with Phases 0 and 1.
+**Phase 1 is now complete.** All 5 sub-prompts (1.1, 1.1.5, 1.2, 1.3, 1.4) have been merged. The shell skeleton — sidebar groups, TopBar 48px, module tabs 40px with icons, and route metadata — is in. Phase 2 is next; it is blocked by backend BE-001.
 
 ---
 
@@ -17,8 +17,8 @@ Phase 0, Phase 1, and the rest of the phase structure are unchanged from the ori
 
 | Item | Status |
 |---|---|
-| `main` HEAD (latest merged) | `aa50a99` (sub-prompt 0.1 redo merge) |
-| Tag | `v4.1.0` (pre-Phase-0 baseline) |
+| `main` HEAD (latest merged) | `19f37b3` (Phase 1.4 metadata sweep merge) |
+| Tag | `v4.3.0-phase1-complete` |
 | Shell quick wins (QW-0 through QW-10) | ✅ Merged |
 | Tier 1 a11y fixes | ✅ Merged |
 | Audit register sync + coverage matrix + audit prompt | ✅ Committed and merged |
@@ -27,8 +27,15 @@ Phase 0, Phase 1, and the rest of the phase structure are unchanged from the ori
 | Phase 0 sub-prompt 0.1 (workspaceStore, redo as v2) | ✅ Merged at `aa50a99` |
 | Phase 0 sub-prompt 0.2 (query key factory) | ✅ Merged at `44a4678` |
 | Phase 0 sub-prompt 0.3 (EntitySwitcher live) | ✅ Merged at `8b2e44b` |
-| Phase 0 sub-prompt 0.4 (cleanup + phase exit gate) | 🔄 In progress |
+| Phase 0 sub-prompt 0.4 (cleanup + phase exit gate) | ✅ Closed implicitly — see note below |
+| Phase 1 sub-prompt 1.1 (sidebar structural rebuild) | ✅ Merged at `6afac67` |
+| Phase 1 sub-prompt 1.1.5 (hotfix: client entity-id read) | ✅ Merged at `73b725d` |
+| Phase 1 sub-prompt 1.2 (TopBar verify + landmark sweep) | ✅ Merged at `4778e84` |
+| Phase 1 sub-prompt 1.3 (ModuleTabs + icon registry) | ✅ Merged at `f3baabf` |
+| Phase 1 sub-prompt 1.4 (route metadata sweep) | ✅ Merged at `19f37b3` |
 | Backend prerequisite ticket (BE-001) | Captured in `docs/tickets/backend-user-org-memberships.md` |
+
+> **Phase 0.4 note:** 0.4 cleanup tasks were absorbed into the Phase 1 tech-debt audit (2026-04-25) and exit-gate documentation. Phase 0 was tagged at `v4.2.0-phase0-complete` on the strength of 0.1–0.3 delivery; 0.4 as a discrete sub-prompt was never executed.
 
 ---
 
@@ -71,26 +78,36 @@ Working assumption (to unblock Phase 1 if no decision lands): **Option B** (sing
 - Gap 2 resolved ✅
 - `v4.1.0` tagged ✅
 
-### Phase 0 — Foundation
+### Phase 0 — Foundation — COMPLETE ✅
 
 - **0.1** — Unified `workspaceStore` ✅ Merged at `aa50a99` (executed as v2 redo; original branch was authored locally but never merged; v2 closed completeness gaps including 18 component reads and 2 split-brain bugs)
 - **0.2** — Query key convention via factory (23 domains, 194 call sites) ✅ Merged at `44a4678`
 - **0.3** — EntitySwitcher wired to live `/api/v1/org-setup/entities` ✅ Merged at `8b2e44b`
-- **0.4** — Cleanup, dark-mode verify, docs update, phase exit gate (test infra audit + full test run) 🔄 In progress
+- **0.4** — ✅ Closed implicitly. Cleanup tasks absorbed into Phase 1 audit + exit-gate documentation. See note under "Current state."
+
+**Tag:** `v4.2.0-phase0-complete`
 
 **Design choice locked in 0.1:** `workspaceStore.orgId` is modeled as a workspace setting, not an identity fact. This makes Phase 2's multi-org switching a data-source change rather than a structural refactor.
 
-After Phase 0 completes → tag `v4.2.0-phase0-complete`, decide on push, continue.
+### Phase 1 — Shell Skeleton — COMPLETE ✅
 
-### Phase 1 — Shell Skeleton (~5 dev-days, parallelizable)
+Sidebar rebuild (220px, ACTIVE ENTITY label, groups), TopBar (48px, FY chip), module tab bar (40px, 2px blue underline, icon+label), metadata sweep.
 
-Sidebar rebuild (220px, ACTIVE ENTITY label, groups), TopBar (48px, brand mark, FY chip), module tab bar (40px, 2px blue underline, icon+label), metadata sweep, landmark cleanup.
+- **1.1** — Sidebar structural rebuild (220px, three nav groups, nav-config) ✅ Merged at `6afac67`
+- **1.1.5** — Hotfix: API client reads entityId from workspaceStore instead of deprecated `tenantStore.active_entity_id` ✅ Merged at `73b725d` (pre-onboarding fix from tech-debt audit F5)
+- **1.2** — TopBar verification + landmark sweep + FU-011/FU-012/FU-013 filed ✅ Merged at `4778e84`
+- **1.3** — ModuleTabs 40px container + module icon registry (7 backend workspace_keys) ✅ Merged at `f3baabf`
+- **1.4** — Route metadata sweep — 4 pages updated, 2 parallel-route intercepts documented ✅ Merged at `19f37b3`
 
-First user-visible phase. Runs after Phase 0 finishes. Gap 1 should be resolved before Phase 1 design review.
+**Tag:** `v4.3.0-phase1-complete`
 
-### Phase 2 — Org + Entity Switching (revised: ~7 frontend days + backend prerequisite)
+**Phase 1 totals:** 15 commits, 43 files changed, 4 102 insertions, 310 deletions vs Phase 0 tag.
 
-**Backend prerequisite (parallel to Phases 0–1):**
+### Phase 2 — Org + Entity Switching (next — blocked by BE-001)
+
+**Phase 1 is complete. Phase 2 is next. Backend BE-001 (user_org_memberships table) blocks Phase 2 frontend work.**
+
+**Backend prerequisite (parallel to Phases 0–1, now overdue):**
 - Ticket: BE-001 — `feat(schema): add user_org_memberships table + backfill`
 - Estimate: 6–10 dev-days
 - Must ship before Phase 2 frontend begins
@@ -136,19 +153,15 @@ Now    Phase 0    Phase 1    Phase 2    Phase 3    Phase 4    Phase 5    Phase 6
 **Critical path:** backend BE-001 → Phase 2 → Phase 6
 
 **Immediate parallel tracks:**
-1. Frontend: Phase 0 → Phase 1 (blocker-free, ~8 calendar days)
-2. Backend: BE-001 migration (blocker-free, 6–10 dev-days)
-3. Product: Gap 1 portal subdomain decision (blocker-free, should land before Phase 1 review)
-
-If backend ships on the 6-day end of its estimate, it arrives at roughly the same time Phase 1 finishes — no Phase 2 idle time.
-
-If backend ships on the 10-day end, Phase 2 starts ~2 days after Phase 1 finishes — minor idle time.
+1. Frontend: Phase 2 (blocked by BE-001), Phase 3 can begin in parallel
+2. Backend: BE-001 migration — status unknown; check with backend team
+3. Product: Gap 1 portal subdomain decision — still open
 
 ---
 
 ## Backend tickets queue
 
-### Immediate (file today)
+### Immediate (now overdue — Phase 2 is blocked)
 
 1. **BE-001 — `feat(schema): add user_org_memberships table + backfill`** — see `docs/tickets/backend-user-org-memberships.md`
 
@@ -164,20 +177,21 @@ If backend ships on the 10-day end, Phase 2 starts ~2 days after Phase 1 finishe
 
 ## What to watch
 
-- **Backend schema ticket slippage.** If BE-001 goes beyond 10 days, Phase 2 starts slipping. Weekly check-in with backend during Phases 0 and 1 is worth the overhead.
-- **Gap 1 resolution.** If the portal subdomain decision takes more than 2 weeks, escalate. Phase 1 sidebar design can proceed on the Option B working assumption, but Phase 6 scope changes meaningfully if Option A or C is chosen.
-- **Approach A vs Approach B for the identity migration.** The recommendation is Approach A now, Approach B as a follow-up. If backend pushes for Approach B upfront, that's an ~+4 day slip on the prereq — evaluate whether that's worth it versus shipping and iterating.
+- **Backend schema ticket slippage.** BE-001 is now the active critical-path blocker. Phase 2 cannot begin without it. Weekly check-in with backend is essential.
+- **Gap 1 resolution.** If the portal subdomain decision takes more than 2 weeks, escalate. Phase 6 scope changes meaningfully if Option A or C is chosen.
+- **FU-015 write-side cleanup.** 6 remaining writers of deprecated `tenantStore.active_entity_id` tracked in FU-015. The read-side (client.ts) was fixed in hotfix 1.1.5; the writes don't break behavior today but should be cleaned before Phase 2 multi-entity work begins.
 
 ---
 
 ## Git artifacts
 
 - Tag `v4.1.0` — pre-Phase-0 baseline
-- Tag `v4.2.0-phase0-complete` — planned, after Phase 0 finishes
-- Tag `v4.3.0-phase1-complete` — planned, after Phase 1 finishes
+- Tag `v4.2.0-phase0-complete` — Phase 0 complete
+- Tag `v4.3.0-phase1-complete` — Phase 1 complete ✅
+- Tag `v4.4.0-phase2-complete` — planned, after Phase 2 finishes
 - Subsequent tags per phase
 
-**Branch discipline:** sub-prompts produce short-lived feature branches that merge into `main` via `--no-ff` to preserve topology. Push cadence is at the user's discretion — current session has held all merges local since `v4.1.0`.
+**Branch discipline:** sub-prompts produce short-lived feature branches that merge into `main` via `--no-ff` to preserve topology. Push cadence is at the user's discretion.
 
 ---
 
@@ -190,5 +204,15 @@ If backend ships on the 10-day end, Phase 2 starts ~2 days after Phase 1 finishe
 | FU-003 | Entity endpoint org-scoping for Phase 2 | Sub-prompt 0.3, Phase 2 |
 | FU-004 | Address pre-existing lint warnings | Phase 0 |
 | FU-005 | Remove deprecated fields from legacy stores | Sub-prompt 0.1 redo |
+| FU-006 | Add useSession mock to OrgSwitcher unit tests | Phase 0 test gate (pre-existing) |
+| FU-007 | Fix onboarding wizard test text mismatches | Phase 0 test gate (pre-existing) |
+| FU-008 | Resolve E2E test data dependencies | Phase 0 test gate (pre-existing) |
+| FU-009 | Install WebKit Playwright browser binary | Phase 0 test gate (pre-existing) |
+| FU-010 | Control-plane test render harness incomplete | Pre-existing, unmasked by FU-006 |
+| FU-011 | TopBar Finqor brand mark + wordmark | Phase 1 sub-prompt 1.2 |
+| FU-012 | Sidebar behavioral wiring (badges, RBAC, real routes) | Phase 1 sub-prompt 1.1 |
+| FU-013 | Sidebar pinning decision | Phase 1 sub-prompt 1.1 |
+| FU-014 | Vitest coverage thresholds with measured baseline | Tech-debt audit F1 |
+| FU-015 | Remaining writers of deprecated active_entity_id | Hotfix 1.1.5; extends FU-005 |
 
-See `docs/follow-ups/INDEX.md` for current status.
+See `docs/follow-ups/INDEX.md` for full details.

@@ -279,22 +279,22 @@ The following findings are ≤ 4h each and can ship independently, in a single P
 
 ## Resolution log
 
-> Updated: 2026-04-24 | Source: local branches not yet pushed
+> Updated: 2026-04-26 | Source: all branches merged to main
 
-**Branch `fix/shell-quick-wins-qw0-qw10`** (12 commits, local)
-- Resolves findings: #5, #14, #16, #19, #21, #23, #30, #31
-- Partially resolves: #29 (2 of 15+ `.toFixed` usages)
-- Status: local, pending review and push
+**Branch `fix/shell-quick-wins-qw0-qw10`** (12 commits, merged)
+- Resolves findings: #5, #14, #16, #19, #23, #30, #31
+- Partially resolves: #21 (active tab styling only — icon gap remained open; see Phase 1.3 below), #29 (2 of 15+ `.toFixed` usages)
+- Status: merged
 
-**Branch `fix/a11y-tier-1-wcag`** (commit `37de5c7`, local)
+**Branch `fix/a11y-tier-1-wcag`** (commit `37de5c7`, merged)
 - Resolves findings: #32
-- Status: local, pending review and push
+- Status: merged
 
 **Closed as stale**
 - #37 — `className="dark"` is already present; superseded by a11y sweep cross-reference
 
 **Scope corrected**
-- #25 — residual scope is ~9 pages, not all pages
+- #25 — residual scope is 4 real gaps (not "all pages"); 2 parallel-route intercepts where metadata is moot
 
 **Total quick-win effort: ~10h. All are safe, isolated, and reviewable in a single PR per file.**
 
@@ -323,3 +323,35 @@ The following findings are ≤ 4h each and can ship independently, in a single P
 - Wired to live `/api/v1/org-setup/entities` endpoint via `useOrgEntities` hook
 - Graceful fallback to session data on error
 - Deferred work tracked in FU-003 (entity endpoint org-scoping for Phase 2)
+
+---
+
+## Phase 1 sub-prompt resolution log
+
+> Updated: 2026-04-26 | All branches merged to main at `v4.3.0-phase1-complete`
+
+**Branch `feat/phase1-sidebar-structure`** — Merged at `6afac67` (2026-04-25)
+- Resolves Finding #4: Sidebar nav groups — three collapsible groups (Workspace / Org / Governance) now match spec §1.3
+- Resolves Finding #11: Sidebar width corrected from 240px to 220px
+- Resolves Finding #12: Collapsed rail width corrected from 56px to 52px
+- Introduces nav-config.ts, sidebar group components; 9 new test cases in sidebar.test.tsx + nav-config.test.ts
+
+**Branch `feat/phase1-hotfix-client-entity-id`** — Merged at `73b725d` (2026-04-25)
+- Resolves F5 (read portion) from tech-debt audit 2026-04-25: API client `lib/api/client.ts` was reading deprecated `tenantStore.active_entity_id` in the 403/ORG_SETUP_REQUIRED recovery path; now reads `workspaceStore.entityId`
+- Also fixes `OrgSetupPageClient.tsx` second read site
+- Remaining 6 write-side callers tracked in FU-015 (writes don't break behavior; reads do)
+
+**Branch `feat/phase1-topbar-verify-cleanup`** — Merged at `4778e84` (2026-04-25)
+- Verification-only pass: TopBar confirmed conformant (48px, FY chip, EntitySwitcher wired); landmark structure confirmed clean
+- Deferred findings filed: FU-011 (brand mark absent), FU-012 (sidebar behavioral wiring), FU-013 (sidebar pinning decision)
+
+**Branch `feat/phase1-module-icons`** — Merged at `f3baabf` (2026-04-25)
+- Resolves Finding #20: Tab strip container fixed at h-10 (40px); was padding-based with no fixed height
+- Resolves Finding #21 (for real): Tab icons added via MODULE_ICON_MAP registry — finding was previously mis-marked resolved by QW-1, which only added active-tab styling but not icons
+- Resolves Risk #3 (module icon registry): 7-key `MODULE_ICON_MAP` with backend-verified `workspace_key` values from `_WORKSPACE_DEFINITIONS`; case-insensitive lookup; safe `CircleDot` fallback
+- 21 new tests in `module-icons.test.ts` including regression guard for 9 old draft keys
+
+**Branch `feat/phase1-metadata-sweep`** — Merged at `19f37b3` (2026-04-25)
+- Resolves Finding #25 (residual scope): 4 pages updated (`settings/airlock`, `settings/airlock/[id]`, `settings/control-plane`, `control-plane` root); 2 `@modal` parallel-route intercepts documented as intentional skips
+- `settings/control-plane/page.tsx` was a Client Component; extracted to `SettingsControlPlaneClient.tsx` (server-wrapper pattern) so metadata can be exported from server component
+- Title format: `{Page Title} · Finqor`. Final inventory: 163 of 165 pages have metadata; 2 exceptions intentional and commented
