@@ -17,6 +17,7 @@ import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { useOrgEntities } from "@/hooks/useOrgEntities"
 import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
 import { ViewingAsBanner } from "@/components/layout/ViewingAsBanner"
+import { BrandMark } from "@/components/layout/BrandMark"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
 import { DensitySelector } from "@/components/ui/DensitySelector"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -172,6 +173,7 @@ export function Topbar({
     <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
       <div className="relative md:hidden">
         <div className="flex min-h-12 items-center gap-2 px-4 py-2">
+          <BrandMark />
           <div className="flex items-center gap-3">
             <div className="hidden rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.16em] text-muted-foreground lg:block">
               {contextQuery.isLoading ? (
@@ -302,6 +304,8 @@ export function Topbar({
       </div>
 
       <div className="hidden min-h-12 items-center justify-between gap-6 px-4 py-3 md:flex md:px-6">
+          <div className="flex items-center gap-4">
+            <BrandMark />
           <div className="space-y-1">
             <div className="flex items-center gap-1.5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
@@ -325,6 +329,7 @@ export function Topbar({
                 {contextSummary}
               </span>
             </div>
+          </div>
           </div>
 
         <div className="flex items-center gap-3">
