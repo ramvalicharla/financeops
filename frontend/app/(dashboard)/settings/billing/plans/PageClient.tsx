@@ -12,7 +12,7 @@ export default function BillingPlansPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-foreground">Billing Plans</h1>
-        <Link href="/billing" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
+        <Link href="/settings/billing" className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent">
           Back to Billing
         </Link>
       </div>

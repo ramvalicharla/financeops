@@ -36,13 +36,13 @@ export default function BillingPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
-        <Link href="/billing/plans" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
+        <Link href="/settings/billing/plans" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
           Plans
         </Link>
-        <Link href="/billing/invoices" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
+        <Link href="/settings/billing/invoices" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
           Invoices
         </Link>
-        <Link href="/billing/usage" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
+        <Link href="/settings/billing/usage" className="rounded-md border border-border px-3 py-2 text-sm text-foreground hover:bg-accent">
           Usage
         </Link>
         <button

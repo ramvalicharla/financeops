@@ -7,6 +7,19 @@ const bundleAnalyzer = withBundleAnalyzer({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      // Phase 1.6.1 — /modules → /settings/modules
+      { source: "/modules", destination: "/settings/modules", permanent: true },
+      { source: "/modules/:path*", destination: "/settings/modules/:path*", permanent: true },
+      // Phase 1.6.2 — /billing → /settings/billing
+      { source: "/billing", destination: "/settings/billing", permanent: true },
+      { source: "/billing/:path*", destination: "/settings/billing/:path*", permanent: true },
+      // Phase 1.6.2 — /audit → /governance/audit
+      { source: "/audit", destination: "/governance/audit", permanent: true },
+      { source: "/audit/:path*", destination: "/governance/audit/:path*", permanent: true },
+    ]
+  },
   async headers() {
     return [
       {
