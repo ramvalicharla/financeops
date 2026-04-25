@@ -10,6 +10,7 @@ interface TenantState {
   tenant_slug: string | null
   org_setup_complete: boolean
   org_setup_step: number
+  /** @deprecated Read from useWorkspaceStore.entityId instead. */
   active_entity_id: string | null
   entity_roles: EntityRole[]
 
@@ -29,6 +30,7 @@ interface TenantState {
     entity_roles: EntityRole[]
     active_entity_id?: string | null
   }) => void
+  /** @deprecated Call useWorkspaceStore.switchEntity instead. */
   setActiveEntity: (entityId: string | null) => void
   clearTenant: () => void
 
