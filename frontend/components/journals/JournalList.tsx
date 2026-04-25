@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { listJournals, type JournalRecord } from "@/lib/api/accounting-journals"
 import { createGovernedIntent } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { FlowStrip } from "@/components/ui/FlowStrip"
@@ -31,7 +31,7 @@ export function JournalList() {
   const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const [skip, setSkip] = useState(0)
   const [limit] = useState(50)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())

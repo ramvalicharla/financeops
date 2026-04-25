@@ -7,14 +7,14 @@ import { FlowStrip, type FlowStripStep } from "@/components/ui/FlowStrip"
 import { StructuredDataView } from "@/components/ui"
 import { listAirlockItems } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 interface AirlockQueueProps {
   detailHrefPrefix?: string
 }
 
 export function AirlockQueue({ detailHrefPrefix = "/settings/airlock" }: AirlockQueueProps) {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const airlockQuery = useQuery({
     queryKey: controlPlaneQueryKeys.airlock({ entity_id: activeEntityId ?? undefined, limit: 50 }),
     queryFn: async () => listAirlockItems({ entity_id: activeEntityId ?? undefined, limit: 50 }),
