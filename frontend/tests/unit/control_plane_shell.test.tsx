@@ -147,7 +147,6 @@ describe("control plane shell", () => {
           userName="Finance Leader"
         />
         <Topbar
-          entityRoles={[]}
           tenantSlug="acme"
           userEmail="leader@acme.test"
           userName="Finance Leader"

@@ -77,7 +77,6 @@ export default async function DashboardLayout({
         <SearchProvider>
           <DisplayPreferenceBootstrap />
           <Topbar
-            entityRoles={user.entity_roles}
             tenantSlug={tenantSlug}
             userEmail={user.email ?? ""}
             userName={user.name ?? "Finance User"}

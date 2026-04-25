@@ -10,11 +10,11 @@ import {
 import { usePathname } from "next/navigation"
 import { Ellipsis, Menu, Search } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import type { EntityRole } from "@/types/api"
 import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { useSearch } from "@/components/search/SearchProvider"
 import { EntityLocationSelector } from "@/components/layout/EntityLocationSelector"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
+import { useOrgEntities } from "@/hooks/useOrgEntities"
 import { OrgSwitcher } from "@/components/layout/OrgSwitcher"
 import { ViewingAsBanner } from "@/components/layout/ViewingAsBanner"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
@@ -34,7 +34,6 @@ interface TopbarProps {
   tenantSlug: string
   userName: string
   userEmail: string
-  entityRoles: EntityRole[]
 }
 
 
@@ -42,7 +41,6 @@ export function Topbar({
   tenantSlug: _tenantSlug,
   userName,
   userEmail,
-  entityRoles,
 }: TopbarProps) {
   const pathname = usePathname() ?? ""
   const [profileOpen, setProfileOpen] = useState(false)
@@ -53,6 +51,7 @@ export function Topbar({
   const mobileProfileMenuRef = useRef<HTMLDivElement>(null)
   const desktopProfileTriggerRef = useRef<HTMLButtonElement>(null)
   const desktopProfileMenuRef = useRef<HTMLDivElement>(null)
+  const { entities } = useOrgEntities()
   const { openPalette } = useSearch()
   const toggleSidebar = useUIStore((state) => state.toggleSidebar)
   const billingWarning = useUIStore((state) => state.billingWarning)
@@ -239,12 +238,12 @@ export function Topbar({
             className="absolute inset-x-4 top-full z-40 rounded-md border border-border bg-card p-3 shadow-lg"
           >
             <div className="space-y-3">
-              {entityRoles.length > 1 ? (
+              {entities.length > 1 ? (
                 <div className="space-y-1">
                   <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
                     Entity
                   </p>
-                  <EntitySwitcher entityRoles={entityRoles} />
+                  <EntitySwitcher entityRoles={entities} />
                 </div>
               ) : null}
 
@@ -313,10 +312,10 @@ export function Topbar({
                   orgName
                 )}
               </p>
-              {!contextQuery.isLoading && entityRoles.length > 0 ? (
+              {!contextQuery.isLoading && entities.length > 0 ? (
                 <>
                   <span className="text-xs text-muted-foreground">/</span>
-                  <EntitySwitcher entityRoles={entityRoles} />
+                  <EntitySwitcher entityRoles={entities} />
                 </>
               ) : null}
               <OrgSwitcher />
