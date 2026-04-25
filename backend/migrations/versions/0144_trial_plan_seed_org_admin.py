@@ -173,12 +173,12 @@ def upgrade() -> None:
                     chain_hash, previous_hash, created_at
                 )
                 VALUES (
-                    :id::uuid, :tenant_id::uuid, :plan_tier, :name, :billing_cycle,
+                    CAST(:id AS uuid), CAST(:tenant_id AS uuid), :plan_tier, :name, :billing_cycle,
                     :base_price_usd, :base_price_inr, :price, :currency, :pricing_type,
                     :included_credits, :trial_days,
                     :max_users, :max_entities, :max_connectors,
-                    :modules_enabled::jsonb, :annual_discount_pct, :is_active,
-                    :valid_from::date, :valid_until,
+                    CAST(:modules_enabled AS jsonb), :annual_discount_pct, :is_active,
+                    CAST(:valid_from AS date), :valid_until,
                     :chain_hash, :previous_hash, now()
                 )
                 ON CONFLICT (id) DO NOTHING
@@ -194,7 +194,7 @@ def downgrade() -> None:
     # Remove seeded plans
     for plan_id in _PLAN_IDS.values():
         conn.execute(
-            sa.text("DELETE FROM billing_plans WHERE id = :id::uuid"),
+            sa.text("DELETE FROM billing_plans WHERE id = CAST(:id AS uuid)"),
             {"id": plan_id},
         )
 
