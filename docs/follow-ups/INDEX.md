@@ -16,3 +16,5 @@ When picking up a follow-up:
 | FU-001 | [Refactor sync cache-busting sentinel](./FU-001-refactor-sync-cache-busting.md) | 2026-04-25 | Phase 0 sub-prompt 0.2 |
 | FU-002 | [Unify tenant-coa-accounts query keys](./FU-002-refactor-coa-tenant-accounts.md) | 2026-04-25 | Phase 0 sub-prompt 0.2 |
 | FU-003 | [Add org-scoped entity endpoint for Phase 2](./FU-003-entity-endpoint-org-scoping.md) | 2026-04-25 | Phase 0 sub-prompt 0.3 |
+| FU-004 | [Address pre-existing lint warnings](./FU-004-pre-existing-lint-warnings.md) | 2026-04-25 | Phase 0 |
+| FU-005 | [Remove deprecated fields from legacy Zustand stores](./FU-005-legacy-store-cleanup.md) | 2026-04-25 | Phase 0 sub-prompt 0.1 redo |
