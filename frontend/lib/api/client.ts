@@ -214,6 +214,7 @@ apiClient.interceptors.response.use(
         const currentStep =
           typeof details?.current_step === "number" ? details.current_step : 0
         const tenantState = useTenantStore.getState()
+        const workspaceState = useWorkspaceStore.getState()
         if (tenantState.tenant_id && tenantState.tenant_slug) {
           tenantState.setTenant({
             tenant_id: tenantState.tenant_id,
@@ -221,7 +222,8 @@ apiClient.interceptors.response.use(
             org_setup_complete: false,
             org_setup_step: currentStep || tenantState.org_setup_step,
             entity_roles: tenantState.entity_roles,
-            active_entity_id: tenantState.active_entity_id,
+            // HOTFIX 1.1.5: read from workspaceStore (canonical post-Phase-0) not deprecated tenantStore.active_entity_id
+            active_entity_id: workspaceState.entityId,
           })
         }
         if (typeof window !== "undefined") {

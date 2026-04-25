@@ -111,8 +111,9 @@ export default function OrgSetupPageClient() {
     const refreshedSession = await refreshSessionAfterSetup()
     const user = refreshedSession?.user
     if (tenantState.tenant_id && tenantState.tenant_slug) {
+      // HOTFIX 1.1.5: read entityId from workspaceStore (canonical) not deprecated tenantStore.active_entity_id
       const newEntityId =
-        user?.entity_roles.at(0)?.entity_id ?? tenantState.active_entity_id
+        user?.entity_roles.at(0)?.entity_id ?? useWorkspaceStore.getState().entityId
       setTenant({
         tenant_id: tenantState.tenant_id,
         tenant_slug: tenantState.tenant_slug,
