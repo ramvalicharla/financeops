@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
@@ -54,8 +54,8 @@ interface EntitySwitcherProps {
 }
 
 export function EntitySwitcher({ entityRoles }: EntitySwitcherProps) {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
-  const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
+  const switchEntity = useWorkspaceStore((s) => s.switchEntity)
   const [open, setOpen] = useState(false)
 
   const activeEntity = useMemo(
@@ -106,7 +106,7 @@ export function EntitySwitcher({ entityRoles }: EntitySwitcherProps) {
                   key={entity.entity_id}
                   value={entity.entity_name}
                   onSelect={() => {
-                    setActiveEntity(entity.entity_id)
+                    switchEntity(entity.entity_id)
                     setOpen(false)
                   }}
                 >
