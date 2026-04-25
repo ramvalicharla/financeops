@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { listJobs } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { JobBody } from "@/components/control-plane/bodies/JobBody"
 import { PageScaffold } from "@/components/control-plane/PageScaffold"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ interface ControlPlaneJobsPageProps {
 }
 
 export function ControlPlaneJobsPage({ jobId }: ControlPlaneJobsPageProps) {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const [selectedJobId, setSelectedJobId] = useState<string | null>(jobId ?? null)
   const jobsQuery = useQuery({
     queryKey: controlPlaneQueryKeys.jobs({ entity_id: activeEntityId ?? undefined, limit: 50 }),

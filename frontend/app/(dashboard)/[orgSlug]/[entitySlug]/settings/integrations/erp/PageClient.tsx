@@ -13,7 +13,7 @@ import {
   type ErpConnectorStatus,
   updateErpConnectorStatus,
 } from "@/lib/api/erp"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import {
   canPerformAction,
@@ -31,7 +31,7 @@ const AUTH_TYPES: ErpAuthType[] = ["API_KEY", "OAUTH", "BASIC"]
 export default function ErpConnectorsPage() {
   const { data: session } = useSession()
   const queryClient = useQueryClient()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entitlementsQuery = useCurrentEntitlements({
     enabled: Boolean(session?.user?.tenant_id),
   })
@@ -69,7 +69,7 @@ export default function ErpConnectorsPage() {
         credentials = {}
       }
       return createErpConnector({
-        org_entity_id: activeEntityId ?? "",
+        org_entity_id: entityId ?? "",
         erp_type: erpType,
         auth_type: authType,
         connection_config: { credentials },
@@ -93,7 +93,7 @@ export default function ErpConnectorsPage() {
     },
   })
 
-  const canCreate = useMemo(() => Boolean(activeEntityId), [activeEntityId])
+  const canCreate = useMemo(() => Boolean(entityId), [entityId])
   const pageErrorMessage =
     connectorsQuery.error?.message ??
     createMutation.error?.message ??

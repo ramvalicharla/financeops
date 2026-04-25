@@ -3,12 +3,12 @@
 import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { PageScaffold } from "@/components/control-plane/PageScaffold"
 import { Button } from "@/components/ui/button"
 
 export function ControlPlaneModulesPage() {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const contextQuery = useQuery({
     queryKey: controlPlaneQueryKeys.context({ entity_id: activeEntityId ?? undefined }),
     queryFn: () => getControlPlaneContext({ entity_id: activeEntityId ?? undefined }),

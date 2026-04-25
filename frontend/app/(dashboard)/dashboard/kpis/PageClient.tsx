@@ -3,13 +3,13 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getDrilldown, getKpis } from "@/lib/api/analytics"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { StructuredDataView, TableSkeleton } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
 export default function KpisPage() {
-  const entityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const today = new Date().toISOString().slice(0, 10)
   const fromDate = `${today.slice(0, 8)}01`
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null)

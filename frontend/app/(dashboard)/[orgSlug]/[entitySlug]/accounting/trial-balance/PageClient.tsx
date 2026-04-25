@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getAccountingTrialBalance } from "@/lib/api/accounting-trial-balance"
 import { listJournals } from "@/lib/api/accounting-journals"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 
@@ -18,18 +18,18 @@ const fmt = (value: string): string =>
   })
 
 export default function AccountingTrialBalancePage() {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const [asOfDate, setAsOfDate] = useState(today)
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
   const [selectedAccountCode, setSelectedAccountCode] = useState<string | null>(null)
 
   const trialBalanceQuery = useQuery({
-    queryKey: queryKeys.accounting.trialBalance(activeEntityId, asOfDate, fromDate, toDate),
-    enabled: Boolean(activeEntityId && asOfDate),
+    queryKey: queryKeys.accounting.trialBalance(entityId, asOfDate, fromDate, toDate),
+    enabled: Boolean(entityId && asOfDate),
     queryFn: async () =>
       getAccountingTrialBalance({
-        org_entity_id: activeEntityId as string,
+        org_entity_id: entityId as string,
         as_of_date: asOfDate,
         from_date: fromDate || undefined,
         to_date: toDate || undefined,
@@ -37,11 +37,11 @@ export default function AccountingTrialBalancePage() {
   })
 
   const journalsQuery = useQuery({
-    queryKey: queryKeys.accounting.journalsForTb(activeEntityId),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.accounting.journalsForTb(entityId),
+    enabled: Boolean(entityId),
     queryFn: async () =>
       listJournals({
-        org_entity_id: activeEntityId as string,
+        org_entity_id: entityId as string,
         status: "PUSHED",
         limit: 200,
       }),
@@ -104,7 +104,7 @@ export default function AccountingTrialBalancePage() {
             type="button"
             variant="outline"
             onClick={() => void trialBalanceQuery.refetch()}
-            disabled={trialBalanceQuery.isFetching || !activeEntityId}
+            disabled={trialBalanceQuery.isFetching || !entityId}
           >
             Refresh
           </Button>

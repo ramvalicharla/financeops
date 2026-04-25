@@ -5,8 +5,10 @@ import { createJSONStorage, persist } from "zustand/middleware"
 
 interface UIState {
   sidebarOpen: boolean
+  /** @deprecated Read from useWorkspaceStore.sidebarCollapsed instead. */
   sidebarCollapsed: boolean
   density: "comfortable" | "compact"
+  /** @deprecated Read from useWorkspaceStore.period instead. */
   activePeriod: string
   notificationCount: number
   notificationItems: Array<{
@@ -20,8 +22,10 @@ interface UIState {
   recentSearches: string[]
   toggleSidebar: () => void
   closeSidebar: () => void
+  /** @deprecated Call useWorkspaceStore.toggleSidebar instead. */
   toggleSidebarCollapsed: () => void
   setDensity: (density: "comfortable" | "compact") => void
+  /** @deprecated Call useWorkspaceStore.setPeriod instead. */
   setActivePeriod: (period: string) => void
   setNotificationCount: (count: number) => void
   setNotificationItems: (

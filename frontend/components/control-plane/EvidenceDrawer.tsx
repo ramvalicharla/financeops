@@ -12,7 +12,7 @@ import {
 } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { Button } from "@/components/ui/button"
 import { Sheet } from "@/components/ui/Sheet"
 
@@ -42,7 +42,7 @@ export function EvidenceDrawer() {
   const subjectType = useControlPlaneStore((state) => state.evidence_subject_type)
   const subjectId = useControlPlaneStore((state) => state.evidence_subject_id)
   const close = useControlPlaneStore((state) => state.closeEvidenceDrawer)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
 
   const summaryQuery = useQuery({
     queryKey: controlPlaneQueryKeys.intent(

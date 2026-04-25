@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import type { TrendsChartDatum } from "@/components/charts"
 import { getTrends } from "@/lib/api/analytics"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 
 const TrendsChart = dynamic(
@@ -22,7 +22,7 @@ const TrendsChart = dynamic(
 const toAmount = (value: string | number | null | undefined) => Number(value ?? 0)
 
 export default function TrendsPage() {
-  const entityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const today = new Date().toISOString().slice(0, 10)
   const defaultFrom = `${today.slice(0, 4)}-01-01`
   const [frequency, setFrequency] = useState("monthly")

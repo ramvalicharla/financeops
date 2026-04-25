@@ -5,12 +5,13 @@ import { useQuery } from "@tanstack/react-query"
 import { listLocations } from "@/lib/api/locations"
 import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 
 export function EntityLocationSelector() {
   const entityRoles = useTenantStore((state) => state.entity_roles)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
-  const setActiveEntity = useTenantStore((state) => state.setActiveEntity)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
+  const switchEntity = useWorkspaceStore((s) => s.switchEntity)
   const activeLocationId = useLocationStore((state) => state.active_location_id)
   const setActiveLocation = useLocationStore((state) => state.setActiveLocation)
 
@@ -76,7 +77,7 @@ export function EntityLocationSelector() {
           value={activeEntityId ?? ""}
           onChange={(event) => {
             const nextEntityId = event.target.value || null
-            setActiveEntity(nextEntityId)
+            switchEntity(nextEntityId)
             setActiveLocation(null)
           }}
         >

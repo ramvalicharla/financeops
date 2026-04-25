@@ -11,6 +11,7 @@ import {
   type RawTBLineInput,
 } from "@/lib/api/coa"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useDisplayScale } from "@/lib/store/displayScale"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { ScaleSelector } from "@/components/ui/ScaleSelector"
@@ -40,7 +41,7 @@ const toPeriod = (
 export default function TrialBalancePage() {
   const { fmt, scale } = useFormattedAmount()
   const setScale = useDisplayScale((state) => state.setScale)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
 
   const [periodStart, setPeriodStart] = useState("")
@@ -54,10 +55,10 @@ export default function TrialBalancePage() {
   const classifyMutation = useMutation({
     mutationFn: async () => {
       if (scope === "single") {
-        if (!activeEntityId) {
+        if (!entityId) {
           throw new Error("Select an entity before classifying.")
         }
-        const selectedEntity = entityRoles.find((role) => role.entity_id === activeEntityId)
+        const selectedEntity = entityRoles.find((role) => role.entity_id === entityId)
         if (!selectedEntity) {
           throw new Error("Active entity not found.")
         }
@@ -69,9 +70,9 @@ export default function TrialBalancePage() {
           period_start: periodStart || undefined,
           period_end: periodEnd || undefined,
         })
-        setLastRawByEntity({ [activeEntityId]: rawTb })
+        setLastRawByEntity({ [entityId]: rawTb })
         return classifyTrialBalance({
-          entity_id: activeEntityId,
+          entity_id: entityId,
           raw_tb: rawTb,
           gaap,
         })
@@ -99,12 +100,12 @@ export default function TrialBalancePage() {
 
   const exportMutation = useMutation({
     mutationFn: async (format: "csv" | "xlsx") => {
-      if (!activeEntityId) {
+      if (!entityId) {
         throw new Error("Select an entity before export.")
       }
-      const rawTb = lastRawByEntity[activeEntityId] ?? []
+      const rawTb = lastRawByEntity[entityId] ?? []
       return exportTrialBalance({
-        entity_id: activeEntityId,
+        entity_id: entityId,
         gaap,
         format,
         raw_tb: rawTb,
@@ -128,11 +129,11 @@ export default function TrialBalancePage() {
     if (viewMode === "consolidated") {
       return result.consolidated
     }
-    if (scope === "single" && activeEntityId) {
-      return result.entity_results[activeEntityId] ?? []
+    if (scope === "single" && entityId) {
+      return result.entity_results[entityId] ?? []
     }
     return Object.values(result.entity_results).flat()
-  }, [activeEntityId, result, scope, viewMode])
+  }, [entityId, result, scope, viewMode])
 
   const unmappedNetTotal = useMemo(() => {
     if (!result) {
@@ -215,8 +216,8 @@ export default function TrialBalancePage() {
           <label className="space-y-1 text-sm">
             <span className="text-muted-foreground">Entity</span>
             <select
-              value={activeEntityId ?? ""}
-              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              value={entityId ?? ""}
+              onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-foreground"
             >
               <option value="">Select entity</option>

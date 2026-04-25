@@ -3,7 +3,7 @@
 import Link from "next/link"
 import type { NavigationLeafItem } from "@/lib/config/navigation"
 import { useUIStore } from "@/lib/store/ui"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { cn } from "@/lib/utils"
 import { Star } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -24,11 +24,11 @@ export function SidebarNavItem({
   withIcon = true,
 }: SidebarNavItemProps) {
   const Icon = item.icon
-  const collapsed = useUIStore((state) => state.sidebarCollapsed)
+  const collapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
   const pinnedModules = useUIStore((state) => state.pinnedModules)
   const togglePinModule = useUIStore((state) => state.togglePinModule)
-  const orgSlug = useTenantStore((state) => state.tenant_slug) ?? ""
-  const entitySlug = useTenantStore((state) => state.active_entity_id) ?? ""
+  const orgSlug = useWorkspaceStore((s) => s.orgId) ?? ""
+  const entitySlug = useWorkspaceStore((s) => s.entityId) ?? ""
 
   // Transform static hrefs for module pathways that have been migrated to the context-locked layout
   let targetHref = item.href

@@ -12,6 +12,7 @@ import {
   type ErpMapping,
 } from "@/lib/api/coa"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 
@@ -38,7 +39,7 @@ const confidenceBadgeClass = (percent: number): string => {
 
 export default function ErpMappingPage() {
   const queryClient = useQueryClient()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
 
   const [connectorType, setConnectorType] = useState("TALLY")
@@ -50,33 +51,33 @@ export default function ErpMappingPage() {
   })
 
   const mappingsQuery = useQuery({
-    queryKey: queryKeys.erp.mappings(activeEntityId, connectorType),
+    queryKey: queryKeys.erp.mappings(entityId, connectorType),
     queryFn: () =>
       getErpMappings({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         erp_connector_type: connectorType,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const summaryQuery = useQuery({
-    queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType),
+    queryKey: queryKeys.erp.mappingsSummary(entityId, connectorType),
     queryFn: () =>
       getErpMappingSummary({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         erp_connector_type: connectorType,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const autoSuggestMutation = useMutation({
     mutationFn: async () => {
-      if (!activeEntityId) {
+      if (!entityId) {
         return []
       }
       const accounts = (tenantAccountsQuery.data ?? []).slice(0, 25)
       return autoSuggestErpMappings({
-        entity_id: activeEntityId,
+        entity_id: entityId,
         erp_connector_type: connectorType,
         erp_accounts: accounts.map((account) => ({
           code: account.account_code,
@@ -86,8 +87,8 @@ export default function ErpMappingPage() {
       })
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(activeEntityId, connectorType) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(entityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(entityId, connectorType) })
     },
   })
 
@@ -95,8 +96,8 @@ export default function ErpMappingPage() {
     mutationFn: ({ mappingId, tenantCoaAccountId }: { mappingId: string; tenantCoaAccountId: string }) =>
       confirmErpMapping(mappingId, tenantCoaAccountId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(activeEntityId, connectorType) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(entityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(entityId, connectorType) })
     },
   })
 
@@ -107,8 +108,8 @@ export default function ErpMappingPage() {
         auto_confirm_above: "0.90",
       }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(activeEntityId, connectorType) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(activeEntityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappings(entityId, connectorType) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.erp.mappingsSummary(entityId, connectorType) })
     },
   })
 
@@ -147,7 +148,7 @@ export default function ErpMappingPage() {
           <Button
             variant="outline"
             onClick={() => autoSuggestMutation.mutate()}
-            disabled={!activeEntityId || autoSuggestMutation.isPending}
+            disabled={!entityId || autoSuggestMutation.isPending}
           >
             Auto-Suggest
           </Button>
@@ -188,8 +189,8 @@ export default function ErpMappingPage() {
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-4">
           <select
-            value={activeEntityId ?? ""}
-            onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+            value={entityId ?? ""}
+            onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
             className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
           >
             <option value="">Select entity</option>

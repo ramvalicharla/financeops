@@ -22,7 +22,7 @@ import { useMISDashboard, useMISPeriods } from "@/hooks/useMIS"
 import { ModuleAccessNotice } from "@/components/common/ModuleAccessNotice"
 import { getAccessErrorMessage } from "@/lib/ui-access"
 import { useDisplayScale } from "@/lib/store/displayScale"
-import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { isZeroDecimal } from "@/lib/utils"
 import type { MISLineItem } from "@/types/mis"
 
@@ -43,7 +43,8 @@ export default function MISPage() {
   const { data: session } = useSession()
   const entityRoles = session?.user?.entity_roles ?? []
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
-  const { activePeriod, setActivePeriod } = useUIStore()
+  const period = useWorkspaceStore((s) => s.period) ?? currentMonth
+  const setPeriod = useWorkspaceStore((s) => s.setPeriod)
   const [sorting, setSorting] = useState<SortingState>([])
 
   const scale = useDisplayScale((state) => state.scale)
@@ -51,7 +52,7 @@ export default function MISPage() {
   const { fmtNum, scaleLabel } = useFormattedAmount()
 
   const periodsQuery = useMISPeriods(selectedEntityId)
-  const dashboardQuery = useMISDashboard(selectedEntityId, activePeriod)
+  const dashboardQuery = useMISDashboard(selectedEntityId, period)
   const accessErrorMessage = getAccessErrorMessage(
     periodsQuery.error ?? dashboardQuery.error ?? null,
     "MIS",
@@ -193,8 +194,8 @@ export default function MISPage() {
             <select
               id="mis-period"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-              value={activePeriod}
-              onChange={(event) => setActivePeriod(event.target.value)}
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
             >
               {[...(periodsQuery.data ?? [{ period: currentMonth, label: currentMonth }])].map(
                 (period) => (

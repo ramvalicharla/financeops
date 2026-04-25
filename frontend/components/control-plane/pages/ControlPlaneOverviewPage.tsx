@@ -10,7 +10,7 @@ import {
   listTimeline,
 } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { PageScaffold } from "@/components/control-plane/PageScaffold"
 
 function OverviewCard({
@@ -33,7 +33,7 @@ function OverviewCard({
 }
 
 export function ControlPlaneOverviewPage() {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const intentsQuery = useQuery({
     queryKey: controlPlaneQueryKeys.intents({ entity_id: activeEntityId ?? undefined, limit: 25 }),
     queryFn: () => listIntents({ entity_id: activeEntityId ?? undefined, limit: 25 }),

@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { getAccountingPnL, type PnLResult } from "@/lib/api/accounting-statements"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
@@ -20,16 +20,16 @@ const KPICard = ({ label, value, tone }: { label: string; value: string; tone?: 
 }
 
 export default function PnLPage() {
-  const activeEntityId = useTenantStore((s) => s.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const today = new Date().toISOString().slice(0, 10)
   const firstOfYear = `${new Date().getFullYear()}-01-01`
   const [fromDate, setFromDate] = useState(firstOfYear)
   const [toDate, setToDate] = useState(today)
 
   const query = useQuery<PnLResult>({
-    queryKey: queryKeys.accounting.pnl(activeEntityId, fromDate, toDate),
-    queryFn: () => getAccountingPnL({ org_entity_id: activeEntityId!, from_date: fromDate, to_date: toDate }),
-    enabled: Boolean(activeEntityId) && Boolean(fromDate) && Boolean(toDate),
+    queryKey: queryKeys.accounting.pnl(entityId, fromDate, toDate),
+    queryFn: () => getAccountingPnL({ org_entity_id: entityId!, from_date: fromDate, to_date: toDate }),
+    enabled: Boolean(entityId) && Boolean(fromDate) && Boolean(toDate),
   })
 
   const fmt = useCallback((v: string | undefined) => formatINR(v ?? "0"), [])

@@ -17,6 +17,7 @@ import {
   type InvoiceClassificationType,
 } from "@/lib/api/invoiceClassifier"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
@@ -71,7 +72,7 @@ type Tab = "classify" | "queue" | "history" | "rules"
 export default function InvoiceClassifierPage() {
   const queryClient = useQueryClient()
   const { fmt } = useFormattedAmount()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
 
   const [tab, setTab] = useState<Tab>("classify")
@@ -97,7 +98,7 @@ export default function InvoiceClassifierPage() {
   const [ruleConfidence, setRuleConfidence] = useState("0.9500")
   const [rulePriority, setRulePriority] = useState("100")
   const [fieldErrors, setFieldErrors] = useState<{
-    activeEntityId?: string
+    entityId?: string
     invoiceNumber?: string
     vendorName?: string
     invoiceDate?: string
@@ -110,16 +111,16 @@ export default function InvoiceClassifierPage() {
   }>({})
 
   const queueQuery = useQuery({
-    queryKey: queryKeys.invoice.queue(activeEntityId, skip, limit),
-    queryFn: () => getReviewQueue({ entity_id: activeEntityId ?? "", skip, limit }),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.invoice.queue(entityId, skip, limit),
+    queryFn: () => getReviewQueue({ entity_id: entityId ?? "", skip, limit }),
+    enabled: Boolean(entityId),
   })
 
   const historyQuery = useQuery({
-    queryKey: queryKeys.invoice.history(activeEntityId, historyClassification, historyMethod, skip, limit),
+    queryKey: queryKeys.invoice.history(entityId, historyClassification, historyMethod, skip, limit),
     queryFn: () =>
       listClassifications({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         classification:
           historyClassification === "ALL"
             ? undefined
@@ -128,7 +129,7 @@ export default function InvoiceClassifierPage() {
         skip,
         limit,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const rulesQuery = useQuery({
@@ -139,7 +140,7 @@ export default function InvoiceClassifierPage() {
   const classifyMutation = useMutation({
     mutationFn: () =>
       classifyInvoice({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         invoice_number: invoiceNumber,
         vendor_name: vendorName,
         invoice_date: invoiceDate || null,
@@ -148,8 +149,8 @@ export default function InvoiceClassifierPage() {
       }),
     onSuccess: (data) => {
       setLatestResult(data)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(entityId) })
     },
   })
 
@@ -157,16 +158,16 @@ export default function InvoiceClassifierPage() {
     mutationFn: ({ id, classification }: { id: string; classification: InvoiceClassificationType }) =>
       reviewClassification(id, { confirmed_classification: classification }),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(entityId) })
     },
   })
 
   const routeMutation = useMutation({
     mutationFn: (id: string) => routeClassification(id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(entityId) })
     },
   })
 
@@ -178,8 +179,8 @@ export default function InvoiceClassifierPage() {
       return rows.length
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.queueAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invoice.historyAll(entityId) })
     },
   })
 
@@ -234,7 +235,7 @@ export default function InvoiceClassifierPage() {
 
   const handleClassify = () => {
     const nextFieldErrors: typeof fieldErrors = {}
-    if (!activeEntityId) nextFieldErrors.activeEntityId = "Entity is required."
+    if (!entityId) nextFieldErrors.entityId = "Entity is required."
     if (!invoiceNumber.trim()) nextFieldErrors.invoiceNumber = "Invoice number is required."
     if (!vendorName.trim()) nextFieldErrors.vendorName = "Vendor is required."
     if (!invoiceAmount.trim()) nextFieldErrors.invoiceAmount = "Amount is required."
@@ -272,10 +273,10 @@ export default function InvoiceClassifierPage() {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-5">
-          <FormField id="invoice-entity" label="Entity" error={fieldErrors.activeEntityId} required>
+          <FormField id="invoice-entity" label="Entity" error={fieldErrors.entityId} required>
             <select
-              value={activeEntityId ?? ""}
-              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              value={entityId ?? ""}
+              onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
               className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select entity</option>
@@ -321,7 +322,7 @@ export default function InvoiceClassifierPage() {
           </div>
           <Button
             onClick={handleClassify}
-            disabled={!activeEntityId || !invoiceNumber || !vendorName || !invoiceAmount || !lineDescription || classifyMutation.isPending}
+            disabled={!entityId || !invoiceNumber || !vendorName || !invoiceAmount || !lineDescription || classifyMutation.isPending}
           >
             Classify Invoice
           </Button>

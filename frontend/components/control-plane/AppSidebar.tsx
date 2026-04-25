@@ -12,7 +12,7 @@ import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { Button } from "@/components/ui/button"
 import { SidebarBase } from "@/components/shell/primitives/SidebarBase"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { cn } from "@/lib/utils"
 
 const CONTROL_PLANE_NAV = [
@@ -60,7 +60,7 @@ export function AppSidebar({
   entityRoles,
 }: AppSidebarProps) {
   const pathname = usePathname() ?? ""
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const entitiesQuery = useQuery({
     queryKey: controlPlaneQueryKeys.entities(),
     queryFn: listControlPlaneEntities,

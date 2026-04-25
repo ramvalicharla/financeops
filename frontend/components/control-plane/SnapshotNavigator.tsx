@@ -13,7 +13,7 @@ import {
 } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { Button } from "@/components/ui/button"
 import { GuardFailureCard, StateBadge } from "@/components/ui"
 
@@ -202,7 +202,7 @@ export function SnapshotNavigator({
   onSubjectSelected,
   initialSnapshotId = null,
 }: SnapshotNavigatorProps) {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const openDeterminismPanel = useControlPlaneStore((state) => state.openDeterminismPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string | null>(initialSnapshotId)

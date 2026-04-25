@@ -18,7 +18,7 @@ import {
   useGLTBResult,
 } from "@/hooks/useReconciliation"
 import { getAccessErrorMessage } from "@/lib/ui-access"
-import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { formatINR, isZeroDecimal } from "@/lib/utils"
 import type { GLTBAccount } from "@/types/reconciliation"
 
@@ -31,7 +31,8 @@ export default function GLTBReconciliationPage() {
     [session?.user?.entity_roles]
   )
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null)
-  const { activePeriod, setActivePeriod } = useUIStore()
+  const period = useWorkspaceStore((s) => s.period) ?? new Date().toISOString().slice(0, 7)
+  const setPeriod = useWorkspaceStore((s) => s.setPeriod)
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL")
@@ -59,11 +60,11 @@ export default function GLTBReconciliationPage() {
     }
   }, [selectedRunId, syncRunsQuery.data])
 
-  const resultQuery = useGLTBResult(selectedEntityId, activePeriod, selectedRunId)
+  const resultQuery = useGLTBResult(selectedEntityId, period, selectedRunId)
   const entriesQuery = useGLTBAccountEntries(
     selectedEntityId,
     selectedAccount?.account_code ?? null,
-    activePeriod,
+    period,
   )
   const exportMutation = useExportGLTB()
   const selectionErrorMessage =
@@ -81,7 +82,7 @@ export default function GLTBReconciliationPage() {
     return accounts.filter((account) => account.status === statusFilter)
   }, [resultQuery.data?.accounts, statusFilter])
 
-  const filtersReady = Boolean(selectedEntityId && activePeriod && selectedRunId)
+  const filtersReady = Boolean(selectedEntityId && period && selectedRunId)
   const summary = resultQuery.data
 
   const handleBulkMarkMatched = () => {
@@ -123,8 +124,8 @@ export default function GLTBReconciliationPage() {
               id="gltb-period"
               className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               type="month"
-              value={activePeriod}
-              onChange={(event) => setActivePeriod(event.target.value)}
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
             />
           </div>
           <div className="space-y-1">
@@ -156,7 +157,7 @@ export default function GLTBReconciliationPage() {
                 }
                 void exportMutation.mutateAsync({
                   entityId: selectedEntityId,
-                  period: activePeriod,
+                  period: period,
                   runId: selectedRunId,
                 })
               }}

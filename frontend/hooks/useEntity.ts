@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query"
 import { getOrgEntity, type OrgEntity } from "@/lib/api/orgSetup"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 
 type UseEntityResult = {
@@ -12,7 +12,7 @@ type UseEntityResult = {
 }
 
 export function useEntity(): UseEntityResult {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const query = useQuery({
     queryKey: queryKeys.workspace.activeEntity(activeEntityId),
     queryFn: () => getOrgEntity(activeEntityId ?? ""),

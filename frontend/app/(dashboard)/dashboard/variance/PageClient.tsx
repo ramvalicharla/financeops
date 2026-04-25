@@ -3,13 +3,13 @@
 import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { getVariance } from "@/lib/api/analytics"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 
 const abs = (value: string | number | null | undefined) => Math.abs(Number(value ?? 0))
 
 export default function VariancePage() {
-  const entityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const [comparison, setComparison] = useState("prev_month")
   const today = new Date().toISOString().slice(0, 10)
   const fromDate = `${today.slice(0, 8)}01`

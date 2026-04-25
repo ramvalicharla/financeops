@@ -7,6 +7,7 @@ import { ZodError, type ZodType } from "zod"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useLocationStore } from "@/lib/store/location"
 import { useUIStore } from "@/lib/store/ui"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { shouldSignOutOnUnauthorized } from "@/lib/api/auth-unauthorized"
 import { consumeAuthRecoveryAttempt } from "@/lib/api/auth-loop-guard"
 import { readSessionForApi } from "@/lib/api/session-cache"
@@ -109,6 +110,7 @@ export const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
   const session = await readSessionForApi()
   const sessionToken = readAccessTokenFromSession(session)
   const state = useTenantStore.getState()
+  const workspaceState = useWorkspaceStore.getState()
   const locationState = useLocationStore.getState()
 
   config.headers.set("X-Request-ID", crypto.randomUUID())
@@ -125,8 +127,8 @@ export const setAuthHeaders = async (config: InternalAxiosRequestConfig) => {
   if (effectiveTenantId) {
     config.headers.set("X-Tenant-ID", effectiveTenantId)
   }
-  if (state.active_entity_id) {
-    config.headers.set("X-Entity-ID", state.active_entity_id)
+  if (workspaceState.entityId) {
+    config.headers.set("X-Entity-ID", workspaceState.entityId)
   }
   if (locationState.active_location_id) {
     config.headers.set("X-Location-ID", locationState.active_location_id)

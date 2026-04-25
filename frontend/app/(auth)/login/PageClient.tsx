@@ -19,6 +19,7 @@ import {
 } from "@/lib/login-flow"
 import { navigateAfterAuth, waitForEstablishedSession } from "@/lib/auth-handoff"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 // ---------------------------------------------------------------------------
 // Schemas
@@ -79,6 +80,7 @@ function LoginPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const setTenant = useTenantStore((state) => state.setTenant)
+  const { setOrgId, setEntityId } = useWorkspaceStore()
   const registered = searchParams?.get("registered")
   const reset = searchParams?.get("reset")
   const callbackUrl = getSafeCallbackUrl(searchParams?.get("callbackUrl"))
@@ -210,6 +212,8 @@ function LoginPageContent() {
           entity_roles: user.entity_roles,
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
+        setOrgId(user.tenant_id)
+        setEntityId(user.entity_roles.at(0)?.entity_id ?? null)
         navigateAfterAuth(callbackUrl)
       } catch (error) {
         const message = error instanceof Error ? error.message.toLowerCase() : ""
@@ -296,6 +300,8 @@ function LoginPageContent() {
           entity_roles: user.entity_roles,
           active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
+        setOrgId(user.tenant_id)
+        setEntityId(user.entity_roles.at(0)?.entity_id ?? null)
       }
       navigateAfterAuth(callbackUrl)
     } catch (error) {

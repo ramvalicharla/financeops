@@ -16,6 +16,7 @@ import {
   type MonthendChecklistTask,
 } from "@/lib/api/close-governance"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import {
   canPerformAction,
 } from "@/lib/ui-access"
@@ -50,7 +51,7 @@ export default function ClosePage() {
   const canLock = canPerformAction("close.lock", userRole)
   const canUnlock = canPerformAction("close.unlock", userRole)
   const queryClient = useQueryClient()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const initialPeriod = searchParams?.get("period") ?? new Date().toISOString().slice(0, 7)
   const [period, setPeriod] = useState(initialPeriod)
@@ -58,30 +59,30 @@ export default function ClosePage() {
   const [showCloseChecklistDialog, setShowCloseChecklistDialog] = useState(false)
   const { fiscalYear, periodNumber } = useMemo(() => toPeriodParts(period), [period])
   const activeEntity = useMemo(
-    () => entityRoles.find((role) => role.entity_id === activeEntityId) ?? null,
-    [activeEntityId, entityRoles],
+    () => entityRoles.find((role) => role.entity_id === entityId) ?? null,
+    [entityId, entityRoles],
   )
 
   const periodQuery = useQuery({
-    queryKey: queryKeys.close.periodStatus(activeEntityId, fiscalYear, periodNumber),
+    queryKey: queryKeys.close.periodStatus(entityId, fiscalYear, periodNumber),
     queryFn: async () =>
       getPeriodStatus({
-        org_entity_id: activeEntityId ?? undefined,
+        org_entity_id: entityId ?? undefined,
         fiscal_year: fiscalYear,
         period_number: periodNumber,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const readinessQuery = useQuery({
-    queryKey: queryKeys.close.readiness(activeEntityId, fiscalYear, periodNumber),
+    queryKey: queryKeys.close.readiness(entityId, fiscalYear, periodNumber),
     queryFn: async () =>
       runReadiness({
-        org_entity_id: activeEntityId as string,
+        org_entity_id: entityId as string,
         fiscal_year: fiscalYear,
         period_number: periodNumber,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const monthendListQuery = useQuery({
@@ -128,7 +129,7 @@ export default function ClosePage() {
       reason: string
     }) => {
       return lockPeriod({
-        org_entity_id: activeEntityId ?? undefined,
+        org_entity_id: entityId ?? undefined,
         fiscal_year: fiscalYear,
         period_number: periodNumber,
         lock_type: lockType,
@@ -141,7 +142,7 @@ export default function ClosePage() {
   const unlockMutation = useMutation({
     mutationFn: ({ reason }: { reason: string }) => {
       return unlockPeriod({
-        org_entity_id: activeEntityId ?? undefined,
+        org_entity_id: entityId ?? undefined,
         fiscal_year: fiscalYear,
         period_number: periodNumber,
         reason,
@@ -240,7 +241,7 @@ export default function ClosePage() {
         </div>
       </header>
 
-      {!activeEntityId ? (
+      {!entityId ? (
         <section className="rounded-xl border border-border bg-card p-5">
           <p className="text-sm text-muted-foreground">Select an active entity to manage period close.</p>
         </section>

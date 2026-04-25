@@ -7,7 +7,7 @@ import { listErpConnectors, type ErpConnector } from "@/lib/api/erp"
 import { fetchAnomalyAlerts } from "@/lib/api/anomaly"
 import { listJournals, type JournalRecord } from "@/lib/api/accounting-journals"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { cn } from "@/lib/utils"
 import { queryKeys } from "@/lib/query/keys"
 
@@ -263,7 +263,7 @@ function QuickActions() {
 // ---------------------------------------------------------------------------
 
 export default function HomePageClient() {
-  const entityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
 
   // Sections 1 + 2: ERP connectors (shared query — one fetch for both)
   const connectorsQuery = useQuery({

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useParams } from "next/navigation"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { getAccountingBalanceSheet, type BalanceSheetResult } from "@/lib/api/accounting-statements"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
@@ -12,13 +12,13 @@ import { formatINR } from "@/lib/utils"
 
 export default function BalanceSheetPage() {
   const params = useParams<{ orgSlug: string; entitySlug: string }>()
-  const activeEntityId = useTenantStore((s) => s.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const [asOfDate, setAsOfDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   const query = useQuery<BalanceSheetResult>({
-    queryKey: queryKeys.accounting.balanceSheet(activeEntityId, asOfDate),
-    queryFn: () => getAccountingBalanceSheet({ org_entity_id: activeEntityId!, as_of_date: asOfDate }),
-    enabled: Boolean(activeEntityId) && Boolean(asOfDate),
+    queryKey: queryKeys.accounting.balanceSheet(entityId, asOfDate),
+    queryFn: () => getAccountingBalanceSheet({ org_entity_id: entityId!, as_of_date: asOfDate }),
+    enabled: Boolean(entityId) && Boolean(asOfDate),
   })
 
   const fmt = useCallback((v: string | undefined) => formatINR(v ?? "0"), [])
