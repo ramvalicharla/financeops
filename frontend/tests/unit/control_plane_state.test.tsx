@@ -7,6 +7,7 @@ import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { ContextBar } from "@/components/layout/ContextBar"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 const mockPathname = vi.fn(() => "/erp/sync")
 const getControlPlaneContext = vi.fn()
@@ -117,7 +118,7 @@ describe("control plane state", () => {
     await user.click(screen.getByRole("button", { name: /switch active entity/i }))
     await user.click(screen.getByText("Acme Holdings"))
 
-    expect(useTenantStore.getState().active_entity_id).toBe("entity-2")
+    expect(useWorkspaceStore.getState().entityId).toBe("entity-2")
   })
 
   it("keeps module visibility dependent on backend context", async () => {

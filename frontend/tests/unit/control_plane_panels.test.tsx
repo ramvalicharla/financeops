@@ -23,6 +23,7 @@ vi.mock("@/components/notifications/NotificationBell", () => ({
 
 vi.mock("next-auth/react", () => ({
   signOut: vi.fn(),
+  useSession: () => ({ data: null, status: "unauthenticated" }),
 }))
 
 vi.mock("@/components/search/SearchProvider", () => ({

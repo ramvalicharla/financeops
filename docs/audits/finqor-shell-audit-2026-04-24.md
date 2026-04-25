@@ -297,3 +297,29 @@ The following findings are ≤ 4h each and can ship independently, in a single P
 - #25 — residual scope is ~9 pages, not all pages
 
 **Total quick-win effort: ~10h. All are safe, isolated, and reviewable in a single PR per file.**
+
+---
+
+## Phase 0 sub-prompt resolution log
+
+**Branch `feat/phase0-workspace-store-v2`** — Merged at `aa50a99`
+- Resolves Finding #5: Fragmented shell state stores
+- Resolves Finding #29 (partial): workspaceStore models orgId as workspace setting per Gap 2 trace findings
+- Note: this is the redo of the original sub-prompt 0.1 work. The original branch
+  `feat/phase0-workspace-store` was authored locally but never merged. v2 re-applies
+  the work against current main and includes additional completeness fixes:
+  migration of 11 control-plane components, 4 shell-adjacent components, AirlockQueue,
+  JournalList, plus 2 split-brain bug fixes (trial-balance write path,
+  EntityLocationSelector read+write).
+
+**Branch `feat/phase0-query-keys`** — Merged at `44a4678`
+- Resolves Finding #26: Inconsistent TanStack Query key conventions
+- 23-domain modular factory under `frontend/lib/query/keys/`
+- 194 call sites migrated (114 fetches + 80 invalidations)
+- Deferred work tracked in FU-001 (sync cache-busting), FU-002 (tenant-coa-accounts unification)
+
+**Branch `feat/phase0-entity-switcher-live`** — Merged at `8b2e44b`
+- Resolves Finding #17: EntitySwitcher relied on stale session entity_roles
+- Wired to live `/api/v1/org-setup/entities` endpoint via `useOrgEntities` hook
+- Graceful fallback to session data on error
+- Deferred work tracked in FU-003 (entity endpoint org-scoping for Phase 2)
