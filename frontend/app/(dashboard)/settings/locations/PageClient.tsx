@@ -12,6 +12,7 @@ import {
   type LocationRecord,
 } from "@/lib/api/locations"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useLocationStore } from "@/lib/store/location"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
@@ -44,7 +45,7 @@ const toEditable = (row: LocationRecord): EditableLocation => ({
 
 export default function LocationsSettingsPage() {
   const queryClient = useQueryClient()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const activeLocationId = useLocationStore((state) => state.active_location_id)
   const setActiveLocation = useLocationStore((state) => state.setActiveLocation)
@@ -72,14 +73,14 @@ export default function LocationsSettingsPage() {
   }>({})
 
   const locationsQuery = useQuery({
-    queryKey: queryKeys.settings.locations(activeEntityId, skip, limit),
+    queryKey: queryKeys.settings.locations(entityId, skip, limit),
     queryFn: () =>
       listLocations({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         skip,
         limit,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const stateCodesQuery = useQuery({
@@ -90,7 +91,7 @@ export default function LocationsSettingsPage() {
   const createMutation = useMutation({
     mutationFn: () =>
       createLocation({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         location_name: locationName,
         location_code: locationCode,
         gstin: gstin || null,
@@ -113,8 +114,8 @@ export default function LocationsSettingsPage() {
       setGstinHint(null)
       setGstinError(null)
       setActiveLocation(row.id)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(entityId) })
     },
   })
 
@@ -124,8 +125,8 @@ export default function LocationsSettingsPage() {
     onSuccess: () => {
       setEditingId(null)
       setEditingDraft(null)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(entityId) })
     },
   })
 
@@ -133,8 +134,8 @@ export default function LocationsSettingsPage() {
     mutationFn: (locationId: string) => setPrimaryLocation(locationId),
     onSuccess: (row) => {
       setActiveLocation(row.id)
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.locationsAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.entityLocations(entityId) })
     },
   })
 
@@ -172,13 +173,13 @@ export default function LocationsSettingsPage() {
 
   const rows = locationsQuery.data?.items ?? []
   const entityName = useMemo(
-    () => entityRoles.find((role) => role.entity_id === activeEntityId)?.entity_name ?? "",
-    [activeEntityId, entityRoles],
+    () => entityRoles.find((role) => role.entity_id === entityId)?.entity_name ?? "",
+    [entityId, entityRoles],
   )
 
   const handleCreate = () => {
     const nextFieldErrors: typeof fieldErrors = {}
-    if (!activeEntityId) nextFieldErrors.entity = "Entity is required."
+    if (!entityId) nextFieldErrors.entity = "Entity is required."
     if (!locationName.trim()) nextFieldErrors.location_name = "Location name is required."
     if (!locationCode.trim()) nextFieldErrors.location_code = "Location code is required."
     if (Object.keys(nextFieldErrors).length > 0 || gstinError) {
@@ -199,7 +200,7 @@ export default function LocationsSettingsPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCreateOpen((value) => !value)} disabled={!activeEntityId}>
+          <Button variant="outline" onClick={() => setCreateOpen((value) => !value)} disabled={!entityId}>
             {createOpen ? "Close" : "Add Location"}
           </Button>
         </div>
@@ -209,9 +210,9 @@ export default function LocationsSettingsPage() {
         <div className="grid gap-3 md:grid-cols-3">
           <FormField id="location-entity" label="Entity" error={fieldErrors.entity} required>
             <select
-              value={activeEntityId ?? ""}
+              value={entityId ?? ""}
               onChange={(event) => {
-                useTenantStore.getState().setActiveEntity(event.target.value || null)
+                useWorkspaceStore.getState().switchEntity(event.target.value || null)
                 useLocationStore.getState().setActiveLocation(null)
                 setSkip(0)
               }}
@@ -277,7 +278,7 @@ export default function LocationsSettingsPage() {
           <div className="mt-4 flex justify-end">
             <Button
               onClick={handleCreate}
-              disabled={!activeEntityId || !locationName || !locationCode || createMutation.isPending || Boolean(gstinError)}
+              disabled={!entityId || !locationName || !locationCode || createMutation.isPending || Boolean(gstinError)}
             >
               Create Location
             </Button>

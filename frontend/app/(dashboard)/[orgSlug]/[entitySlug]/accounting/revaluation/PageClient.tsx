@@ -4,12 +4,12 @@ import { useState } from "react"
 import { useMutation } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { runAccountingRevaluation } from "@/lib/api/fx-rates"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
 export default function AccountingRevaluationPage() {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const [asOfDate, setAsOfDate] = useState(TODAY)
   const [error, setError] = useState<string | null>(null)
 
@@ -22,12 +22,12 @@ export default function AccountingRevaluationPage() {
 
   const runNow = async () => {
     setError(null)
-    if (!activeEntityId) {
+    if (!entityId) {
       setError("Select an active entity before running revaluation.")
       return
     }
     await runMutation.mutateAsync({
-      org_entity_id: activeEntityId,
+      org_entity_id: entityId,
       as_of_date: asOfDate,
     })
   }

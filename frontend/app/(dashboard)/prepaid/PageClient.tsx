@@ -12,6 +12,7 @@ import {
 import { listCostCentres, listLocations } from "@/lib/api/locations"
 import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
@@ -24,7 +25,7 @@ import { getAccessErrorMessage } from "@/lib/ui-access"
 export default function PrepaidExpensesPage() {
   const queryClient = useQueryClient()
   const { fmt } = useFormattedAmount()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const activeLocationId = useLocationStore((state) => state.active_location_id)
 
@@ -52,7 +53,7 @@ export default function PrepaidExpensesPage() {
   const [periodStart, setPeriodStart] = useState("")
   const [periodEnd, setPeriodEnd] = useState("")
   const [fieldErrors, setFieldErrors] = useState<{
-    activeEntityId?: string
+    entityId?: string
     referenceNumber?: string
     description?: string
     prepaidType?: string
@@ -65,22 +66,22 @@ export default function PrepaidExpensesPage() {
   }>({})
 
   const locationsQuery = useQuery({
-    queryKey: queryKeys.prepaid.locations(activeEntityId),
-    queryFn: () => listLocations({ entity_id: activeEntityId ?? "", is_active: true, limit: 200 }),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.prepaid.locations(entityId),
+    queryFn: () => listLocations({ entity_id: entityId ?? "", is_active: true, limit: 200 }),
+    enabled: Boolean(entityId),
   })
 
   const costCentresQuery = useQuery({
-    queryKey: queryKeys.prepaid.costCentres(activeEntityId),
-    queryFn: () => listCostCentres({ entity_id: activeEntityId ?? "", limit: 300 }),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.prepaid.costCentres(entityId),
+    queryFn: () => listCostCentres({ entity_id: entityId ?? "", limit: 300 }),
+    enabled: Boolean(entityId),
   })
 
   const schedulesQuery = useQuery({
-    queryKey: queryKeys.prepaid.schedules(activeEntityId, statusFilter, typeFilter, locationFilter, costCentreFilter, skip, limit),
+    queryKey: queryKeys.prepaid.schedules(entityId, statusFilter, typeFilter, locationFilter, costCentreFilter, skip, limit),
     queryFn: () =>
       listPrepaidSchedules({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         status: statusFilter === "ALL" ? undefined : statusFilter,
         prepaid_type: typeFilter === "ALL" ? undefined : typeFilter,
         location_id: locationFilter === "ALL" ? undefined : locationFilter,
@@ -88,13 +89,13 @@ export default function PrepaidExpensesPage() {
         skip,
         limit,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const createMutation = useMutation({
     mutationFn: () =>
       createPrepaidSchedule({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         reference_number: referenceNumber,
         description,
         prepaid_type: prepaidType as "INSURANCE" | "SUBSCRIPTION" | "MAINTENANCE" | "RENT_ADVANCE" | "OTHER",
@@ -118,14 +119,14 @@ export default function PrepaidExpensesPage() {
       setCoverageEnd("")
       setCreateLocationId("")
       setCreateCostCentreId("")
-      void queryClient.invalidateQueries({ queryKey: queryKeys.prepaid.schedulesAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.prepaid.schedulesAll(entityId) })
     },
   })
 
   const runPeriodMutation = useMutation({
     mutationFn: () =>
       runPrepaidPeriod({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         period_start: periodStart,
         period_end: periodEnd,
       }),
@@ -133,7 +134,7 @@ export default function PrepaidExpensesPage() {
       setRunModalOpen(false)
       setPeriodStart("")
       setPeriodEnd("")
-      void queryClient.invalidateQueries({ queryKey: queryKeys.prepaid.schedulesAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.prepaid.schedulesAll(entityId) })
     },
   })
 
@@ -156,7 +157,7 @@ export default function PrepaidExpensesPage() {
 
   const handleCreate = () => {
     const nextFieldErrors: typeof fieldErrors = {}
-    if (!activeEntityId) nextFieldErrors.activeEntityId = "Entity is required."
+    if (!entityId) nextFieldErrors.entityId = "Entity is required."
     if (!referenceNumber.trim()) nextFieldErrors.referenceNumber = "Reference number is required."
     if (!description.trim()) nextFieldErrors.description = "Description is required."
     if (!prepaidType) nextFieldErrors.prepaidType = "Prepaid type is required."
@@ -194,10 +195,10 @@ export default function PrepaidExpensesPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setRunModalOpen(true)} disabled={!activeEntityId}>
+          <Button variant="outline" onClick={() => setRunModalOpen(true)} disabled={!entityId}>
             Run Period
           </Button>
-          <Button onClick={() => setCreateModalOpen(true)} disabled={!activeEntityId}>
+          <Button onClick={() => setCreateModalOpen(true)} disabled={!entityId}>
             Add Prepaid
           </Button>
         </div>
@@ -205,10 +206,10 @@ export default function PrepaidExpensesPage() {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-7">
-          <FormField id="prepaid-entity" label="Entity" error={fieldErrors.activeEntityId} required>
+          <FormField id="prepaid-entity" label="Entity" error={fieldErrors.entityId} required>
             <select
-              value={activeEntityId ?? ""}
-              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              value={entityId ?? ""}
+              onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
               className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select entity</option>
@@ -445,7 +446,7 @@ export default function PrepaidExpensesPage() {
             <Button
               onClick={handleCreate}
               disabled={
-                !activeEntityId ||
+                !entityId ||
                 !referenceNumber ||
                 !description ||
                 !totalAmount ||
@@ -476,7 +477,7 @@ export default function PrepaidExpensesPage() {
             </Button>
             <Button
               onClick={handleRunPeriod}
-              disabled={!activeEntityId || !periodStart || !periodEnd || runPeriodMutation.isPending}
+              disabled={!entityId || !periodStart || !periodEnd || runPeriodMutation.isPending}
             >
               Run
             </Button>

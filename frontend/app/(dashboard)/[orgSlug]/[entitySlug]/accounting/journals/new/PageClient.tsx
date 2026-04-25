@@ -10,7 +10,7 @@ import { queryKeys } from "@/lib/query/keys"
 import type { CreateJournalPayload } from "@/lib/api/accounting-journals"
 import { createGovernedIntent, type JournalIntentPayload } from "@/lib/api/intents"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
 import { StateBadge } from "@/components/ui/StateBadge"
 import { Button } from "@/components/ui/button"
@@ -68,7 +68,7 @@ export default function NewJournalPage() {
   const userRole = String((session?.user as { role?: string } | undefined)?.role ?? "")
   const canCreateJournal = canPerformAction("journal.create", userRole)
   const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const [journalDate, setJournalDate] = useState(today)
   const [reference, setReference] = useState("")
   const [narration, setNarration] = useState("")
@@ -185,7 +185,7 @@ export default function NewJournalPage() {
   }
 
   const submit = (): void => {
-    if (!activeEntityId) {
+    if (!entityId) {
       toast.error("Select an active entity before posting a journal.")
       return
     }
@@ -209,7 +209,7 @@ export default function NewJournalPage() {
     })
 
     const rawData = {
-      org_entity_id: activeEntityId,
+      org_entity_id: entityId,
       journal_date: journalDate,
       reference: reference || undefined,
       narration: narration || undefined,
@@ -235,7 +235,7 @@ export default function NewJournalPage() {
     const payload: JournalIntentPayload = {
       type: "CREATE_JOURNAL",
       data: {
-        org_entity_id: activeEntityId,
+        org_entity_id: entityId,
         journal_date: journalDate,
         reference: reference || undefined,
         narration: narration || undefined,

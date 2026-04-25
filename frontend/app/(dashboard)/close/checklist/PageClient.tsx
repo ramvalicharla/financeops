@@ -13,6 +13,7 @@ import {
   type MonthendChecklistTask,
 } from "@/lib/api/close-governance"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { StateBadge } from "@/components/ui"
 import { Button } from "@/components/ui/button"
@@ -34,15 +35,15 @@ const normalize = (value: string): string => value.trim().toLowerCase().replace(
 export default function CloseChecklistPage() {
   const queryClient = useQueryClient()
   const searchParams = useSearchParams()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const initialPeriod = searchParams?.get("period") ?? new Date().toISOString().slice(0, 7)
   const [period, setPeriod] = useState(initialPeriod)
   const [showCloseDialog, setShowCloseDialog] = useState(false)
   const { fiscalYear, periodNumber } = useMemo(() => parsePeriod(period), [period])
   const activeEntity = useMemo(
-    () => entityRoles.find((role) => role.entity_id === activeEntityId) ?? null,
-    [activeEntityId, entityRoles],
+    () => entityRoles.find((role) => role.entity_id === entityId) ?? null,
+    [entityId, entityRoles],
   )
 
   const monthendListQuery = useQuery({
@@ -71,14 +72,14 @@ export default function CloseChecklistPage() {
   })
 
   const readinessQuery = useQuery({
-    queryKey: queryKeys.close.readiness(activeEntityId, fiscalYear, periodNumber),
+    queryKey: queryKeys.close.readiness(entityId, fiscalYear, periodNumber),
     queryFn: async () =>
       runReadiness({
-        org_entity_id: activeEntityId as string,
+        org_entity_id: entityId as string,
         fiscal_year: fiscalYear,
         period_number: periodNumber,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const refresh = async (): Promise<void> => {
@@ -164,7 +165,7 @@ export default function CloseChecklistPage() {
         </div>
       </header>
 
-      {!activeEntityId ? (
+      {!entityId ? (
         <section className="rounded-xl border border-border bg-card p-5">
           <p className="text-sm text-muted-foreground">Select an active entity to load checklist items.</p>
         </section>
@@ -254,7 +255,7 @@ export default function CloseChecklistPage() {
 
             <section className="rounded-2xl border border-border bg-card p-5">
               <h3 className="text-base font-semibold text-foreground">Readiness Summary</h3>
-              {!activeEntityId ? (
+              {!entityId ? (
                 <p className="mt-2 text-sm text-muted-foreground">Select an active entity to run readiness checks.</p>
               ) : readinessQuery.isLoading ? (
                 <p className="mt-2 text-sm text-muted-foreground">Running readiness checks...</p>

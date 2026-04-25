@@ -10,6 +10,7 @@ import {
   type CostCentreTreeNode,
 } from "@/lib/api/locations"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
@@ -68,7 +69,7 @@ function TreeNode({
 
 export default function CostCentresSettingsPage() {
   const queryClient = useQueryClient()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
 
   const [expanded, setExpanded] = useState<ExpandedMap>({})
@@ -86,26 +87,26 @@ export default function CostCentresSettingsPage() {
   }>({})
 
   const flatQuery = useQuery({
-    queryKey: queryKeys.settings.costCentresFlat(activeEntityId),
+    queryKey: queryKeys.settings.costCentresFlat(entityId),
     queryFn: () =>
       listCostCentres({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         skip: 0,
         limit: 500,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const treeQuery = useQuery({
-    queryKey: queryKeys.settings.costCentresTree(activeEntityId),
-    queryFn: () => getCostCentreTree(activeEntityId ?? ""),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.settings.costCentresTree(entityId),
+    queryFn: () => getCostCentreTree(entityId ?? ""),
+    enabled: Boolean(entityId),
   })
 
   const createMutation = useMutation({
     mutationFn: () =>
       createCostCentre({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         parent_id: parentId || null,
         cost_centre_code: code,
         cost_centre_name: name,
@@ -114,8 +115,8 @@ export default function CostCentresSettingsPage() {
       setCode("")
       setName("")
       setParentId("")
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresFlat(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresTree(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresFlat(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresTree(entityId) })
     },
   })
 
@@ -126,8 +127,8 @@ export default function CostCentresSettingsPage() {
       setEditingId(null)
       setEditingCode("")
       setEditingName("")
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresFlat(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresTree(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresFlat(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.settings.costCentresTree(entityId) })
     },
   })
 
@@ -141,7 +142,7 @@ export default function CostCentresSettingsPage() {
 
   const handleCreate = () => {
     const nextFieldErrors: typeof fieldErrors = {}
-    if (!activeEntityId) nextFieldErrors.entity = "Entity is required."
+    if (!entityId) nextFieldErrors.entity = "Entity is required."
     if (!code.trim()) nextFieldErrors.code = "Cost centre code is required."
     if (!name.trim()) nextFieldErrors.name = "Cost centre name is required."
     if (Object.keys(nextFieldErrors).length > 0) {
@@ -165,8 +166,8 @@ export default function CostCentresSettingsPage() {
         <div className="grid gap-3 md:grid-cols-4">
           <FormField id="cc-entity" label="Entity" error={fieldErrors.entity} required>
             <select
-              value={activeEntityId ?? ""}
-              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              value={entityId ?? ""}
+              onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
               className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select entity</option>
@@ -199,7 +200,7 @@ export default function CostCentresSettingsPage() {
           </FormField>
         </div>
         <div className="mt-4 flex justify-end">
-          <Button onClick={handleCreate} disabled={!activeEntityId || !code || !name || createMutation.isPending}>
+          <Button onClick={handleCreate} disabled={!entityId || !code || !name || createMutation.isPending}>
             Add Cost Centre
           </Button>
         </div>

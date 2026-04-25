@@ -15,6 +15,7 @@ import {
 import { listCostCentres, listLocations } from "@/lib/api/locations"
 import { useLocationStore } from "@/lib/store/location"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { queryKeys } from "@/lib/query/keys"
 import { Button } from "@/components/ui/button"
@@ -68,7 +69,7 @@ const downloadText = (content: string, filename: string, mimeType: string) => {
 export default function FixedAssetsPage() {
   const queryClient = useQueryClient()
   const { fmt } = useFormattedAmount()
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const entityId = useWorkspaceStore((s) => s.entityId)
   const entityRoles = useTenantStore((state) => state.entity_roles)
   const activeLocationId = useLocationStore((state) => state.active_location_id)
 
@@ -99,7 +100,7 @@ export default function FixedAssetsPage() {
   const [assetLocationId, setAssetLocationId] = useState("")
   const [assetCostCentreId, setAssetCostCentreId] = useState("")
   const [fieldErrors, setFieldErrors] = useState<{
-    activeEntityId?: string
+    entityId?: string
     assetClassId?: string
     assetCode?: string
     assetName?: string
@@ -113,52 +114,52 @@ export default function FixedAssetsPage() {
   }>({})
 
   const locationsQuery = useQuery({
-    queryKey: queryKeys.fixedAssets.locations(activeEntityId),
-    queryFn: () => listLocations({ entity_id: activeEntityId ?? "", is_active: true, limit: 200 }),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.fixedAssets.locations(entityId),
+    queryFn: () => listLocations({ entity_id: entityId ?? "", is_active: true, limit: 200 }),
+    enabled: Boolean(entityId),
   })
 
   const costCentresQuery = useQuery({
-    queryKey: queryKeys.fixedAssets.costCentres(activeEntityId),
-    queryFn: () => listCostCentres({ entity_id: activeEntityId ?? "", limit: 300 }),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.fixedAssets.costCentres(entityId),
+    queryFn: () => listCostCentres({ entity_id: entityId ?? "", limit: 300 }),
+    enabled: Boolean(entityId),
   })
 
   const classQuery = useQuery({
-    queryKey: queryKeys.fixedAssets.classes(activeEntityId),
-    queryFn: () => listAssetClasses(activeEntityId ?? "", 0, 200),
-    enabled: Boolean(activeEntityId),
+    queryKey: queryKeys.fixedAssets.classes(entityId),
+    queryFn: () => listAssetClasses(entityId ?? "", 0, 200),
+    enabled: Boolean(entityId),
   })
 
   const assetsQuery = useQuery({
-    queryKey: queryKeys.fixedAssets.list(activeEntityId, statusFilter, locationFilter, costCentreFilter, skip, limit),
+    queryKey: queryKeys.fixedAssets.list(entityId, statusFilter, locationFilter, costCentreFilter, skip, limit),
     queryFn: () =>
       listAssets({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         status: statusFilter === "ALL" ? undefined : statusFilter,
         location_id: locationFilter === "ALL" ? undefined : locationFilter,
         cost_centre_id: costCentreFilter === "ALL" ? undefined : costCentreFilter,
         skip,
         limit,
       }),
-    enabled: Boolean(activeEntityId),
+    enabled: Boolean(entityId),
   })
 
   const registerQuery = useQuery({
-    queryKey: queryKeys.fixedAssets.register(activeEntityId, asOfDate, gaap),
+    queryKey: queryKeys.fixedAssets.register(entityId, asOfDate, gaap),
     queryFn: () =>
       getFixedAssetRegister({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         as_of_date: asOfDate,
         gaap,
       }),
-    enabled: Boolean(activeEntityId) && Boolean(asOfDate),
+    enabled: Boolean(entityId) && Boolean(asOfDate),
   })
 
   const createAssetMutation = useMutation({
     mutationFn: () =>
       createAsset({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         asset_class_id: assetClassId,
         asset_code: assetCode,
         asset_name: assetName,
@@ -184,15 +185,15 @@ export default function FixedAssetsPage() {
       setDepreciationMethod("SLM")
       setAssetLocationId("")
       setAssetCostCentreId("")
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.listAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.registerAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.listAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.registerAll(entityId) })
     },
   })
 
   const runPeriodMutation = useMutation({
     mutationFn: () =>
       runPeriodDepreciation({
-        entity_id: activeEntityId ?? "",
+        entity_id: entityId ?? "",
         period_start: periodStart,
         period_end: periodEnd,
         gaap,
@@ -201,8 +202,8 @@ export default function FixedAssetsPage() {
       setRunModalOpen(false)
       setPeriodStart("")
       setPeriodEnd("")
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.listAll(activeEntityId) })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.registerAll(activeEntityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.listAll(entityId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.fixedAssets.registerAll(entityId) })
     },
   })
 
@@ -246,7 +247,7 @@ export default function FixedAssetsPage() {
 
   const handleCreateAsset = () => {
     const nextFieldErrors: typeof fieldErrors = {}
-    if (!activeEntityId) nextFieldErrors.activeEntityId = "Entity is required."
+    if (!entityId) nextFieldErrors.entityId = "Entity is required."
     if (!assetClassId) nextFieldErrors.assetClassId = "Asset category is required."
     if (!assetCode.trim()) nextFieldErrors.assetCode = "Asset code is required."
     if (!assetName.trim()) nextFieldErrors.assetName = "Asset name is required."
@@ -288,10 +289,10 @@ export default function FixedAssetsPage() {
           <Button variant="outline" onClick={() => setView(view === "register" ? "assets" : "register")}>
             {view === "register" ? "Asset List View" : "Register View"}
           </Button>
-          <Button variant="outline" onClick={() => setRunModalOpen(true)} disabled={!activeEntityId}>
+          <Button variant="outline" onClick={() => setRunModalOpen(true)} disabled={!entityId}>
             Run Period Depreciation
           </Button>
-          <Button onClick={() => setAssetModalOpen(true)} disabled={!activeEntityId}>
+          <Button onClick={() => setAssetModalOpen(true)} disabled={!entityId}>
             Add Asset
           </Button>
         </div>
@@ -299,10 +300,10 @@ export default function FixedAssetsPage() {
 
       <section className="rounded-xl border border-border bg-card p-4">
         <div className="grid gap-3 md:grid-cols-8">
-          <FormField id="asset-entity" label="Entity" error={fieldErrors.activeEntityId} required>
+          <FormField id="asset-entity" label="Entity" error={fieldErrors.entityId} required>
             <select
-              value={activeEntityId ?? ""}
-              onChange={(event) => useTenantStore.getState().setActiveEntity(event.target.value || null)}
+              value={entityId ?? ""}
+              onChange={(event) => useWorkspaceStore.getState().switchEntity(event.target.value || null)}
               className="rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
             >
               <option value="">Select entity</option>
@@ -605,7 +606,7 @@ export default function FixedAssetsPage() {
             <Button
               onClick={handleCreateAsset}
               disabled={
-                !activeEntityId ||
+                !entityId ||
                 !assetClassId ||
                 !assetCode ||
                 !assetName ||
@@ -648,7 +649,7 @@ export default function FixedAssetsPage() {
             </Button>
             <Button
               onClick={handleRunPeriod}
-              disabled={!activeEntityId || !periodStart || !periodEnd || runPeriodMutation.isPending}
+              disabled={!entityId || !periodStart || !periodEnd || runPeriodMutation.isPending}
             >
               Run
             </Button>
