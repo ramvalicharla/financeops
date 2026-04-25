@@ -4,27 +4,18 @@ import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
 import Link from "next/link"
-import { ChevronsLeft, ChevronsRight, Settings } from "lucide-react"
+import { ChevronDown, ChevronsLeft, ChevronsRight, Settings } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
-import { SidebarDisclosureGroup, SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
+import { SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
 import { queryKeys } from "@/lib/query/keys"
-import {
-  ADMIN_NAV_ITEMS,
-  ADVISORY_NAV_ITEMS,
-  DIRECTOR_NAV_LABELS,
-  NAV_GROUP_DEFINITIONS,
-  NAV_ITEMS,
-  type NavigationGroupItem,
-  type NavigationLeafItem,
-  SETTINGS_NAV_ITEMS,
-  TRUST_NAV_ITEMS,
-} from "@/lib/config/navigation"
+import { NAV_GROUPS, type NavGroupId } from "@/components/layout/sidebar/nav-config"
+import type { NavigationLeafItem } from "@/lib/config/navigation"
 import { filterNavigationItems } from "@/lib/ui-access"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
@@ -53,9 +44,11 @@ export function Sidebar({
   entityRoles,
 }: SidebarProps) {
   const pathname = usePathname() ?? ""
-  const [reconciliationOpen, setReconciliationOpen] = useState(
-    pathname.startsWith("/reconciliation"),
-  )
+  const [groupOpen, setGroupOpen] = useState<Record<NavGroupId, boolean>>({
+    workspace: true,
+    org: true,
+    governance: true,
+  })
   const sidebarOpen = useUIStore((state) => state.sidebarOpen)
   const closeSidebar = useUIStore((state) => state.closeSidebar)
   const sidebarCollapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
@@ -98,114 +91,16 @@ export function Sidebar({
     }
   }, [entityId, entitiesQuery.data, switchEntity])
 
-  useEffect(() => {
-    if (pathname.startsWith("/reconciliation")) {
-      setReconciliationOpen(true)
-    }
-  }, [pathname])
-
   const initials = useMemo(() => {
     const [first, second] = userName.split(" ")
     return `${first?.[0] ?? ""}${second?.[0] ?? ""}`.toUpperCase()
   }, [userName])
 
-const showTrust = userRole === "finance_leader"
-  const showAdvisory = userRole === "finance_leader"
-  const showAdmin = [
-    "platform_owner",
-    "platform_admin",
-    "super_admin",
-    "admin",
-  ].includes(String(userRole))
-  const isDirector = userRole === "director"
   const entitlementsQuery = useCurrentEntitlements({
     enabled: Boolean(tenantId),
   })
   const entitlementsLoaded =
     !entitlementsQuery.isPending && !entitlementsQuery.isLoading
-
-  const directorNavLabels = useMemo<Set<string>>(
-    () => new Set(DIRECTOR_NAV_LABELS),
-    [],
-  )
-
-  const visibleNavItems = useMemo(() => {
-    const filteredItems = filterNavigationItems(
-      NAV_ITEMS,
-      userRole,
-      entitlementsQuery.data,
-      entitlementsLoaded,
-    )
-    if (userRole !== "director") {
-      return filteredItems
-    }
-    return filteredItems.filter((item) => directorNavLabels.has(item.label))
-  }, [
-    directorNavLabels,
-    entitlementsLoaded,
-    entitlementsQuery.data,
-    userRole,
-  ])
-
-  const visibleSettingsItems = useMemo(
-    () =>
-      filterNavigationItems(
-        SETTINGS_NAV_ITEMS,
-        userRole,
-        entitlementsQuery.data,
-        entitlementsLoaded,
-      )
-        .filter((item): item is NavigationLeafItem => !("children" in item))
-        .filter((item) => {
-        if (!showTrust && item.href === "/settings/white-label") {
-          return false
-        }
-        if (
-          isDirector &&
-          item.href !== "/settings" &&
-          item.href !== "/settings/privacy"
-        ) {
-          return false
-        }
-        return true
-        }),
-    [
-      entitlementsLoaded,
-      entitlementsQuery.data,
-      isDirector,
-      showTrust,
-      userRole,
-    ],
-  )
-
-  const reconciliationItem = visibleNavItems.find(
-    (item) => "children" in item,
-  ) as NavigationGroupItem | undefined
-
-  const pinnedModules = useUIStore((state) => state.pinnedModules)
-  const pinnedItems = useMemo(() => {
-    const allLeafs: NavigationLeafItem[] = []
-    
-    // Extract leafs from standard items
-    visibleNavItems.forEach(item => {
-      if (!("children" in item)) allLeafs.push(item)
-      else allLeafs.push(...item.children)
-    })
-    
-    // Extract leafs from groups (Trust, Advisory, Settings, Admin)
-    TRUST_NAV_ITEMS.forEach(i => allLeafs.push(i))
-    ADVISORY_NAV_ITEMS.forEach(i => allLeafs.push(i))
-    visibleSettingsItems.forEach(i => allLeafs.push(i as NavigationLeafItem))
-    
-    // Filter down to what's pinned, removing duplicates just in case
-    const map = new Map<string, NavigationLeafItem>()
-    allLeafs.forEach(i => {
-      if (pinnedModules.includes(i.href) && !map.has(i.href)) {
-        map.set(i.href, i)
-      }
-    })
-    return Array.from(map.values())
-  }, [visibleNavItems, visibleSettingsItems, pinnedModules])
 
   const organizationLabel =
     contextQuery.data?.current_organisation.organisation_name ??
@@ -225,11 +120,10 @@ const showTrust = userRole === "finance_leader"
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-card transition-all duration-200",
-          // Width: collapse only applies on desktop (md+); mobile always hides via translate
-          sidebarCollapsed ? "md:w-14 w-60" : "w-60",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           "md:translate-x-0",
         )}
+        style={{ width: sidebarCollapsed ? "52px" : "220px" }}
       >
         {/* ── Header ─────────────────────────────────────────────────────── */}
         {sidebarCollapsed ? (
@@ -282,96 +176,62 @@ const showTrust = userRole === "finance_leader"
             sidebarCollapsed ? "space-y-1" : "space-y-3",
           )}
         >
-          {pinnedItems.length > 0 ? (
-            <SidebarNavGroup
-              closeSidebar={closeSidebar}
-              items={pinnedItems}
-              label="Pinned"
-              pathname={pathname}
-            />
-          ) : null}
+          {NAV_GROUPS.map((group, groupIndex) => {
+            const filteredItems = filterNavigationItems(
+              group.items,
+              userRole,
+              entitlementsQuery.data,
+              entitlementsLoaded,
+            ).filter((item): item is NavigationLeafItem => !("children" in item))
 
-          {NAV_GROUP_DEFINITIONS.map((group) => {
-            const hrefSet = new Set<string>(group.hrefs)
-            const leafItems = visibleNavItems.filter(
-              (item): item is NavigationLeafItem =>
-                !("children" in item) && hrefSet.has(item.href),
-            )
-            const disclosureInGroup =
-              reconciliationItem != null &&
-              reconciliationItem.children.some((child) => hrefSet.has(child.href))
+            if (!filteredItems.length) return null
 
-            if (!leafItems.length && !disclosureInGroup) return null
-
-            return (
-              <div key={group.label} className="space-y-1">
-                {!sidebarCollapsed ? (
-                  <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                    {group.label}
-                  </div>
-                ) : null}
-                {leafItems.length > 0 ? (
+            if (sidebarCollapsed) {
+              return (
+                <div key={group.id}>
+                  {groupIndex > 0 && <hr className="my-1 border-border" />}
                   <SidebarNavGroup
                     closeSidebar={closeSidebar}
-                    items={leafItems}
+                    items={filteredItems}
                     pathname={pathname}
                     type="plain"
                   />
-                ) : null}
-                {disclosureInGroup ? (
-                  <SidebarDisclosureGroup
+                </div>
+              )
+            }
+
+            return (
+              <div key={group.id} className="space-y-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setGroupOpen((prev) => ({
+                      ...prev,
+                      [group.id]: !prev[group.id],
+                    }))
+                  }
+                  className="flex w-full items-center justify-between px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+                  aria-expanded={groupOpen[group.id]}
+                >
+                  {group.label}
+                  <ChevronDown
+                    className={cn(
+                      "h-3.5 w-3.5 transition-transform",
+                      groupOpen[group.id] ? "rotate-180" : "rotate-0",
+                    )}
+                  />
+                </button>
+                {groupOpen[group.id] ? (
+                  <SidebarNavGroup
                     closeSidebar={closeSidebar}
-                    item={reconciliationItem}
-                    open={reconciliationOpen}
+                    items={filteredItems}
                     pathname={pathname}
-                    onToggle={() => setReconciliationOpen((value) => !value)}
+                    type="plain"
                   />
                 ) : null}
               </div>
             )
           })}
-
-          {showTrust ? (
-            <SidebarNavGroup
-              closeSidebar={closeSidebar}
-              items={TRUST_NAV_ITEMS}
-              label="Trust"
-              pathname={pathname}
-            />
-          ) : null}
-
-          {showAdvisory ? (
-            <SidebarNavGroup
-              closeSidebar={closeSidebar}
-              items={ADVISORY_NAV_ITEMS}
-              label="Advisory"
-              pathname={pathname}
-            />
-          ) : null}
-
-          <SidebarNavGroup
-            closeSidebar={closeSidebar}
-            items={visibleSettingsItems}
-            label="Settings"
-            pathname={pathname}
-          />
-
-          {showAdmin ? (
-            <>
-              <SidebarNavGroup
-                closeSidebar={closeSidebar}
-                items={ADMIN_NAV_ITEMS.slice(0, 1)}
-                label="Admin"
-                pathname={pathname}
-              />
-              <SidebarNavGroup
-                closeSidebar={closeSidebar}
-                items={ADMIN_NAV_ITEMS.slice(1)}
-                pathname={pathname}
-                type="nested"
-              />
-            </>
-          ) : null}
         </nav>
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
