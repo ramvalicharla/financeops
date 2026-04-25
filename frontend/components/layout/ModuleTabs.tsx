@@ -7,7 +7,7 @@ import * as Sentry from "@sentry/browser"
 import { useQuery } from "@tanstack/react-query"
 import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { queryKeys } from "@/lib/query/keys"
 import { cn } from "@/lib/utils"
 
@@ -18,7 +18,7 @@ const FALLBACK_TABS = [
 
 export function ModuleTabs() {
   const pathname = usePathname() ?? ""
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const contextQuery = useQuery({
     queryKey: queryKeys.workspace.tabs(activeEntityId),
     queryFn: () =>

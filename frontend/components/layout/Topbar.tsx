@@ -25,7 +25,6 @@ import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { queryKeys } from "@/lib/query/keys"
 import { TOPBAR_PAGE_TITLES } from "@/lib/config/navigation"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
 import { useWorkspaceStore } from "@/lib/store/workspace"
 import { useDisplayScale } from "@/lib/store/displayScale"
@@ -62,7 +61,7 @@ export function Topbar({
   const dismissBillingWarning = useUIStore((state) => state.dismissBillingWarning)
   const openJobPanel = useControlPlaneStore((state) => state.openJobPanel)
   const openTimelinePanel = useControlPlaneStore((state) => state.openTimelinePanel)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const period = useWorkspaceStore((s) => s.period)
   const contextQuery = useQuery({
     queryKey: queryKeys.workspace.context(activeEntityId),

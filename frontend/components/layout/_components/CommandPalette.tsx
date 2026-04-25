@@ -26,13 +26,14 @@ import {
   CommandSeparator,
 } from "@/components/ui/command"
 import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)
   const router = useRouter()
   
   const orgSlug = useTenantStore((state) => state.tenant_slug)
-  const entitySlug = useTenantStore((state) => state.active_entity_id)
+  const entitySlug = useWorkspaceStore((s) => s.entityId)
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
