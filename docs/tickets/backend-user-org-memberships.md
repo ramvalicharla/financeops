@@ -1,160 +1,409 @@
 # Backend Ticket — `feat(schema): add user_org_memberships table + backfill`
 
+**Status:** Execution-ready
+**Pre-flight completed:** 2026-04-26
+**FU-003 decision:** Option B (JWT rotation on switch) — see
+`docs/decisions/fu003-entity-endpoint-scoping-decision.md`
+**Estimated effort:** 6–10 dev-days
+**Blocks:** Phase 2 frontend
+**Does not block:** Sprint 1 / Sprint 2 frontend FU sweep
+
 **Type:** Backend schema + API
 **Priority:** High — prerequisite for Phase 2 frontend work
-**Estimate:** 6–10 dev-days (range, not a point estimate — see rationale)
-**Blocks:** Phase 2 (Org + Entity Switching)
-**Does not block:** Phase 0, Phase 1 — can start in parallel with those
 **Owner:** _[assign to backend]_
 
 ---
 
 ## Background
 
-The Gap 2 OrgSwitcher trace (`docs/audits/gap2-orgswitcher-trace-2026-04-25.md`) discovered that the current `OrgSwitcher.tsx` is a **platform admin impersonation tool**, not a multi-org membership switcher for regular users. Phase 2 of the shell rebuild plans to expose org switching to any user who belongs to 2+ orgs.
+The Gap 2 OrgSwitcher trace (`docs/audits/gap2-orgswitcher-trace-2026-04-25.md`) discovered
+that the current `OrgSwitcher.tsx` is a **platform admin impersonation tool**, not a
+multi-org membership switcher for regular users. Phase 2 of the shell rebuild plans to expose
+org switching to any user who belongs to 2+ orgs.
 
-The follow-up schema check (Section 9 of the same document) confirmed that `IamUser` is **single-org today**. Four independent signals:
+The follow-up schema check (Section 9 of the same document) confirmed that `IamUser` is
+**single-org today**. Four independent signals:
 
 | Layer | Evidence |
 |---|---|
 | Model docstring | `users.py:32` — "Belongs to exactly one tenant." |
 | Schema | Single `tenant_id` FK column, `nullable=False`. No junction table spans tenants. |
-| JWT construction | `auth_service.py:140` — `create_access_token(user.id, user.tenant_id, …)` — singular, always |
+| JWT construction | `auth_service.py:116–121` — `create_access_token(user.id, user.tenant_id, …)` — singular |
 | Frontend types | `next-auth.d.ts` — `tenant_id: string` (not array) |
 
-The two junction tables that exist (`cp_user_organisation_assignments`, `cp_user_entity_assignments`) are within-tenant assignment tables — they manage which orgs/entities a user can see inside their one tenant, not cross-tenant membership.
+The two junction tables that exist (`cp_user_organisation_assignments`,
+`cp_user_entity_assignments`) are within-tenant assignment tables — they manage which
+orgs/entities a user can see inside their one tenant, not cross-tenant membership.
 
-**Therefore:** Before Phase 2's frontend OrgSwitcher work can begin, the backend needs a schema change and related API work so that a single user can belong to multiple tenants/orgs.
+**Therefore:** Before Phase 2's frontend OrgSwitcher work can begin, the backend needs a
+schema change and related API work so that a single user can belong to multiple tenants/orgs.
+
+### FU-003 — entity endpoint scoping (resolved)
+
+FU-003 asked whether `GET /api/v1/org-setup/entities` needs an `orgId` path parameter for
+multi-org switching, or whether JWT rotation on switch is sufficient. The pre-flight pass
+resolved this as **Option B (JWT rotation)**. The existing entity endpoint is unchanged; it
+already scopes via `tenant_id` in the JWT. When the switch-org endpoint issues a new JWT
+with the target `tenant_id`, the entity endpoint automatically returns that org's entities.
+See `docs/decisions/fu003-entity-endpoint-scoping-decision.md` for full analysis.
 
 ---
 
 ## Goal
 
-Enable a user to belong to multiple orgs (tenants), and expose the list of their memberships at an API the frontend can read.
+Enable a user to belong to multiple orgs (tenants), and expose the list of their memberships
+at an API the frontend can read and switch between.
 
 ---
 
 ## Scope
 
-### 1. Design decision: migration strategy
+### 1. Migration strategy
 
-Two possible approaches. The ticket owner must pick one before implementation.
+**Chosen: Approach A — add membership table alongside `tenant_id` (dual source of truth
+temporarily).**
 
-**Approach A — Add membership table alongside `tenant_id` (dual source of truth temporarily)**
+Rationale: minimal disruption; existing queries keep working; rollback is drop the new table.
+Approach B (drop `tenant_id` from `IamUser`) is deferred as a follow-up ticket after Phase 2.
 
-- Keep `IamUser.tenant_id` as the user's "primary / home org" column
-- Add new `user_org_memberships` table: `(user_id, org_id, role, is_primary, joined_at, ...)`
-- Backfill: for every existing `IamUser`, insert a row into `user_org_memberships` with `org_id = tenant_id, is_primary = True`
-- Queries that need "all of user's orgs" go to `user_org_memberships`
-- Queries that need "the user's current org context" continue to use whatever the session/JWT carries
+- Keep `IamUser.tenant_id` as the user's "primary / home org" column (unchanged).
+- Add new `user_org_memberships` table (see Section 2).
+- Backfill: for every existing `IamUser`, insert one row into `user_org_memberships` with
+  `tenant_id = IamUser.tenant_id`, `is_primary = True`.
+- Queries that need "all of user's orgs" go to `user_org_memberships`.
+- Queries that need "the user's current org context" continue to use whatever the JWT carries.
 
-Trade-offs:
-- Pros: minimal disruption; existing queries keep working; rollback is drop the new table
-- Cons: two sources of truth; future migration still needed to fully retire `tenant_id` as a user column
-- Estimate: ~5 dev-days
-
-**Approach B — Drop `tenant_id` from `IamUser`, membership table becomes sole source of truth**
-
-- Add `user_org_memberships` table with same shape as Approach A
-- Backfill from existing `IamUser.tenant_id`
-- Remove `IamUser.tenant_id` column
-- Update every query that referenced `user.tenant_id` to go through memberships
-- JWT shape changes: carries `user_id` + `current_org_id` (user's active org selection), not `user_id` + `tenant_id`
-
-Trade-offs:
-- Pros: single source of truth; correct model long-term; no follow-up migration needed
-- Cons: touches every query that uses `user.tenant_id`; larger rollout risk; requires forced re-login or backwards-compat JWT handling
-- Estimate: ~9 dev-days
-
-**Recommendation:** Approach A for this ticket. Schedule Approach B as a follow-up ticket for post-Phase-2. Approach A unblocks Phase 2 fastest and lets us validate the multi-org UX with real users before committing to the fuller refactor.
-
-### 2. Schema changes (Approach A)
+### 2. Schema changes
 
 New table `user_org_memberships`:
 
-```
-user_id        UUID     FK → iam_users.id    NOT NULL
-org_id         UUID     FK → orgs.id         NOT NULL
-role           VARCHAR  NOT NULL             (member/admin/owner - or existing role enum)
-is_primary     BOOLEAN  NOT NULL DEFAULT FALSE
-joined_at      TIMESTAMP NOT NULL DEFAULT NOW()
-invited_by     UUID     FK → iam_users.id    NULLABLE
-status         VARCHAR  NOT NULL DEFAULT 'active'  (active/invited/suspended)
+```sql
+CREATE TABLE user_org_memberships (
+    id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID         NOT NULL REFERENCES iam_users(id)    ON DELETE CASCADE,
+    tenant_id   UUID         NOT NULL REFERENCES iam_tenants(id)  ON DELETE CASCADE,
+    role        user_role_enum NOT NULL,
+    is_primary  BOOLEAN      NOT NULL DEFAULT FALSE,
+    joined_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    invited_by  UUID         REFERENCES iam_users(id)             ON DELETE SET NULL,
+    status      VARCHAR(20)  NOT NULL DEFAULT 'active',
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_user_org UNIQUE (user_id, tenant_id)
+);
 
-UNIQUE (user_id, org_id)
+-- Exactly one primary per user (partial unique index)
+CREATE UNIQUE INDEX uq_user_one_primary
+    ON user_org_memberships (user_id)
+    WHERE is_primary = TRUE;
 ```
 
-The `is_primary` flag replaces what `IamUser.tenant_id` previously meant — exactly one row per user has `is_primary = TRUE`. This invariant should be enforced either by a partial unique index or application-level logic.
+**Column notes:**
+- `role` uses the existing `user_role_enum` Postgres enum (defined in migration 0001).
+- `status` values: `'active'` | `'invited'` | `'suspended'`.
+- `is_primary` = True means "default org on login". Invariant: exactly one row per user.
+- `invited_by` is nullable — self-signup or admin-provisioned users have no inviter.
+- No `chain_hash` / `previous_hash` — this is a membership table, not a financial ledger.
+  The existing financial integrity rules do not apply here.
+
+**SQLAlchemy model** (create in `backend/financeops/db/models/users.py`):
+
+```python
+class UserOrgMembership(UUIDBase):
+    """Cross-tenant membership. One row per (user, tenant) pair."""
+    __tablename__ = "user_org_memberships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tenant_id", name="uq_user_org"),
+        Index("idx_uom_user_id", "user_id"),
+        Index("idx_uom_tenant_id", "tenant_id"),
+    )
+
+    user_id:    Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),
+                    ForeignKey("iam_users.id", ondelete="CASCADE"), nullable=False)
+    tenant_id:  Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True),
+                    ForeignKey("iam_tenants.id", ondelete="CASCADE"), nullable=False)
+    role:       Mapped[UserRole] = mapped_column(
+                    Enum(UserRole, name="user_role_enum"), nullable=False)
+    is_primary: Mapped[bool]     = mapped_column(Boolean, nullable=False, default=False)
+    joined_at:  Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                    nullable=False, server_default=func.now())
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True),
+                    ForeignKey("iam_users.id", ondelete="SET NULL"), nullable=True)
+    status:     Mapped[str]      = mapped_column(String(20), nullable=False, default="active")
+```
+
+Add a `memberships` relationship to `IamUser`:
+```python
+memberships: Mapped[list["UserOrgMembership"]] = relationship(
+    "UserOrgMembership", foreign_keys="[UserOrgMembership.user_id]",
+    back_populates="user", lazy="noload"
+)
+```
 
 ### 3. Alembic migration
 
-Single migration file. The migration must:
+Single migration file `0XXX_add_user_org_memberships.py`. The migration must:
 
-1. Create the `user_org_memberships` table
-2. Backfill: `INSERT INTO user_org_memberships (user_id, org_id, role, is_primary, joined_at, status) SELECT id, tenant_id, role, TRUE, created_at, 'active' FROM iam_users` (adjust column names to actual schema)
-3. Add the partial unique index enforcing one primary per user
-4. Verify backfill integrity (every existing `IamUser` has exactly one `is_primary = TRUE` membership row)
+1. Create the `user_org_memberships` table (DDL in Section 2).
+2. Create the partial unique index enforcing one primary per user.
+3. **Backfill** (data migration, not just DDL):
+   ```sql
+   INSERT INTO user_org_memberships
+       (id, user_id, tenant_id, role, is_primary, joined_at, status, created_at)
+   SELECT
+       gen_random_uuid(),
+       u.id,
+       u.tenant_id,
+       u.role,
+       TRUE,
+       COALESCE(u.created_at, NOW()),
+       'active',
+       NOW()
+   FROM iam_users u
+   ON CONFLICT (user_id, tenant_id) DO NOTHING;
+   ```
+4. **Integrity check** (assert, not just log):
+   ```sql
+   DO $$
+   DECLARE mismatch int;
+   BEGIN
+     SELECT COUNT(*) INTO mismatch
+     FROM iam_users u
+     WHERE NOT EXISTS (
+       SELECT 1 FROM user_org_memberships m
+       WHERE m.user_id = u.id AND m.is_primary = TRUE
+     );
+     IF mismatch > 0 THEN
+       RAISE EXCEPTION 'Backfill integrity check failed: % users missing primary membership', mismatch;
+     END IF;
+   END $$;
+   ```
+5. **Downgrade:** `DROP TABLE user_org_memberships CASCADE;`
 
-Run on disposable DB first (as we did for migration 0066).
+Run on a disposable DB first (snapshot or test DB). Verify row counts match `SELECT COUNT(*) FROM iam_users`.
 
-### 4. API endpoint
+### 4. API endpoints
 
-New endpoint:
+#### 4.1 — List user's orgs
 
 ```
 GET /api/v1/users/me/orgs
-
-Response:
-[
-  {
-    "org_id": "uuid",
-    "org_name": "Acme Inc",
-    "role": "admin",
-    "is_primary": true,
-    "joined_at": "2024-01-15T10:00:00Z"
-  },
-  ...
-]
-
-Auth: any authenticated user
-Permission: none (users can always list their own memberships)
+Authorization: Bearer <access_token>
 ```
 
-Add a matching endpoint for switching the active org:
+**Response 200:**
+```typescript
+type UserOrgListResponse = {
+  items: UserOrgItem[]
+  total: number
+}
+
+type UserOrgItem = {
+  org_id:     string   // UUID — the tenant's id
+  org_name:   string   // IamTenant.name
+  org_slug:   string   // IamTenant.slug
+  org_status: string   // IamTenant.status ("active" | "suspended" | "trial")
+  role:       string   // UserRole enum value for this user in this org
+  is_primary: boolean
+  joined_at:  string   // ISO 8601
+}
+```
+
+**Error responses:**
+- `401` — no valid session token
+- `400` — malformed token
+
+**Auth:** `get_current_user` dependency only. No role restriction. Users can always list their
+own memberships.
+
+**Implementation:** Query `user_org_memberships JOIN iam_tenants ON tenant_id` filtered by
+`user_id = current_user.id AND status = 'active'`. A single-org user returns a one-item list.
+A user with zero active memberships returns `{ items: [], total: 0 }` (not an error).
+
+**File:** Add handler to `backend/financeops/api/v1/users.py` (new file or existing user routes).
+Router prefix: `/api/v1/users`.
+
+---
+
+#### 4.2 — Switch active org (issues new JWT)
 
 ```
-POST /api/v1/users/me/switch-org
-Body: { "org_id": "uuid" }
-
-Response: new access token scoped to the target org
-Auth: authenticated, and user must have a membership in the target org_id
-Error cases:
-  - 403 if user has no membership in target org
-  - 400 if target org is suspended/invalid
+POST /api/v1/users/me/orgs/{tenant_id}/switch
+Authorization: Bearer <access_token>
 ```
 
-This endpoint issues a new JWT similar to the admin impersonation token flow today, but scoped to orgs the user actually belongs to.
+No request body.
+
+**Response 200:**
+```typescript
+type OrgSwitchResponse = {
+  switch_token:       string   // JWT: sub=user.id, tenant_id=target_tenant_id, role=user.role
+  tenant_id:          string   // UUID — the target org
+  tenant_name:        string
+  tenant_slug:        string
+  expires_in_seconds: number   // matches JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60, NOT 900
+}
+```
+
+**Error responses:**
+- `403` — user has no active membership in `{tenant_id}`
+- `400` — `{tenant_id}` is not a valid UUID or the org is suspended
+- `401` — no valid session token
+
+**Auth:** `get_current_user` dependency. No role restriction (this is for all authenticated users).
+
+**JWT requirements for the issued token:**
+- `sub`: `str(user.id)` — the calling user's own ID (not the admin's ID)
+- `tenant_id`: `str(target_tenant_id)` — the switched-to org
+- `role`: `user.role.value` — the user's role **in the target org** (from `user_org_memberships.role`)
+- **Must NOT include** `scope: "platform_switch"` or `switched_by` claims (those are admin-only)
+- **Token lifetime:** `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (normal session lifetime, not 900 seconds)
+- Issue via: `create_access_token(user.id, target_tenant_id, membership.role.value, additional_claims={})`
+
+**Membership check (required before issuing):**
+```python
+membership = await session.scalar(
+    select(UserOrgMembership)
+    .where(UserOrgMembership.user_id == current_user.id)
+    .where(UserOrgMembership.tenant_id == target_tenant_id)
+    .where(UserOrgMembership.status == "active")
+)
+if not membership:
+    raise AuthorizationError("User does not have an active membership in this org")
+```
+
+**FU-003 implication:** The existing `GET /api/v1/org-setup/entities` endpoint is **not
+modified**. After the switch token is issued, the frontend Axios interceptor substitutes it
+as the Bearer token; the entity endpoint reads `tenant_id` from the new JWT via
+`get_current_tenant` and automatically returns the target org's entities. No path parameter
+or new entity route is needed.
+
+**File:** Same file as 4.1 (`backend/financeops/api/v1/users.py`).
+
+---
 
 ### 5. JWT / session considerations
 
-Under Approach A, `IamUser.tenant_id` stays — so existing JWTs continue to validate. The `/switch-org` endpoint issues a new JWT with a different `tenant_id`.
+Under Approach A, `IamUser.tenant_id` stays — so existing JWTs continue to validate.
+The `/switch-org` endpoint issues a new JWT similar to the login flow but for a different
+tenant.
 
 **Rollout:**
-- Existing users: no forced logout. Their session continues with their primary org. When they explicitly use the switcher, they get a new session.
-- New users: login flow looks up their primary membership and issues JWT with that `tenant_id`.
+- Existing users: no forced logout. Their session continues with their primary org. When they
+  explicitly use the switcher, they get a new token.
+- New users: login flow issues JWT with `IamUser.tenant_id` (unchanged from today). After
+  backfill, `user_org_memberships` also has a primary row for them.
+
+**`platform_switch` scope check:** Verify in `get_current_user` (deps.py) whether the
+`scope: "platform_switch"` claim is explicitly required or rejected anywhere. If present, the
+user switch token (which carries no scope claim) must not be blocked. **Investigation required
+before implementation.**
 
 ### 6. Impact on existing junction tables
 
-`cp_user_organisation_assignments` and `cp_user_entity_assignments` remain within-tenant assignment tables. No change to their semantics. Their queries already filter on `tenant_id` inside the current org context, so they continue to work.
+`cp_user_organisation_assignments` and `cp_user_entity_assignments` remain within-tenant
+assignment tables. No change to their semantics or queries. Their `tenant_id` scope filter
+continues to work because the JWT `tenant_id` correctly reflects the active org.
 
 ### 7. Tests
 
-- Unit tests for `user_org_memberships` model
-- Integration test: user with 2 memberships can list both
-- Integration test: user can switch to their second org and access its data
-- Integration test: user cannot switch to an org they don't have a membership in (expect 403)
-- Migration test: backfill produces exactly one `is_primary = TRUE` per user
-- Backwards compat: existing single-org users still work exactly as before
+Minimum test coverage required (add to `backend/tests/`):
+
+**Unit tests:**
+- `UserOrgMembership` model: create, unique constraint enforcement, cascade delete
+- `is_primary` partial unique index: verify second `is_primary = TRUE` for the same user raises
+
+**Integration tests:**
+- `GET /users/me/orgs` — single-org user returns one item with `is_primary: true`
+- `GET /users/me/orgs` — multi-org user returns all active memberships
+- `GET /users/me/orgs` — user with no active memberships returns empty list (not 404/403)
+- `POST /users/me/orgs/{id}/switch` — switch to an org the user belongs to → 200 + valid JWT
+- `POST /users/me/orgs/{id}/switch` — switch to an org the user does NOT belong to → 403
+- `POST /users/me/orgs/{id}/switch` — issued JWT carries correct `tenant_id` and no
+  `scope: platform_switch` claim
+- `POST /users/me/orgs/{id}/switch` — issued token lifetime matches normal access token
+  lifetime, not 900 seconds
+- Unauthenticated request to either endpoint → 401
+
+**Migration / backfill tests:**
+- After migration, every existing `IamUser` has exactly one membership row with
+  `is_primary = True` in `user_org_memberships`
+- Backfill count matches `SELECT COUNT(*) FROM iam_users`
+- `alembic downgrade` removes `user_org_memberships` and its indexes cleanly
+
+**Backwards compatibility:**
+- Existing single-org users: token structure unchanged, no re-login required, all existing
+  API calls continue to work
+
+---
+
+## Test plan
+
+### Scenario matrix
+
+| # | Scenario | Expected result |
+|---|---|---|
+| T1 | Single-org user (all existing pre-migration users) calls `GET /users/me/orgs` | Returns 1-item list, `is_primary: true` |
+| T2 | Multi-org user (manually inserted second membership row) calls `GET /users/me/orgs` | Returns both orgs, correct `is_primary` on each |
+| T3 | User switches to an org they belong to | 200, valid JWT, `tenant_id` = target org |
+| T4 | User switches to an org they do NOT belong to | 403 |
+| T5 | User switches to an org where their membership is `status = 'suspended'` | 403 |
+| T6 | User with zero active memberships (all rows have `status != 'active'`) calls GET | 200, `items: []` |
+| T7 | Issued switch token used to call `GET /org-setup/entities` | Returns the target org's entities (not the home org's) |
+| T8 | Issued switch token does NOT carry `scope: platform_switch` | Assert claim absent |
+| T9 | Backfill: every `IamUser` has exactly one `is_primary = TRUE` membership row | Count assertion passes |
+| T10 | Second `is_primary = TRUE` row for same user is rejected | DB-level unique constraint error |
+| T11 | `alembic downgrade` from migration | Rolls back cleanly, no orphan objects |
+| T12 | Existing single-org user makes any existing API call after migration | Unchanged behavior |
+
+---
+
+## Rollout plan
+
+### Migration ordering
+
+1. **Deploy migration file** (table + indexes + backfill) to production during a maintenance
+   window or zero-downtime slot:
+   - The migration adds a new table — no existing table is altered. Safe for zero-downtime.
+   - The backfill is an `INSERT … SELECT` — non-blocking on PostgreSQL with no locks on
+     `iam_users` reads (only INSERTs into the new table).
+   - Integrity check at end of migration (see Section 3, step 4) will surface any gap before
+     the migration commits.
+
+2. **Deploy BE-001 code** (new endpoints + `UserOrgMembership` model) once migration is applied
+   and verified.
+   - No feature flag needed — the new endpoints are additive and do not replace existing ones.
+   - Existing `/platform/admin/tenants` endpoints are unchanged and continue to function.
+
+3. **Dual-read window:** Not required. `IamUser.tenant_id` is preserved as the home org column.
+   Existing queries that read `user.tenant_id` continue to work. The new endpoints are purely
+   additive.
+
+### Feature flag
+
+Not required for backend. The new endpoints return empty data for single-org users; no
+frontend can accidentally trigger multi-org switching until the Phase 2 frontend work ships.
+If desired, a simple `MULTI_ORG_ENABLED` settings flag can gate `POST /switch-org` to prevent
+early access, but this is optional.
+
+### Frontend coordination
+
+- **BE-001 is done when:** `GET /users/me/orgs` returns the calling user's memberships, and
+  `POST /users/me/orgs/{id}/switch` issues a valid JWT, both verified by the integration tests.
+- **Phase 2 frontend can begin** as soon as these two endpoints pass their acceptance criteria.
+- Phase 2 frontend must: (a) rewrite `OrgSwitcher.tsx` to call `GET /users/me/orgs`; (b) call
+  `enterSwitchMode({ switch_token, tenant_id, tenant_name })` with the response from
+  `POST /switch-org`; (c) call `queryClient.clear()` inside `enterSwitchMode` to purge stale
+  entity cache.
+- The entity endpoint (`GET /api/v1/org-setup/entities`) is **not changed** as part of Phase 2.
+  The JWT rotation already scopes it correctly.
+
+### Rollback plan
+
+If the migration needs to be rolled back:
+1. `alembic downgrade -1` — drops `user_org_memberships` table and its indexes. No data loss
+   on `iam_users` or any other existing table.
+2. Re-deploy the previous backend image (without the `UserOrgMembership` model and new endpoints).
+3. No forced re-login required. Existing JWTs remain valid.
 
 ---
 
@@ -162,42 +411,68 @@ Under Approach A, `IamUser.tenant_id` stays — so existing JWTs continue to val
 
 - [ ] Migration runs clean on a disposable DB
 - [ ] Migration reverts cleanly (`alembic downgrade`)
-- [ ] Backfill verified: every existing `IamUser` has exactly one membership row with `is_primary = TRUE`
+- [ ] Backfill verified: every existing `IamUser` has exactly one membership row with
+      `is_primary = TRUE`
 - [ ] `GET /api/v1/users/me/orgs` returns the logged-in user's memberships
-- [ ] `POST /api/v1/users/me/switch-org` issues a new token scoped to the target org
-- [ ] 403 returned for users trying to switch to an org they don't belong to
+- [ ] `POST /api/v1/users/me/orgs/{tenant_id}/switch` issues a new token scoped to the target org
+- [ ] Issued switch token carries `tenant_id = target org`, normal lifetime, no platform_switch scope
+- [ ] 403 returned for users trying to switch to an org they don't belong to (T4) or where their
+      membership is suspended (T5)
+- [ ] Entity endpoint `GET /api/v1/org-setup/entities` returns target org's entities when called
+      with the switch token (T7)
 - [ ] All existing tests still pass
-- [ ] New tests added for the multi-org flow
-- [ ] Frontend smoke test: existing single-org users experience no change
+- [ ] New tests cover all 12 scenarios in the test plan
+- [ ] `platform_switch` scope claim verified absent from user switch token
 
 ---
 
 ## Estimate rationale
 
-I've estimated this at 6–10 dev-days rather than a point estimate because:
+I've estimated this at 6–10 dev-days:
 
-- The mechanical work (new table, backfill, endpoint) is ~3 days
-- The JWT/token rollout design is ~1–2 days (decisions + implementation)
-- Testing thoroughly across backwards-compat scenarios is ~1–2 days
-- Buffer for unexpected coupling with `cp_user_organisation_assignments` / `cp_user_entity_assignments` queries: ~1–2 days
+- Schema + migration + backfill + integrity check: ~2 days
+- `GET /users/me/orgs` endpoint + service layer: ~1 day
+- `POST /users/me/switch-org` endpoint + membership guard + JWT issuance: ~1–2 days
+- Test coverage (all 12 T-scenarios): ~1–2 days
+- Buffer for unexpected coupling with `cp_user_organisation_assignments` / `cp_user_entity_assignments`
+  queries and `platform_switch` scope check (Section 5): ~1–2 days
 
-If this comes in under 6 days, great. If it runs to 10, that's still within plan.
+FU-003 resolution to Option B removes ~0.5 days that would have been spent on the new entity
+route and frontend hook changes.
 
 ---
 
 ## Related tickets
 
-- Phase 2 frontend work (`feat(shell): phase 2 — OrgSwitcher for all users`) depends on this ticket
-- Future ticket (post-Phase-2): `refactor(identity): retire IamUser.tenant_id column, complete Approach B migration`
+- Phase 2 frontend work (`feat(shell): phase 2 — OrgSwitcher for all users`) depends on this
+  ticket
+- Future ticket (post-Phase-2): `refactor(identity): retire IamUser.tenant_id column, complete
+  Approach B migration`
+- FU-003 (closed): `docs/decisions/fu003-entity-endpoint-scoping-decision.md`
 
 ---
 
 ## Notes for the engineer
 
-1. The Gap 2 trace document (`docs/audits/gap2-orgswitcher-trace-2026-04-25.md`) Sections 4–7 document the current admin impersonation flow in detail. That flow's token-swap mechanism (Axios interceptor + Zustand `is_switched` flag) is reusable for the user-facing switch — the frontend already has the plumbing.
+1. The Gap 2 trace (`docs/audits/gap2-orgswitcher-trace-2026-04-25.md`) Sections 4–7 document
+   the current admin impersonation flow in detail. The token-swap mechanism (Axios interceptor +
+   Zustand `is_switched` flag) is reusable for the user-facing switch — the frontend already
+   has the plumbing. The new endpoints just need to issue the right JWT.
 
-2. Do NOT touch the existing admin impersonation endpoints (`/api/v1/platform/admin/tenants/...`). Those serve a separate use case and should remain as-is.
+2. Do NOT touch the existing admin impersonation endpoints
+   (`/api/v1/platform/admin/tenants/...`). Those serve a separate use case and must remain
+   as-is.
 
-3. The `is_primary` flag's long-term purpose is to support "default workspace on login" — when a user logs in without specifying an org, they get their primary. This becomes configurable in-app later (separate ticket).
+3. The `is_primary` flag's long-term purpose is "default workspace on login" — when a user
+   logs in without specifying an org, they get their primary. This becomes user-configurable
+   later (separate ticket).
 
-4. Consider adding an `is_owner` boolean on `user_org_memberships` if you don't already have a role that captures org ownership (the user who created the org, for billing/deletion purposes). If `role` enum already includes `owner`, skip this.
+4. Consider adding an `is_owner` boolean on `user_org_memberships` if you don't already have
+   a role that captures org ownership (the user who created the org, for billing/deletion).
+   If `UserRole.org_admin` already covers this semantically, skip it.
+
+5. **Investigate before implementing (Section 5 flag):** Check whether `get_current_user` in
+   deps.py or any middleware validates or rejects tokens based on the presence/absence of a
+   `scope` claim. The admin switch token carries `scope: "platform_switch"` (admin.py:539).
+   The new user switch token carries no scope claim. Verify this does not produce a mismatch
+   or 403 in the existing auth path before implementing.
