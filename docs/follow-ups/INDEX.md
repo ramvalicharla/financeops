@@ -23,5 +23,8 @@ When picking up a follow-up:
 | FU-008 | [Resolve E2E test data dependencies (seed or stub)](./FU-008-e2e-data-dependencies.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
 | FU-009 | [Install WebKit Playwright browser binary for Mobile Safari E2E](./FU-009-webkit-binary-missing.md) | 2026-04-25 | Phase 0 test gate (pre-existing) |
 | FU-010 | [Control-plane test render harness incomplete](./FU-010-control-plane-test-render-harness.md) | 2026-04-25 | Pre-existing — unmasked by FU-006 |
+| FU-011 | [TopBar Finqor brand mark + wordmark](./FU-011-topbar-brand-mark.md) | 2026-04-25 | Phase 1 sub-prompt 1.2 |
+| FU-012 | [Sidebar behavioral wiring (badges, RBAC, real routes)](./FU-012-sidebar-behavioral-wiring.md) | 2026-04-25 | Phase 1 sub-prompt 1.1 |
+| FU-013 | [Sidebar pinning decision](./FU-013-sidebar-pinning-decision.md) | 2026-04-25 | Phase 1 sub-prompt 1.1 |
 | FU-014 | [Vitest coverage thresholds with measured baseline](./FU-014-vitest-coverage-thresholds.md) | 2026-04-25 | Tech-debt audit F1 |
 | FU-015 | [Remaining writers of deprecated active_entity_id](./FU-015-remaining-active-entity-id-writers.md) | 2026-04-25 | Hotfix 1.1.5; extends FU-005 |
