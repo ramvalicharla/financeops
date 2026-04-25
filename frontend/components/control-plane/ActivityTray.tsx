@@ -4,12 +4,12 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { listJobs } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { Button } from "@/components/ui/button"
 
 export function ActivityTray() {
   const [expanded, setExpanded] = useState(false)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const jobsQuery = useQuery({
     queryKey: controlPlaneQueryKeys.jobs({ entity_id: activeEntityId ?? undefined, limit: 25 }),
     queryFn: () => listJobs({ entity_id: activeEntityId ?? undefined, limit: 25 }),

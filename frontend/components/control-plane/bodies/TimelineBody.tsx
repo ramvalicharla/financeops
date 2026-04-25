@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { exportTimeline, getTimelineSemantics, listTimeline, type TimelineEvent } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { StateBadge } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 
@@ -142,7 +142,7 @@ export function TimelineBody({
   const selectedSubjectType = useControlPlaneStore((state) => state.selected_subject_type)
   const selectedSubjectId = useControlPlaneStore((state) => state.selected_subject_id)
   const openEvidenceDrawer = useControlPlaneStore((state) => state.openEvidenceDrawer)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
 
   const resolvedEntityId = entityId ?? activeEntityId
   const resolvedSubjectType = subjectType ?? selectedSubjectType

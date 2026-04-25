@@ -8,7 +8,7 @@ import { getControlPlaneContext } from "@/lib/api/control-plane"
 import { resolveWorkspaceFromTabs } from "@/lib/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { ContextBarBase } from "@/components/shell/primitives/ContextBarBase"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 
 interface ContextHeaderProps {
   tenantSlug: string
@@ -17,7 +17,7 @@ interface ContextHeaderProps {
 
 export function ContextHeader({ tenantSlug, userRole }: ContextHeaderProps) {
   const pathname = usePathname() ?? ""
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const contextQuery = useQuery({
     queryKey: controlPlaneQueryKeys.context({ entity_id: activeEntityId ?? undefined }),
     queryFn: () => getControlPlaneContext({ entity_id: activeEntityId ?? undefined }),

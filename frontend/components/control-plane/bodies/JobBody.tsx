@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query"
 import { listJobs, type ControlPlaneJob } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { GuardFailureCard, StateBadge } from "@/components/ui"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -225,7 +225,7 @@ function JobCard({
 export function JobBody({ jobId, entityId, showRefreshButton = true }: JobBodyProps) {
   const selectedJobId = useControlPlaneStore((state) => state.selected_job_id)
   const openEvidenceDrawer = useControlPlaneStore((state) => state.openEvidenceDrawer)
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const [activeTab, setActiveTab] = useState<JobTab>("overview")
   const [nowMs, setNowMs] = useState(() => Date.now())
   const resolvedJobId = jobId ?? selectedJobId

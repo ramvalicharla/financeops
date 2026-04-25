@@ -5,7 +5,7 @@ import { useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { listIntents } from "@/lib/api/control-plane"
 import { controlPlaneQueryKeys } from "@/lib/query/controlPlane"
-import { useTenantStore } from "@/lib/store/tenant"
+import { useWorkspaceStore } from "@/lib/store/workspace"
 import { IntentBody } from "@/components/control-plane/bodies/IntentBody"
 import { PageScaffold } from "@/components/control-plane/PageScaffold"
 import { Button } from "@/components/ui/button"
@@ -15,7 +15,7 @@ interface ControlPlaneIntentsPageProps {
 }
 
 export function ControlPlaneIntentsPage({ intentId }: ControlPlaneIntentsPageProps) {
-  const activeEntityId = useTenantStore((state) => state.active_entity_id)
+  const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const [selectedIntentId, setSelectedIntentId] = useState<string | null>(intentId ?? null)
   const intentsQuery = useQuery({
     queryKey: controlPlaneQueryKeys.intents({ entity_id: activeEntityId ?? undefined, limit: 50 }),
