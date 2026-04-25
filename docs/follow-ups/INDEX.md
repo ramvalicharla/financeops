@@ -28,3 +28,4 @@ When picking up a follow-up:
 | FU-013 | [Sidebar pinning decision](./FU-013-sidebar-pinning-decision.md) | 2026-04-25 | Phase 1 sub-prompt 1.1 |
 | FU-014 | [Vitest coverage thresholds with measured baseline](./FU-014-vitest-coverage-thresholds.md) | 2026-04-25 | Tech-debt audit F1 |
 | FU-015 | [Remaining writers of deprecated active_entity_id](./FU-015-remaining-active-entity-id-writers.md) | 2026-04-25 | Hotfix 1.1.5; extends FU-005 |
+| FU-016 | [Real user management implementation](./FU-016-real-user-management-implementation.md) | 2026-04-26 | Phase 1 sub-prompt 1.6.3 |

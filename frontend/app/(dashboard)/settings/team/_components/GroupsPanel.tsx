@@ -10,7 +10,7 @@ interface GroupForm {
   organisation_id: string
 }
 
-export default function GroupsSettingsPage() {
+export function GroupsPanel() {
   const [form, setForm] = useState<GroupForm>({
     group_code: "",
     group_name: "",

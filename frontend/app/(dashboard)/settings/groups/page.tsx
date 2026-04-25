@@ -1,8 +1,5 @@
-import { createMetadata } from "@/lib/metadata"
-import PageClient from "./PageClient"
+import { redirect } from "next/navigation"
 
-export const metadata = createMetadata("Groups")
-
-export default function Page() {
-  return <PageClient />
+export default function GroupsPage() {
+  redirect("/settings/team?tab=groups")
 }
