@@ -30,7 +30,7 @@ _PLAN_IDS = {
 # Sentinel for "unlimited" on non-nullable integer columns
 _UNLIMITED = -1
 
-_VALID_FROM = date(2026, 1, 1).isoformat()
+_VALID_FROM = date(2026, 1, 1)
 _GENESIS_HASH = "0" * 64
 
 
@@ -183,7 +183,7 @@ def upgrade() -> None:
                     :included_credits, :trial_days,
                     :max_users, :max_entities, :max_connectors,
                     CAST(:modules_enabled AS jsonb), :annual_discount_pct, :is_active,
-                    CAST(:valid_from AS date), :valid_until,
+                    :valid_from, :valid_until,
                     :chain_hash, :previous_hash, now()
                 )
                 ON CONFLICT (id) DO NOTHING
