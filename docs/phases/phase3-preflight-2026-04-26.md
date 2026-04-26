@@ -4,7 +4,13 @@
 **Branch:** `chore/phase3-preflight` (off `main` at `6201335`)
 **Investigator:** Claude Sonnet 4.6 (read-only Sections 0–6, doc-write Section 7)
 **Phase:** Phase 3 — Module System with Module Manager
-**Status:** Pre-flight complete — awaiting user review before sub-prompt drafting
+**Status:** Pre-flight complete — OQ triage complete 2026-04-26 — SP-3A unblocked
+
+---
+
+## Triage Outcome — 2026-04-26
+
+All 6 open questions resolved in a single triage pass. SP-3A is now unblocked and is the Phase 3 critical path. SP-3D is dropped (Custom tab ships as a placeholder stub inside SP-3A). FU-019 is folded into SP-3A as a Section 0 prerequisite fix. SP-3C (auditor sidebar) remains in Phase 3. S-003 confirmed as a locked-design terminology error — `"dashboard"` is the correct key throughout; the audit doc Phase 3 Task 4 corrected accordingly.
 
 ---
 
@@ -51,10 +57,10 @@ Decisions confirmed or made during the investigation. These are NOT user decisio
 
 | ID | Severity | Summary | Affected Sub-prompts | Recommended Resolution |
 |---|---|---|---|---|
-| S-001 | **HIGH — OPEN QUESTION** | `/settings/modules/PageClient.tsx` exists with old API endpoint pattern. Phase 3 must decide disposition before SP-3A. See full text below. | SP-3A | User decision required — see Open Questions §7 |
+| S-001 | ~~HIGH — OPEN QUESTION~~ **RESOLVED** | `/settings/modules/PageClient.tsx` exists with old API endpoint pattern. Phase 3 must decide disposition before SP-3A. See full text below. | SP-3A | **REDIRECT** — SP-3A ships modal + redirect from `/settings/modules`; page shell removed later. See Resolved OQs §7. |
 | S-002 | LOW | BE-002 filed 2026-04-26 (not implemented). `MODULE_ICON_MAP` needs `consolidation` + `tax` keys when BE-002 lands. | SP-3A icon map update | Add keys as a post-BE-002 coordinated change; no blocker for Phase 3 |
-| S-003 | **HIGH — OPEN QUESTION** | Locked design Phase 3 Task 4 says `workspace_key !== 'overview'`; backend and frontend both use `"dashboard"`. Terminology error in the spec. | SP-3A | User confirms: treat locked design as containing a terminology error and use `"dashboard"`. See Open Questions §7 |
-| S-004 | **HIGH — OPEN QUESTION** | Module Manager Available-tab vocabulary is a product decision. Two candidate architectures. Linked to S-001. | SP-3A | User decision required — see Open Questions §7 |
+| S-003 | ~~HIGH — OPEN QUESTION~~ **RESOLVED** | Locked design Phase 3 Task 4 says `workspace_key !== 'overview'`; backend and frontend both use `"dashboard"`. Terminology error in the spec. | SP-3A | **USE "dashboard"** — confirmed terminology error in locked design; audit doc Phase 3 Task 4 corrected. See Resolved OQs §7. |
+| S-004 | ~~HIGH — OPEN QUESTION~~ **RESOLVED** | Module Manager Available-tab vocabulary is a product decision. Two candidate architectures. Linked to S-001. | SP-3A | **VOCABULARY A** — workspace-level tabs (7 keys). `/settings/modules` page is pure legacy. See Resolved OQs §7. |
 
 ### S-001 full text
 
@@ -106,10 +112,10 @@ The locked design describes an "Available" tab with "add toggles" but does not s
 
 | ID | Scope | Files touched (tentative) | Dependencies | Backend tickets | Est. size | Parallel? |
 |---|---|---|---|---|---|---|
-| **SP-3A** | Module Manager modal shell — Active/Available/Premium tabs, + button wiring, Overview enforcement, module ordering state | `components/layout/ModuleTabs.tsx`, `components/modules/ModuleManager.tsx` (new), `lib/store/workspace.ts` (ordering state), `lib/api/modules.ts` or new `lib/api/workspaces.ts`, `lib/query/keys/` (new workspace-modules keys) | S-003 + S-004 resolved; Phase 1 (done) | `module.manage` permission, `GET /api/v1/billing/module-pricing`, `POST /api/v1/orgs/{orgId}/modules` | L (5–7 days) | Modal shell + Premium tab zero-state can partially proceed; Active tab drag integration waits for SP-3B |
+| **SP-3A** | Module Manager modal shell — Active/Available/Premium tabs + Custom stub, + button wiring, "dashboard" enforcement, module ordering state, `/settings/modules` redirect (S-001 REDIRECT), FU-019 fix (Section 0 prerequisite) | `components/layout/ModuleTabs.tsx`, `components/modules/ModuleManager.tsx` (new), `lib/store/workspace.ts` (ordering state), `lib/api/workspaces.ts` (new), `lib/query/keys/` (new workspace-modules keys), `app/(dashboard)/settings/modules/PageClient.tsx` (redirect), FU-019 test files | Phase 1 (done); OQ-1/2/3/4/6 all resolved | `module.manage` permission, `GET /api/v1/billing/module-pricing`, `POST /api/v1/orgs/{orgId}/modules` | L (5–7 days) | Modal shell + Premium tab zero-state can partially proceed; Active tab drag integration waits for SP-3B |
 | **SP-3B** | @dnd-kit install + drag-to-reorder in Active tab | `package.json`, `components/modules/ModuleManager.tsx` (Active tab section only) | SP-3A modal shell must exist first (or use git worktree parallel) | None | M (2–3 days) | Parallelizable with SP-3A shell via git worktree — install + reorder primitive is isolated |
 | **SP-3C** | Auditor sidebar — add Governance nav group with Audit trail visible to `auditor` role | `lib/config/navigation.ts`, `lib/ui-access.ts` (possibly), `components/layout/Sidebar.tsx` | Phase 1 sidebar structure (done) | None (uses existing `auditor` role alias) | S (1–2 days) | Fully parallelizable with SP-3A/SP-3B via git worktree |
-| **SP-3D** | Custom tab (Module Manager intake form) | `components/modules/ModuleManager.tsx` (Custom tab section) | SP-3A modal shell, backend `POST /api/v1/orgs/{orgId}/modules/custom-request` (or equivalent) | Custom request endpoint (unspecified) | Unknown — depends on spec | Cannot start until Custom tab spec is defined |
+| ~~**SP-3D**~~ | ~~Custom tab (Module Manager intake form)~~ **DROPPED** — Custom tab ships as a placeholder stub inside SP-3A (OQ-4). No separate sub-prompt. | — | — | — | — | — |
 | **SP-2E** (carry-forward) | Consolidation tab disable + Tax/GST jurisdictional relabeling | `components/layout/ModuleTabs.tsx`, `components/layout/EntityScopeBar.tsx` | BE-002 (backend ticket — not yet implemented) | BE-002 (`is_consolidation_parent`, workspace tab promotion) | M (2–3 days) | After BE-002 lands |
 
 ### Recommended execution order
@@ -117,21 +123,20 @@ The locked design describes an "Available" tab with "add toggles" but does not s
 ```
 SP-3C (standalone, 1–2 days)
   ↓ parallel with ↓
-SP-3A (modal shell + Active/Available/Premium) — BLOCKED on S-003 + S-004 resolution
+SP-3A (modal shell + Active/Available/Premium + Custom stub + redirect + FU-019) — UNBLOCKED
 SP-3B (dnd-kit + drag) — parallelizable with SP-3A via git worktree once modal shell exists
 
-SP-3D — deferred until Custom tab is specified
 SP-2E — deferred until BE-002 lands
 ```
 
-SP-3C can start immediately (no blockers, no open questions). SP-3A is the critical path blocker — S-003 and S-004 must be resolved first.
+SP-3C can start immediately. SP-3A is now unblocked — all 6 open questions resolved in triage. SP-3A is the critical path.
 
 ### S-001 disposition effect on SP-3A file-touch list
 
 | S-001 option | Additional files in SP-3A |
 |---|---|
 | Replace | `frontend/app/(dashboard)/settings/modules/PageClient.tsx` (rewrite or remove) |
-| Redirect | `frontend/app/(dashboard)/settings/modules/page.tsx` (add redirect) |
+| **Redirect ✓ (chosen)** | `frontend/app/(dashboard)/settings/modules/PageClient.tsx` (redirect to modal entry point) |
 | Sunset (SP-3X) | No change to SP-3A; add SP-3X to sub-prompt list |
 
 ---
@@ -191,7 +196,7 @@ Array<{
 // Response: updated ControlPlaneContext.workspace_tabs (or 204 + client-side optimistic update)
 ```
 
-**Vocabulary B shape would differ materially** — file after S-004 is resolved.
+S-004 resolved as Vocabulary A — this is the correct request shape. File this ticket now.
 
 ### BE-002 — entity model additions
 
@@ -215,13 +220,15 @@ Array<{
 
 ---
 
-## 7. Open Questions for User Decision
+## 7. Resolved Open Questions
 
-These items require user decisions before the affected sub-prompts can be drafted. **These are NOT agent recommendations to be accepted silently — they require explicit user choices.**
+All 6 open questions resolved in triage on 2026-04-26. Decisions recorded below; original framing preserved for reference.
 
 ---
 
 ### OQ-1: S-001 — `/settings/modules/PageClient.tsx` disposition
+
+**RESOLVED — REDIRECT:** SP-3A ships modal + adds redirect from `/settings/modules` → modal entry point. Page shell to be removed in a later pass.
 
 The page exists with the old API pattern and a hardcoded instrument vocabulary. Phase 3 must decide what to do with it.
 
@@ -236,6 +243,8 @@ Choosing between these also depends on OQ-3 (vocabulary). If you choose Vocabula
 
 ### OQ-2: S-003 — "overview" vs "dashboard" workspace key
 
+**RESOLVED — USE "dashboard":** Confirmed terminology error in locked design. `"dashboard"` is the correct key throughout. Audit doc Phase 3 Task 4 corrected (OQ-2 triage 2026-04-26).
+
 The locked design Phase 3 Task 4 references `workspace_key !== 'overview'`. The backend canonical key is `"dashboard"`. Current `ModuleTabs.tsx` already uses `"dashboard"`.
 
 **Agent recommendation:** treat this as a terminology error in the locked design; use `"dashboard"` as the locked-first-tab key in SP-3A.
@@ -245,6 +254,8 @@ The locked design Phase 3 Task 4 references `workspace_key !== 'overview'`. The 
 ---
 
 ### OQ-3: S-004 — Module Manager Available-tab vocabulary (product decision)
+
+**RESOLVED — VOCABULARY A:** Module Manager manages workspace-level tabs (7-key vocabulary: dashboard/erp/accounting/reconciliation/close/reports/settings). The `/settings/modules` page is pure legacy — no vocabulary inheritance. S-001 disposition: REDIRECT.
 
 The locked design does not specify what units the Available tab toggles.
 
@@ -264,6 +275,8 @@ The locked design does not specify what units the Available tab toggles.
 
 ### OQ-4: SP-3D Custom tab — defer or stub?
 
+**RESOLVED — STUB inside SP-3A:** Custom tab ships as a placeholder ("Coming soon — contact your admin") inside SP-3A. SP-3D dropped from Phase 3 sub-prompt list.
+
 The locked design describes the Custom tab as an "intake form" with no further specification. No backend endpoint is visible.
 
 **Your options:**
@@ -274,6 +287,8 @@ The locked design describes the Custom tab as an "intake form" with no further s
 ---
 
 ### OQ-5: SP-3C auditor sidebar — Phase 3 or Phase 6?
+
+**RESOLVED — PHASE 3:** SP-3C stays in Phase 3, parallelizable with SP-3A/SP-3B via git worktree.
 
 The locked design places the auditor sidebar in Phase 3 (Task 6). Phase 6 is "RBAC + Portal Alignment" which also mentions auditor role verification.
 
@@ -286,6 +301,8 @@ SP-3C is small (~1–2 days, no backend dependency) and fully parallelizable —
 ---
 
 ### OQ-6: FU-019 pairing — pre-SP-3A or same-branch?
+
+**RESOLVED — SAME SP-3A BRANCH:** FU-019 folded into SP-3A as a Section 0 prerequisite fix (TooltipProvider in 3 test files, ~1–2h).
 
 `control_plane_shell.test.tsx` imports `ModuleTabs` and is one of the 3 FU-019 failing tests. Phase 3 SP-3A modifies `ModuleTabs.tsx`.
 
