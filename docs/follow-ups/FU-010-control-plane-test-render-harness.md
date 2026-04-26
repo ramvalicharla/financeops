@@ -3,9 +3,22 @@ id: FU-010
 title: Control-plane test render harness incomplete
 opened: 2026-04-25
 related_to: Pre-existing test infrastructure (unmasked while resolving FU-006)
-status: open
-priority: medium
-estimated_effort: 30–60 minutes
+status: closed
+closed: 2026-04-26
+resolution: superseded
+---
+
+---
+**Status:** Closed 2026-04-26
+**Resolution:** Superseded by FU-019
+**Reasoning:** FU-019 documents the concrete control_plane test failures
+discovered in Phase 2 close (TooltipProvider missing in `panels` and
+`shell`; stale assertion in `state`). FU-010's "test render harness"
+scope was the symptomatic version of the same problem. Tracking both
+adds noise; FU-019 is the actionable version.
+
+See `docs/follow-ups/FU-019-control-plane-test-preexisting-failures.md`
+for the concrete work scope.
 ---
 
 # FU-010 — Control-plane test render harness incomplete

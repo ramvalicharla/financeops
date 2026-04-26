@@ -1,3 +1,24 @@
+---
+**Status:** Closed 2026-04-26
+**Resolution:** Option 3 selected — no pinning
+**Reasoning:**
+1. The locked design at `docs/audits/finqor-shell-audit-2026-04-24.md`
+   does not require sidebar pinning.
+2. The nav-config.ts FU-013 reference (an acceptance criterion in this
+   FU) was already removed in Phase 1.
+3. The three-group sidebar structure (workspace / org / governance) with
+   entity tree (added SP-2B) and collapsed-rail chip provides sufficient
+   navigation without pinning.
+4. `pinnedModules` in `useUIStore` is a legacy artifact tracked under
+   FU-005 (deprecated Zustand field cleanup); its removal does not
+   constitute a pinning feature.
+5. The "14+ flat items" scenario that motivated pinning no longer exists
+   in the current sidebar surface.
+
+See triage report at
+`docs/follow-ups/sprint2-fu-triage-2026-04-26.md` for full evidence.
+---
+
 # FU-013 — Sidebar pinning decision
 
 **Opened:** 2026-04-25
