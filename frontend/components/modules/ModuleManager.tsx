@@ -3,11 +3,18 @@
 import { useState } from "react"
 import {
   DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
   closestCenter,
   type DragEndEvent,
+  type DragStartEvent,
+  useSensor,
+  useSensors,
 } from "@dnd-kit/core"
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
@@ -52,13 +59,20 @@ function SortableModuleRow({ tab }: { tab: WorkspaceTab }) {
     transform,
     transition,
     isDragging,
+    isOver,
   } = useSortable({ id: tab.workspace_key })
   const Icon = getModuleIcon(tab.workspace_key)
   return (
     <li
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent${isDragging ? " opacity-50" : ""}`}
+      className={[
+        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent",
+        isDragging ? "opacity-40" : "",
+        isOver && !isDragging ? "border-t-2 border-[#185FA5]" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <button
         type="button"
@@ -69,6 +83,19 @@ function SortableModuleRow({ tab }: { tab: WorkspaceTab }) {
       >
         <GripVertical size={14} aria-hidden="true" />
       </button>
+      <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="flex-1 text-foreground">{tab.workspace_name}</span>
+    </li>
+  )
+}
+
+function OverlayRow({ tab }: { tab: WorkspaceTab }) {
+  const Icon = getModuleIcon(tab.workspace_key)
+  return (
+    <li className="flex items-center gap-3 rounded-md bg-card px-3 py-2.5 text-sm shadow-lg ring-1 ring-border/50 scale-[1.02]">
+      <span className="shrink-0 touch-none cursor-grabbing text-muted-foreground/50">
+        <GripVertical size={14} aria-hidden="true" />
+      </span>
       <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="flex-1 text-foreground">{tab.workspace_name}</span>
     </li>
@@ -130,6 +157,12 @@ export function ModuleManager() {
   const { isOpen, close } = useModuleManagerStore()
   const activeEntityId = useWorkspaceStore((s) => s.entityId)
   const { order, setOrder, reorder } = useModuleOrderStore()
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   // Shares the same cache entry as ModuleTabs — no extra network request.
   const contextQuery = useQuery({
@@ -160,7 +193,12 @@ export function ModuleManager() {
     setOrder(workspaceTabs.map((t) => t.workspace_key))
   }
 
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    setActiveId(String(active.id))
+  }
+
   const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
     // Index against the store's order array so stale keys never cause off-by-one.
@@ -168,6 +206,33 @@ export function ModuleManager() {
     const toIndex = order.indexOf(String(over.id))
     if (fromIndex === -1 || toIndex === -1) return
     reorder(fromIndex, toIndex)
+  }
+
+  const handleDragCancel = () => setActiveId(null)
+
+  const activeTab = activeId ? orderedTabs.find((t) => t.workspace_key === activeId) : null
+
+  const announcements = {
+    onDragStart({ active }: DragStartEvent) {
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      return `Picked up ${name}. Use arrow keys to reorder, space to drop, escape to cancel.`
+    },
+    onDragOver({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) {
+      if (!over) return undefined
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      const overName = orderedTabs.find((t) => t.workspace_key === over.id)?.workspace_name ?? String(over.id)
+      return `${name} is over ${overName}.`
+    },
+    onDragEnd({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) {
+      if (!over) return undefined
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      const overName = orderedTabs.find((t) => t.workspace_key === over.id)?.workspace_name ?? String(over.id)
+      return `${name} placed at position of ${overName}.`
+    },
+    onDragCancel({ active }: { active: { id: string | number } }) {
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      return `Reorder of ${name} cancelled.`
+    },
   }
 
   const enabledKeys = new Set(workspaceTabs.map((t) => t.workspace_key))
@@ -208,8 +273,12 @@ export function ModuleManager() {
             </div>
           ) : (
             <DndContext
+              sensors={sensors}
               collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+              accessibility={{ announcements }}
             >
               <SortableContext
                 items={orderedTabs.map((t) => t.workspace_key)}
@@ -221,6 +290,9 @@ export function ModuleManager() {
                   ))}
                 </ul>
               </SortableContext>
+              <DragOverlay>
+                {activeTab ? <OverlayRow tab={activeTab} /> : null}
+              </DragOverlay>
             </DndContext>
           )}
         </TabsContent>
