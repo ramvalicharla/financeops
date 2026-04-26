@@ -357,6 +357,47 @@ export async function authenticate(page: Page) {
   await page.waitForURL("**/sync")
 }
 
+/**
+ * Variant of mockSession that sets role: "auditor" (maps to tenant_viewer via ROLE_ALIASES).
+ * Also sets x-e2e-role header so the server-rendered DashboardLayout passes role="auditor"
+ * as the userRole prop to the Sidebar (the fallback user in layout.tsx respects this header).
+ */
+export async function mockAuditorSession(page: Page): Promise<void> {
+  await page.context().setExtraHTTPHeaders({
+    "x-e2e-auth-bypass": "true",
+    "x-tenant-slug": "acme",
+    "x-e2e-role": "auditor",
+  })
+  await mockSession(page)
+  await page.route("**/api/auth/session**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        user: {
+          id: "user-001",
+          email: "auditor@acme.com",
+          name: "Audit User",
+          role: "auditor",
+          tenant_id: "tenant-001",
+          tenant_slug: "acme",
+          org_setup_complete: true,
+          org_setup_step: 7,
+          coa_status: "uploaded",
+          onboarding_score: 100,
+          entity_roles: [
+            { entity_id: "entity-001", entity_name: "Acme Ltd", role: "viewer" },
+          ],
+        },
+        access_token: createMockJwt(3600),
+        refresh_token: "mock-refresh-token",
+        access_token_expires_at: Date.now() + 3600 * 1000,
+        expires: "2099-01-01T00:00:00.000Z",
+      }),
+    })
+  })
+}
+
 export async function fulfillJson(
   route: Route,
   data: unknown,

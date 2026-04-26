@@ -30,12 +30,15 @@ export default async function DashboardLayout({
     redirect("/login")
   }
 
+  // x-e2e-role header allows E2E tests to override the fallback role without a real session.
+  // Only honoured in non-production environments.
+  const e2eRoleOverride = isE2EBypass ? requestHeaders.get("x-e2e-role") : null
   const fallbackUser = isE2EBypass
     ? {
         id: "user-001",
         name: "Test User",
         email: "test@acme.com",
-        role: "finance_leader",
+        role: (e2eRoleOverride ?? "finance_leader"),
         tenant_id: "tenant-001",
         tenant_slug: "acme",
         org_setup_complete: true,
