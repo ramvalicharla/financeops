@@ -501,6 +501,43 @@ SP-2A, SP-2C, SP-2D, SP-2F can all start in parallel on Day 1. SP-2B waits for S
 
 ---
 
+## Update — S-002 / OQ-2 deferral (2026-04-26)
+
+**Decision:** Defer S-002 and its dependent items to tech-debt register entry
+TD-016. Phase 2 ships the other 6 deliverables. SP-2E is not drafted.
+
+**Items deferred:**
+
+- Deliverable 5 — Consolidation-aware tab disable
+- Deliverable 6 — Tax/GST jurisdictional relabeling
+- Decision D2.6 (Consolidation tab disable) — moved from OPEN to DEFERRED
+- Decision D2.7 (Tax/GST relabel) — moved from OPEN to DEFERRED
+- Open question OQ-2 — moved from OPEN to DEFERRED
+- Sub-prompt SP-2E — not drafted; documented as deferred with TD-016 link
+
+**Effect on the readiness gate:**
+
+- Decisions resolved: 6 of 6 (excluding deferred items)
+- Open questions: 4 (OQ-1, OQ-3, OQ-4, OQ-5) — all have workable defaults
+- Sub-prompts to draft: 5 (SP-2A, SP-2B, SP-2C, SP-2D, SP-2F)
+- Sub-prompts deferred: 1 (SP-2E)
+
+**Defaults adopted on remaining open questions:**
+
+| OQ | Default | Rationale |
+|---|---|---|
+| OQ-1 | Entity tree depth = Org + Entity only. No modules in the tree. | Cheapest correct answer; modules reachable via tab bar; can add later. |
+| OQ-3 | SP-2C ships first-pass fields only (entity name, country, functional currency). GAAP and consolidation-eliminated as second-pass. | Reduces SP-2C scope; second-pass can land in any later sub-prompt. |
+| OQ-4 | No banner for switch_mode === "user". TopBar entity card alone indicates active org. Admin banner unchanged. | Avoids alarming UX; admin impersonation flow preserved. |
+| OQ-5 | All-entities view: EntityScopeBar hidden, currency falls back to org default, entity tree highlights "All entities" pseudo-node. | Standard "no scope = aggregate" pattern. |
+
+**Revised readiness verdict:** YES for SP-2A, SP-2B, SP-2C, SP-2D, SP-2F. SP-2E
+deferred via TD-016.
+
+**Tech-debt entry:** `docs/tech-debt/TD-016-phase2-consolidation-tax-tabs.md`
+
+---
+
 ## Appendix A — Verbatim file reads
 
 **Backend switch endpoint response shape** (`backend/financeops/api/v1/users.py:409–455`):

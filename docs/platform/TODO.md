@@ -430,6 +430,7 @@
 | TD-013 | Ops | Temporal worker not in render.yaml | Critical | 1h |
 | TD-014 | Storage | ClamAV stubbed in production | High | 1-2 days |
 | TD-015 | DB | No PgBouncer pooler in front of PostgreSQL | Medium | 4-8h |
+| [TD-016](../tech-debt/TD-016-phase2-consolidation-tax-tabs.md) | Frontend / Phase 2 | No standalone consolidation or tax workspace tabs — Phase 2 Deliverables 5 & 6 (consolidation tab disable, Tax/GST relabel) cannot be implemented as specified | High | 2–3 days (Option A) or 1 day (Option B) |
 
 ---
 
