@@ -32,6 +32,7 @@ from financeops.services.user_service import (
     list_user_orgs,
     normalize_email,
     offboard_user,
+    switch_user_to_org,
     update_user_role,
 )
 from financeops.shared_kernel.idempotency import optional_idempotency_key
@@ -405,6 +406,17 @@ class UserOrgsListResponse(BaseModel):
     total: int
 
 
+class SwitchTargetOrg(BaseModel):
+    id: str
+    name: str
+    role: str
+
+
+class SwitchOrgResponse(BaseModel):
+    switch_token: str
+    target_org: SwitchTargetOrg
+
+
 @router.get("/users/me/orgs", response_model=UserOrgsListResponse)
 async def get_my_orgs(
     session: AsyncSession = Depends(get_async_session),
@@ -424,6 +436,23 @@ async def get_my_orgs(
         for row in rows
     ]
     return UserOrgsListResponse(items=items, total=len(items))
+
+
+@router.post("/users/me/orgs/{tenant_id}/switch", response_model=SwitchOrgResponse)
+async def switch_org(
+    tenant_id: uuid.UUID,
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> SwitchOrgResponse:
+    result = await switch_user_to_org(session, user=current_user, target_tenant_id=tenant_id)
+    return SwitchOrgResponse(
+        switch_token=result["switch_token"],
+        target_org=SwitchTargetOrg(
+            id=result["target_tenant_id"],
+            name=result["target_tenant_name"],
+            role=result["role"],
+        ),
+    )
 
 
 @router.get("/users/{user_id}")
