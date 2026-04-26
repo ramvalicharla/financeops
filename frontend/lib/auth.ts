@@ -10,6 +10,7 @@ export type UserRole =
   | "platform_owner"
   | "platform_admin"
   | "platform_support"
+  | "org_admin"
   | "finance_leader"
   | "finance_team"
   | "director"
