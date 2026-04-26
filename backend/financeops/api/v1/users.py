@@ -29,6 +29,7 @@ from financeops.platform.db.models.user_role_assignments import CpUserRoleAssign
 from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
 from financeops.services.user_service import (
     list_tenant_users,
+    list_user_orgs,
     normalize_email,
     offboard_user,
     update_user_role,
@@ -387,6 +388,42 @@ async def invite_user(
         "role": new_user.role.value,
         "message": f"Invitation queued for {new_user.email}",
     }
+
+
+class UserOrgItem(BaseModel):
+    org_id: str
+    org_name: str
+    org_slug: str
+    org_status: str
+    role: str
+    is_primary: bool
+    joined_at: str
+
+
+class UserOrgsListResponse(BaseModel):
+    items: list[UserOrgItem]
+    total: int
+
+
+@router.get("/users/me/orgs", response_model=UserOrgsListResponse)
+async def get_my_orgs(
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> UserOrgsListResponse:
+    rows = await list_user_orgs(session, user_id=current_user.id)
+    items = [
+        UserOrgItem(
+            org_id=str(row.org_id),
+            org_name=row.org_name or "",
+            org_slug=row.org_slug or "",
+            org_status=str(row.org_status.value if hasattr(row.org_status, "value") else row.org_status),
+            role=str(row.role.value if hasattr(row.role, "value") else row.role),
+            is_primary=row.is_primary,
+            joined_at=row.joined_at.isoformat(),
+        )
+        for row in rows
+    ]
+    return UserOrgsListResponse(items=items, total=len(items))
 
 
 @router.get("/users/{user_id}")

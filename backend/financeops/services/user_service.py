@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
 from financeops.core.security import hash_password
-from financeops.db.models.users import IamUser, UserRole
+from financeops.db.models.tenants import IamTenant
+from financeops.db.models.users import IamUser, UserOrgMembership, UserRole
 from financeops.db.transaction import commit_session
 from financeops.platform.services.rbac.user_plane import is_tenant_assignable_role
 from financeops.services.auth_service import revoke_all_sessions
@@ -281,3 +282,27 @@ async def offboard_user(
         "grants_revoked": grants_revoked,
     }
 
+
+
+async def list_user_orgs(
+    session: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+) -> list:
+    """Return the caller's active org memberships, primary first then chronological."""
+    stmt = (
+        select(
+            UserOrgMembership.tenant_id.label("org_id"),
+            IamTenant.display_name.label("org_name"),
+            IamTenant.slug.label("org_slug"),
+            IamTenant.status.label("org_status"),
+            UserOrgMembership.role.label("role"),
+            UserOrgMembership.is_primary.label("is_primary"),
+            UserOrgMembership.joined_at.label("joined_at"),
+        )
+        .join(IamTenant, IamTenant.id == UserOrgMembership.tenant_id)
+        .where(UserOrgMembership.user_id == user_id)
+        .where(UserOrgMembership.status == "active")
+        .order_by(UserOrgMembership.is_primary.desc(), UserOrgMembership.joined_at.asc())
+    )
+    return (await session.execute(stmt)).all()
