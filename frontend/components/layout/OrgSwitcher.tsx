@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useSession } from "next-auth/react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Check, ChevronsUpDown, Loader2, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -14,28 +14,14 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { useTenantStore } from "@/lib/store/tenant"
-import { adminListTenants, switchToTenant } from "@/lib/api/admin"
-import type { AdminTenantListItem } from "@/lib/types/admin"
-import type { UserRole } from "@/lib/auth"
-
-const PLATFORM_OWNER_ROLES: UserRole[] = ["platform_owner", "super_admin"]
+import { useWorkspaceStore } from "@/lib/store/workspace"
+import { listUserSwitchableOrgs, switchUserOrg } from "@/lib/api/orgs"
+import type { UserOrgItem } from "@/lib/api/orgs"
 
 export function OrgSwitcher() {
-  const { data: session } = useSession()
-  const userRole = (session?.user as { role?: UserRole } | undefined)?.role
-
-  // Only render for platform_owner / super_admin
-  if (!userRole || !PLATFORM_OWNER_ROLES.includes(userRole)) {
-    return null
-  }
-
-  return <OrgSwitcherInner />
-}
-
-function OrgSwitcherInner() {
   const [open, setOpen] = useState(false)
-  const [tenants, setTenants] = useState<AdminTenantListItem[]>([])
-  const [loadingTenants, setLoadingTenants] = useState(false)
+  const [orgs, setOrgs] = useState<UserOrgItem[]>([])
+  const [loadingOrgs, setLoadingOrgs] = useState(false)
   const [switchingId, setSwitchingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fetchedRef = useRef(false)
@@ -45,34 +31,39 @@ function OrgSwitcherInner() {
   const realTenantId = useTenantStore((s) => s.tenant_id)
   const switchedTenantId = useTenantStore((s) => s.switched_tenant_id)
   const enterSwitchMode = useTenantStore((s) => s.enterSwitchMode)
+  const workspaceStore = useWorkspaceStore()
+  const queryClient = useQueryClient()
 
-  // Lazy-fetch tenants once on first open
+  // Lazy-fetch orgs once on first open
   useEffect(() => {
     if (!open || fetchedRef.current) return
     fetchedRef.current = true
-    setLoadingTenants(true)
-    adminListTenants({ limit: 200 })
-      .then((res) => setTenants(res.items))
-      .catch(() => setError("Failed to load tenants"))
-      .finally(() => setLoadingTenants(false))
+    setLoadingOrgs(true)
+    listUserSwitchableOrgs()
+      .then((res) => setOrgs(res.items))
+      .catch(() => setError("Failed to load organisations"))
+      .finally(() => setLoadingOrgs(false))
   }, [open])
 
   const activeTenantId = isSwitched ? switchedTenantId : realTenantId
 
-  const handleSelect = async (tenant: AdminTenantListItem) => {
-    if (tenant.id === activeTenantId) {
+  const handleSelect = async (item: UserOrgItem) => {
+    if (item.org_id === activeTenantId) {
       setOpen(false)
       return
     }
-    setSwitchingId(tenant.id)
+    setSwitchingId(item.org_id)
     setError(null)
     try {
-      const result = await switchToTenant(tenant.id)
+      const result = await switchUserOrg(item.org_id)
       enterSwitchMode({
         switch_token: result.switch_token,
-        tenant_id: result.tenant_id,
-        tenant_name: result.tenant_name,
+        tenant_id: result.target_org.id,
+        tenant_name: result.target_org.name,
+        switch_mode: "user",
       })
+      workspaceStore.switchOrg(result.target_org.id)
+      queryClient.clear()
       setOpen(false)
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Switch failed")
@@ -101,9 +92,9 @@ function OrgSwitcherInner() {
 
       <PopoverContent className="w-80 p-0" align="start" sideOffset={6}>
         <Command>
-          <CommandInput placeholder="Search tenants…" />
+          <CommandInput placeholder="Search organisations…" />
           <CommandList>
-            {loadingTenants ? (
+            {loadingOrgs ? (
               <div className="flex items-center justify-center py-6 text-sm text-muted-foreground gap-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Loading…
@@ -112,32 +103,32 @@ function OrgSwitcherInner() {
               <div className="py-4 px-3 text-xs text-destructive">{error}</div>
             ) : (
               <>
-                <CommandEmpty>No tenants found.</CommandEmpty>
-                <CommandGroup heading="Tenants">
-                  {tenants.map((t) => {
-                    const isActive = t.id === activeTenantId
-                    const isSwitching = switchingId === t.id
+                <CommandEmpty>No organisations found.</CommandEmpty>
+                <CommandGroup heading="Organisations">
+                  {orgs.map((item) => {
+                    const isActive = item.org_id === activeTenantId
+                    const isSwitching = switchingId === item.org_id
                     return (
                       <CommandItem
-                        key={t.id}
-                        value={t.name}
-                        onSelect={() => handleSelect(t)}
+                        key={item.org_id}
+                        value={item.org_name}
+                        onSelect={() => handleSelect(item)}
                         disabled={isSwitching}
                         className="gap-2"
                       >
                         <div className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate text-sm font-medium">{t.name}</span>
-                          <span className="truncate text-[10px] text-muted-foreground">{t.slug}</span>
+                          <span className="truncate text-sm font-medium">{item.org_name}</span>
+                          <span className="truncate text-[10px] text-muted-foreground">{item.org_slug}</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                            t.status === "active"
+                            item.org_status === "active"
                               ? "bg-emerald-500/20 text-emerald-400"
-                              : t.status === "trialing"
+                              : item.org_status === "trialing"
                                 ? "bg-amber-500/20 text-amber-400"
                                 : "bg-muted text-muted-foreground"
                           }`}>
-                            {t.status}
+                            {item.org_status}
                           </span>
                           {isSwitching ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
