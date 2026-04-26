@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { ArrowLeft, RefreshCw, AlertTriangle, CheckCircle2, XCircle, Clock, Repeat2, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -98,18 +98,18 @@ export function AdminTenantDetailPageClient() {
   const userRole = (session?.user as { role?: UserRole } | undefined)?.role
   const isPlatformOwner = userRole === "platform_owner" || userRole === "super_admin"
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true)
     setFetchError(null)
     adminGetTenant(tenantId)
       .then(setDetail)
       .catch((err: unknown) => setFetchError(err instanceof Error ? err.message : "Failed to load tenant"))
       .finally(() => setLoading(false))
-  }
+  }, [tenantId])
 
   useEffect(() => {
     if (tenantId) load()
-  }, [tenantId])
+  }, [tenantId, load])
 
   const showFeedback = (type: "success" | "error", message: string) => {
     setActionFeedback({ type, message })

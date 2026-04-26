@@ -157,8 +157,8 @@ export function useReports() {
   const definitionsQuery = useFetch(() => fetchReportDefinitions(false), [])
   const runsQuery = useFetch(() => fetchReportRuns({ limit: 50 }), [])
 
-  const definitions = definitionsQuery.data ?? []
-  const runs = runsQuery.data ?? []
+  const definitions = useMemo(() => definitionsQuery.data ?? [], [definitionsQuery.data])
+  const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data])
   const loadingDefinitions = definitionsQuery.isLoading
   const loadingRuns = runsQuery.isLoading
   const definitionError =

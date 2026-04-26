@@ -53,6 +53,10 @@ export default function StatutoryPage() {
     setEntries(payload.data)
   }
 
+  // loadCalendar/loadRegister are plain non-memoized functions; activeRegister tab changes
+  // are handled by the dedicated useEffect below — including them here would double API calls
+  // on every register tab switch. This callback is intentionally mount-only.
+  /* eslint-disable react-hooks/exhaustive-deps */
   const loadAll = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
@@ -64,6 +68,7 @@ export default function StatutoryPage() {
       setLoading(false)
     }
   }, [])
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   useEffect(() => {
     void loadAll()

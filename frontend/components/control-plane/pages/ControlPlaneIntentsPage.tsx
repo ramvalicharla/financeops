@@ -22,7 +22,7 @@ export function ControlPlaneIntentsPage({ intentId }: ControlPlaneIntentsPagePro
     queryFn: () => listIntents({ entity_id: activeEntityId ?? undefined, limit: 50 }),
   })
 
-  const rows = intentsQuery.data ?? []
+  const rows = useMemo(() => intentsQuery.data ?? [], [intentsQuery.data])
   const resolvedIntentId = intentId ?? selectedIntentId ?? rows[0]?.intent_id ?? null
   const openCount = useMemo(
     () => rows.filter((row) => !["RECORDED", "REJECTED", "CANCELLED"].includes(row.status)).length,
