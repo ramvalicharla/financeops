@@ -8,7 +8,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from financeops.core.exceptions import NotFoundError, ValidationError
-from financeops.core.security import hash_password
+from financeops.core.security import create_access_token, hash_password
 from financeops.db.models.tenants import IamTenant
 from financeops.db.models.users import IamUser, UserOrgMembership, UserRole
 from financeops.db.transaction import commit_session
@@ -280,6 +280,49 @@ async def offboard_user(
         "offboarded_at": datetime.now(UTC).isoformat(),
         "sessions_revoked": sessions_revoked,
         "grants_revoked": grants_revoked,
+    }
+
+
+async def switch_user_to_org(
+    session: AsyncSession,
+    *,
+    user: IamUser,
+    target_tenant_id: uuid.UUID,
+) -> dict:
+    """Issue a switch token for the user targeting the given tenant.
+
+    Raises 404 if the target tenant does not exist.
+    Raises 403 if the user has no active membership in the target tenant.
+    Returns a dict with switch_token, target_tenant_id, target_tenant_name, role.
+    """
+    from fastapi import HTTPException
+
+    tenant = await session.get(IamTenant, target_tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Target tenant not found")
+
+    membership_result = await session.execute(
+        select(UserOrgMembership).where(
+            UserOrgMembership.user_id == user.id,
+            UserOrgMembership.tenant_id == target_tenant_id,
+            UserOrgMembership.status == "active",
+        )
+    )
+    membership = membership_result.scalar_one_or_none()
+    if membership is None:
+        raise HTTPException(status_code=403, detail="No active membership in target tenant")
+
+    token = create_access_token(
+        user.id,
+        target_tenant_id,
+        membership.role.value,
+        additional_claims={"scope": "user_switch"},
+    )
+    return {
+        "switch_token": token,
+        "target_tenant_id": str(target_tenant_id),
+        "target_tenant_name": tenant.display_name or "",
+        "role": membership.role.value,
     }
 
 

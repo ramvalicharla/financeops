@@ -19,7 +19,7 @@ from financeops.core.exceptions import (
 )
 from financeops.core.security import decode_token
 from financeops.db.models.tenants import IamTenant
-from financeops.db.models.users import IamUser, UserRole
+from financeops.db.models.users import IamUser, UserOrgMembership, UserRole
 from financeops.db.rls import clear_tenant_context, set_tenant_context
 from financeops.db.session import (
     AsyncReadSessionLocal,
@@ -279,7 +279,18 @@ async def get_current_user(
     if user.tenant_id is None:
         raise AuthenticationError("User missing tenant_id")
     if user.tenant_id != jwt_tenant_id:
-        raise AuthenticationError("Token tenant mismatch")
+        if payload.get("scope") == "user_switch":
+            membership_result = await session.execute(
+                select(UserOrgMembership).where(
+                    UserOrgMembership.user_id == user.id,
+                    UserOrgMembership.tenant_id == jwt_tenant_id,
+                    UserOrgMembership.status == "active",
+                )
+            )
+            if not membership_result.scalar_one_or_none():
+                raise AuthenticationError("No active membership in target tenant")
+        else:
+            raise AuthenticationError("Token tenant mismatch")
     if (
         user.password_changed_at is not None
     ):
