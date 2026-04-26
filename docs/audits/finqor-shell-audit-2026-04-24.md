@@ -153,7 +153,7 @@ Start with Phase 0 (Zustand consolidation + query-key convention), then Phase 1 
 1. **Module Manager modal**: Create `components/modules/ModuleManager.tsx`. Modal dialog, max-w-[640px]. Four sub-tabs: Active (drag grips `⋮⋮`), Available (add toggles), Premium (credit cost), Custom (intake form). "Overview" row locked (toggle disabled, grip hidden). Save calls `POST /api/v1/orgs/{orgId}/modules` and optimistically updates tab bar.
 2. **`+` button**: Add dashed 24×24 button at end of tab strip (inside `ModuleTabs`). RBAC-gate on `module.manage` permission. No permission → lock icon + tooltip "Ask your admin".
 3. **Drag-to-reorder**: Install `@dnd-kit/core` + `@dnd-kit/sortable`. Wire to Active tab list. Keyboard accessible (arrow keys to reorder).
-4. **Overview enforcement**: Frontend guard — if `workspace_tabs[0]?.workspace_key !== 'overview'` after API response, re-sort and log Sentry warning.
+4. **Overview enforcement**: Frontend guard — if `workspace_tabs[0]?.workspace_key !== 'dashboard'` after API response, re-sort and log Sentry warning. *(Corrected 2026-04-26 per OQ-2 triage — codebase uses `'dashboard'`.)*
 5. **Premium credit cost**: Fetch credit cost from `GET /api/v1/billing/module-pricing` — do not hardcode.
 6. **Auditor sidebar**: Add Audit trail item to a "Governance" nav group visible to `auditor` role (read-only). Remove write-action items for auditors.
 
