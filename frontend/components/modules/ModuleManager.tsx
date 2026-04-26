@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { GripVertical } from "lucide-react"
+import { GripVertical, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { Dialog } from "@/components/ui/Dialog"
@@ -203,8 +203,11 @@ export function ModuleManager() {
         </TabsContent>
 
         <TabsContent value="custom" className="mt-4 min-h-[200px]">
-          <div className="text-sm text-muted-foreground">
-            Custom modules coming soon — contact your admin to request a custom module.
+          <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
+            <Sparkles size={28} className="text-muted-foreground/50" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">
+              Custom modules coming soon — contact your admin to request a custom module.
+            </p>
           </div>
         </TabsContent>
       </Tabs>
