@@ -8,7 +8,6 @@ import {
 } from "@dnd-kit/core"
 import {
   SortableContext,
-  arrayMove,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
@@ -130,7 +129,7 @@ function AvailableTab({ enabledKeys }: { enabledKeys: Set<string> }) {
 export function ModuleManager() {
   const { isOpen, close } = useModuleManagerStore()
   const activeEntityId = useWorkspaceStore((s) => s.entityId)
-  const { order, setOrder } = useModuleOrderStore()
+  const { order, setOrder, reorder } = useModuleOrderStore()
 
   // Shares the same cache entry as ModuleTabs — no extra network request.
   const contextQuery = useQuery({
@@ -161,25 +160,17 @@ export function ModuleManager() {
     setOrder(workspaceTabs.map((t) => t.workspace_key))
   }
 
-  // Local drag state — Section 2 in-memory only. Section 3 replaces with store write.
-  const [localOrder, setLocalOrder] = useState<WorkspaceTab[]>([])
-
-  // Initialize local order from orderedTabs when modal opens.
-  if (isOpen && localOrder.length === 0 && orderedTabs.length > 0) {
-    setLocalOrder(orderedTabs)
-  }
-
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    const fromIndex = localOrder.findIndex((t) => t.workspace_key === String(active.id))
-    const toIndex = localOrder.findIndex((t) => t.workspace_key === String(over.id))
+    // Index against the store's order array so stale keys never cause off-by-one.
+    const fromIndex = order.indexOf(String(active.id))
+    const toIndex = order.indexOf(String(over.id))
     if (fromIndex === -1 || toIndex === -1) return
-    setLocalOrder(arrayMove(localOrder, fromIndex, toIndex))
+    reorder(fromIndex, toIndex)
   }
 
   const enabledKeys = new Set(workspaceTabs.map((t) => t.workspace_key))
-  const activeTabItems = localOrder.length > 0 ? localOrder : orderedTabs
 
   return (
     <Dialog
@@ -211,7 +202,7 @@ export function ModuleManager() {
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               Loading modules…
             </div>
-          ) : activeTabItems.length === 0 ? (
+          ) : orderedTabs.length === 0 ? (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               No active modules.
             </div>
@@ -221,11 +212,11 @@ export function ModuleManager() {
               onDragEnd={handleDragEnd}
             >
               <SortableContext
-                items={activeTabItems.map((t) => t.workspace_key)}
+                items={orderedTabs.map((t) => t.workspace_key)}
                 strategy={verticalListSortingStrategy}
               >
                 <ul className="space-y-1" aria-label="Active modules">
-                  {activeTabItems.map((tab) => (
+                  {orderedTabs.map((tab) => (
                     <SortableModuleRow key={tab.workspace_key} tab={tab} />
                   ))}
                 </ul>
