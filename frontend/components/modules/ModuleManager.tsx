@@ -1,6 +1,9 @@
 "use client"
 
 import { useState } from "react"
+import { DndContext } from "@dnd-kit/core"
+import { SortableContext } from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
