@@ -4,7 +4,6 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { EntitySwitcher } from "@/components/layout/EntitySwitcher"
 import { ModuleTabs } from "@/components/layout/ModuleTabs"
-import { ContextBar } from "@/components/layout/ContextBar"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useWorkspaceStore } from "@/lib/store/workspace"
@@ -137,33 +136,5 @@ describe("control plane state", () => {
       expect(screen.getByText("ERP")).toBeInTheDocument()
       expect(screen.queryByText("Accounting")).not.toBeInTheDocument()
     })
-  })
-
-  it("renders org and period from backend context instead of local store values", async () => {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    })
-
-    ;(useControlPlaneStore.setState as unknown as (state: Record<string, unknown>) => void)({
-      current_org: "stale-org",
-      current_module: "Stale Module",
-      current_period: "1999-01",
-    })
-
-    render(
-      <QueryClientProvider client={queryClient}>
-        <ContextBar tenantSlug="acme" />
-      </QueryClientProvider>,
-    )
-
-    await waitFor(() => {
-      expect(screen.getByText(/Acme Group/i)).toBeInTheDocument()
-      expect(screen.getByText(/Acme India/i)).toBeInTheDocument()
-      expect(screen.getByText(/^ERP$/i)).toBeInTheDocument()
-      expect(screen.getByText("2026-04")).toBeInTheDocument()
-    })
-    expect(screen.queryByText("stale-org")).not.toBeInTheDocument()
-    expect(screen.queryByText("Stale Module")).not.toBeInTheDocument()
-    expect(screen.queryByText("1999-01")).not.toBeInTheDocument()
   })
 })

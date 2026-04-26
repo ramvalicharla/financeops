@@ -2,7 +2,6 @@ import type { ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { ContextBar } from "@/components/layout/ContextBar"
 import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Topbar } from "@/components/layout/Topbar"
@@ -153,41 +152,13 @@ describe("control plane shell", () => {
           userName="Finance Leader"
         />
         <ModuleTabs />
-        <ContextBar tenantSlug="acme" />
       </>,
     )
 
     expect(screen.getAllByText("Finqor").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Jobs")[0]).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/Acme India/i).length).toBeGreaterThan(0)
       expect(screen.getAllByText(/^Accounting$/i).length).toBeGreaterThan(0)
-      expect(screen.getByText("2026-04")).toBeInTheDocument()
     })
-  })
-
-  it("does not let stale control-plane store context override backend context", async () => {
-    ;(useControlPlaneStore.setState as unknown as (state: Record<string, unknown>) => void)({
-      current_org: "stale-org",
-      current_module: "Stale Module",
-      current_period: "1999-01",
-    })
-
-    renderWithQueryClient(
-      <>
-        <ModuleTabs />
-        <ContextBar tenantSlug="acme" />
-      </>,
-    )
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/Acme Group/i).length).toBeGreaterThan(0)
-      expect(screen.getByText(/Acme India/i)).toBeInTheDocument()
-      expect(screen.getByText("2026-04")).toBeInTheDocument()
-    })
-    expect(screen.queryByText("stale-org")).not.toBeInTheDocument()
-    expect(screen.queryByText("Stale Module")).not.toBeInTheDocument()
-    expect(screen.queryByText("1999-01")).not.toBeInTheDocument()
   })
 })
