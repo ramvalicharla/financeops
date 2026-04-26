@@ -1,9 +1,10 @@
 /**
  * SP-3B — Drag-to-reorder with moduleOrder store persistence
  *
- * Covers: drag handle visible per row, keyboard reorder via arrow keys + space,
- * reorder persists to localStorage under key "finqor:module-order:v1",
- * novel backend tabs appended after stored order, reset clears store.
+ * Covers: drag handle visible per row, localStorage persistence chain,
+ * novel backend tabs appended after stored order.
+ * Live keyboard reorder (Space → ArrowDown × 2 → Space) is tested in
+ * sp3b-keyboard-manual.spec.ts.
  */
 import { expect, test, type Page } from "@playwright/test"
 import * as path from "path"
@@ -70,26 +71,6 @@ test.describe("SP-3B — Drag-to-reorder", () => {
       fullPage: false,
     })
     await expectNotCrashed(page)
-  })
-
-  test("drag handles have correct keyboard a11y attributes", async ({ page }) => {
-    await openModuleManager(page)
-    const list = page.getByRole("list", { name: "Active modules" })
-    await expect(list).toBeVisible()
-
-    // Each handle must be keyboard-focusable and have proper aria labelling
-    for (const name of ["Dashboard", "Accounting", "Reconciliation"]) {
-      const handle = list.getByRole("button", { name: `Drag to reorder ${name}` })
-      await expect(handle).toBeVisible()
-      // tabIndex=0 is applied via useSortable({ id }) attributes
-      await expect(handle).toHaveAttribute("tabindex", "0")
-      // aria-roledescription is added by @dnd-kit/sortable
-      await expect(handle).toHaveAttribute("aria-roledescription", "sortable")
-    }
-    await page.screenshot({
-      path: `${SCREENSHOTS}/sp3b-drag-handle-a11y.png`,
-      fullPage: false,
-    })
   })
 
   test("pre-seeded localStorage order is reflected in dialog item order", async ({ page }) => {
