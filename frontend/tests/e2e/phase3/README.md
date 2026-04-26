@@ -5,29 +5,25 @@ and SP-3C (auditor sidebar filtering).
 
 ## SP-3B — What the specs cover
 
-- Drag handle button is rendered per active-module row (`aria-label="Drag to reorder <Name>"`)
-- Each handle has `tabindex="0"` and `aria-roledescription="sortable"` (injected by `@dnd-kit/sortable`)
-- Pre-seeded `localStorage` order (`finqor:module-order:v1`) is reflected in the dialog's item order
-- Novel backend tabs not in the stored order are appended after the stored keys
+| Spec | Coverage |
+|---|---|
+| `sp3b-drag-reorder.spec.ts` | Drag handle button rendered per row, pre-seeded localStorage order reflected in UI, novel backend tabs appended after stored keys, no crash when store is empty |
+| `sp3b-keyboard-manual.spec.ts` | Live keyboard reorder end-to-end: `element.focus()` → Space → ArrowDown×2 → Space → row moved 2 positions; DragOverlay confirmed visible; INITIAL/FINAL order printed to test annotations |
 
-## SP-3B — What the specs do NOT cover
+All SP-3B concerns are now covered by Playwright — no manual browser verification required.
 
-Live keyboard reorder (Space → ArrowDown → Space → confirm row moved) is **not tested** by
-Playwright in this suite. `@dnd-kit`'s `KeyboardSensor` attaches its move/drop listeners to
-`window` after the pickup keydown. In Playwright's headless Chromium the window-level keydown
-events do not reliably propagate through the sensor's internal state machine, so keyboard DnD
-interactions produce no-ops during automation.
+## Note on the original substitution
 
-**Manual verification required before push (≈30 seconds in Chrome):**
+During initial spec writing, the keyboard reorder test was replaced with an attribute-presence
+test (`"drag handles have correct keyboard a11y attributes"`). The substitution was caused by
+using `element.press("ArrowDown")` instead of `element.focus()` + `page.keyboard.press("ArrowDown")`.
 
-1. Open the app, navigate to any dashboard route.
-2. Click the `+` button in the workspace tab bar to open Module Manager.
-3. In the **Active** tab, press `Tab` until a "Drag to reorder" handle is focused (visible ring).
-4. Press `Space` — the item should be announced as "picked up".
-5. Press `ArrowDown` twice — the item should move down two positions.
-6. Press `Space` — the item should be announced as "dropped".
-7. Confirm the row appears two positions lower than its original slot.
+`element.press()` dispatches the event directly on the element. After `@dnd-kit`'s `KeyboardSensor`
+activates (via Space), it attaches its move/drop listeners to `window`, not to the element. Events
+fired via `element.press()` do bubble to `window`, but Playwright's internal dispatch path for
+`element.press()` fires before the sensor's window listener is registered in the React update cycle.
+Using `page.keyboard.press()` (window-level, after `element.focus()`) gives the sensor enough time
+to register, and the interaction works correctly.
 
-**Upstream verification:** `@dnd-kit`'s own test suite covers the `KeyboardSensor` interaction
-contract. See `node_modules/@dnd-kit/core/src/__tests__/` (or the upstream repo at
-https://github.com/clauderic/dnd-kit) as the authoritative reference for keyboard DnD correctness.
+**Upstream verification:** `@dnd-kit`'s own test suite remains the authoritative reference for
+`KeyboardSensor` contract details. See the upstream repo at https://github.com/clauderic/dnd-kit.
