@@ -20,6 +20,7 @@ interface TenantState {
   switched_tenant_id: string | null
   switched_tenant_name: string | null
   switched_tenant_slug: string | null
+  switch_mode: "admin" | "user" | null
 
   // ── actions ───────────────────────────────────────────────────────────────
   setTenant: (payload: {
@@ -34,12 +35,13 @@ interface TenantState {
   setActiveEntity: (entityId: string | null) => void
   clearTenant: () => void
 
-  /** Platform owner enters a switched-tenant view. */
+  /** Platform owner or user enters a switched-tenant view. */
   enterSwitchMode: (params: {
     switch_token: string
     tenant_id: string
     tenant_name: string
     tenant_slug?: string
+    switch_mode?: "admin" | "user"
   }) => void
   /** Restore the original session — clears all switch state. */
   exitSwitchMode: () => void
@@ -58,6 +60,7 @@ const initialState = {
   switched_tenant_id: null,
   switched_tenant_name: null,
   switched_tenant_slug: null,
+  switch_mode: null,
 }
 
 export const useTenantStore = create<TenantState>()(
@@ -87,19 +90,21 @@ export const useTenantStore = create<TenantState>()(
           switched_tenant_id: null,
           switched_tenant_name: null,
           switched_tenant_slug: null,
+          switch_mode: null,
         }),
 
       setActiveEntity: (entityId) => set({ active_entity_id: entityId }),
 
       clearTenant: () => set(initialState),
 
-      enterSwitchMode: ({ switch_token, tenant_id, tenant_name, tenant_slug }) =>
+      enterSwitchMode: ({ switch_token, tenant_id, tenant_name, tenant_slug, switch_mode }) =>
         set({
           is_switched: true,
           switch_token,
           switched_tenant_id: tenant_id,
           switched_tenant_name: tenant_name,
           switched_tenant_slug: tenant_slug ?? null,
+          switch_mode: switch_mode ?? "admin",
         }),
 
       exitSwitchMode: () =>
@@ -109,6 +114,7 @@ export const useTenantStore = create<TenantState>()(
           switched_tenant_id: null,
           switched_tenant_name: null,
           switched_tenant_slug: null,
+          switch_mode: null,
         }),
     }),
     {
