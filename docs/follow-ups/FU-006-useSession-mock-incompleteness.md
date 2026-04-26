@@ -3,7 +3,23 @@ id: FU-006
 title: Add useSession mock to OrgSwitcher unit tests
 opened: 2026-04-25
 related_to: Phase 0 test gate (pre-existing)
-status: open
+status: closed
+closed: 2026-04-26
+resolution: resolved
+---
+
+---
+**Status:** Closed 2026-04-26
+**Resolution:** Resolved by SP-2A
+**Reasoning:** OrgSwitcher.tsx was completely rewritten in SP-2A
+(`fffc242` merged via `3a972f7`). The component no longer imports
+`useSession` from `next-auth/react`. The original failing test file
+(`frontend/tests/unit/org_switcher.test.tsx`) no longer exists in main.
+The mock incompleteness issue documented in this FU is moot.
+
+If unit tests for the rewritten OrgSwitcher are wanted, open a new FU
+scoped to "Add unit tests for rewritten OrgSwitcher (useTenantStore /
+listUserSwitchableOrgs mocking)". That is out of scope for this FU.
 ---
 
 # FU-006 — Add useSession mock to OrgSwitcher unit tests
