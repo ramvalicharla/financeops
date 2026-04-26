@@ -71,6 +71,17 @@ Happy path (fetch succeeds) is unchanged — no warning is shown.
   `listOrgEntities()` call are already available — wire them to the warning
   UI rather than reaching outside the existing query state
 
+## Closure
+
+**Status:** Merged
+**Branch:** `feat/sp-2f-fu018-invite-modal` (commit `47654df`)
+**Merge commit:** `b0161e5` into `main` (2026-04-26)
+**Sub-prompt:** SP-2F
+
+All acceptance criteria met. Raw amber div used (no shared Alert component exists in
+the team settings directory). Happy path and submit fallback unchanged. Build,
+typecheck, and lint passed clean before and after merge.
+
 ## Out of scope
 
 - Backend changes (entity endpoint, `entity_ids` defaulting) — already correct
