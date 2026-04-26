@@ -1,6 +1,24 @@
 "use client"
 
 import { useState } from "react"
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -24,6 +42,65 @@ const WORKSPACE_CATALOG: Array<{ workspace_key: string; workspace_name: string }
   { workspace_key: "reports", workspace_name: "Reports" },
   { workspace_key: "settings", workspace_name: "Settings" },
 ]
+
+type WorkspaceTab = {
+  workspace_key: string
+  workspace_name: string
+  href: string
+  match_prefixes: string[]
+  module_codes: string[]
+}
+
+function SortableModuleRow({ tab }: { tab: WorkspaceTab }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({ id: tab.workspace_key })
+  const Icon = getModuleIcon(tab.workspace_key)
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={[
+        "flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent",
+        isDragging ? "opacity-40" : "",
+        isOver && !isDragging ? "border-t-2 border-[#185FA5]" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`Drag to reorder ${tab.workspace_name}`}
+        className="shrink-0 touch-none cursor-grab text-muted-foreground/50 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <GripVertical size={14} aria-hidden="true" />
+      </button>
+      <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="flex-1 text-foreground">{tab.workspace_name}</span>
+    </li>
+  )
+}
+
+function OverlayRow({ tab }: { tab: WorkspaceTab }) {
+  const Icon = getModuleIcon(tab.workspace_key)
+  return (
+    <li className="flex items-center gap-3 rounded-md bg-card px-3 py-2.5 text-sm shadow-lg ring-1 ring-border/50 scale-[1.02]">
+      <span className="shrink-0 touch-none cursor-grabbing text-muted-foreground/50">
+        <GripVertical size={14} aria-hidden="true" />
+      </span>
+      <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="flex-1 text-foreground">{tab.workspace_name}</span>
+    </li>
+  )
+}
 
 function AvailableTab({ enabledKeys }: { enabledKeys: Set<string> }) {
   const [saving, setSaving] = useState<string | null>(null)
@@ -79,7 +156,13 @@ function AvailableTab({ enabledKeys }: { enabledKeys: Set<string> }) {
 export function ModuleManager() {
   const { isOpen, close } = useModuleManagerStore()
   const activeEntityId = useWorkspaceStore((s) => s.entityId)
-  const { order, setOrder } = useModuleOrderStore()
+  const { order, setOrder, reorder } = useModuleOrderStore()
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
 
   // Shares the same cache entry as ModuleTabs — no extra network request.
   const contextQuery = useQuery({
@@ -89,10 +172,10 @@ export function ModuleManager() {
     enabled: isOpen,
   })
 
-  const workspaceTabs = contextQuery.data?.workspace_tabs ?? []
+  const workspaceTabs: WorkspaceTab[] = contextQuery.data?.workspace_tabs ?? []
 
   // Apply user ordering from store; fall back to backend order when store is empty.
-  const orderedTabs = (() => {
+  const orderedTabs: WorkspaceTab[] = (() => {
     if (order.length === 0) return workspaceTabs
     const tabMap = new Map(workspaceTabs.map((t) => [t.workspace_key, t]))
     const ordered = order.flatMap((key) => {
@@ -108,6 +191,48 @@ export function ModuleManager() {
   // Seed the order store from backend tabs on first open (store empty → backend wins).
   if (isOpen && order.length === 0 && workspaceTabs.length > 0) {
     setOrder(workspaceTabs.map((t) => t.workspace_key))
+  }
+
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    setActiveId(String(active.id))
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null)
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    // Index against the store's order array so stale keys never cause off-by-one.
+    const fromIndex = order.indexOf(String(active.id))
+    const toIndex = order.indexOf(String(over.id))
+    if (fromIndex === -1 || toIndex === -1) return
+    reorder(fromIndex, toIndex)
+  }
+
+  const handleDragCancel = () => setActiveId(null)
+
+  const activeTab = activeId ? orderedTabs.find((t) => t.workspace_key === activeId) : null
+
+  const announcements = {
+    onDragStart({ active }: DragStartEvent) {
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      return `Picked up ${name}. Use arrow keys to reorder, space to drop, escape to cancel.`
+    },
+    onDragOver({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) {
+      if (!over) return undefined
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      const overName = orderedTabs.find((t) => t.workspace_key === over.id)?.workspace_name ?? String(over.id)
+      return `${name} is over ${overName}.`
+    },
+    onDragEnd({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) {
+      if (!over) return undefined
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      const overName = orderedTabs.find((t) => t.workspace_key === over.id)?.workspace_name ?? String(over.id)
+      return `${name} placed at position of ${overName}.`
+    },
+    onDragCancel({ active }: { active: { id: string | number } }) {
+      const name = orderedTabs.find((t) => t.workspace_key === active.id)?.workspace_name ?? String(active.id)
+      return `Reorder of ${name} cancelled.`
+    },
   }
 
   const enabledKeys = new Set(workspaceTabs.map((t) => t.workspace_key))
@@ -147,26 +272,28 @@ export function ModuleManager() {
               No active modules.
             </div>
           ) : (
-            <ul className="space-y-1" aria-label="Active modules">
-              {orderedTabs.map((tab) => {
-                const Icon = getModuleIcon(tab.workspace_key)
-                return (
-                  <li
-                    key={tab.workspace_key}
-                    className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
-                  >
-                    {/* Drag grip — visual placeholder; SP-3B wires dnd-kit handlers here */}
-                    <GripVertical
-                      size={14}
-                      className="shrink-0 cursor-grab text-muted-foreground/50"
-                      aria-hidden="true"
-                    />
-                    <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <span className="flex-1 text-foreground">{tab.workspace_name}</span>
-                  </li>
-                )
-              })}
-            </ul>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+              accessibility={{ announcements }}
+            >
+              <SortableContext
+                items={orderedTabs.map((t) => t.workspace_key)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="space-y-1" aria-label="Active modules">
+                  {orderedTabs.map((tab) => (
+                    <SortableModuleRow key={tab.workspace_key} tab={tab} />
+                  ))}
+                </ul>
+              </SortableContext>
+              <DragOverlay>
+                {activeTab ? <OverlayRow tab={activeTab} /> : null}
+              </DragOverlay>
+            </DndContext>
           )}
         </TabsContent>
 
