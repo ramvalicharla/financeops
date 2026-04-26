@@ -83,6 +83,9 @@ export const isTenantAdmin = (role: KnownUserRole): boolean =>
 export const isTenantManager = (role: KnownUserRole): boolean =>
   resolveCanonicalRoles(role).has("tenant_manager") || isTenantAdmin(role)
 
+export const isTenantViewer = (role: KnownUserRole): boolean =>
+  resolveCanonicalRoles(role).has("tenant_viewer")
+
 type ActionAccessContext = {
   role: KnownUserRole
   entitlements?: BillingEntitlement[]

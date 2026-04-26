@@ -37,6 +37,8 @@ import type { NavigationLeafItem } from "@/lib/config/navigation"
 export interface NavItem extends NavigationLeafItem {
   id: string
   badge?: { count: number; tone: "info" | "warning" | "danger" } | null
+  /** When true, item requires write access and is hidden for tenant_viewer (auditor) role. */
+  writesRequired?: boolean
 }
 
 export type NavGroupId = "workspace" | "org" | "governance"
@@ -56,9 +58,9 @@ export const NAV_GROUPS: NavGroup[] = [
       // TODO Phase 2: replace placeholder href with real /today route once endpoint ships
       { id: "today", label: "Today's focus", href: "/dashboard", icon: Target },
       // TODO Phase 2: replace placeholder href with real period-close route
-      { id: "period-close", label: "Period close", href: "/dashboard", icon: CalendarCheck },
+      { id: "period-close", label: "Period close", href: "/dashboard", icon: CalendarCheck, writesRequired: true },
       // TODO Phase 2: wire badge.count to /api/v1/approvals?status=pending
-      { id: "approvals", label: "Approvals", href: "/dashboard", icon: CheckSquare, badge: null },
+      { id: "approvals", label: "Approvals", href: "/dashboard", icon: CheckSquare, badge: null, writesRequired: true },
     ],
   },
   {
@@ -66,11 +68,11 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Org",
     items: [
       { id: "entities", label: "Entities", href: "/settings/entities", icon: Building2 },
-      { id: "org-settings", label: "Org settings", href: "/settings", icon: Settings },
+      { id: "org-settings", label: "Org settings", href: "/settings", icon: Settings, writesRequired: true },
       // TODO Phase 2: route does not exist yet (/settings/connectors)
-      { id: "connectors", label: "Connectors", href: "/dashboard", icon: Plug },
-      { id: "modules", label: "Modules", href: "/settings/modules", icon: LayoutGrid },
-      { id: "billing", label: "Billing · Credits", href: "/settings/billing", icon: CreditCard },
+      { id: "connectors", label: "Connectors", href: "/dashboard", icon: Plug, writesRequired: true },
+      { id: "modules", label: "Modules", href: "/settings/modules", icon: LayoutGrid, writesRequired: true },
+      { id: "billing", label: "Billing · Credits", href: "/settings/billing", icon: CreditCard, writesRequired: true },
     ],
   },
   {
@@ -78,7 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Governance",
     items: [
       { id: "audit-trail", label: "Audit trail", href: "/governance/audit", icon: ScrollText },
-      { id: "team-rbac", label: "Team · RBAC", href: "/settings/team", icon: Users },
+      { id: "team-rbac", label: "Team · RBAC", href: "/settings/team", icon: Users, writesRequired: true },
       // TODO Phase 2: route does not exist yet (/governance/compliance)
       { id: "compliance", label: "Compliance", href: "/dashboard", icon: ShieldCheck },
     ],
