@@ -1,16 +1,19 @@
 // Data Sync — connections, sync runs, and drift detection.
-// version is a cache-busting sentinel passed by the hook (incremented on manual refresh).
+// Cache invalidation is handled via queryClient.invalidateQueries (see useSync.ts).
 
 export const syncKeys = {
-  connections: (version: number) =>
-    ["sync-connections", version] as const,
+  connections: () =>
+    ["sync-connections"] as const,
 
-  runs: (connectionId: string | null, version: number) =>
-    ["sync-runs", connectionId, version] as const,
+  runs: (connectionId: string | null) =>
+    ["sync-runs", connectionId] as const,
 
-  run: (id: string | null, version: number) =>
-    ["sync-run", id, version] as const,
+  // Prefix key for broad invalidation of all sync-runs regardless of connectionId.
+  runsAll: () => ["sync-runs"] as const,
 
-  drift: (syncRunId: string | null, version: number) =>
-    ["sync-drift", syncRunId, version] as const,
+  run: (id: string | null) =>
+    ["sync-run", id] as const,
+
+  drift: (syncRunId: string | null) =>
+    ["sync-drift", syncRunId] as const,
 } as const
