@@ -14,9 +14,9 @@ import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
 import { queryKeys } from "@/lib/query/keys"
-import { NAV_GROUPS, type NavGroupId } from "@/components/layout/sidebar/nav-config"
+import { NAV_GROUPS, type NavGroupId, type NavItem } from "@/components/layout/sidebar/nav-config"
 import type { NavigationLeafItem } from "@/lib/config/navigation"
-import { filterNavigationItems } from "@/lib/ui-access"
+import { filterNavigationItems, isTenantViewer } from "@/lib/ui-access"
 import { useOrgEntities } from "@/hooks/useOrgEntities"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
@@ -236,12 +236,15 @@ export function Sidebar({
           )}
         >
           {NAV_GROUPS.map((group, groupIndex) => {
+            const isAuditor = isTenantViewer(userRole)
             const filteredItems = filterNavigationItems(
               group.items,
               userRole,
               entitlementsQuery.data,
               entitlementsLoaded,
-            ).filter((item): item is NavigationLeafItem => !("children" in item))
+            )
+              .filter((item): item is NavigationLeafItem => !("children" in item))
+              .filter((item) => !isAuditor || !(item as NavItem).writesRequired)
 
             if (!filteredItems.length) return null
 
@@ -325,6 +328,11 @@ export function Sidebar({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">{userName}</p>
                     <p className="text-xs text-muted-foreground">{userEmail}</p>
+                    {isTenantViewer(userRole) && (
+                      <span className="mt-0.5 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground ring-1 ring-inset ring-border">
+                        Read-only access
+                      </span>
+                    )}
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Role: {String(userRole).replace(/_/g, " ")}
                     </p>
