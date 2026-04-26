@@ -13,6 +13,7 @@ const getControlPlaneContext = vi.fn()
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock("@/lib/api/control-plane", () => ({

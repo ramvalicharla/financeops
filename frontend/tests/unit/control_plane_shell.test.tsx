@@ -13,6 +13,7 @@ const mockPathname = vi.fn(() => "/accounting/journals")
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock("next-auth/react", () => ({

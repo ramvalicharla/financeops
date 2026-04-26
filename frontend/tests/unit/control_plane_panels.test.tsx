@@ -15,6 +15,7 @@ const getControlPlaneContext = vi.fn()
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/accounting/journals",
+  useSearchParams: () => new URLSearchParams(),
 }))
 
 vi.mock("@/components/notifications/NotificationBell", () => ({
