@@ -7,6 +7,7 @@ import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useWorkspaceStore } from "@/lib/store/workspace"
+import { TooltipProvider } from "@/components/ui/tooltip"
 
 const mockPathname = vi.fn(() => "/erp/sync")
 const getControlPlaneContext = vi.fn()
@@ -14,6 +15,15 @@ const getControlPlaneContext = vi.fn()
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: vi.fn() }),
+}))
+
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}))
+
+vi.mock("@/hooks/useBilling", () => ({
+  useCurrentEntitlements: () => ({ data: null, isPending: false, isLoading: false }),
 }))
 
 vi.mock("@/lib/api/control-plane", () => ({
@@ -127,9 +137,11 @@ describe("control plane state", () => {
     })
 
     render(
-      <QueryClientProvider client={queryClient}>
-        <ModuleTabs />
-      </QueryClientProvider>,
+      <TooltipProvider>
+        <QueryClientProvider client={queryClient}>
+          <ModuleTabs />
+        </QueryClientProvider>
+      </TooltipProvider>,
     )
 
     await waitFor(() => {

@@ -1,8 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useMemo } from "react"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useMemo } from "react"
 import { Lock, Plus } from "lucide-react"
 import * as Sentry from "@sentry/browser"
 import { useQuery } from "@tanstack/react-query"
@@ -32,6 +32,20 @@ export function ModuleTabs() {
     enabled: Boolean(session?.user?.tenant_id),
   })
   const openModuleManager = useModuleManagerStore((s) => s.open)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Open modal when redirected from /settings/modules (OQ-1 REDIRECT).
+  // Cleans the param from the URL after opening so refresh doesn't re-trigger.
+  useEffect(() => {
+    if (searchParams.get("modal") === "module-manager") {
+      openModuleManager()
+      const params = new URLSearchParams(searchParams.toString())
+      params.delete("modal")
+      const clean = params.size > 0 ? `?${params.toString()}` : window.location.pathname
+      router.replace(clean, { scroll: false })
+    }
+  }, [searchParams, openModuleManager, router])
 
   const contextQuery = useQuery({
     queryKey: queryKeys.workspace.tabs(activeEntityId),
