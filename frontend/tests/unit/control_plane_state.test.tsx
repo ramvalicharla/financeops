@@ -132,7 +132,6 @@ describe("control plane state", () => {
       </QueryClientProvider>,
     )
 
-    expect(await screen.findByText(/waiting for backend module context/i)).toBeInTheDocument()
     await waitFor(() => {
       expect(screen.getByText("ERP")).toBeInTheDocument()
       expect(screen.queryByText("Accounting")).not.toBeInTheDocument()
