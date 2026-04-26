@@ -1,8 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { DndContext } from "@dnd-kit/core"
-import { SortableContext } from "@dnd-kit/sortable"
+import {
+  DndContext,
+  closestCenter,
+  type DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
@@ -27,6 +36,45 @@ const WORKSPACE_CATALOG: Array<{ workspace_key: string; workspace_name: string }
   { workspace_key: "reports", workspace_name: "Reports" },
   { workspace_key: "settings", workspace_name: "Settings" },
 ]
+
+type WorkspaceTab = {
+  workspace_key: string
+  workspace_name: string
+  href: string
+  match_prefixes: string[]
+  module_codes: string[]
+}
+
+function SortableModuleRow({ tab }: { tab: WorkspaceTab }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: tab.workspace_key })
+  const Icon = getModuleIcon(tab.workspace_key)
+  return (
+    <li
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={`flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent${isDragging ? " opacity-50" : ""}`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`Drag to reorder ${tab.workspace_name}`}
+        className="shrink-0 touch-none cursor-grab text-muted-foreground/50 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      >
+        <GripVertical size={14} aria-hidden="true" />
+      </button>
+      <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="flex-1 text-foreground">{tab.workspace_name}</span>
+    </li>
+  )
+}
 
 function AvailableTab({ enabledKeys }: { enabledKeys: Set<string> }) {
   const [saving, setSaving] = useState<string | null>(null)
@@ -92,10 +140,10 @@ export function ModuleManager() {
     enabled: isOpen,
   })
 
-  const workspaceTabs = contextQuery.data?.workspace_tabs ?? []
+  const workspaceTabs: WorkspaceTab[] = contextQuery.data?.workspace_tabs ?? []
 
   // Apply user ordering from store; fall back to backend order when store is empty.
-  const orderedTabs = (() => {
+  const orderedTabs: WorkspaceTab[] = (() => {
     if (order.length === 0) return workspaceTabs
     const tabMap = new Map(workspaceTabs.map((t) => [t.workspace_key, t]))
     const ordered = order.flatMap((key) => {
@@ -113,7 +161,25 @@ export function ModuleManager() {
     setOrder(workspaceTabs.map((t) => t.workspace_key))
   }
 
+  // Local drag state — Section 2 in-memory only. Section 3 replaces with store write.
+  const [localOrder, setLocalOrder] = useState<WorkspaceTab[]>([])
+
+  // Initialize local order from orderedTabs when modal opens.
+  if (isOpen && localOrder.length === 0 && orderedTabs.length > 0) {
+    setLocalOrder(orderedTabs)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const fromIndex = localOrder.findIndex((t) => t.workspace_key === String(active.id))
+    const toIndex = localOrder.findIndex((t) => t.workspace_key === String(over.id))
+    if (fromIndex === -1 || toIndex === -1) return
+    setLocalOrder(arrayMove(localOrder, fromIndex, toIndex))
+  }
+
   const enabledKeys = new Set(workspaceTabs.map((t) => t.workspace_key))
+  const activeTabItems = localOrder.length > 0 ? localOrder : orderedTabs
 
   return (
     <Dialog
@@ -145,31 +211,26 @@ export function ModuleManager() {
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               Loading modules…
             </div>
-          ) : orderedTabs.length === 0 ? (
+          ) : activeTabItems.length === 0 ? (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
               No active modules.
             </div>
           ) : (
-            <ul className="space-y-1" aria-label="Active modules">
-              {orderedTabs.map((tab) => {
-                const Icon = getModuleIcon(tab.workspace_key)
-                return (
-                  <li
-                    key={tab.workspace_key}
-                    className="flex items-center gap-3 rounded-md px-3 py-2.5 text-sm hover:bg-accent"
-                  >
-                    {/* Drag grip — visual placeholder; SP-3B wires dnd-kit handlers here */}
-                    <GripVertical
-                      size={14}
-                      className="shrink-0 cursor-grab text-muted-foreground/50"
-                      aria-hidden="true"
-                    />
-                    <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
-                    <span className="flex-1 text-foreground">{tab.workspace_name}</span>
-                  </li>
-                )
-              })}
-            </ul>
+            <DndContext
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={activeTabItems.map((t) => t.workspace_key)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="space-y-1" aria-label="Active modules">
+                  {activeTabItems.map((tab) => (
+                    <SortableModuleRow key={tab.workspace_key} tab={tab} />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
           )}
         </TabsContent>
 
