@@ -8,8 +8,15 @@ export const orgSetupKeys = {
   templatePreview: (templateId: string | null) =>
     ["org-setup-template-preview", templateId] as const,
 
-  // Tenant COA accounts fetched during ERP mapping step (Step 6)
-  // Kept separate from queryKeys.coa.tenantAccounts* — different context, different cache lifetime.
+  /**
+   * Tenant COA accounts fetched during the onboarding ERP mapping step (Step 6).
+   *
+   * FU-002 (Outcome B): kept separate from queryKeys.coa.tenantAccounts* and
+   * its ERP-mapping variants. During onboarding the user has not yet completed
+   * setup, so the COA data lives in a different lifecycle context. Sharing a
+   * cache entry with post-setup screens would risk cross-contaminating
+   * onboarding state with live dashboard state.
+   */
   tenantCoaAccounts: () => ["org-setup-tenant-coa-accounts"] as const,
 
   // ERP field mappings configured during setup (Step 6)
