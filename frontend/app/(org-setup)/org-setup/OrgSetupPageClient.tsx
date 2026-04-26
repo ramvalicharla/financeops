@@ -120,7 +120,6 @@ export default function OrgSetupPageClient() {
         org_setup_complete: user?.org_setup_complete ?? true,
         org_setup_step: user?.org_setup_step ?? 7,
         entity_roles: user?.entity_roles ?? tenantState.entity_roles,
-        active_entity_id: newEntityId,
       })
       setOrgId(tenantState.tenant_id)
       setEntityId(newEntityId)

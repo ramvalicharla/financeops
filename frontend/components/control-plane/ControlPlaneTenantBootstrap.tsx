@@ -30,7 +30,6 @@ export function ControlPlaneTenantBootstrap({
       org_setup_complete: orgSetupComplete,
       org_setup_step: orgSetupStep,
       entity_roles: entityRoles,
-      active_entity_id: entityRoles.at(0)?.entity_id ?? null,
     })
     setOrgId(tenantId)
     setEntityId(entityRoles.at(0)?.entity_id ?? null)
