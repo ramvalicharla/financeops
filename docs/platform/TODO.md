@@ -431,6 +431,7 @@
 | TD-014 | Storage | ClamAV stubbed in production | High | 1-2 days |
 | TD-015 | DB | No PgBouncer pooler in front of PostgreSQL | Medium | 4-8h |
 | [TD-016](../tech-debt/TD-016-phase2-consolidation-tax-tabs.md) | Frontend / Phase 2 | No standalone consolidation or tax workspace tabs — Phase 2 Deliverables 5 & 6 (consolidation tab disable, Tax/GST relabel) cannot be implemented as specified | High | 2–3 days (Option A) or 1 day (Option B) |
+| [TD-017](../tech-debt/TD-017-user-orgs-endpoint-duplication.md) | Frontend / API duplication | Two endpoints (`/user/tenants` legacy and `/users/me/orgs` BE-001) returning org-membership-shaped data with different shapes; `PageClient.tsx` uses the legacy one, `OrgSwitcher.tsx` (SP-2A) uses the new one. Resolve by deciding whether to migrate or formalize the split. | Medium | 1d |
 
 ---
 

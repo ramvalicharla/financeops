@@ -12,6 +12,7 @@ import { useTenantStore } from "@/lib/store/tenant"
  */
 export function ViewingAsBanner() {
   const isSwitched = useTenantStore((s) => s.is_switched)
+  const switchMode = useTenantStore((s) => s.switch_mode)
   const tenantName = useTenantStore((s) => s.switched_tenant_name)
   const exitSwitchMode = useTenantStore((s) => s.exitSwitchMode)
 
@@ -48,7 +49,7 @@ export function ViewingAsBanner() {
         </div>
       )}
 
-      {isSwitched && (
+      {isSwitched && switchMode === "admin" && (
         <div className="flex items-center justify-between gap-3 border-t border-amber-500/50 bg-amber-500/15 px-4 py-2 md:px-6">
           <div className="flex items-center gap-2 text-sm font-medium text-amber-200">
             <Eye className="h-4 w-4 shrink-0" />
