@@ -1,7 +1,9 @@
 # TD-016 — Phase 2 Consolidation + Tax Tab Architecture
 
-**Status:** Open
+**Status:** Resolved
 **Filed:** 2026-04-26
+**Resolved:** 2026-04-26
+**Resolution:** Option A — Promote consolidation and tax as top-level workspace tabs
 **Source:** Phase 2 pre-flight surprise S-002 + open question OQ-2
 **Pre-flight doc:** `docs/platform/phase2-preflight-2026-04-26.md` (commit 0880440)
 **Severity:** Pre-launch decision required (not blocking Phase 2 close, but blocking final product surface)
@@ -73,3 +75,53 @@ Pre-launch product/architecture review.
 - Phase 2 pre-flight doc: `docs/platform/phase2-preflight-2026-04-26.md`
 - Locked Phase 2 design: `docs/audits/finqor-shell-audit-2026-04-24.md` (Deliverables 5 and 6)
 - Backend workspace definitions: `backend/financeops/platform/api/v1/control_plane.py:44–99`
+
+---
+
+## Resolution — Option A selected (2026-04-26)
+
+### Decision
+
+**Option A: Promote consolidation and tax as top-level workspace tabs** in
+`_WORKSPACE_DEFINITIONS`. The locked design intent (Deliverables 5 and 6) is
+preserved. Both tabs become first-class workspace entries rather than sub-modules
+nested inside `close` and `accounting`.
+
+### Jurisdiction labeling rules (Deliverable 6)
+
+The `tax` tab label is driven by the entity's country/jurisdiction attribute:
+
+| Jurisdiction | Tab label |
+|---|---|
+| India | GST |
+| UK / EU | VAT |
+| US | Sales Tax |
+| Other / unset | Tax (generic fallback) |
+
+Verification required in BE-002: confirm that `jurisdiction` (or equivalent
+country attribute) is already exposed on the entity model at the API surface
+that the frontend tab bar can read. If not, BE-002 must add it.
+
+### Execution sequencing
+
+**BE-002 — Backend (1–2 dev-days, pre-Phase-3):**
+- Promote `consolidation` and `tax` as top-level entries in `_WORKSPACE_DEFINITIONS`
+- Verify or add `parent`/consolidation-eligible distinction on the entity model
+  (needed for Deliverable 5: disable Consolidation tab when a single entity is selected)
+- Verify entity `jurisdiction` attribute is exposed on the API response the
+  tab bar reads (needed for Deliverable 6 relabeling)
+- Ticket: `docs/tickets/backend-promote-consolidation-tax-tabs.md`
+
+**SP-2E — Frontend (drafted during Phase 3, ships during or after Phase 3):**
+- Implement consolidation-aware tab disable using BE-002's entity model attributes
+- Implement tax tab jurisdictional relabeling using BE-002's exposed jurisdiction field
+- Remains a placeholder at `docs/prompts/phase2/SP-2E-DEFERRED-consolidation-tax.md`
+  until BE-002 acceptance criteria are confirmed; Phase 3 pre-flight may convert it
+  to an executable prompt once BE-002 lands
+
+### Cross-references
+
+- BE-002 backend ticket: `docs/tickets/backend-promote-consolidation-tax-tabs.md`
+- TD-018 (broader pre-launch tab review): `docs/tech-debt/TD-018-pre-launch-workspace-tab-review.md`
+- SP-2E placeholder: `docs/prompts/phase2/SP-2E-DEFERRED-consolidation-tax.md`
+- Locked design: `docs/audits/finqor-shell-audit-2026-04-24.md` (Deliverables 5 and 6)

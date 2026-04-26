@@ -7,3 +7,4 @@ Backend prerequisites and follow-ups captured during the shell rebuild. Each ent
 | ID | Title | Filed | Blocks | Status |
 |---|---|---|---|---|
 | BE-001 | [Add user_org_memberships table + backfill](./backend-user-org-memberships.md) | 2026-04-25 | Phase 2 | Ready to file |
+| BE-002 | [Promote consolidation and tax to top-level workspace tabs](./backend-promote-consolidation-tax-tabs.md) | 2026-04-26 | SP-2E | Ready to file |
