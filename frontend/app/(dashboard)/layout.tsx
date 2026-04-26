@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { auth } from "@/lib/auth"
 import type { UserRole } from "@/lib/auth"
 import { DataActivationReminder } from "@/components/layout/DataActivationReminder"
-import { ContextBar } from "@/components/layout/ContextBar"
+import { EntityScopeBar } from "@/components/layout/EntityScopeBar"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { DisplayPreferenceBootstrap } from "@/components/layout/DisplayPreferenceBootstrap"
 import { ModuleTabs } from "@/components/layout/ModuleTabs"
@@ -82,7 +82,7 @@ export default async function DashboardLayout({
             userName={user.name ?? "Finance User"}
           />
           <ModuleTabs />
-          <ContextBar tenantSlug={tenantSlug} />
+          <EntityScopeBar />
           <main id="main-content" className="flex-1 overflow-y-auto px-4 py-6 md:px-6">
             <DataActivationReminder
               initialCoaStatus={user.coa_status}

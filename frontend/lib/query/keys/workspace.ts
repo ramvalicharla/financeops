@@ -6,7 +6,7 @@
 export const workspaceKeys = {
   // ["control-plane-context"] or ["control-plane-context", entityId]
   // No arg → entity-agnostic (OnboardingWizard)
-  // With entityId → entity-scoped (Sidebar, ContextBar, Topbar)
+  // With entityId → entity-scoped (Sidebar, Topbar)
   context: (entityId?: string | null) =>
     entityId
       ? (["control-plane-context", entityId] as const)
