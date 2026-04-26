@@ -92,6 +92,7 @@ export function UsersPanel() {
   const [inviteLoading, setInviteLoading] = useState(false)
 
   const [entities, setEntities] = useState<OrgEntity[]>([])
+  const [entityFetchError, setEntityFetchError] = useState(false)
 
   const [offboardTarget, setOffboardTarget] = useState<TenantUser | null>(null)
   const [offboardReason, setOffboardReason] = useState("")
@@ -113,12 +114,23 @@ export function UsersPanel() {
     }
   }, [])
 
+  const fetchEntities = useCallback(() => {
+    setEntityFetchError(false)
+    listOrgEntities()
+      .then((data) => {
+        setEntities(data)
+        setEntityFetchError(false)
+      })
+      .catch(() => {
+        setEntities([])
+        setEntityFetchError(true)
+      })
+  }, [])
+
   useEffect(() => {
     void fetchUsers()
-    listOrgEntities()
-      .then(setEntities)
-      .catch(() => setEntities([]))
-  }, [fetchUsers])
+    fetchEntities()
+  }, [fetchUsers, fetchEntities])
 
   const validateInvite = (): boolean => {
     const errs: InviteFieldErrors = {}
@@ -373,7 +385,18 @@ export function UsersPanel() {
             </select>
           </FormField>
 
-          {entities.length > 0 ? (
+          {entityFetchError ? (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <p>Couldn&apos;t load entities. The user will be created without entity scope. You can assign entities later.</p>
+              <button
+                type="button"
+                onClick={fetchEntities}
+                className="mt-1 text-xs underline hover:no-underline"
+              >
+                Retry
+              </button>
+            </div>
+          ) : entities.length > 0 ? (
             <div className="space-y-2">
               <p className="text-sm font-medium text-foreground">
                 Entity access{" "}
