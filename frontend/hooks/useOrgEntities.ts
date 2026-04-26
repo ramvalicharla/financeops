@@ -10,6 +10,8 @@ export interface UseOrgEntitiesItem {
   entity_id: string
   entity_name: string
   role?: "admin" | "accountant" | "auditor" | "viewer" | null
+  functional_currency: string
+  country_code: string
 }
 
 export interface UseOrgEntitiesResult {
@@ -25,6 +27,8 @@ function toSwitcherItem(e: OrgEntity): UseOrgEntitiesItem {
     entity_id: e.id,
     entity_name: e.display_name ?? e.legal_name,
     role: null,
+    functional_currency: e.functional_currency,
+    country_code: e.country_code,
   }
 }
 
@@ -51,6 +55,8 @@ export function useOrgEntities(): UseOrgEntitiesResult {
         entity_id: r.entity_id,
         entity_name: r.entity_name,
         role: r.role,
+        functional_currency: "",
+        country_code: "",
       })),
       isLoading: false,
       isError: false,

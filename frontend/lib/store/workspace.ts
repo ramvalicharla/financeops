@@ -7,6 +7,7 @@ export interface WorkspaceState {
   // Workspace context — what the user is currently viewing
   orgId: string | null // Current workspace org. NOT the user's identity org.
   entityId: string | null // Current entity drill-down, null = all entities in org
+  entityCurrency: string | null // Functional currency of current entity, null = all-entities view
   moduleId: string | null // Currently-open module tab
   period: string | null // Active period (fiscal year + period code, e.g. "FY26-Q1")
 
@@ -33,6 +34,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
     (set, get) => ({
       orgId: null,
       entityId: null,
+      entityCurrency: null,
       moduleId: null,
       period: null,
       sidebarCollapsed: false,
@@ -55,6 +57,7 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         set({
           orgId,
           entityId: null,
+          entityCurrency: null,
           moduleId: null,
           // period: keep current period selection across org switches
         })
