@@ -2,6 +2,7 @@ import type { ReactNode } from "react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Topbar } from "@/components/layout/Topbar"
@@ -14,6 +15,7 @@ const mockPathname = vi.fn(() => "/accounting/journals")
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
   useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ replace: vi.fn() }),
 }))
 
 vi.mock("next-auth/react", () => ({
@@ -112,7 +114,11 @@ const renderWithQueryClient = (ui: ReactNode) => {
       mutations: { retry: false },
     },
   })
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+  return render(
+    <TooltipProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </TooltipProvider>,
+  )
 }
 
 describe("control plane shell", () => {

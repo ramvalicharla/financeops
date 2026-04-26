@@ -50,6 +50,8 @@ export interface DialogProps {
   children: ReactNode
   /** Width preset for the dialog panel. */
   size?: keyof typeof sizeClassMap
+  /** Optional className appended to the panel — use for one-off width overrides (e.g. max-w-[640px]). */
+  className?: string
 }
 
 /**
@@ -62,6 +64,7 @@ export function Dialog({
   description,
   children,
   size = "md",
+  className,
 }: DialogProps) {
   const [mounted, setMounted] = useState(open)
   const [visible, setVisible] = useState(open)
@@ -184,6 +187,7 @@ export function Dialog({
           "relative z-10 flex max-h-[90vh] w-full flex-col overflow-hidden rounded-lg border border-border bg-card shadow-2xl outline-none transition-all duration-200",
           sizeClassMap[size],
           visible ? "translate-y-0 scale-100 opacity-100" : "translate-y-4 scale-95 opacity-0",
+          className,
         )}
         role="dialog"
         tabIndex={-1}

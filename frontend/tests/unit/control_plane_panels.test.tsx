@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { JobPanel } from "@/components/panels/JobPanel"
 import { IntentPanel } from "@/components/panels/IntentPanel"
 import { Topbar } from "@/components/layout/Topbar"
@@ -43,7 +44,11 @@ const renderWithProviders = (ui: ReactNode) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+  return render(
+    <TooltipProvider>
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
+    </TooltipProvider>,
+  )
 }
 
 describe("control plane panels", () => {
