@@ -178,7 +178,6 @@ export default function MFASetupPage() {
           org_setup_complete: user.org_setup_complete,
           org_setup_step: user.org_setup_step,
           entity_roles: user.entity_roles,
-          active_entity_id: user.entity_roles.at(0)?.entity_id ?? null,
         })
         setOrgId(user.tenant_id)
         setEntityId(user.entity_roles.at(0)?.entity_id ?? null)

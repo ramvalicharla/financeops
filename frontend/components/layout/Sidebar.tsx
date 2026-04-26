@@ -77,7 +77,6 @@ export function Sidebar({
       org_setup_complete: orgSetupComplete,
       org_setup_step: orgSetupStep,
       entity_roles: entityRoles,
-      active_entity_id: entityRoles.at(0)?.entity_id ?? null,
     })
     // Bootstrap workspaceStore — orgId/entityId are workspace context,
     // not identity facts. Phase 2 will decouple these from setTenant.
