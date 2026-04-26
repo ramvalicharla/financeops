@@ -567,7 +567,7 @@ from financeops.db.append_only import append_only_function_sql
 # Import ALL models so Base.metadata.create_all() creates every table.
 # Order matters: models with FK deps must be imported after their targets.
 from financeops.db.models.tenants import IamTenant, TenantStatus, TenantType
-from financeops.db.models.users import IamUser, UserRole
+from financeops.db.models.users import IamUser, UserOrgMembership, UserRole
 from financeops.db.models.working_capital import WorkingCapitalSnapshot  # noqa: F401
 from financeops.platform.services.enforcement.context_token import issue_context_token
 from financeops.platform.services.tenancy.module_enablement import set_module_enablement

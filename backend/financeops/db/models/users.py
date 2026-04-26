@@ -4,7 +4,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Index, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -99,6 +99,12 @@ class IamUser(UUIDBase):
     sessions: Mapped[list["IamSession"]] = relationship(
         "IamSession", back_populates="user", lazy="noload"
     )
+    memberships: Mapped[list["UserOrgMembership"]] = relationship(
+        "UserOrgMembership",
+        foreign_keys="[UserOrgMembership.user_id]",
+        back_populates="user",
+        lazy="noload",
+    )
 
 
 class IamSession(UUIDBase):
@@ -130,3 +136,48 @@ class IamSession(UUIDBase):
 
     # Relationships
     user: Mapped["IamUser"] = relationship("IamUser", back_populates="sessions", lazy="noload")
+
+
+class UserOrgMembership(UUIDBase):
+    """Cross-tenant membership. One row per (user, tenant) pair."""
+    __tablename__ = "user_org_memberships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "tenant_id", name="uq_user_org"),
+        Index("idx_uom_user_id", "user_id"),
+        Index("idx_uom_tenant_id", "tenant_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="user_role_enum"),
+        nullable=False,
+    )
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    joined_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    invited_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("iam_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")
+
+    # Relationships
+    user: Mapped["IamUser"] = relationship(
+        "IamUser",
+        foreign_keys=[user_id],
+        back_populates="memberships",
+        lazy="noload",
+    )
