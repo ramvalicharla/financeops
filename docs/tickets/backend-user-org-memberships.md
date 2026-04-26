@@ -1,10 +1,11 @@
 # Backend Ticket — `feat(schema): add user_org_memberships table + backfill`
 
-**Status:** Execution-ready
+**Status:** Execution-ready (amended 2026-04-26)
+**Amendments:** §4.3 added — auth path for switch tokens (Checkpoint 2 finding)
 **Pre-flight completed:** 2026-04-26
 **FU-003 decision:** Option B (JWT rotation on switch) — see
 `docs/decisions/fu003-entity-endpoint-scoping-decision.md`
-**Estimated effort:** 6–10 dev-days
+**Estimated effort:** 7–11 dev-days (original 6–10 + ~1 day for §4.3 auth path amendment + 2 new integration tests)
 **Blocks:** Phase 2 frontend
 **Does not block:** Sprint 1 / Sprint 2 frontend FU sweep
 
@@ -122,6 +123,25 @@ The report has two sections (0.1 and 0.2), each ending with the verdict
 
 If either verdict is "amendment required", the agent stops and requests the
 amendment from the ticket owner before writing implementation code.
+
+### 0.3 — Post-Checkpoint-2 amendment note
+
+The original Section 0 gate investigated two axes: (0.1) scope-claim handling
+in `get_current_user`, (0.2) `create_access_token` signature. Both gates
+returned "Proceed as written."
+
+Checkpoint 2 integration surfaced a **third axis** that Section 0 did not
+investigate: the `tenant_id` consistency check in `get_current_user`
+(`deps.py:281`). That check enforces `user.tenant_id == jwt_tenant_id`.
+Switch tokens carry `tenant_id = target_tenant_id`, which differs from
+`IamUser.tenant_id` (the user's home org). Without amendment, every request
+made with a switch token would fail with `AuthenticationError("Token tenant
+mismatch")`.
+
+The amended **Section 4.3** resolves this. Future tickets that issue tokens
+with a non-home `tenant_id` should add investigation of all three axes to
+their Section 0 gate: (a) scope-claim handling, (b) token-construction
+signature, (c) tenant consistency checks in auth dependencies.
 
 ---
 
@@ -350,6 +370,73 @@ or new entity route is needed.
 
 ---
 
+### 4.3 — Auth path amendment for switch tokens
+
+**Context:** Checkpoint 2 integration surfaced that `backend/financeops/api/deps.py:281`
+enforces `user.tenant_id == jwt_tenant_id`. The user switch token issued by Section 4.2
+carries `tenant_id = target_tenant_id`, but `IamUser.tenant_id` remains the user's home
+org. Without this amendment, every request after a switch fails with
+`AuthenticationError("Token tenant mismatch")`.
+
+The Section 0 gate's Investigation 0.1 was scoped to the scope-claim axis (does the auth
+path reject tokens missing a scope claim?). It did not investigate the tenant_id consistency
+axis. This finding is recorded in Section 0.3; the amendment below resolves the issue.
+
+**Amendment:** `get_current_user` in `backend/financeops/api/deps.py` is amended to handle
+`scope: "user_switch"` tokens via a conditional branch. The switch endpoint (Section 4.2)
+must issue tokens carrying `additional_claims={"scope": "user_switch"}` (updating Section 4.2
+line: `create_access_token(user.id, target_tenant_id, membership.role.value, additional_claims={"scope": "user_switch"})`).
+
+```python
+# In get_current_user, replace the hard tenant consistency check with:
+if user.tenant_id != jwt_tenant_id:
+    if payload.get("scope") == "user_switch":
+        # Switch token: verify active membership in the target tenant
+        membership_result = await session.execute(
+            select(UserOrgMembership)
+            .where(
+                UserOrgMembership.user_id == user.id,
+                UserOrgMembership.tenant_id == jwt_tenant_id,
+                UserOrgMembership.status == "active",
+            )
+        )
+        if not membership_result.scalar_one_or_none():
+            raise AuthenticationError("No active membership in target tenant")
+    else:
+        raise AuthenticationError("Token tenant mismatch")
+```
+
+**Behavior:**
+- Non-switch tokens: existing behavior preserved exactly. `tenant_id` consistency
+  enforced strictly.
+- Switch tokens (`scope: "user_switch"`): tenant consistency is replaced by
+  active-membership verification. If the user no longer has an active membership in the
+  target tenant, the request is rejected immediately.
+
+**Security implications:**
+- Membership revocation takes effect on the next request after revocation. There is no
+  in-flight session bypass.
+- A forged switch token claiming a tenant the user is not a member of is rejected by the
+  membership query.
+- The home-org `IamUser.tenant_id` is never mutated — it remains the canonical reference
+  for audit logging and identity.
+
+**Performance implications:**
+- Adds one indexed DB lookup per authenticated request when the token is a switch token.
+  The lookup hits the existing `UNIQUE(user_id, tenant_id)` index — sub-millisecond.
+- Non-switch tokens pay zero overhead (the `scope` check is a dict lookup, no DB call).
+- If this becomes a hotspot at scale, the membership row can be cached in Redis or carried
+  as additional JWT claims. Premature optimisation not warranted at this stage.
+
+**File(s) modified in Checkpoint 3:**
+- `backend/financeops/api/deps.py` — add conditional branch in `get_current_user` as shown
+- `backend/financeops/api/v1/users.py` — update Section 4.2 `additional_claims` to include
+  `scope: "user_switch"`
+- `backend/tests/integration/test_user_orgs_endpoint.py` — add T7, T12, T13 integration
+  tests exercising the amended auth path
+
+---
+
 ### 5. JWT / session considerations
 
 Under Approach A, `IamUser.tenant_id` stays — so existing JWTs continue to validate.
@@ -387,10 +474,15 @@ Minimum test coverage required (add to `backend/tests/`):
 - `GET /users/me/orgs` — user with no active memberships returns empty list (not 404/403)
 - `POST /users/me/orgs/{id}/switch` — switch to an org the user belongs to → 200 + valid JWT
 - `POST /users/me/orgs/{id}/switch` — switch to an org the user does NOT belong to → 403
-- `POST /users/me/orgs/{id}/switch` — issued JWT carries correct `tenant_id` and no
-  `scope: platform_switch` claim
+- `POST /users/me/orgs/{id}/switch` — issued JWT carries `scope: "user_switch"` and no
+  `scope: "platform_switch"` or `switched_by` claims (T8)
 - `POST /users/me/orgs/{id}/switch` — issued token lifetime matches normal access token
   lifetime, not 900 seconds
+- Switch token (`scope: "user_switch"`) used on protected endpoint — amended auth path
+  membership-check branch exercises correctly; request succeeds (T7)
+- Membership suspended after switch token issued — next request with that token returns 401
+  "No active membership in target tenant" (T12)
+- Forged switch token for tenant user is not a member of — rejected 401 (T13)
 - Unauthenticated request to either endpoint → 401
 
 **Migration / backfill tests:**
@@ -417,12 +509,14 @@ Minimum test coverage required (add to `backend/tests/`):
 | T4 | User switches to an org they do NOT belong to | 403 |
 | T5 | User switches to an org where their membership is `status = 'suspended'` | 403 |
 | T6 | User with zero active memberships (all rows have `status != 'active'`) calls GET | 200, `items: []` |
-| T7 | Issued switch token used to call `GET /org-setup/entities` | Returns the target org's entities (not the home org's) |
-| T8 | Issued switch token does NOT carry `scope: platform_switch` | Assert claim absent |
+| T7 | Switch token (`scope: "user_switch"`) accesses tenant-scoped endpoint | 200, amended auth path membership check passes; response scoped to target org |
+| T8 | Issued switch token carries `scope: "user_switch"`, NOT `scope: "platform_switch"` | Assert `scope` claim equals `"user_switch"`; assert `switched_by` claim absent |
 | T9 | Backfill: every `IamUser` has exactly one `is_primary = TRUE` membership row | Count assertion passes |
 | T10 | Second `is_primary = TRUE` row for same user is rejected | DB-level unique constraint error |
 | T11 | `alembic downgrade` from migration | Rolls back cleanly, no orphan objects |
-| T12 | Existing single-org user makes any existing API call after migration | Unchanged behavior |
+| T12 | Membership revoked mid-session — next request with switch token returns 401 | First request 200; membership suspended; second request 401 "No active membership in target tenant" |
+| T13 | Forged switch token for tenant user is NOT a member of — rejected | 401 "No active membership in target tenant" |
+| T14 | Existing single-org user makes any existing API call after migration | Unchanged behavior |
 
 ---
 
