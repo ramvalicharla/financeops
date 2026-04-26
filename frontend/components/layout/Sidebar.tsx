@@ -1,15 +1,15 @@
 "use client"
 
 import { usePathname } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
 import Link from "next/link"
 import { ChevronDown, ChevronsLeft, ChevronsRight, Settings } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
+import { EntityCardPicker } from "@/components/layout/EntityCardPicker"
 import { SidebarNavGroup } from "@/components/layout/_components/SidebarNavGroup"
 import { Button } from "@/components/ui/button"
-import { Skeleton } from "@/components/ui/skeleton"
 import { useCurrentEntitlements } from "@/hooks/useBilling"
 import type { UserRole } from "@/lib/auth"
 import { getControlPlaneContext, listControlPlaneEntities } from "@/lib/api/control-plane"
@@ -17,6 +17,7 @@ import { queryKeys } from "@/lib/query/keys"
 import { NAV_GROUPS, type NavGroupId } from "@/components/layout/sidebar/nav-config"
 import type { NavigationLeafItem } from "@/lib/config/navigation"
 import { filterNavigationItems } from "@/lib/ui-access"
+import { useOrgEntities } from "@/hooks/useOrgEntities"
 import { useTenantStore } from "@/lib/store/tenant"
 import { useUIStore } from "@/lib/store/ui"
 import { useWorkspaceStore } from "@/lib/store/workspace"
@@ -90,10 +91,38 @@ export function Sidebar({
     }
   }, [entityId, entitiesQuery.data, switchEntity])
 
+  const orgEntities = useOrgEntities()
+
   const initials = useMemo(() => {
     const [first, second] = userName.split(" ")
     return `${first?.[0] ?? ""}${second?.[0] ?? ""}`.toUpperCase()
   }, [userName])
+
+  const activeEntityName = useMemo(
+    () => orgEntities.entities.find((e) => e.entity_id === entityId)?.entity_name ?? null,
+    [orgEntities.entities, entityId],
+  )
+
+  const orgInitial = (
+    contextQuery.data?.current_organisation.organisation_name?.[0] ??
+    tenantSlug?.[0] ??
+    "O"
+  ).toUpperCase()
+
+  const handleTreeKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return
+    e.preventDefault()
+    const items = Array.from(
+      e.currentTarget.querySelectorAll<HTMLButtonElement>("[data-entity-item]"),
+    )
+    if (!items.length) return
+    const idx = items.findIndex((el) => el === document.activeElement)
+    const next =
+      e.key === "ArrowDown"
+        ? (idx + 1) % items.length
+        : (idx - 1 + items.length) % items.length
+    items[next]?.focus()
+  }, [])
 
   const entitlementsQuery = useCurrentEntitlements({
     enabled: Boolean(tenantId),
@@ -127,42 +156,73 @@ export function Sidebar({
         {/* ── Header ─────────────────────────────────────────────────────── */}
         {sidebarCollapsed ? (
           <div className="flex justify-center border-b border-border py-[18px]">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
-              <span className="text-primary-foreground font-bold text-sm select-none">F</span>
-            </div>
+            {entityId !== null ? (
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-foreground text-xs font-semibold hover:opacity-80 transition-opacity shrink-0"
+                onClick={toggleSidebar}
+                title={activeEntityName ?? undefined}
+                aria-label={`Expand sidebar — ${activeEntityName ?? "entity"}`}
+              >
+                {(activeEntityName?.[0] ?? "?").toUpperCase()}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-80 transition-opacity shrink-0"
+                onClick={toggleSidebar}
+                title="All entities"
+                aria-label={`Expand sidebar — All entities`}
+              >
+                {orgInitial}{orgEntities.entities.length}
+              </button>
+            )}
           </div>
         ) : (
           <div className="border-b border-border px-4 py-4">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Finqor
             </p>
-            <div className="mt-3 rounded-2xl border border-border bg-background p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">ACTIVE ENTITY</p>
-                  {contextQuery.isLoading ? (
-                    <Skeleton className="mt-1 h-5 w-32" />
-                  ) : (
-                    <p className="mt-1 text-sm font-semibold text-foreground">{organizationLabel}</p>
-                  )}
-                </div>
-                <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  Backend
-                </span>
-              </div>
-              <div className="mt-3 space-y-2 rounded-xl border border-border bg-background px-3 py-3 text-sm text-muted-foreground">
-                {contextQuery.isLoading ? (
-                  <>
-                    <Skeleton className="h-4 w-40" />
-                    <Skeleton className="h-4 w-32" />
-                  </>
-                ) : (
-                  <>
-                    <p>Entity: {contextQuery.data?.current_entity.entity_name ?? "Unavailable"}</p>
-                    <p>Workspace: {contextQuery.data?.current_module.module_name ?? "Unavailable"}</p>
-                  </>
+            <EntityCardPicker
+              entityId={entityId}
+              switchEntity={switchEntity}
+              entities={orgEntities.entities}
+              organizationLabel={organizationLabel}
+              activeEntityName={activeEntityName}
+              moduleName={contextQuery.data?.current_module.module_name ?? null}
+              contextIsLoading={contextQuery.isLoading}
+            />
+            {/* Entity tree — compact always-visible list in expanded mode (OQ-1: org+entity only) */}
+            <div
+              className="mt-3 max-h-40 overflow-y-auto rounded-xl border border-border"
+              onKeyDown={handleTreeKeyDown}
+            >
+              <button
+                type="button"
+                data-entity-item
+                className={cn(
+                  "flex w-full items-center px-3 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors rounded-t-xl",
+                  entityId === null && "bg-accent text-accent-foreground font-medium",
                 )}
-              </div>
+                onClick={() => switchEntity(null)}
+              >
+                ← All entities
+              </button>
+              {orgEntities.entities.map((entity, idx) => (
+                <button
+                  key={entity.entity_id}
+                  type="button"
+                  data-entity-item
+                  className={cn(
+                    "flex w-full items-center px-3 py-2 text-xs hover:bg-accent hover:text-accent-foreground transition-colors",
+                    idx === orgEntities.entities.length - 1 && "rounded-b-xl",
+                    entity.entity_id === entityId && "bg-accent text-accent-foreground font-medium",
+                  )}
+                  onClick={() => switchEntity(entity.entity_id)}
+                >
+                  <span className="truncate">{entity.entity_name}</span>
+                </button>
+              ))}
             </div>
           </div>
         )}
