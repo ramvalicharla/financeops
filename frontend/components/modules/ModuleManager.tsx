@@ -181,7 +181,25 @@ export function ModuleManager() {
         </TabsContent>
 
         <TabsContent value="premium" className="mt-4 min-h-[200px]">
-          <div className="text-sm text-muted-foreground">Premium</div>
+          <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Premium modules will appear here. Pricing details coming soon.
+            </p>
+            {/* Example locked cards — communicates future shape; no real data yet */}
+            <ul className="w-full space-y-1">
+              {(["Consolidation", "Tax"] as const).map((name) => (
+                <li
+                  key={name}
+                  className="flex items-center gap-3 rounded-md border border-border/50 px-3 py-2.5 text-sm opacity-50"
+                  aria-hidden="true"
+                >
+                  <span className="text-base">🔒</span>
+                  <span className="flex-1 text-foreground">{name}</span>
+                  <span className="text-xs text-muted-foreground">— credits/month</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </TabsContent>
 
         <TabsContent value="custom" className="mt-4 min-h-[200px]">
