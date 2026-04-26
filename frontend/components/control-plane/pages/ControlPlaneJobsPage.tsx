@@ -22,7 +22,7 @@ export function ControlPlaneJobsPage({ jobId }: ControlPlaneJobsPageProps) {
     queryFn: () => listJobs({ entity_id: activeEntityId ?? undefined, limit: 50 }),
   })
 
-  const rows = jobsQuery.data ?? []
+  const rows = useMemo(() => jobsQuery.data ?? [], [jobsQuery.data])
   const resolvedJobId = jobId ?? selectedJobId ?? rows[0]?.job_id ?? null
   const summary = useMemo(
     () => ({

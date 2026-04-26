@@ -95,7 +95,7 @@ export function useDeliveries() {
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null)
 
   const schedulesQuery = useFetch(() => fetchDeliverySchedules(), [])
-  const schedules = schedulesQuery.data ?? []
+  const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data])
   const loading = schedulesQuery.isLoading
   const error = actionError ?? schedulesQuery.error?.message ?? null
 

@@ -132,7 +132,7 @@ export default function CostCentresSettingsPage() {
     },
   })
 
-  const flatItems = flatQuery.data?.items ?? []
+  const flatItems = useMemo(() => flatQuery.data?.items ?? [], [flatQuery.data])
   const roots = treeQuery.data ?? []
 
   const parentOptions = useMemo(

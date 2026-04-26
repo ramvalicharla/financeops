@@ -27,7 +27,7 @@ export function EntityLocationSelector() {
     enabled: Boolean(activeEntityId),
   })
 
-  const locationItems = locationsQuery.data?.items ?? []
+  const locationItems = useMemo(() => locationsQuery.data?.items ?? [], [locationsQuery.data])
   const entityCount = entityRoles.length
 
   useEffect(() => {

@@ -93,8 +93,8 @@ export function useBoardPack() {
   const definitionsQuery = useFetch(() => fetchDefinitions(false), [])
   const runsQuery = useFetch(() => fetchRuns({ limit: 50 }), [])
 
-  const definitions = definitionsQuery.data ?? []
-  const runs = runsQuery.data ?? []
+  const definitions = useMemo(() => definitionsQuery.data ?? [], [definitionsQuery.data])
+  const runs = useMemo(() => runsQuery.data ?? [], [runsQuery.data])
   const loadingDefinitions = definitionsQuery.isLoading
   const loadingRuns = runsQuery.isLoading
   const definitionError =
