@@ -40,3 +40,20 @@ to a polish PR.
 - Brand mark in auth pages (separate concern; auth pages have their own layout).
 - Brand mark in collapsed-rail sidebar header (rail uses entity chip per spec
   §1.4 — not a brand mark slot).
+
+---
+
+## Resolution
+
+**Closed:** SP-5D (Phase 5), 2026-04-27
+**Commit:** `d28c5ba feat(topbar): add Finqor brand mark + wordmark (FU-011)`
+
+The brand mark was silently implemented before Phase 5 entry. Verified on current `main` at SP-5D baseline:
+
+- `components/layout/BrandMark.tsx` — inline SVG F-lettermark (28×28, `#185FA5` rounded rect) + "finqor" wordmark (`text-muted-foreground`, hidden on mobile, `md:inline`)
+- Mounted as the leftmost element in both mobile (line 176) and desktop (line 308) layouts of `components/layout/Topbar.tsx`
+- Routes to `/dashboard` via `next/link`
+- `aria-label="Finqor"` on the `<Link>`, SVG `aria-hidden="true"` — keyboard focusable, accessible name correct
+- TopBar height unchanged: `min-h-12` (48px) preserved
+
+All FU-011 acceptance criteria satisfied. No further action required.
