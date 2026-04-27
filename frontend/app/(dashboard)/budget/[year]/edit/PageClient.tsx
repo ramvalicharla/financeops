@@ -41,7 +41,7 @@ export default function BudgetEditPage() {
       rows.map((row) =>
         fmt(row.monthly_values.reduce((sum, value) => sum + asNumber(value), 0)),
       ),
-    [rows],
+    [rows, fmt],
   )
 
   const updateCell = (rowIndex: number, monthIndex: number, value: string) => {
