@@ -455,6 +455,33 @@ async def switch_org(
     )
 
 
+class UserPreferencesResponse(BaseModel):
+    sidebar_collapsed: bool | None
+
+
+class UpdateUserPreferencesRequest(BaseModel):
+    sidebar_collapsed: bool | None = None
+
+
+@router.get("/users/me/preferences", response_model=UserPreferencesResponse)
+async def get_my_preferences(
+    current_user: IamUser = Depends(get_current_user),
+) -> UserPreferencesResponse:
+    return UserPreferencesResponse(sidebar_collapsed=current_user.sidebar_collapsed)
+
+
+@router.patch("/users/me/preferences", response_model=UserPreferencesResponse)
+async def update_my_preferences(
+    body: UpdateUserPreferencesRequest,
+    session: AsyncSession = Depends(get_async_session),
+    current_user: IamUser = Depends(get_current_user),
+) -> UserPreferencesResponse:
+    if "sidebar_collapsed" in body.model_fields_set:
+        current_user.sidebar_collapsed = body.sidebar_collapsed
+    await session.flush()
+    return UserPreferencesResponse(sidebar_collapsed=current_user.sidebar_collapsed)
+
+
 @router.get("/users/{user_id}")
 async def get_user(
     user_id: uuid.UUID,
