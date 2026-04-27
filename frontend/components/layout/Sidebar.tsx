@@ -264,7 +264,14 @@ export function Sidebar({
             if (sidebarCollapsed) {
               return (
                 <div key={group.id}>
-                  {groupIndex > 0 && <hr className="my-1 border-border" />}
+                  {groupIndex > 0 && (
+                    <hr
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label={`End of ${NAV_GROUPS[groupIndex - 1]?.label ?? "previous"} group`}
+                      className="my-1 border-border"
+                    />
+                  )}
                   <SidebarNavGroup
                     closeSidebar={closeSidebar}
                     items={filteredItems}
