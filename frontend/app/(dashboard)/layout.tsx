@@ -17,6 +17,7 @@ import { DeterminismPanel } from "@/components/panels/DeterminismPanel"
 import { SearchProvider } from "@/components/search/SearchProvider"
 import { Breadcrumb } from "@/components/ui/Breadcrumb"
 import { DashboardShell } from "@/components/layout/DashboardShell"
+import { RouteAnnouncer } from "@/components/layout/RouteAnnouncer"
 export default async function DashboardLayout({
   children,
 }: {
@@ -65,6 +66,12 @@ export default async function DashboardLayout({
 
   return (
     <div className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,hsl(var(--brand-primary)/0.08),transparent_28%),hsl(var(--background))] text-foreground">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:border focus:border-border focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:text-foreground focus:shadow-md"
+      >
+        Skip to content
+      </a>
       <Sidebar
         entityRoles={user.entity_roles}
         userRole={userRole}
@@ -77,6 +84,7 @@ export default async function DashboardLayout({
       />
       <DashboardShell>
         <SearchProvider>
+          <RouteAnnouncer />
           <DisplayPreferenceBootstrap />
           <SidebarCollapseBootstrap />
           <Topbar
