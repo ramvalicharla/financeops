@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { signOut } from "next-auth/react"
 import Link from "next/link"
 import { ChevronDown, ChevronsLeft, ChevronsRight, Settings } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useQuery } from "@tanstack/react-query"
 import type { EntityRole } from "@/types/api"
 import { EntityCardPicker } from "@/components/layout/EntityCardPicker"
@@ -157,25 +158,37 @@ export function Sidebar({
         {sidebarCollapsed ? (
           <div className="flex justify-center border-b border-border py-[18px]">
             {entityId !== null ? (
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-foreground text-xs font-semibold hover:opacity-80 transition-opacity shrink-0"
-                onClick={toggleSidebar}
-                title={activeEntityName ?? undefined}
-                aria-label={`Expand sidebar — ${activeEntityName ?? "entity"}`}
-              >
-                {(activeEntityName?.[0] ?? "?").toUpperCase()}
-              </button>
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-md bg-accent text-accent-foreground text-xs font-semibold hover:opacity-80 transition-opacity shrink-0"
+                    onClick={toggleSidebar}
+                    aria-label={`Expand sidebar — ${activeEntityName ?? "entity"}`}
+                  >
+                    {(activeEntityName?.[0] ?? "?").toUpperCase()}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {activeEntityName ?? "entity"}
+                </TooltipContent>
+              </Tooltip>
             ) : (
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-80 transition-opacity shrink-0"
-                onClick={toggleSidebar}
-                title="All entities"
-                aria-label={`Expand sidebar — All entities`}
-              >
-                {orgInitial}{orgEntities.entities.length}
-              </button>
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground text-xs font-semibold hover:opacity-80 transition-opacity shrink-0"
+                    onClick={toggleSidebar}
+                    aria-label={`Expand sidebar — All entities`}
+                  >
+                    {orgInitial}{orgEntities.entities.length}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  All entities
+                </TooltipContent>
+              </Tooltip>
             )}
           </div>
         ) : (
@@ -301,15 +314,23 @@ export function Sidebar({
           {sidebarCollapsed ? (
             /* Collapsed footer: avatar sign-out + settings cog below */
             <div className="flex flex-col items-center gap-1 py-1">
-              <button
-                type="button"
-                title={`${userName} · ${String(userRole).replace(/_/g, " ")}\n${userEmail}\nClick to sign out`}
-                aria-label="Sign out"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium hover:opacity-80 transition-opacity"
-                onClick={() => signOut({ callbackUrl: "/login" })}
-              >
-                {initials}
-              </button>
+              <Tooltip delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Sign out — signed in as ${userName}, ${isTenantViewer(userRole) ? "read-only access" : String(userRole).replace(/_/g, " ")}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-medium hover:opacity-80 transition-opacity"
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                  >
+                    {initials}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  <div>{userName}</div>
+                  <div>{isTenantViewer(userRole) ? "Read-only access" : String(userRole).replace(/_/g, " ")}</div>
+                  <div>Click to sign out</div>
+                </TooltipContent>
+              </Tooltip>
               <Link
                 href="/settings"
                 aria-label="Settings"
