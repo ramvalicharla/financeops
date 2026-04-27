@@ -23,6 +23,7 @@ When picking up a follow-up:
 | FU-014 | [Vitest coverage thresholds with measured baseline](./FU-014-vitest-coverage-thresholds.md) | 2026-04-25 | Tech-debt audit F1 |
 | FU-015 | [Remaining writers of deprecated active_entity_id](./FU-015-remaining-active-entity-id-writers.md) | 2026-04-25 | Hotfix 1.1.5; extends FU-005 |
 | FU-016 | [Real user management implementation](./FU-016-real-user-management-implementation.md) | 2026-04-26 | Phase 1 sub-prompt 1.6.3 |
+| FU-020 | [Complete loading.tsx skeleton coverage + EmptyState unification](./FU-020-skeleton-and-emptystate-coverage-completion.md) | 2026-04-27 | SP-5C — 86 deferred loading routes + bespoke EmptyState pattern unification |
 
 ## Merged follow-ups
 
