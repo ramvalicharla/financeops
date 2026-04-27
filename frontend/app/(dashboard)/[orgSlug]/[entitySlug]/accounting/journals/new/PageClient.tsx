@@ -12,6 +12,7 @@ import { createGovernedIntent, type JournalIntentPayload } from "@/lib/api/inten
 import { useControlPlaneStore } from "@/lib/store/controlPlane"
 import { useWorkspaceStore } from "@/lib/store/workspace"
 import { canPerformAction, getPermissionDeniedMessage } from "@/lib/ui-access"
+import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 import { StateBadge } from "@/components/ui/StateBadge"
 import { Button } from "@/components/ui/button"
 import { z } from "zod"
@@ -69,6 +70,7 @@ export default function NewJournalPage() {
   const canCreateJournal = canPerformAction("journal.create", userRole)
   const openIntentPanel = useControlPlaneStore((state) => state.openIntentPanel)
   const entityId = useWorkspaceStore((s) => s.entityId)
+  const { fmt } = useFormattedAmount()
   const [journalDate, setJournalDate] = useState(today)
   const [reference, setReference] = useState("")
   const [narration, setNarration] = useState("")
@@ -430,8 +432,8 @@ export default function NewJournalPage() {
                 Add Line
               </Button>
               <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                <span className="mr-2">Debit: {totalDebit.toFixed(2)}</span>
-                <span className="mr-2">Credit: {totalCredit.toFixed(2)}</span>
+                <span className="mr-2">Debit: {fmt(totalDebit)}</span>
+                <span className="mr-2">Credit: {fmt(totalCredit)}</span>
                 <StateBadge
                   status={isBalanced ? "success" : "failed"}
                   label={isBalanced ? "Balanced" : "Not balanced"}

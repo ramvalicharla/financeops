@@ -4,10 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { listPartnerCommissions } from "@/lib/api/partner"
 import type { PartnerCommissionRow } from "@/lib/types/partner"
 import { CommissionTable } from "@/components/partner/CommissionTable"
+import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 
 export default function PartnerEarningsPage() {
   const [commissions, setCommissions] = useState<PartnerCommissionRow[]>([])
   const [error, setError] = useState<string | null>(null)
+  const { fmt } = useFormattedAmount()
 
   const load = useCallback(async () => {
     setError(null)
@@ -33,7 +35,7 @@ export default function PartnerEarningsPage() {
         pending += amount
       }
     }
-    return { earned: earned.toFixed(2), pending: pending.toFixed(2) }
+    return { earned, pending }
   }, [commissions])
 
   return (
@@ -46,11 +48,11 @@ export default function PartnerEarningsPage() {
       <section className="grid gap-3 md:grid-cols-2">
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">Total Earned</p>
-          <p className="mt-1 text-xl font-semibold text-foreground">{totals.earned}</p>
+          <p className="mt-1 text-xl font-semibold text-foreground">{fmt(totals.earned)}</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-xs text-muted-foreground">Pending Payout</p>
-          <p className="mt-1 text-xl font-semibold text-foreground">{totals.pending}</p>
+          <p className="mt-1 text-xl font-semibold text-foreground">{fmt(totals.pending)}</p>
         </div>
       </section>
 
