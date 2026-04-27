@@ -57,3 +57,11 @@ Phase 3 polish window or any small open slot. Not blocking any phase.
   than the underlying issues
 - Onboarding wizard's 2 separate pre-existing failures (also reported
   in pre-Phase-2 close) are unrelated and remain open
+
+---
+
+## Resolution
+
+**Closed:** SP-5E (Phase 5), 2026-04-27
+
+All 3 documented failures verified passing on current `main` at SP-5E baseline (7/7 tests across `control_plane_panels.test.tsx`, `control_plane_shell.test.tsx`, `control_plane_state.test.tsx`). The fix landed silently between Phase 2 close (2026-04-26) and Phase 5 entry; the exact phase is not traceable from FU history but evidence-of-fix is the current green run. No further action required.

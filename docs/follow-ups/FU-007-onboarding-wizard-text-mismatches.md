@@ -35,3 +35,19 @@ Pre-existing. Confirmed by `git log v4.1.0..HEAD -- frontend/tests/unit/onboardi
 ## Notes
 
 If more than five strings have drifted, consider switching to a `data-testid` approach for step markers so future copy changes do not require test updates.
+
+---
+
+## Resolution
+
+**Closed:** SP-5E (Phase 5), 2026-04-27
+**Branch:** `chore/sp-5e-fu-cleanup`
+
+Three assertions updated in `tests/unit/onboarding_wizard.test.tsx` (test-only changes, no component changes):
+
+| Location | Old string | New string | Source |
+|---|---|---|---|
+| Line 321 | `/…module state\. module enablement remains unavailable in the setup intent contract/i` | `/review generated from backend-confirmed module state\./i` | `OnboardingWizard.tsx:211` — trailing clause removed from `moduleReviewMutation.onSuccess` text |
+| Lines 334 + 409 | `/submitted to backend - pending backend confirmation/i` | `/submitted – pending backend confirmation/i` | `OnboardingWizard.tsx:247` — `uploadConfirmationLabel` ternary changed hyphen to U+2013 en dash and dropped "to backend" |
+
+Vitest: 222/224 → 224/224. Verified twice with no flakiness.

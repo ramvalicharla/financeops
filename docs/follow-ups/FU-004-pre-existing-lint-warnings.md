@@ -28,3 +28,11 @@ Run `npm run lint` to get the file list. The 11 warnings are likely concentrated
 - `npm run lint` returns 0 errors and 0 warnings on `main`
 - No new lint suppressions added without justification
 - Lint config (`.eslintrc*`) unchanged unless a rule is being deliberately relaxed with team agreement
+
+---
+
+## Resolution
+
+**Closed:** SP-5E (Phase 5), 2026-04-27
+
+`npm run lint` returns 0 warnings, 0 errors on current `main` (verified at Phase 5 pre-flight and again at SP-5E start). The 11 pre-existing warnings were resolved silently in or before Phase 0.4 per the master handoff. No further action required.
