@@ -148,7 +148,7 @@ export function Sidebar({
       ) : null}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-card transition-all duration-200",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-card motion-safe:transition-all motion-safe:duration-200",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           "md:translate-x-0",
         )}
@@ -298,7 +298,7 @@ export function Sidebar({
                   {group.label}
                   <ChevronDown
                     className={cn(
-                      "h-3.5 w-3.5 transition-transform",
+                      "h-3.5 w-3.5 motion-safe:transition-transform",
                       groupOpen[group.id] ? "rotate-180" : "rotate-0",
                     )}
                   />

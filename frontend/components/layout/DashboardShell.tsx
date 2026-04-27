@@ -21,7 +21,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
   return (
     <div
       className={cn(
-        "flex h-full flex-col transition-all duration-200",
+        "flex h-full flex-col motion-safe:transition-all motion-safe:duration-200",
         sidebarCollapsed ? "md:pl-[52px]" : "md:pl-[220px]",
       )}
       data-density={density}
