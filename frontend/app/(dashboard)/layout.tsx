@@ -17,8 +17,6 @@ import { DeterminismPanel } from "@/components/panels/DeterminismPanel"
 import { SearchProvider } from "@/components/search/SearchProvider"
 import { Breadcrumb } from "@/components/ui/Breadcrumb"
 import { DashboardShell } from "@/components/layout/DashboardShell"
-import { CommandPalette } from "@/components/layout/_components/CommandPalette"
-
 export default async function DashboardLayout({
   children,
 }: {
@@ -104,7 +102,6 @@ export default async function DashboardLayout({
           <JobPanel />
           <TimelinePanel />
           <DeterminismPanel />
-          <CommandPalette />
         </SearchProvider>
       </DashboardShell>
     </div>
