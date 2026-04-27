@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { addBudgetLine, approveBudgetVersion, createBudgetVersion } from "@/lib/api/budget"
+import { useFormattedAmount } from "@/hooks/useFormattedAmount"
 
 type EditableBudgetRow = {
   mis_line_item: string
@@ -30,6 +31,7 @@ export default function BudgetEditPage() {
   const params = useParams()
   const yearParam = Array.isArray(params?.year) ? params.year[0] : params?.year
   const year = Number.parseInt(yearParam ?? "", 10)
+  const { fmt } = useFormattedAmount()
   const [rows, setRows] = useState<EditableBudgetRow[]>(defaultRows)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +39,7 @@ export default function BudgetEditPage() {
   const annualTotals = useMemo(
     () =>
       rows.map((row) =>
-        row.monthly_values.reduce((sum, value) => sum + asNumber(value), 0).toFixed(2),
+        fmt(row.monthly_values.reduce((sum, value) => sum + asNumber(value), 0)),
       ),
     [rows],
   )

@@ -343,7 +343,7 @@ export default function TrialBalancePage() {
       {result && result.unmapped_count > 0 ? (
         <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4">
           <p className="text-sm text-amber-200">
-            {result.unmapped_count} accounts ({fmt(unmappedNetTotal.toFixed(2))} total) are
+            {result.unmapped_count} accounts ({fmt(unmappedNetTotal)} total) are
             unmapped and excluded from the classified TB. Go to ERP Mapping to resolve.
           </p>
         </section>

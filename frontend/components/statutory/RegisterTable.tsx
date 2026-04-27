@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { FormField } from "@/components/ui/FormField"
 import { Input } from "@/components/ui/input"
 import { type StatutoryRegisterEntry } from "@/lib/types/sprint11"
+import { formatAmount } from "@/lib/utils"
 
 export type RegisterTableProps = {
   registerType: string
@@ -139,7 +140,7 @@ export function RegisterTable({ registerType, entries, onAddEntry }: RegisterTab
               <td className="px-3 py-2 text-foreground">{entry.folio_number ?? "-"}</td>
               <td className="px-3 py-2 text-right text-foreground">
                 {entry.amount
-                  ? `${entry.currency ?? "INR"} ${Number.parseFloat(entry.amount).toFixed(2)}`
+                  ? formatAmount(Number.parseFloat(entry.amount), "INR", entry.currency ?? "INR")
                   : "-"}
               </td>
               <td className="px-3 py-2 text-foreground">
