@@ -7,6 +7,7 @@ import { DataActivationReminder } from "@/components/layout/DataActivationRemind
 import { EntityScopeBar } from "@/components/layout/EntityScopeBar"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { DisplayPreferenceBootstrap } from "@/components/layout/DisplayPreferenceBootstrap"
+import { SidebarCollapseBootstrap } from "@/components/layout/SidebarCollapseBootstrap"
 import { ModuleTabs } from "@/components/layout/ModuleTabs"
 import { Topbar } from "@/components/layout/Topbar"
 import { IntentPanel } from "@/components/panels/IntentPanel"
@@ -79,6 +80,7 @@ export default async function DashboardLayout({
       <DashboardShell>
         <SearchProvider>
           <DisplayPreferenceBootstrap />
+          <SidebarCollapseBootstrap />
           <Topbar
             tenantSlug={tenantSlug}
             userEmail={user.email ?? ""}
