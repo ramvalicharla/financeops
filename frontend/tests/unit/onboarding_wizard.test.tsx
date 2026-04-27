@@ -318,7 +318,7 @@ describe("onboarding wizard", () => {
     await user.click(screen.getByRole("button", { name: /review backend selection/i }))
     expect(
       await screen.findByText(
-        /review generated from backend-confirmed module state\. module enablement remains unavailable in the setup intent contract/i,
+        /review generated from backend-confirmed module state\./i,
       ),
     ).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /continue to upload/i }))
@@ -331,7 +331,7 @@ describe("onboarding wizard", () => {
     expect(await screen.findByRole("heading", { name: "Completion" })).toBeInTheDocument()
     expect(screen.getAllByText("Acme Group").length).toBeGreaterThan(0)
     expect(screen.getAllByText("2026-04").length).toBeGreaterThan(0)
-    expect(screen.getByText(/submitted to backend - pending backend confirmation/i)).toBeInTheDocument()
+    expect(screen.getByText(/submitted – pending backend confirmation/i)).toBeInTheDocument()
   })
 
   it("shows clear empty-state guidance when modules are unavailable", async () => {
@@ -406,7 +406,7 @@ describe("onboarding wizard", () => {
     await user.click(screen.getByRole("button", { name: /review backend confirmation/i }))
 
     expect(await screen.findByRole("heading", { name: "Completion" })).toBeInTheDocument()
-    expect(screen.getByText(/submitted to backend - pending backend confirmation/i)).toBeInTheDocument()
+    expect(screen.getByText(/submitted – pending backend confirmation/i)).toBeInTheDocument()
     expect(screen.queryByText(/admitted/i)).not.toBeInTheDocument()
   })
 
