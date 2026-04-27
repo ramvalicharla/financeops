@@ -1,9 +1,11 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { Share2 } from "lucide-react"
 import { listPartnerReferrals } from "@/lib/api/partner"
 import type { ReferralTrackingRow } from "@/lib/types/partner"
 import { ReferralCard } from "@/components/partner/ReferralCard"
+import { EmptyState } from "@/components/ui/EmptyState"
 
 export default function PartnerReferralsPage() {
   const [rows, setRows] = useState<ReferralTrackingRow[]>([])
@@ -60,7 +62,10 @@ export default function PartnerReferralsPage() {
           <ReferralCard key={row.id} referral={row} />
         ))}
         {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No referrals tracked yet.</p>
+          <EmptyState
+            icon={<Share2 className="h-5 w-5" />}
+            title="No referrals tracked yet."
+          />
         ) : null}
       </section>
     </div>
